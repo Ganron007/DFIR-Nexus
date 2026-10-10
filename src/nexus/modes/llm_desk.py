@@ -744,6 +744,7 @@ def promote_hits_to_draft(
     examiner: str = "",
     interpretation_hint: str = "",
     examiner_selected: bool = True,
+    entity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Promote hits to a DRAFT finding skeleton.
 
@@ -794,6 +795,7 @@ def promote_hits_to_draft(
         "type": "finding",
         "audit_ids": audit_ids,
         "evidence": evidence_rows,
+        "entity": dict(entity or {}),
         "host": "",
         "event_timestamp": hit_time if hits else "",
         "status": "DRAFT",

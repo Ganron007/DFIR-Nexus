@@ -433,6 +433,9 @@ def settled_candidates(
             from nexus.analysis.titles import claim_title
 
             candidates.append({
+                # D70: the claim's entity is the identity its DRAFT is matched on.
+                "entity": ({"type": str(claim.get("entity_type") or ""), "value": entity}
+                           if entity else {}),
                 # "evtxecmd: presence" is a dispute key rendered as English. The
                 # claim carries a value and a justification, and either is a
                 # sentence an examiner can read, so one of them leads the title.

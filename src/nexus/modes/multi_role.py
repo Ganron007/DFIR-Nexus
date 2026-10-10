@@ -462,7 +462,7 @@ ROLES: dict[str, AgentRole] = {
             "run_record before claiming something is absent. Return JSON: "
             '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
             '"audit_ids":["..."]}],"entities":["..."],'
-            '"candidate_findings":[{"title":"...","observation":"...",'
+            '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
             '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
             '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
             '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
@@ -883,6 +883,8 @@ def stage_run_candidates(
             # text is the fallback only when no cited call stored rows.
             "evidence": (evidence_rows_for_audit_ids(case_dir, audit_ids)
                          or _normalise_evidence(candidate, source=run_mode)),
+            # D70: the entity this candidate is about (the identity with its rows).
+            "entity": candidate.get("entity") if isinstance(candidate.get("entity"), dict) else {},
             "status": "DRAFT",
             "source": run_mode,
             "run_id": run_id,
@@ -1043,7 +1045,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
     "evidence": (
         '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
         '"audit_ids":["..."]}],"entities":["..."],'
-        '"candidate_findings":[{"title":"...","observation":"...",'
+        '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
@@ -1053,7 +1055,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '{"corroborated_entities":["..."],"chains":[{"entities":["..."],'
         '"times":["..."],"evidence":["family/file:line ..."],'
         '"audit_ids":["..."]}],"unexplained":["..."],'
-        '"candidate_findings":[{"title":"...","observation":"...",'
+        '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"next_questions":["..."],'
@@ -1062,7 +1064,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
     "pattern": (
         '{"patterns":[{"name":"...","technique_ids":["..."],'
         '"evidence":["family/file:line ..."],"audit_ids":["..."]}],'
-        '"candidate_findings":[{"title":"...","observation":"...",'
+        '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"caveats":["..."],"next_questions":["..."],'
@@ -1074,7 +1076,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"not_checked":["..."]}}'
     ),
     "synthesis": (
-        '{"narrative":"...","findings":[{"title":"...","observation":"...",'
+        '{"narrative":"...","findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"confidence_justification":"...","audit_ids":["..."],'

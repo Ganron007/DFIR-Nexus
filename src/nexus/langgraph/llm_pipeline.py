@@ -2166,6 +2166,8 @@ def _finding_tool_payload(
     ev_rows = candidate.get("evidence")
     if isinstance(ev_rows, list) and ev_rows:
         payload["evidence"] = ev_rows[:12]
+    if isinstance(candidate.get("entity"), dict) and candidate.get("entity"):
+        payload["entity"] = dict(candidate["entity"])
     itm_stage = str(candidate.get("itm_stage") or "").strip()
     if itm_stage:
         payload["itm_stage"] = itm_stage[:80]

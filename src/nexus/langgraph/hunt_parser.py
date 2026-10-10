@@ -133,6 +133,9 @@ def normalize_candidate(data: dict) -> dict:
             item for item in (data.get("evidence") or [])
             if isinstance(item, dict)
         ][:12],
+        # D70: the entity the finding is about (the identity a second mode is matched on).
+        # Dropped here before, so a Mode 1 DRAFT never carried it.
+        "entity": dict(data["entity"]) if isinstance(data.get("entity"), dict) else {},
     }
 
 

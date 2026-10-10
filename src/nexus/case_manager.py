@@ -94,21 +94,26 @@ def _hash_evidence_path(path: Path) -> tuple[str, int, int]:
     return hash_evidence_path(path)
 
 
-def _duplicate_key(finding: dict) -> tuple[str, tuple[str, ...]]:
-    """The identity of a finding for duplicate detection.
+def _duplicate_key(finding: dict) -> tuple[str, str, tuple[str, ...]]:
+    """The identity of a finding for duplicate detection (D70).
 
-    Title (normalized) + the ordered set of its evidence lines. Two DRAFTs with
-    the same title AND the same evidence are the same finding proposed again;
-    the same title with different evidence is a different finding (a re-run that
-    found more), and is kept.
+    A finding that names its entity is one finding per (entity, evidence lines):
+    the same claim from two modes is one DRAFT even when each mode words its title
+    differently. A finding with no entity keeps the title rule: the normalized
+    title plus its evidence lines, so two such DRAFTs match only when both do.
     """
-    title = " ".join(str(finding.get("title") or "").split()).lower()
+    from nexus.discipline import entity_key
+
     evidence = tuple(sorted(
         " ".join(str(e.get("detail") or e).split()).lower()
         for e in (finding.get("evidence") or [])
         if e
     ))
-    return title, evidence
+    entity = entity_key(finding.get("entity"))
+    if entity:
+        return "entity", entity, evidence
+    title = " ".join(str(finding.get("title") or "").split()).lower()
+    return "title", title, evidence
 
 
 def _find_duplicate_draft(findings: list[dict], finding: dict) -> dict | None:
@@ -118,7 +123,7 @@ def _find_duplicate_draft(findings: list[dict], finding: dict) -> dict | None:
     and a rejected one is a decision too — neither is a duplicate to link to.
     """
     key = _duplicate_key(finding)
-    if not key[0]:
+    if key[0] == "title" and not key[1]:
         return None
     for existing in findings:
         if str(existing.get("status") or "").upper() != "DRAFT":
@@ -513,7 +518,8 @@ class CaseManager:
                               "itm_stage", "itm_objects", "evidence", "severity",
                               "technique_ids", "scribe_source", "examiner_selected",
                               "provenance", "verifier",
-                              "run_id", "run_ids", "modes", "input_call_ids", "source"}}
+                              "run_id", "run_ids", "modes", "input_call_ids", "source",
+                              "entity"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
@@ -591,6 +597,9 @@ class CaseManager:
             "confidence": (sanitized.get("confidence") or "LOW").upper(),
             "confidence_justification": sanitized.get("confidence_justification", ""),
             "evidence": sanitized.get("evidence") or [],
+            # D70: the entity the finding is about; with the cited rows it is the identity
+            # a second mode's DRAFT is matched on.
+            "entity": sanitized.get("entity") if isinstance(sanitized.get("entity"), dict) else {},
             "type": sanitized.get("type", ""),
             "host": sanitized.get("host", ""),
             "affected_account": sanitized.get("affected_account", ""),

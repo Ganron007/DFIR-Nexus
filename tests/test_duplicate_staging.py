@@ -178,3 +178,65 @@ def test_one_claim_from_all_three_modes_records_all_three_modes(tmp_path: Path):
     stored = mgr._load_findings(case)
     assert len(stored) == 1, [f.get("run_ids") for f in stored]
     assert stored[0]["modes"] == [1, 2, 3], stored[0].get("modes")
+
+
+def test_one_entity_with_the_same_rows_is_one_draft_across_modes(tmp_path: Path):
+    """D70: two modes that name the same entity and cite the same rows propose one finding,
+    even when each mode words its title its own way. The entity's type is matched case- and
+    separator-blind; its value is matched on spacing and case."""
+    case = _case(tmp_path)
+    mgr = _mgr(tmp_path)
+    row = [{"detail": "EventId 1004 Microsoft-Windows-Security-SPP"}]
+
+    mgr.record_finding(
+        _draft(title="SPP event 1004 present", run_id="M1-run-1",
+               provenance={"mode": 1}, evidence=row,
+               entity={"type": "event_id", "value": "1004"}),
+        case_dir=case)
+    mgr.record_finding(
+        _draft(title="Microsoft-Windows-Security-SPP 1004 recorded", run_id="M3-run-3",
+               provenance={"mode": 3}, evidence=row,
+               entity={"type": "EventID", "value": " 1004 "}),
+        case_dir=case)
+
+    stored = mgr._load_findings(case)
+    assert len(stored) == 1, [f.get("title") for f in stored]
+    assert stored[0]["modes"] == [1, 3]
+
+
+def test_different_entities_on_the_same_rows_stay_separate(tmp_path: Path):
+    case = _case(tmp_path)
+    mgr = _mgr(tmp_path)
+    row = [{"detail": "one shared row"}]
+    mgr.record_finding(
+        _draft(run_id="M1-run-1", evidence=row, entity={"type": "event_id", "value": "1004"}),
+        case_dir=case)
+    mgr.record_finding(
+        _draft(run_id="M2-run-2", evidence=row, entity={"type": "event_id", "value": "4624"}),
+        case_dir=case)
+    assert len(mgr._load_findings(case)) == 2
+
+
+def test_an_entity_is_not_matched_against_a_title_without_one(tmp_path: Path):
+    """A draft that names an entity does not merge into one that does not: the identity is
+    the entity and the rows, so the rule is the same whichever mode staged which."""
+    case = _case(tmp_path)
+    mgr = _mgr(tmp_path)
+    row = [{"detail": "shared row"}]
+    mgr.record_finding(_draft(run_id="M2-run-2", evidence=row), case_dir=case)
+    mgr.record_finding(
+        _draft(title="A different wording", run_id="M3-run-3", evidence=row,
+               entity={"type": "event_id", "value": "1004"}),
+        case_dir=case)
+    assert len(mgr._load_findings(case)) == 2
+
+
+def test_entity_key_is_case_and_separator_blind_on_the_type(tmp_path: Path):
+    from nexus.discipline import entity_key
+
+    assert entity_key({"type": "event_id", "value": "1004"}) == entity_key(
+        {"type": "EventID", "value": "1004"}) == entity_key({"type": "event-id", "value": " 1004. "})
+    assert entity_key({"type": "event_id", "value": ""}) == ""
+    assert entity_key({}) == ""
+    assert entity_key(None) == ""
+    assert entity_key("  Host  ") == "host"

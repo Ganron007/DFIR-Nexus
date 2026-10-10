@@ -13,6 +13,24 @@ _ALLOWED_FINDING_FIELDS = {
 }
 
 _VALID_CONFIDENCE = {"LOW", "MEDIUM", "HIGH", "SPECULATIVE"}
+
+
+def _collapse(text: str) -> str:
+    return " ".join(str(text or "").split()).lower().strip(" .,;:'\"")
+
+
+def entity_key(entity) -> str:
+    """The identity of a finding's entity, or "" when it names none (D70).
+
+    ``{"type": "event_id", "value": "1004"}`` is compared on the type with case and
+    separators removed (``event_id``, ``EventID`` and ``event-id`` are one type) and on the
+    value with case and spacing collapsed. A plain string is compared the same way.
+    """
+    if isinstance(entity, dict):
+        kind = "".join(ch for ch in str(entity.get("type") or "").lower() if ch.isalnum())
+        value = _collapse(entity.get("value"))
+        return f"{kind}:{value}" if kind and value else ""
+    return _collapse(entity)
 _VALID_TYPES = {"finding", "execution", "persistence", "attribution", "exclusion",
                 "conclusion", "network", "lateral", "auth", "file",
                 "registry", "other"}
