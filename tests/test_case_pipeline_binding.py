@@ -66,3 +66,12 @@ def test_an_unknown_case_refuses_everything(cases):
 
 def test_an_invalid_case_id_refuses_everything(cases):
     assert windows._case_pipeline_roots("../CASE-RUN") == []
+
+
+@pytest.mark.parametrize("tool", ["netstat", "tasklist", "autorunsc", "winpmem", "handle"])
+def test_live_and_sysinternals_tools_are_refused_even_on_registered_evidence(cases, tool):
+    """WO-TA item 1: live, system, Sysinternals and memory-acquisition tools never run in a
+    case pipeline, even when the command names a path inside the run's evidence."""
+    roots = windows._case_pipeline_roots("CASE-RUN")
+    argv = [tool, str(cases["triage"] / "Security.evtx")]
+    assert windows.case_pipeline_refusal(tool, argv, roots), tool
