@@ -245,10 +245,19 @@ Write-Host "==> Hayabusa (GitHub latest win-x64)"
 $ha = Get-GitHubAsset "Yamato-Security/hayabusa" "hayabusa-.*-win-x64\.zip$"
 $haZip = Join-Path $env:TEMP $ha.Asset.name
 Invoke-WebRequest -Uri $ha.Asset.browser_download_url -OutFile $haZip
-Expand-To $haZip $Hay
-Get-ChildItem $Hay -Filter "hayabusa*.exe" -Recurse | Select-Object -First 1 | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $Hay "hayabusa.exe") -Force
-}
+# Extract into a clean staging dir and take the binary from THERE. The old
+# code globbed `hayabusa*.exe` out of $Hay with -First 1, but that directory
+# accumulates every version ever fetched and "hayabusa-4.0.0-..." sorts before
+# "hayabusa-4.1.0-..." - so a stale binary was copied over the freshly
+# downloaded one while VERSIONS.txt recorded a version the lane never ran.
+# Proven on this host: hayabusa.exe was byte-identical to the 4.0.0 build
+# while the manifest said 4.1.0.
+$haStage = Join-Path $env:TEMP ("hayabusa-stage-" + [guid]::NewGuid().ToString("n"))
+Expand-To $haZip $haStage
+$haExe = Get-ChildItem $haStage -Filter "hayabusa*.exe" -Recurse | Select-Object -First 1
+if (-not $haExe) { throw "no hayabusa exe in $($ha.Asset.name)" }
+Copy-Item $haExe.FullName (Join-Path $Hay "hayabusa.exe") -Force
+Remove-Item $haStage -Recurse -Force -ErrorAction SilentlyContinue
 $script:Versions += "hayabusa`t$($ha.Tag)`t$($ha.Asset.browser_download_url)"
 
 Write-Host "==> Suzaku (GitHub latest win-x64)"

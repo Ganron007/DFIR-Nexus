@@ -222,6 +222,17 @@ def version_lineage(binary_path: str | Path) -> tuple[str, str, str]:
                 return i_file, "", "script+interpreter"
         return "", "", "script-hash"
     # Linux ELF, a container image, a Python wheel - the hash is the identity
+    # WO-TA item 8: a version probe was tried here and REMOVED. It ran the
+    # tool with --version / -V / no arguments and searched the output for a
+    # version token. Measured on this host against the four sha256-only tools
+    # the lane actually runs - Get-InjectedThreadEx, INDXRipper, capa and
+    # chainsaw - it returned empty for all four: Hayabusa answers --version
+    # with a usage error and writes its banner to the console handle rather
+    # than stdout, so a pipe sees nothing, and the others behave the same way.
+    # A probe that cannot read a version is worse than no probe, because it
+    # looks like the gap is closed. The honest fix is the fetch manifest: the
+    # fetch script already knows the exact version and URL it installed, so the
+    # lane should read the version from there instead of from the binary.
     return "", "", "sha256-only"
 
 
