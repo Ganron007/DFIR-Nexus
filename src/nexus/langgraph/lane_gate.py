@@ -286,6 +286,50 @@ def _announce_processed(case_dir: Path | str, jobs: list[dict[str, str]]) -> Non
                 continue
 
 
+_COMPLETENESS_REASONS = {
+    "PRESENT_NO_PARSER": "present on the evidence with no parser in the lane",
+    "STAGED": "staged for a tool that did not process it",
+    "FAIL": "the parser ran and failed",
+}
+
+
+def _completeness_gaps(
+    completeness: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Completeness rows the gate must not call `clear` (WO-TA item 9).
+
+    The lane already writes ``_artifact_completeness.json`` - one row per
+    discovered artifact, marked parsed / fail / staged / no parser - but nothing
+    consumed it, so a volume full of ``PRESENT_NO_PARSER`` artifacts still
+    produced a ``clear`` gate. That is D43's shape exactly: the gate audited the
+    jobs that ran, not the evidence that exists.
+
+    Counted as unprocessed: ``PRESENT_NO_PARSER`` (there, no tool parses it),
+    ``STAGED`` (copied for a tool that never ran it) and ``FAIL`` (a parser ran
+    and failed). Not counted: ``ABSENT`` (nothing to process), ``OK`` /
+    ``PARSED``, and ``PENDING`` (the lane is still going).
+    """
+    gaps: list[dict[str, Any]] = []
+    for row in completeness or []:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "").strip().upper()
+        if status not in _COMPLETENESS_REASONS:
+            continue
+        name = str(row.get("artifact") or "").strip()
+        if not name:
+            continue
+        gaps.append({
+            "tool": str(row.get("tool") or "none"),
+            "purpose": f"{name} [{status}]",
+            "reason": str(row.get("reason") or "")[:200]
+            or _COMPLETENESS_REASONS[status],
+            "kind": "completeness",
+            "status": status,
+        })
+    return gaps
+
+
 def write_lane_gate(
     case_dir: Path | str,
     run_id: str,
@@ -293,6 +337,7 @@ def write_lane_gate(
     *,
     ts: str | None = None,
     registered_evidence: list[dict[str, Any]] | None = None,
+    completeness: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Persist the gate after a tool-lane pass. Unprocessed = FAIL rows.
 
@@ -338,6 +383,11 @@ def write_lane_gate(
     # evidence even though every planned job succeeded.
     unregistered_gaps = _registered_evidence_gaps(registered_evidence or [], ledger)
     unprocessed.extend(unregistered_gaps)
+    # WO-TA item 9: the completeness table the lane already writes. A volume
+    # holding artifacts no tool parses must not produce a `clear` gate - that is
+    # D43's shape, one artifact at a time instead of one memory image.
+    completeness_gaps = _completeness_gaps(completeness)
+    unprocessed.extend(completeness_gaps)
     # `not_applicable` is listed so the examiner can see it and, if the pass
     # processed nothing, settle the gate deliberately rather than hit a dead end.
     still_bad = (
