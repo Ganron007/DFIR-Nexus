@@ -95,3 +95,31 @@ def test_a_sift_row_is_reused_though_its_output_lives_on_the_sift_host(tmp_path,
 
     assert apply_prior_ok([job], case_dir, extractions=extractions) == 1
     assert job.status == "OK"
+
+
+def test_the_retry_indexes_what_it_wrote_when_elasticsearch_answers(tmp_path, monkeypatch, capsys):
+    from nexus.langgraph import case_index
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(case_index, "es_available", lambda: True)
+    monkeypatch.setattr(
+        case_index, "index_case",
+        lambda case_dir, incremental=False: calls.append((case_dir, incremental))
+        or {"docs": 12, "index": "nexus-case-retry01"},
+    )
+    lane_retry_cmd._index_retried_output(tmp_path)
+
+    assert calls == [(tmp_path, True)], "an incremental index, as the lane does after a batch"
+    assert "Indexed: 12 docs" in capsys.readouterr().out
+
+
+def test_the_retry_says_plainly_when_elasticsearch_is_down(tmp_path, monkeypatch, capsys):
+    from nexus.langgraph import case_index
+
+    called: list[int] = []
+    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    monkeypatch.setattr(case_index, "index_case", lambda *a, **k: called.append(1))
+    lane_retry_cmd._index_retried_output(tmp_path)
+
+    assert called == []
+    assert "not indexed yet" in capsys.readouterr().err

@@ -118,6 +118,26 @@ def retry(
             f"Gate still blocked by {gate.get('blocked_count')} item(s) - "
             "`nexus lane status` names them."
         )
+    _index_retried_output(case_dir)
+
+
+def _index_retried_output(case_dir: Path) -> None:
+    """Index what the retry wrote, as the lane does after a batch (incremental).
+
+    The retried jobs write new parsed tables into the run. Without this step they stay out of
+    the index until someone indexes the case by hand.
+    """
+    from nexus.langgraph.case_index import es_available, index_case
+
+    if not es_available():
+        typer.echo(
+            "Elasticsearch is not reachable: the retried output is not indexed yet. "
+            "Run `nexus index` once it is.",
+            err=True,
+        )
+        return
+    meta = index_case(case_dir, incremental=True) or {}
+    typer.echo(f"Indexed: {int(meta.get('docs') or 0)} docs in {meta.get('index') or 'the case index'}")
 
 
 async def _run_retry(case_dir: Path, run_id: str, evidence_paths: list[str]) -> dict:
