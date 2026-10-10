@@ -145,7 +145,7 @@ def test_the_tools_run_indexes_before_publishing_completed():
         body = ast.get_source_segment(src, fn) or ""
         if "_autoindex_case(" not in body or "finalize_run(" not in body:
             continue
-        idx_at = body.find("_autoindex_case(case_dir)")
+        idx_at = body.find("_autoindex_case(case_dir")
         fin_at = body.find('finalize_run(pipeline_run, "completed")')
         if idx_at < 0 or fin_at < 0:
             continue

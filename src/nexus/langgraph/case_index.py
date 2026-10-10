@@ -144,6 +144,12 @@ def _client():
     return httpx.Client(base_url=url, timeout=120.0)
 
 
+# A full purge deletes every document of the case in one request. At millions of rows it runs longer than
+# the 120 s client default; the clear then reported a timeout after it had removed the documents
+# (CASE-C5B04D31, 2026-10-11), and the index was left empty. The purge gets a timeout that fits its work.
+_PURGE_TIMEOUT_S = 1800.0
+
+
 # Availability probe cache — an ES URL that is configured but unreachable
 # (black-holed SYN, VPN down) must not stall every query: probe with a short
 # connect timeout and cache the result briefly (WP-review 2026-09-14).
@@ -547,6 +553,7 @@ def iter_index_doc_batches(
     only_files: set[str] | None = None,
     stats: dict[str, Any] | None = None,
     batch_size: int | None = None,
+    run_id: str = "",
 ):
     """Yield batches of index documents for EVERY row of EVERY indexable file.
 
@@ -676,7 +683,7 @@ def iter_index_doc_batches(
         return True
 
     file_stats: dict[str, Any] = {}
-    for path, root, fam in iter_extraction_files(case_dir, stats=file_stats):
+    for path, root, fam in iter_extraction_files(case_dir, stats=file_stats, run_id=run_id):
         if only_files is not None and _index_rel(path, root) not in only_files:
             continue
         if _MAX_DOCS_PER_FAMILY and family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
@@ -1016,7 +1023,7 @@ def _chunks(items: list[str], size: int) -> list[list[str]]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
 
-def _index_file_keys(case_dir: Path):
+def _index_file_keys(case_dir: Path, run_id: str = ""):
     """Yield ``(key, path)`` for every indexable file (B6 / WO-A5 digests).
 
     The ingest store is keyed as ``ingest/artifacts.jsonl`` to match the doc
@@ -1027,10 +1034,10 @@ def _index_file_keys(case_dir: Path):
     """
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    extractions = resolve_tools_extractions(case_dir)
+    extractions = resolve_tools_extractions(case_dir, run_id)
     roots = [extractions, extractions.parent / "sift" / "extractions", case_dir / "ingest"]
     seen: dict[str, Path] = {}
-    for path in iter_index_files(case_dir):
+    for path in iter_index_files(case_dir, run_id):
         for root in roots:
             try:
                 rel = str(path.relative_to(root)).replace("\\", "/")
@@ -1043,21 +1050,21 @@ def _index_file_keys(case_dir: Path):
     yield from seen.items()
 
 
-def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
+def _index_file_mtimes(case_dir: Path, run_id: str = "") -> dict[str, float]:
     """Doc ``file`` value -> mtime_ns for every indexable file (B6).
 
     When the same rel path exists in several roots, the MAX mtime wins so any
     copy's update still triggers a reindex.
     """
     out: dict[str, float] = {}
-    for rel, path in _index_file_keys(case_dir):
+    for rel, path in _index_file_keys(case_dir, run_id):
         with contextlib.suppress(OSError):
             mtime = float(path.stat().st_mtime_ns)
             out[rel] = max(out.get(rel, 0.0), mtime)
     return out
 
 
-def _index_file_digests(case_dir: Path) -> dict[str, str]:
+def _index_file_digests(case_dir: Path, run_id: str = "") -> dict[str, str]:
     """Doc ``file`` value -> SHA-256 for every indexable file (WO-A5).
 
     Stored with the index state so ``nexus index verify`` can prove the rows
@@ -1066,7 +1073,7 @@ def _index_file_digests(case_dir: Path) -> dict[str, str]:
     import hashlib
 
     out: dict[str, str] = {}
-    for rel, path in _index_file_keys(case_dir):
+    for rel, path in _index_file_keys(case_dir, run_id):
         try:
             h = hashlib.sha256()
             with open(path, "rb") as fh:
@@ -1107,8 +1114,13 @@ def index_case(
     extra_needles: list[str] | None = None,
     *,
     incremental: bool = False,
+    run_id: str = "",
 ) -> dict[str, Any]:
     """Build (or incrementally refresh) the case's N3 index.
+
+    ``run_id`` names the tools run whose output is indexed. The lane passes the run it is building:
+    that run is committed only at the report step, and an unnamed resolution indexes the run
+    committed before it (CASE-C5B04D31, 2026-10-11). Empty means the committed run, as readers see it.
 
     ``incremental=True`` only re-indexes files whose mtime advanced since the
     last build and purges docs for files that disappeared — the autoindex path
@@ -1138,7 +1150,7 @@ def index_case(
         except (OSError, ValueError):
             prior = {}
     prior_mtimes = prior.get("file_mtimes") or {}
-    current_mtimes = _index_file_mtimes(case_dir) if incremental else {}
+    current_mtimes = _index_file_mtimes(case_dir, run_id) if incremental else {}
 
     use_incremental = bool(incremental and prior_mtimes and current_mtimes)
     # R09: an mtime is not content identity. Archive extraction and preserved
@@ -1146,7 +1158,7 @@ def index_case(
     # compares each file's digest with the stored baseline (and reindexes any file
     # that has no baseline digest). The digests are computed once, here.
     prior_digests: dict[str, str] = prior.get("file_sha256s") or {}
-    current_digests: dict[str, str] = _index_file_digests(case_dir) if use_incremental else {}
+    current_digests: dict[str, str] = _index_file_digests(case_dir, run_id) if use_incremental else {}
     baseline_digests: dict[str, str] | None = None
     if use_incremental:
         with _client() as client:
@@ -1203,7 +1215,7 @@ def index_case(
                 docs = 0
                 errors = 0
                 for batch_docs in iter_index_doc_batches(
-                    case_dir, only_files=changed, stats=cap_stats
+                    case_dir, only_files=changed, stats=cap_stats, run_id=run_id
                 ):
                     docs += len(batch_docs)
                     errors += _bulk_insert(client, name, batch_docs)
@@ -1281,7 +1293,7 @@ def index_case(
         # over a populated index that is not a rebuild — it is evidence loss
         # from a resolver/run-pointer failure (seen live: a --from-case run
         # that owns no extractions zeroed a 128k-doc index). Refuse and keep.
-        resolved_mtimes = _index_file_mtimes(case_dir)
+        resolved_mtimes = _index_file_mtimes(case_dir, run_id)
         with _client() as client:
             count_resp = client.post(f"/{name}/_count")
             try:
@@ -1301,6 +1313,7 @@ def index_case(
                     f"/{name}/_delete_by_query",
                     params={"refresh": "true", "conflicts": "proceed"},
                     json={"query": {"match_all": {}}},
+                    timeout=_PURGE_TIMEOUT_S,
                 )
                 if cleared.status_code >= 400:
                     raise RuntimeError(
@@ -1309,7 +1322,7 @@ def index_case(
                 errors = 0
                 # EH-11: stream batches — a million-row case must not be
                 # materialized in memory before the first bulk request.
-                for batch_docs in iter_index_doc_batches(case_dir, stats=cap_stats):
+                for batch_docs in iter_index_doc_batches(case_dir, stats=cap_stats, run_id=run_id):
                     docs_total += len(batch_docs)
                     errors += _bulk_insert(client, name, batch_docs)
                     if docs_total % 50_000 < len(batch_docs):
@@ -1341,8 +1354,9 @@ def index_case(
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     write_index_state(
         case_dir, meta,
-        file_mtimes=current_mtimes or _index_file_mtimes(case_dir),
+        file_mtimes=current_mtimes or _index_file_mtimes(case_dir, run_id),
         file_sha256s=baseline_digests,
+        run_id=run_id,
     )
     # WO-TA item 9: the gate is re-derived from what the index now holds. The index stands even if
     # this fails; the gate then keeps its last state, and the log says why.
@@ -1416,11 +1430,11 @@ def _newest_extraction_mtime(case_dir: Path) -> float:
     return newest
 
 
-def _source_extractions_text(case_dir: Path) -> str:
+def _source_extractions_text(case_dir: Path, run_id: str = "") -> str:
     try:
         from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-        return str(resolve_tools_extractions(case_dir))
+        return str(resolve_tools_extractions(case_dir, run_id))
     except Exception:  # noqa: BLE001 - an unresolvable case records no source
         return ""
 
@@ -1431,6 +1445,7 @@ def write_index_state(
     *,
     file_mtimes: dict[str, float] | None = None,
     file_sha256s: dict[str, str] | None = None,
+    run_id: str = "",
 ) -> None:
     """Persist index freshness state for staleness detection + incremental B6.
 
@@ -1448,11 +1463,11 @@ def write_index_state(
         "docs": meta.get("docs", 0),
         "index": meta.get("index", ""),
         "url": es_url(),
-        "file_mtimes": file_mtimes if file_mtimes is not None else _index_file_mtimes(case_dir),
-        "file_sha256s": file_sha256s if file_sha256s is not None else _index_file_digests(case_dir),
-        # R13: the exact extractions folder the rows were read from (the committed
-        # run's), so verify re-hashes that run's files, not whichever run is newest later.
-        "source_extractions": _source_extractions_text(case_dir),
+        "file_mtimes": file_mtimes if file_mtimes is not None else _index_file_mtimes(case_dir, run_id),
+        "file_sha256s": file_sha256s if file_sha256s is not None else _index_file_digests(case_dir, run_id),
+        # R13: the exact extractions folder the rows were read from (the run indexed), so verify
+        # re-hashes that run's files, not whichever run is newest later.
+        "source_extractions": _source_extractions_text(case_dir, run_id),
         "capped": bool(meta.get("capped")),
         "caps": meta.get("caps") or {},
     }
@@ -1491,7 +1506,7 @@ def state_file_exists(path: Path) -> bool:
     return path.is_file()
 
 
-def iter_index_files(case_dir: Path) -> list[Path]:
+def iter_index_files(case_dir: Path, run_id: str = "") -> list[Path]:
     """Files the indexer walks (for mtime staleness checks).
 
     Applies the same ledger/meta skip rules as iter_extraction_files and
@@ -1500,7 +1515,7 @@ def iter_index_files(case_dir: Path) -> list[Path]:
     case_dir = Path(case_dir)
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    extractions = resolve_tools_extractions(case_dir)
+    extractions = resolve_tools_extractions(case_dir, run_id)
     tools_run_dir = extractions.parent
     roots = [extractions, tools_run_dir / "sift" / "extractions", case_dir / "ingest"]
     out: list[Path] = []

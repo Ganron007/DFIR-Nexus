@@ -24,6 +24,7 @@ class _FakeClient:
     def __init__(self, docs: int):
         self.docs = docs
         self.deletes: list[dict] = []
+        self.delete_timeouts: list = []
         self.bulk_calls = 0
 
     def __enter__(self):
@@ -38,9 +39,10 @@ class _FakeClient:
     def get(self, path):
         return _Resp(200, {})
 
-    def post(self, path, json=None, params=None, content=None, headers=None):
+    def post(self, path, json=None, params=None, content=None, headers=None, timeout=None):
         if "_delete_by_query" in path:
             self.deletes.append(json or {})
+            self.delete_timeouts.append(timeout)
             return _Resp(200, {"deleted": self.docs})
         if "_count" in path:
             return _Resp(200, {"count": self.docs})
@@ -67,7 +69,7 @@ def test_full_rebuild_refuses_purge_on_empty_resolution(tmp_path, monkeypatch):
     fake = _FakeClient(docs=5)
     monkeypatch.setattr(case_index, "_client", lambda: fake)
     monkeypatch.setattr(case_index, "ensure_index", lambda case_id: f"nexus-case-{case_id.lower()}")
-    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir: {})
+    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir, run_id="": {})
 
     meta = case_index.index_case(case)
 
@@ -86,7 +88,7 @@ def test_fresh_case_stale_index_is_still_cleared(tmp_path, monkeypatch):
     fake = _FakeClient(docs=5)  # index holds docs but the case never indexed
     monkeypatch.setattr(case_index, "_client", lambda: fake)
     monkeypatch.setattr(case_index, "ensure_index", lambda case_id: f"nexus-case-{case_id.lower()}")
-    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir: {})
+    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir, run_id="": {})
 
     meta = case_index.index_case(case)
 
@@ -102,10 +104,28 @@ def test_full_rebuild_purges_when_files_resolve(tmp_path, monkeypatch):
     fake = _FakeClient(docs=5)
     monkeypatch.setattr(case_index, "_client", lambda: fake)
     monkeypatch.setattr(case_index, "ensure_index", lambda case_id: f"nexus-case-{case_id.lower()}")
-    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir: {"b.csv": 2.0})
+    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir, run_id="": {"b.csv": 2.0})
 
     meta = case_index.index_case(case)
 
     assert meta["purge_refused"] is False
     assert fake.deletes, "a real rebuild must clear the index"
     assert meta["docs"] == 0  # no batches materialized from the fake case dir
+
+
+def test_a_full_purge_may_outlast_the_default_client_timeout(tmp_path, monkeypatch):
+    """Reproduced on CASE-C5B04D31 (2026-10-11): a full rebuild's clear of ~6.9M documents ran past the
+    120 s client default. The clear reported a timeout after the documents were gone, so the index was
+    left empty. The full purge now carries its own timeout."""
+    from nexus.langgraph import case_index
+
+    case = _case(tmp_path, "CASE-PURGE-TIMEOUT")
+    fake = _FakeClient(docs=5)
+    monkeypatch.setattr(case_index, "_client", lambda: fake)
+    monkeypatch.setattr(case_index, "ensure_index", lambda case_id: f"nexus-case-{case_id.lower()}")
+    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir, run_id="": {"b.csv": 2.0})
+
+    case_index.index_case(case)
+
+    assert fake.delete_timeouts == [case_index._PURGE_TIMEOUT_S]
+    assert case_index._PURGE_TIMEOUT_S > 120.0

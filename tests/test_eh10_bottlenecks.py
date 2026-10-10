@@ -124,7 +124,7 @@ class _FakeES:
     def put(self, path, json=None):
         return self._Resp(200, {"acknowledged": True})
 
-    def post(self, path, json=None, content=None, headers=None, params=None):
+    def post(self, path, json=None, content=None, headers=None, params=None, timeout=None):
         if path.endswith("/_count"):
             return self._Resp(200, {"count": len(self.docs)})
         if path.endswith("/_refresh"):

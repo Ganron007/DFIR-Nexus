@@ -903,8 +903,11 @@ def iter_extraction_files(
     max_bytes: int | None = None,
     max_files_per_family: int | None = None,
     stats: dict[str, Any] | None = None,
+    run_id: str = "",
 ) -> list[tuple[Path, Path, str]]:
     """Registered-case processed outputs only (never Evidence-files/).
+
+    ``run_id`` names the tools run to list; empty means the committed run.
 
     ``stats`` (optional out-param) records coverage honesty: how many files
     were eligible, scanned, or skipped because of the size / per-family caps —
@@ -926,7 +929,7 @@ def iter_extraction_files(
         stats.setdefault("families_capped", [])
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    extractions = resolve_tools_extractions(case_dir)
+    extractions = resolve_tools_extractions(case_dir, run_id)
     tools_run_dir = extractions.parent
     roots = [
         extractions,

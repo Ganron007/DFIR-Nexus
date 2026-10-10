@@ -1394,7 +1394,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         # `completed` first meant a run could be read as finished while the index was
         # still being written - seen live, status complete with no index_state.json on
         # disk and ES still climbing past 352,000 docs.
-            step_log.extend(_autoindex_case(case_dir))
+            step_log.extend(_autoindex_case(case_dir, run_id=pipeline_run.run_id))
             finalize_run(pipeline_run, "completed")
             return {
                 "report_path": str(out),
@@ -1404,7 +1404,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
 
         if live_case_is_in_repo(case_dir):
             step_log.append("Repo sample-export skipped (live case already in-repo)")
-            step_log.extend(_autoindex_case(case_dir))
+            step_log.extend(_autoindex_case(case_dir, run_id=pipeline_run.run_id))
             finalize_run(pipeline_run, "completed")
             return {
                 "report_path": str(out),
@@ -1420,7 +1420,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         (exported / "reports" / "TOOL-RUN.md").write_text(md, encoding="utf-8")
         report_path = str(exported / "reports" / "TOOL-RUN.md")
         step_log.append(f"Repo export: {exported}")
-        step_log.extend(_autoindex_case(case_dir))
+        step_log.extend(_autoindex_case(case_dir, run_id=pipeline_run.run_id))
         finalize_run(pipeline_run, "completed")
     except Exception as exc:  # noqa: BLE001
         if "pipeline_run" in locals():
@@ -1435,7 +1435,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
     }
 
 
-def _autoindex_case(case_dir: Path) -> list[str]:
+def _autoindex_case(case_dir: Path, run_id: str = "") -> list[str]:
     """Best-effort N3 auto-index after the tools lane (WP 1.2).
 
     Enabled by default when NEXUS_ES_URL is set; disable with
@@ -1482,7 +1482,7 @@ def _autoindex_case(case_dir: Path) -> list[str]:
             extra_needles = []
         # B6: incremental by default — only files whose mtime advanced since
         # the last build are re-indexed (full rebuild on fresh/absent state).
-        meta = index_case(case_dir, extra_needles=extra_needles, incremental=True)
+        meta = index_case(case_dir, extra_needles=extra_needles, incremental=True, run_id=run_id)
         return [f"N3 auto-index: {meta.get('docs')} docs -> {meta.get('index')}"]
     except Exception as exc:  # noqa: BLE001
         if case_mode in ("2", "3"):

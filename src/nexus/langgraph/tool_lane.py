@@ -3935,7 +3935,8 @@ async def run_tool_lane(
 
             if not es_available():
                 return
-            meta = index_case(Path(case_dir), incremental=True)
+            # Named: the run is committed only at the report step, so an unnamed index reads the previous run.
+            meta = index_case(Path(case_dir), incremental=True, run_id=run_id)
             _emit(
                 "INDEXED", batch[-1],
                 f"N3 incremental after batch: {int((meta or {}).get('docs') or 0)} docs",
