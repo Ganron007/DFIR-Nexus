@@ -87,8 +87,12 @@ def persist_tool_output(
     purpose: str = "",
     case_dir: Path | None = None,
     register_evidence: bool = True,
+    extractions_root: Path | None = None,
 ) -> dict[str, Any]:
     """Write tool stdout/stderr (+ meta) under ``case/extractions/``.
+
+    ``extractions_root`` writes into a run's own folder instead (the lane's run), so a run's
+    output stays with the run; registration still goes to the case.
 
     Always writes when an active case exists and there is any stdout/stderr.
     Returns ``{output_files: [...], case_dir, warning?}``.
@@ -102,7 +106,8 @@ def persist_tool_output(
     out["case_dir"] = str(case)
     safe = re.sub(r"[^a-zA-Z0-9._-]", "_", (tool_key or "tool").lower())[:64] or "tool"
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-    extractions = case / "extractions" / safe
+    base = Path(extractions_root) if extractions_root is not None else case / "extractions"
+    extractions = base / safe
     try:
         extractions.mkdir(parents=True, exist_ok=True)
     except OSError as exc:

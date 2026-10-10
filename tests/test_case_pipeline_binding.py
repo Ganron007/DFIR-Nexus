@@ -122,3 +122,79 @@ def test_a_run_saves_its_output_into_its_own_case_not_the_active_one(cases, tmp_
     unbound = tool(command=["mftecmd", "-f", str(active_input / "a.evtx")], purpose="unbound run")
     assert unbound.get("success") is True, unbound
     assert saved[-1] == cases["active"], "a run that names no case saves into the active one"
+
+
+def test_a_lane_staged_copy_in_its_own_run_is_allowed_and_only_with_that_run(cases):
+    """Reproduced on SC1 (2026-10-10): the lane stages copies of evidence under its run's
+    extractions and names them in the command; the guard allowed only the case-level
+    extractions, so eight real jobs (SBECmd, SIDR, bmc-tools, bitsparser) were refused."""
+    run_id = "RUN-20261010T000000Z-tools-abcd"
+    run = cases["bound"] / "runs" / run_id
+    staged = run / "extractions" / "sbecmd" / "stage-Administrator"
+    staged.mkdir(parents=True)
+    argv = ["sbecmd", "-d", str(staged), "--csv", str(run / "extractions" / "sbecmd")]
+
+    with_run = windows._case_pipeline_roots("CASE-RUN", run_id)
+    assert windows.case_pipeline_refusal("sbecmd", argv, with_run) is None
+    case_only = windows._case_pipeline_roots("CASE-RUN")
+    assert windows.case_pipeline_refusal("sbecmd", argv, case_only), "the case alone must not admit a run's copy"
+
+
+def test_a_run_id_that_is_not_a_plain_run_name_adds_no_root(cases):
+    assert windows._case_pipeline_roots("CASE-RUN", "../CASE-ACTIVE") == windows._case_pipeline_roots("CASE-RUN")
+    assert windows._case_pipeline_roots("CASE-RUN", "RUN-a/../../x") == windows._case_pipeline_roots("CASE-RUN")
+
+
+def test_a_lane_runs_output_goes_into_its_own_run_folder(cases, tmp_path, monkeypatch):
+    """Reproduced on SC1 (2026-10-10): the eight jobs a retry re-ran wrote their output into the
+    case-level extractions, which the run never reads, so the index did not contain them."""
+    import subprocess
+
+    from nexus.case import outputs
+
+    run_id = "RUN-20261010T000000Z-tools-out1"
+    run = cases["bound"] / "runs" / run_id
+    run.mkdir(parents=True)
+    seen: dict = {}
+
+    class _Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _record(**kwargs):
+        seen.update(kwargs)
+        return {"output_files": [], "warning": ""}
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _Result())
+    monkeypatch.setattr(outputs, "persist_tool_output", _record)
+    tool = _windows_tool(tmp_path)
+    argv = ["mftecmd", "-f", str(cases["triage"] / "Security.evtx")]
+
+    result = tool(command=argv, purpose="run output", case_id="CASE-RUN", run_id=run_id)
+    assert result.get("success") is True, result
+    assert seen["case_dir"] == cases["bound"]
+    assert seen["extractions_root"] == run / "extractions"
+
+
+def test_a_run_name_that_is_not_on_disk_keeps_the_case_folder_and_creates_no_run(
+        cases, tmp_path, monkeypatch):
+    import subprocess
+
+    from nexus.case import outputs
+
+    seen: dict = {}
+
+    class _Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _Result())
+    monkeypatch.setattr(outputs, "persist_tool_output", lambda **kw: seen.update(kw) or {"output_files": []})
+    tool = _windows_tool(tmp_path)
+    argv = ["mftecmd", "-f", str(cases["triage"] / "Security.evtx")]
+
+    tool(command=argv, purpose="no run", case_id="CASE-RUN", run_id="RUN-20261010T000000Z-tools-none")
+    assert seen["extractions_root"] is None
+    assert not (cases["bound"] / "runs" / "RUN-20261010T000000Z-tools-none").exists()

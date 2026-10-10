@@ -2503,7 +2503,12 @@ def _job_reuse_key(host: str, tool: str, purpose: str) -> tuple[str, str, str]:
     return (host, tool, purpose)
 
 
-def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
+def _is_local_path(text: str) -> bool:
+    """A path on this machine (``C:\\...``), not one on the SIFT host (``/home/...``)."""
+    return bool(re.match(r"^[A-Za-z]:[\\/]", text))
+
+
+def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None = None) -> int:
     """Reuse prior OK ledger rows so leftover re-runs do not re-parse Hayabusa/MFT.
 
     Match on host+tool+purpose (argv changes when cases_root moves).
@@ -2513,7 +2518,10 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
 
     if os.environ.get("NEXUS_TOOL_LANE_RERUN", "").strip().lower() in ("1", "true", "yes"):
         return 0
+    # The run's own ledger first: the lane writes its ledger into its run folder. The flat
+    # case-level ledgers are read last, for cases that predate runs.
     paths = [
+        *([Path(extractions) / "_tool_lane_ledger.json"] if extractions is not None else []),
         Path(case_dir) / "extractions" / "_tool_lane_ledger.json",
         Path(case_dir) / "ledger" / "_tool_lane_ledger.json",
     ]
@@ -2545,11 +2553,17 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
         old = index.get(_job_reuse_key(job.host, job.tool, job.purpose))
         if not old:
             continue
+        # An OK row whose local output has gone is not a result: the job runs again. A SIFT
+        # row names its output on the SIFT host, which this machine cannot check, so the
+        # lane's own OK record stands for it.
+        saved = str(old.get("output_saved_to") or "")
+        if saved and _is_local_path(saved) and not Path(saved).exists():
+            continue
         job.status = "OK"
         job.audit_id = str(old.get("audit_id") or "")
         job.output_saved_to = str(old.get("output_saved_to") or "")
         job.output_files = list(old.get("output_files") or [])
-        job.reason = "reused prior OK (already in case extractions)"
+        job.reason = "reused prior OK (from this run's ledger)"
         reused += 1
     return reused
 
@@ -3443,6 +3457,11 @@ async def run_tool_lane(
             _planned.add(_key)
             jobs.append(_job)
     jobs.extend(_memory_image_jobs(plan_paths, extractions))
+    # WO-TA item 12: a job that finished OK in this run's ledger is reused, not run again.
+    # apply_prior_ok had no caller before this, so a retry re-ran every job.
+    reused = apply_prior_ok(jobs, case_dir, extractions=extractions)
+    if reused:
+        log.info("tool lane reused %d OK job(s) from this run's ledger", reused)
     try:
         import json as _json
 
@@ -3640,8 +3659,10 @@ async def run_tool_lane(
                         "purpose": job.purpose,
                         "timeout": job.timeout,
                         "save_output": True,
-                        # D41 on the lane path: bind the command to this run's case.
+                        # D41 on the lane path: bind the command to this run's case and its
+                        # own extractions (where the lane stages the copies it names).
                         "case_id": case_id,
+                        "run_id": run_id,
                     },
                     timeout=job.timeout,
                     label=f"run_windows_command({job.tool})",

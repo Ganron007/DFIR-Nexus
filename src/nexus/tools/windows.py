@@ -400,7 +400,22 @@ def _output_case_dir(case_id: str = "") -> Path | None:
     return _active_case_dir()
 
 
-def _case_pipeline_roots(case_id: str = "") -> list[Path] | None:
+_RUN_ID_RE = re.compile(r"^RUN-[A-Za-z0-9_.-]+$")
+
+
+def _run_extractions_dir(case_dir: Path, run_id: str) -> Path | None:
+    """The extractions folder of the run a lane command belongs to (D41, lane staging).
+
+    The lane stages copies of evidence under its own run's extractions and names those
+    copies in the command, so that folder is a root beside the registered evidence. A
+    run id that is not a plain run name is refused, never joined onto the path.
+    """
+    if not run_id or not _RUN_ID_RE.fullmatch(run_id) or ".." in run_id:
+        return None
+    return case_dir / "runs" / run_id / "extractions"
+
+
+def _case_pipeline_roots(case_id: str = "", run_id: str = "") -> list[Path] | None:
     """Registered evidence plus this case's extractions, or None with no case.
 
     ``case_id`` names the run's case: its roots are used, never the active case's
@@ -441,6 +456,9 @@ def _case_pipeline_roots(case_id: str = "") -> list[Path] | None:
         if roots:
             break
     roots.append(case_dir / "extractions")
+    run_extractions = _run_extractions_dir(case_dir, run_id)
+    if run_extractions is not None:
+        roots.append(run_extractions)
     return roots
 
 
@@ -740,6 +758,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         save_output: bool = True,
         input_files: list[str] | None = None,
         case_id: str = "",
+        run_id: str = "",
     ) -> dict:
         """Execute a catalog-approved forensic tool.
 
@@ -790,7 +809,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             )
             return {"success": False, "error": f"Tool not in allowlist: {binary}", "audit_id": audit_id}
 
-        refusal = case_pipeline_refusal(binary_key, parts, _case_pipeline_roots(case_id))
+        refusal = case_pipeline_refusal(binary_key, parts, _case_pipeline_roots(case_id, run_id))
         if refusal:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
@@ -960,14 +979,23 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if save_output:
             from nexus.case.outputs import persist_tool_output
 
+            # A lane run's output goes into that run's own extractions, so the run holds
+            # its results (a retry's output reached the case-level folder before this).
+            output_case = _output_case_dir(case_id)
+            run_extractions = (
+                _run_extractions_dir(output_case, run_id) if output_case is not None else None
+            )
+            if run_extractions is not None and not run_extractions.parent.is_dir():
+                run_extractions = None  # never create a run folder from a call
             persisted = persist_tool_output(
                 tool_key=binary_key,
                 stdout=stdout,
                 stderr=stderr,
                 command=command_text,
                 purpose=purpose,
-                case_dir=_output_case_dir(case_id),
+                case_dir=output_case,
                 register_evidence=True,
+                extractions_root=run_extractions,
             )
             output_files = persisted.get("output_files") or []
             save_warning = persisted.get("warning") or ""
