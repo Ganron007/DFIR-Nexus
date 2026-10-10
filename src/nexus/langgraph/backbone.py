@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.audit import AuditWriter
+from nexus.langgraph.evidence_rows import evidence_rows_for_hits
 from nexus.tools import evidence_index
 from nexus.tools import web as web_tools
 
@@ -233,9 +234,12 @@ def _es_call(
             tool=label,
             params={"case_id": Path(case_dir).name,
                     **{k: v for k, v in kwargs.items() if k in audit_keys}},
+            # D70: the rows this call returned, in the shape a DRAFT's evidence takes,
+            # so a candidate that cites this entry carries the same evidence as Mode 1.
             result_summary={"total": result.get("total"),
                             "returned": result.get("returned"),
-                            "families": len(result.get("families") or {})},
+                            "families": len(result.get("families") or {}),
+                            "evidence_rows": evidence_rows_for_hits(result.get("hits") or [])},
             elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
             extra={"canonical_tool": name} if label != name else None,
         )

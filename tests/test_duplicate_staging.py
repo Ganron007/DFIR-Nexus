@@ -164,3 +164,17 @@ def test_a_rejected_finding_is_not_a_link_target(tmp_path: Path):
     second = mgr.record_finding(_draft(), case_dir=case)
     assert not second.get("duplicate"), second
     assert len(mgr._load_findings(case)) == 2
+
+
+def test_one_claim_from_all_three_modes_records_all_three_modes(tmp_path: Path):
+    """WO-1C item 4 / D70: the merge records each mode that proposed the claim."""
+    case = _case(tmp_path)
+    mgr = _mgr(tmp_path)
+
+    for run, mode in (("M1-run-1", 1), ("M2-run-2", 2), ("M3-run-3", 3)):
+        mgr.record_finding(
+            _draft(run_id=run, provenance={"mode": mode}), case_dir=case)
+
+    stored = mgr._load_findings(case)
+    assert len(stored) == 1, [f.get("run_ids") for f in stored]
+    assert stored[0]["modes"] == [1, 2, 3], stored[0].get("modes")

@@ -737,14 +737,6 @@ def _severity_from_hits(hits: list[dict[str, Any]]) -> str:
     return best if saw_detection else "low"
 
 
-def _render_hit_detail(hit: dict[str, Any]) -> str:
-    """Readable 'what it shows' for a hit — parsed fields, not raw CSV."""
-    from nexus.integration.evidence_table import render_hit_fields
-
-    detail = render_hit_fields(hit.get("fields") or {})
-    return detail[:500] if detail else str(hit.get("text") or "")[:500]
-
-
 def promote_hits_to_draft(
     case_dir: Path,
     hits: list[dict[str, Any]],
@@ -761,34 +753,11 @@ def promote_hits_to_draft(
 
     Returns the DRAFT finding dict (not yet written to findings.json).
     """
-    evidence_rows = []
-    for h in hits:
-        # n4_hits does not emit a time field — parse the first timestamp
-        # from the raw row text so evidence rows carry a usable time.
-        hit_time = h.get("time") or ""
-        if not hit_time:
-            try:
-                from nexus.langgraph.query_pack import _DATE_RE
-                m = _DATE_RE.search(str(h.get("text", "")))
-                if m:
-                    hit_time = m.group(1) + (f"T{m.group(2)}" if m.group(2) else "")
-            except Exception:
-                pass
-        fields = h.get("fields") or {}
-        row = {
-            "time": hit_time,
-            # family must be non-empty: consumers derive the FD-006 family
-            # with split("/")[0], and an empty family made that "" (EH-8).
-            "source": f"{h.get('family') or 'other'}/{h.get('file', '')}",
-            "artifact": h.get("file", ""),
-            "detail": _render_hit_detail(h),
-            "loc": f"{h.get('file', '')}:{h.get('line', '')}",
-        }
-        if fields:
-            row["fields"] = {
-                k: str(v)[:240] for k, v in list(fields.items())[:24]
-            }
-        evidence_rows.append(row)
+    from nexus.langgraph.evidence_rows import evidence_rows_for_hits, hit_time_of
+
+    evidence_rows = evidence_rows_for_hits(hits)
+    # The draft is timed by the last hit, as the row loop always left it.
+    hit_time = hit_time_of(hits[-1]) if hits else ""
 
     # EH-9: resolve audit_ids by LINKAGE — only calls whose ledger/audit-log
     # tokens reference these hit families/files. No unrelated fallback: a draft
@@ -824,7 +793,7 @@ def promote_hits_to_draft(
         "confidence_justification": "",
         "type": "finding",
         "audit_ids": audit_ids,
-        "evidence": evidence_rows[:12],
+        "evidence": evidence_rows,
         "host": "",
         "event_timestamp": hit_time if hits else "",
         "status": "DRAFT",

@@ -797,6 +797,7 @@ def stage_run_candidates(
     lineage so the run event stream is the provenance. Approval remains
     password-gated and examiner-only — nothing here approves or promotes.
     """
+    from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
     from nexus.modes.llm_desk import save_draft_finding
 
     case_dir = Path(case_dir)
@@ -877,7 +878,11 @@ def stage_run_candidates(
             "severity": severity,
             "type": "finding",
             "audit_ids": audit_ids,
-            "evidence": _normalise_evidence(candidate, source=run_mode),
+            # D70: the evidence is the rows the cited calls returned, the same rows Mode 1
+            # drafts carry, so the duplicate rule sees one finding across modes. Model
+            # text is the fallback only when no cited call stored rows.
+            "evidence": (evidence_rows_for_audit_ids(case_dir, audit_ids)
+                         or _normalise_evidence(candidate, source=run_mode)),
             "status": "DRAFT",
             "source": run_mode,
             "run_id": run_id,

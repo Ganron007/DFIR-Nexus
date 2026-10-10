@@ -524,3 +524,39 @@ def test_run_mode2_refuses_without_elasticsearch(tmp_path):
     assert not ran, "the supervisor must not dispatch work orders"
     stored = m3.read_run_record(case, "M2-no-es")
     assert stored is not None and stored["stop_reason"] == "elasticsearch_required"
+
+
+def test_stage_takes_evidence_from_the_cited_rows_not_the_model_text(tmp_path):
+    """D70: a candidate's evidence is the rows its cited audit entry returned, the same rows
+    Mode 1 drafts carry. Text the model wrote is not evidence and is only a fallback."""
+    case = _case(tmp_path)
+    stored_row = {
+        "time": "", "source": "evtxecmd/a.csv", "artifact": "a.csv",
+        "detail": "EventId 1004 Microsoft-Windows-Security-SPP", "loc": "a.csv:7",
+    }
+    from nexus.audit import AuditWriter
+
+    cited = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search",
+        params={"query": {"match_all": {}}},
+        result_summary={"total": 1, "returned": 1, "evidence_rows": [stored_row]},
+        source="portal",
+    )
+    assert cited, "fixture must create a real audit entry"
+    m3._persist_state(case, "M2-rows", {
+        "run_id": "M2-rows", "case_id": case.name, "question": "q",
+        "status": "completed", "orders": [], "order_index": 0, "results": [],
+        "verdicts": [],
+        "candidates": [{
+            "title": "Rows claim", "observation": "o", "interpretation": "i",
+            "confidence": "LOW", "confidence_justification": "one audited query",
+            "audit_ids": [cited],
+            "evidence": [{"source": "model/invented", "detail": "text the model wrote"}],
+        }],
+        "gaps": [],
+    })
+    result = m3.stage_run_candidates(case, "M2-rows")
+    assert result["staged_count"] == 1, result
+    rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    staged = [f for f in rows if f.get("run_id") == "M2-rows"]
+    assert staged[0]["evidence"] == [stored_row]
