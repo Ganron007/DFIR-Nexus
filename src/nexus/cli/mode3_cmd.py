@@ -37,9 +37,12 @@ def _question(case_dir, explicit: str) -> str:
 def run(
     question: str = typer.Option("", "--question", "-q"),
     case: str = typer.Option("", "--case"),
+    context_policy: str = typer.Option(
+        "independent", "--context", help="independent | informed"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Start a concurrent multi-agent run and wait for it to finish."""
+    from nexus.analysis.context_policy import normalize_policy
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.modes.multi_agent import run_mode3
@@ -59,7 +62,9 @@ def run(
         model = get_model()
     except Exception:  # noqa: BLE001
         model = None
-    record = run_mode3(case_dir, _question(case_dir, question), model=model)
+    policy = normalize_policy(context_policy)
+    record = run_mode3(case_dir, _question(case_dir, question), model=model,
+                       context_policy=policy)
     if as_json:
         typer.echo(json.dumps(record, default=str))
     else:
@@ -222,7 +227,9 @@ def resume(
         model = get_model()
     except Exception:  # noqa: BLE001
         model = None
-    result = resume_mode3(case_dir, run_id, model=model)
+    result = resume_mode3(case_dir, run_id, model=model,
+                          context_policy=str(
+                              record.get("context_policy") or "independent"))
     typer.echo(
         f"{result.get('run_id')}  {result.get('status')}  "
         f"stop={result.get('stop_reason')}  "

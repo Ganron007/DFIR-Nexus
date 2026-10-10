@@ -43,6 +43,22 @@ _SEATS = ("evidence", "correlation", "pattern")
 _SINK_LOCK = threading.Lock()
 
 
+def _run_family_ledger(case_dir: Path, run_id: str) -> dict[str, Any]:
+    """This run's family coverage ledger, or ``{}`` when it cannot be built.
+
+    WO-1C item 7 (KR4): a run must account for every indexed family from its
+    own execution records. Best-effort by design.
+    """
+    if not run_id:
+        return {}
+    try:
+        from nexus.analysis.family_ledger import build_family_ledger
+
+        return build_family_ledger(case_dir, run_id=run_id)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -963,6 +979,14 @@ def _seat_with_model(
         entry["tool_calls_used"] = len(loop.get("tool_calls") or [])
     except (TypeError, ValueError):
         entry["tool_calls_used"] = 0
+    # WO-1C item 7 (KR4 / D58): this seat's executed evidence queries go to the
+    # family ledger from the tool calls that ran, so the run's coverage is what
+    # executed — a planned query that never ran is never credited.
+    from nexus.modes.multi_role import _record_order_family_queries
+
+    _record_order_family_queries(
+        case_dir, run_id, list(loop.get("tool_calls") or []),
+    )
     # Return the procedures this seat was given. Without them the run record
     # cannot say which documented method produced its claims, so "did the agent
     # follow a procedure or improvise" is unanswerable from the case afterwards
@@ -1386,11 +1410,19 @@ def run_mode3(
     es_ok: bool | None = None,
     on_event: Callable[[dict[str, Any]], None] | None = None,
     resume_state: dict[str, Any] | None = None,
+    context_policy: str = "independent",
 ) -> dict[str, Any]:
-    """Run one concurrent investigation. Returns the run record. Never stages."""
+    """Run one concurrent investigation. Returns the run record. Never stages.
+
+    ``context_policy`` (WO-1C item 3) is recorded on the run record:
+    ``independent`` (default) sees evidence only; ``informed`` may read the
+    case's prior reports and DRAFT findings as labelled examiner context.
+    """
     case_dir = Path(case_dir)
     run_id = run_id or f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
+    from nexus.analysis.context_policy import normalize_policy
     from nexus.audit import AuditWriter
+    from nexus.langgraph.pipeline_runs import configured_model
 
     # One writer per run (locked decision): seats share it, no seat builds one.
     run_audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
@@ -1437,6 +1469,11 @@ def run_mode3(
         # active and a zero-finding run can say what it observed.
         "layers": _layer_status_for_record(),
         "absence": _absence_for_record(case_dir),
+        # WO-1C items 2/3: the model actually called and the context policy
+        # this run used, so a report can say what produced a verdict and how
+        # much prior context it saw.
+        "model": configured_model(),
+        "context_policy": normalize_policy(context_policy),
     }
     if resume_state is not None:
         existing = read_run_record(case_dir, run_id)
@@ -1744,6 +1781,36 @@ def run_mode3(
                 data={"superstep": step_no, "open_items": open_items,
                       "disputes": len(disputes)},
             ))
+        # WO-1C item 7 (KR4): "settled" claims the evidence was examined. An
+        # indexed, populated artifact family this run never successfully
+        # queried is an unexamined artifact — record it as a gap on the record
+        # rather than letting the run read as a full examination.
+        settle_blockers: list[str] = []
+        if status == "settled":
+            with contextlib.suppress(Exception):
+                from nexus.analysis.family_ledger import (
+                    build_family_ledger,
+                )
+                from nexus.analysis.family_ledger import (
+                    settle_blockers as _blockers,
+                )
+
+                settle_blockers = list(_blockers(
+                    build_family_ledger(case_dir, run_id=run_id)))
+                state["settle_blockers"] = settle_blockers
+                state["family_ledger"] = _run_family_ledger(case_dir, run_id)
+            if settle_blockers:
+                gaps = list(state.get("gaps") or [])
+                gaps.extend(
+                    f"unexamined artifact family (run-level): {b}"
+                    for b in settle_blockers
+                )
+                state["gaps"] = gaps
+                sink.emit(new_event(
+                    run_id, "join.settle_blocked", actor="join",
+                    detail=f"{len(settle_blockers)} unexamined artifact family(ies)",
+                    data={"blockers": settle_blockers},
+                ))
         # Settling is a claim that the investigation is done, so record which
         # roles actually contributed. A run where only evidence seats ever ran has
         # not cross-examined anything, and saying so is the point.
@@ -1997,6 +2064,10 @@ def run_mode3(
         "board": list(final.get("board") or []),
         "disputes": list(final.get("disputes") or []),
         "superstep": int(final.get("superstep") or 0),
+        # WO-1C item 7 (KR4): the run's own family coverage and any unexamined
+        # indexed family, from execution records only.
+        "settle_blockers": list(final.get("settle_blockers") or []),
+        "family_ledger": _run_family_ledger(case_dir, run_id),
         # The counters the run actually reached (item 7b).
         "budgets": {
             **dict(record.get("budgets") or {}),
@@ -2038,6 +2109,7 @@ def resume_mode3(
     model: Any = None,
     seat_fn: Callable[[dict[str, Any], list[dict[str, Any]], int], dict[str, Any]] | None = None,
     es_ok: bool | None = None,
+    context_policy: str | None = None,
 ) -> dict[str, Any]:
     """Continue a paused run from its persisted board/superstep snapshot."""
     record = read_run_record(case_dir, run_id)
@@ -2057,6 +2129,10 @@ def resume_mode3(
         seat_fn=seat_fn,
         es_ok=es_ok,
         resume_state=record.get("resume_state") or {},
+        context_policy=str(
+            context_policy if context_policy is not None
+            else (record.get("context_policy") or "independent")
+        ),
     )
 
 

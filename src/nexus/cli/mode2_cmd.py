@@ -104,9 +104,12 @@ def run(
     case: str = typer.Option("", "--case", help="Case id (default active)"),
     run_id: str = typer.Option("", "--run-id", help="Resume/reuse a run id"),
     max_orders: int = typer.Option(6, "--max-orders", min=1, max=12),
+    context_policy: str = typer.Option(
+        "independent", "--context", help="independent | informed"),
     output: Path = typer.Option(None, "--output", help="Write the run record JSON"),
 ):
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
+    from nexus.analysis.context_policy import normalize_policy
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
     from nexus.modes.multi_role import run_mode2
 
@@ -122,12 +125,14 @@ def run(
         typer.echo(sift_msg)
         raise typer.Exit(1)
     run_id = run_id.strip()
+    policy = normalize_policy(context_policy)
     typer.echo(f"Mode 2 (multi-role) run on {case_dir.name}"
-               + (f" ({run_id})" if run_id else ""))
+               + (f" ({run_id})" if run_id else "")
+               + f" [context={policy}]")
     state = run_mode2(
         case_dir, _question(case_dir, question),
         model=_resolve_model(), run_id=run_id, on_event=_print_event,
-        max_orders=max_orders, resume=bool(run_id),
+        max_orders=max_orders, resume=bool(run_id), context_policy=policy,
     )
     typer.echo(
         f"run_id={state.get('run_id')} status={state.get('status')} "
@@ -283,6 +288,7 @@ def resume(
     state = run_mode2(
         case_dir, str(record.get("question") or ""),
         model=_resolve_model(), run_id=run_id, on_event=_print_event, resume=True,
+        context_policy=str(record.get("context_policy") or "independent"),
     )
     typer.echo(f"status={state.get('status')} stop={state.get('stop_reason')}")
 

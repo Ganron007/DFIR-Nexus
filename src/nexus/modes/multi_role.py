@@ -1245,6 +1245,54 @@ def _skill_procedure_block(order: WorkOrder) -> str:
     )
 
 
+def _record_order_family_queries(
+    case_dir: Path,
+    run_id: str,
+    tool_calls: list[dict[str, Any]],
+) -> None:
+    """Persist one work order's executed evidence queries (WO-1C item 7).
+
+    The family ledger must be built from execution records only (KR4): a query
+    the worker actually ran, with its audit id, the rows it returned and
+    whether it failed. A planned-but-unexecuted query is never credited.
+    """
+    from nexus.analysis.family_ledger import record_queries
+
+    entries: list[dict[str, Any]] = []
+    for call in tool_calls or []:
+        if not isinstance(call, dict):
+            continue
+        tool = str(call.get("tool") or "")
+        if tool not in ("es_search", "es_aggregate", "es_sample", "sample_rows"):
+            continue
+        args = call.get("args") if isinstance(call.get("args"), dict) else {}
+        query = args.get("query") if isinstance(args.get("query"), dict) else None
+        if query is None:
+            # es_aggregate/es_sample carry no query body: record the tool
+            # call itself so the ledger can see the family was touched.
+            query = {"__tool__": tool}
+            family = str(args.get("family") or "").strip()
+            if family:
+                query = {"term": {"family": family}}
+        summary = call.get("summary") if isinstance(call.get("summary"), dict) else {}
+        status = "FAIL" if summary.get("error") else "OK"
+        rows = 0
+        for key in ("total", "matched", "returned", "bucket_count", "sampled"):
+            value = summary.get(key)
+            if isinstance(value, int) and value > 0:
+                rows = value
+                break
+        entries.append({
+            "run_id": run_id,
+            "query": query,
+            "status": status,
+            "rows": rows,
+            "audit_id": str(call.get("audit_id") or ""),
+        })
+    if entries:
+        record_queries(case_dir, entries)
+
+
 def run_work_order(
     order: WorkOrder,
     *,
@@ -1412,6 +1460,10 @@ def run_work_order(
         # run record shows whether a skill was actually exercised.
         "skill_steps": _record_skill_steps(order, case_dir),
     }
+    # WO-1C item 7 (KR4 / D58): the executed evidence queries are written to
+    # the family ledger from the tool calls themselves — never from the plan —
+    # so the run's coverage is what ran, not what was intended.
+    _record_order_family_queries(case_dir, run_id, result.tool_calls)
     sink.emit(new_event(
         run_id, "work_order.completed", actor="agent", turn_id=turn_id,
         agent_id=agent_id, status=result.status, audit_id=result.audit_id,
@@ -1599,6 +1651,59 @@ def _absence_record(case_dir: Path) -> dict[str, Any]:
         return {}
 
 
+def _settle_blockers(case_dir: Path, run_id: str) -> list[str]:
+    """Why this run may not settle yet (WO-1C item 7 / KR4).
+
+    An indexed family with rows that this run never queried successfully is an
+    unexamined artifact. A run may not declare itself converged/complete while
+    one exists, unless the run record states why (e.g. the family is out of
+    scope for this case, or the query failed for a named reason).
+    """
+    try:
+        from nexus.analysis.family_ledger import build_family_ledger, settle_blockers
+
+        return list(settle_blockers(build_family_ledger(case_dir, run_id=run_id)))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _apply_settle_blockers(
+    case_dir: Path,
+    run_id: str,
+    state: dict[str, Any],
+    *,
+    emit: Any,
+) -> list[str]:
+    """Record this run's settle blockers on the state. Best-effort.
+
+    Called at every settle point (assess / synthesis / finalize). The blockers
+    are reported on the run record and in the events so an examiner sees the
+    run's own unexamined families instead of a bare "completed".
+    """
+    blockers = _settle_blockers(case_dir, run_id)
+    state["settle_blockers"] = blockers
+    state["family_ledger"] = _family_ledger_state(case_dir, run_id)
+    if blockers:
+        emit(new_event(
+            run_id, "run.settle_blocked", actor="director",
+            detail=f"{len(blockers)} unexamined artifact family(ies)",
+            data={"blockers": blockers},
+        ))
+    return blockers
+
+
+def _family_ledger_state(case_dir: Path, run_id: str) -> dict[str, Any]:
+    """This run's family coverage ledger, or ``{}`` when it cannot be built."""
+    if not run_id:
+        return {}
+    try:
+        from nexus.analysis.family_ledger import build_family_ledger
+
+        return build_family_ledger(case_dir, run_id=run_id)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 class Mode3State(dict):
     """Typed-ish state; LangGraph accepts a plain dict subclass here."""
 
@@ -1624,12 +1729,17 @@ def run_mode2(
     max_orders: int = 6,
     resume: bool = True,
     es_ok: bool | None = None,
+    context_policy: str = "independent",
 ) -> dict[str, Any]:
     """Run the Mode 2 (multi-role) supervisor graph and return the final run record.
 
     Steps: director -> worker(s) -> verifier -> synthesis -> finalize.
     Every state change is persisted so a reload can resume; every tool call is
     audited; DRAFT candidates are returned but never staged here.
+
+    ``context_policy`` (WO-1C item 3) is recorded on the run record:
+    ``independent`` (default) sees evidence only; ``informed`` may read the
+    case's prior reports and DRAFT findings as labelled examiner context.
     """
     case_dir = Path(case_dir)
     run_id = run_id or f"M2-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
@@ -1672,6 +1782,13 @@ def run_mode2(
     from nexus.langgraph.pipeline_runs import configured_model
 
     state["model"] = configured_model()
+    # WO-1C item 3: the context policy is decided before the run and recorded
+    # on it, exactly as the Mode 1 pipeline run record does. A Mode 2 run
+    # defaults to independent; the dashboard passes `informed` when the
+    # examiner asks for prior context.
+    from nexus.analysis.context_policy import normalize_policy
+
+    state["context_policy"] = normalize_policy(context_policy)
     state_path = case_dir / _MODE2_DIR / f"{run_id}.json"
     if resume and state_path.is_file():
         try:
@@ -1932,13 +2049,15 @@ def run_mode2(
         if previous is not None and signature == previous:
             state["converged_no_new_evidence"] = True
             state["status"] = "assessed"
+            blockers = _apply_settle_blockers(
+                case_dir, run_id, state, emit=sink.emit)
+            state["settle_blocked"] = bool(blockers)
             _persist_state(case_dir, run_id, state)
             sink.emit(new_event(
                 run_id, "run.converged", actor="director",
                 detail="no new evidence in the last follow-up round"))
             return state
         state["evidence_signature"] = signature
-
         used = int(state.get("followup_rounds") or 0)
         limit = int(state.get("followups_limit") or 0)
         needs = classes & {"refuted", "inferred"}
@@ -1947,8 +2066,14 @@ def run_mode2(
         # from refuted/inferred verdicts, so "I need X checked" reached no one and
         # the director could never re-plan from what a worker actually found.
         next_questions, pivots = _replan_inputs(state)
+        # WO-1C item 7 (KR4): a run with an indexed, populated artifact family
+        # it never successfully queried has not examined the evidence, whatever
+        # its verdict classes say. Block settlement and say so, rather than
+        # reporting a converged run that skipped artifacts.
+        blockers = _apply_settle_blockers(case_dir, run_id, state, emit=sink.emit)
         if (not needs and not next_questions and not pivots) or used >= limit:
             state["status"] = "assessed"
+            state["settle_blocked"] = bool(blockers)
             _persist_state(case_dir, run_id, state)
             return state
 
@@ -2179,6 +2304,7 @@ def run_mode2(
             and "model call failed" not in str(r.get("reply") or "")
         ]
         model_dead = bool(orders) and not produced and (unparsed or failed)
+        blockers = _apply_settle_blockers(case_dir, run_id, state, emit=sink.emit)
         state["status"] = "failed" if model_dead else "completed"
         if model_dead:
             state["stop_reason"] = (
@@ -2201,11 +2327,21 @@ def run_mode2(
                 if state.get("converged_no_new_evidence")
                 else ("converged" if not state["candidates"] else "completed")
             )
+        if blockers:
+            # The run finished, but it left indexed artifact families
+            # unexamined. That is a gap on the record, not a reason to relabel
+            # the run as failed (the investigation itself did complete).
+            state["settle_blocked"] = True
+            gaps = list(state.get("gaps") or [])
+            gaps.extend(
+                f"unexamined artifact family (run-level): {b}" for b in blockers)
+            state["gaps"] = gaps
         _persist_state(case_dir, run_id, state)
         sink.emit(new_event(
             run_id, "run.completed", actor="director",
             detail=f"{len(state['candidates'])} candidate finding(s)",
-            data={"stop_reason": state["stop_reason"]},
+            data={"stop_reason": state["stop_reason"],
+                  "settle_blockers": blockers},
         ))
         return state
 

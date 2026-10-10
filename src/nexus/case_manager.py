@@ -137,8 +137,40 @@ def _find_duplicate_draft(findings: list[dict], finding: dict) -> dict | None:
     return None
 
 
+def _run_mode(run_id: str, provenance: Any = None) -> int | None:
+    """The mode a run belongs to (1, 2 or 3), or None when it cannot be told.
+
+    WO-1C items 2 and 4: a run id names its mode (``M1-``/``M2-``/``M3-``), so
+    the lineage can record which modes produced a claim even when the caller
+    passed no ``provenance.mode``. An unparseable id yields None rather than a
+    guess — the lineage must not invent agreement.
+    """
+    rid = str(run_id or "").strip().upper()
+    if rid.startswith("M1-") or rid.startswith("MODE1"):
+        return 1
+    if rid.startswith("M2-") or rid.startswith("MODE2"):
+        return 2
+    if rid.startswith("M3-") or rid.startswith("MODE3"):
+        return 3
+    if isinstance(provenance, dict):
+        raw = provenance.get("mode")
+        try:
+            mode = int(raw)
+        except (TypeError, ValueError):
+            return None
+        if mode in (1, 2, 3):
+            return mode
+    return None
+
+
 def _append_lineage(existing: dict, finding: dict) -> None:
-    """Append a re-proposal's run id to the existing DRAFT's lineage."""
+    """Append a re-proposal's run id and mode to the existing DRAFT's lineage.
+
+    WO-1C item 4: when a second mode proposes a claim a first mode already
+    staged, that is one finding with two modes behind it — not two findings.
+    ``modes`` is the sorted set of modes that produced it, so "two modes
+    independently agree" is a recorded fact rather than an impression.
+    """
     run_id = str(finding.get("run_id") or "").strip()
     if not run_id:
         return
@@ -151,6 +183,32 @@ def _append_lineage(existing: dict, finding: dict) -> None:
     # Keep the single-valued field as the FIRST run that raised it, so a report
     # says where the finding came from rather than where it was last seen.
     existing.setdefault("run_id", run_id)
+
+    # ── cross-mode lineage (WO-1C item 4) ────────────────────────────────
+    modes: list[int] = []
+    for m in (existing.get("modes") or []):
+        try:
+            mi = int(m)
+        except (TypeError, ValueError):
+            continue
+        if mi in (1, 2, 3) and mi not in modes:
+            modes.append(mi)
+    # The existing draft's own mode, from its stored provenance or its run id.
+    own = _run_mode(str(existing.get("run_id") or ""), existing.get("provenance"))
+    if own is not None and own not in modes:
+        modes.append(own)
+    new = _run_mode(run_id, finding.get("provenance"))
+    if new is not None and new not in modes:
+        modes.append(new)
+    existing["modes"] = sorted(modes)
+    # The single-valued mode stays the first that raised the claim.
+    existing.setdefault("provenance", {})
+    if isinstance(existing["provenance"], dict) and not existing["provenance"].get("mode"):
+        if own is not None:
+            existing["provenance"]["mode"] = own
+        elif new is not None:
+            existing["provenance"]["mode"] = new
+
     calls = list(existing.get("input_call_ids") or [])
     for call in (finding.get("input_call_ids") or []):
         if call not in calls:
@@ -462,9 +520,9 @@ class CaseManager:
                               "affected_account", "attack_ids", "audit_ids", "iocs",
                               "event_type", "artifact_ref", "related_findings",
                               "itm_stage", "itm_objects", "evidence", "severity",
-                              "technique_ids", "scribe_source",                               "examiner_selected",
+                              "technique_ids", "scribe_source", "examiner_selected",
                               "provenance", "verifier",
-                              "run_id", "run_ids", "input_call_ids", "source"}}
+                              "run_id", "run_ids", "modes", "input_call_ids", "source"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
@@ -565,6 +623,14 @@ class CaseManager:
             # Mode 3 lineage: which run produced the candidate and the exact
             # agent tool-call audit IDs behind it (M5.2).
             "run_id": str(sanitized.get("run_id") or "")[:80],
+            # WO-1C item 4: the mode(s) behind this claim. A new finding starts
+            # with its own mode; a duplicate merge appends the others, so a
+            # case can always say how many modes independently reached a claim.
+            "modes": (
+                [m] if (m := _run_mode(
+                    str(sanitized.get("run_id") or ""), sanitized.get("provenance")
+                )) is not None else []
+            ),
             "input_call_ids": [
                 str(x)[:100] for x in (sanitized.get("input_call_ids") or [])
             ][:50],

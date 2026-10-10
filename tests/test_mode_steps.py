@@ -141,16 +141,28 @@ def test_no_mode_route_ever_writes_an_approved_finding(client, c1, c2, c3, tmp_p
             )
 
 
-def test_mode_routes_cannot_be_crossed(client, c1, c2, c3):
-    """A mode-1 route on a mode-2 case, and every other pairing, refuses."""
+def test_mode_routes_can_be_crossed_without_minting_authority(client, c1, c2, c3):
+    """A mode's route on another mode's case is allowed (D5 = C) and still
+    cannot mint examiner authority.
+
+    The old rule refused every crossing pairing with 409. That boundary is
+    deleted (WO-1C item 1): one case runs all three modes. What the sweep
+    still proves is the invariant that mattered underneath it — driving a
+    foreign mode's routes on a case never produces an APPROVED finding.
+    """
     pairs = [(c1, "/portal/api/mode2/plan"), (c1, "/portal/api/mode3/run/board"),
              (c2, "/portal/api/mode1/ask"), (c2, "/portal/api/mode3/run/board"),
              (c3, "/portal/api/mode1/ask"), (c3, "/portal/api/mode2/plan")]
     for cid, path in pairs:
         r = client.post(path, json={"question": "x"}, headers=_h(client, cid))
-        assert r.status_code in (409, 404, 405), (
-            f"{path} answered {r.status_code} for {cid}: {r.text[:160]}"
+        assert r.status_code != 409, (
+            f"{path} still enforces the deleted per-case mode boundary for {cid}: "
+            f"{r.text[:160]}"
         )
+        for f in _findings(client, cid):
+            assert str(f.get("status") or "").upper() != "APPROVED", (
+                f"{path} produced an APPROVED finding on {cid}"
+            )
 
 
 # ===========================================================================

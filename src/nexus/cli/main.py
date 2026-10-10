@@ -607,35 +607,70 @@ def portal():
 
 @app.command()
 def cross_mode(
-    cases: list[str] = typer.Argument(..., help="Two or more case ids or case directories"),
+    cases: list[str] = typer.Argument(
+        [],
+        help="Two or more case ids or case directories (siblings)"),
+    case: str = typer.Option(
+        "", "--case",
+        help=(
+            "One case id or directory. WO-1C / D5 = C: the three modes now run "
+            "on one case, so a single case's own runs are compared."
+        ),
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ):
-    """Compare sibling cases (identical registered evidence) across their stored modes.
+    """Compare cases across their stored modes.
 
-    A contradiction exits 1; a comparison with none exits 0.
+    Two forms, both real comparisons:
+
+    * ``nexus cross-mode CASE-A CASE-B CASE-C`` — sibling cases (identical
+      registered evidence) compared across the modes each was run in.
+    * ``nexus cross-mode --case CASE-A`` — one case's own Mode 1/2/3 runs,
+      which is what D5 = C (one case, three modes) produces. Without this the
+      single-case comparison was impossible: the command demanded two
+      positional ids and exited 2.
     """
+    import json
     from pathlib import Path
 
     from nexus.analysis.cross_mode import (
+        check_cross_mode,
         check_cross_mode_group,
         render_consistency_markdown,
     )
     from nexus.config import settings
 
-    dirs = []
-    for c in cases:
-        p = Path(c)
-        if not p.is_dir():
-            p = Path(settings.cases_root) / c
-        if not p.is_dir():
-            typer.echo(f"case not found: {c}", err=True)
-            raise typer.Exit(2)
-        dirs.append(p)
-    if len(dirs) < 2:
-        typer.echo("give at least two cases to compare", err=True)
+    if case and cases:
+        typer.echo("give either --case or positional cases, not both", err=True)
         raise typer.Exit(2)
+    if case:
+        # One case, its own runs — an intra-case comparison.
+        p = Path(case)
+        if not p.is_dir():
+            p = Path(settings.cases_root) / case
+        if not p.is_dir():
+            typer.echo(f"case not found: {case}", err=True)
+            raise typer.Exit(2)
+        result = check_cross_mode(case_dir=p)
+    else:
+        dirs = []
+        for c in cases:
+            p = Path(c)
+            if not p.is_dir():
+                p = Path(settings.cases_root) / c
+            if not p.is_dir():
+                typer.echo(f"case not found: {c}", err=True)
+                raise typer.Exit(2)
+            dirs.append(p)
+        if len(dirs) < 2:
+            typer.echo("give at least two cases, or one case with --case", err=True)
+            raise typer.Exit(2)
 
-    result = check_cross_mode_group(dirs)
-    typer.echo(render_consistency_markdown(result))
+        result = check_cross_mode_group(dirs)
+    if as_json:
+        typer.echo(json.dumps(result, indent=2, default=str))
+    else:
+        typer.echo(render_consistency_markdown(result))
     counts = result.get("counts") or {}
     conflicts = int(counts.get("contradictions") or 0) + int(
         counts.get("row_contradictions") or 0
@@ -661,6 +696,14 @@ def pipeline(
         help=(
             "Pipeline mode: design | coverage | tools | interpret "
             "(tools = parsers only; interpret = reuse --from-case)"
+        ),
+    ),
+    context_policy: str = typer.Option(
+        "",
+        "--context",
+        help=(
+            "WO-1C item 3: independent (evidence only) | informed "
+            "(prior reports + DRAFT summaries as labelled examiner context)"
         ),
     ),
 ):
@@ -733,6 +776,7 @@ def pipeline(
         mode=resolved_mode,
         evidence_paths=also or None,
         case_id=cid,
+        context_policy=(context_policy or "").strip() or None,
     ))
 
 

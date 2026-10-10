@@ -225,7 +225,7 @@ def _sealed_case_error(case_id: str):
     return None
 
 
-def _busy_run_error(case_dir: Path):
+def _busy_run_error(case_dir: Path, own_run_id: str = ""):
     """409 while another analysis run is already running on this case.
 
     WO-1C item 2: a case may run any mode, but only ONE analysis run at a time
@@ -234,11 +234,32 @@ def _busy_run_error(case_dir: Path):
     examiner picks. What remains is the writer race: staging two runs at once
     would interleave writes into findings.json.
 
+    Mode 1 was the hole (fixed here): its two run records —
+    ``analysis/mode1_full_run.json`` and ``analysis/pipeline_runs/M1-*.json``
+    — were invisible, so a Mode 2/3 start returned 202 while a Mode 1 run was
+    staging into the same findings.json. Every mode now contributes, and the
+    Mode 1 full-run record is reconciled against its live worker thread so a
+    server restart mid-run is not read as a live run (same rule as
+    ``_mode1_run_record``).
+
+    ``own_run_id`` is the run the CALLER is already running: the singleton
+    Mode 1 full-run record and the ``M1-`` pipeline records are the caller's
+    own when the caller is the matching handler, so they are not "another"
+    run. Without it, ``api_mode1_full_run`` is refused by the very record it
+    wrote a moment earlier — the guard reads its own run as a competitor and
+    answers 409 with the generic body instead of the run record the caller's
+    own richer, thread-aware check produces.
+
     Read from the run records themselves (``running`` status), not from a lock
     file, so a crashed process cannot wedge a case forever: a record left
     ``running`` is reaped at server startup.
     """
     running: list[dict[str, str]] = []
+
+    def _note(run_id: str, sub: str) -> None:
+        running.append({"run_id": run_id, "status": "running", "source": sub})
+
+    # Mode 2 / Mode 3 — one record per run.
     for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
         d = case_dir / "analysis" / sub
         if not d.is_dir():
@@ -249,10 +270,36 @@ def _busy_run_error(case_dir: Path):
             except (OSError, ValueError):
                 continue
             if isinstance(loaded, dict) and loaded.get("status") == "running":
-                running.append({
-                    "run_id": str(loaded.get("run_id") or rec.stem),
-                    "status": "running",
-                })
+                rid = str(loaded.get("run_id") or rec.stem)
+                if own_run_id and rid == own_run_id:
+                    continue
+                _note(rid, sub)
+
+    # Mode 1 — the interpret / coverage / design pipeline run.
+    runs_dir = case_dir / "analysis" / "pipeline_runs"
+    if runs_dir.is_dir():
+        for rec in sorted(runs_dir.glob("M1-*.json")):
+            try:
+                loaded = json.loads(rec.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(loaded, dict) and loaded.get("status") == "running":
+                rid = str(loaded.get("run_id") or rec.stem)
+                if own_run_id and rid == own_run_id:
+                    continue
+                _note(rid, "pipeline_runs")
+
+    # Mode 1 — the needle full-run record. A "running" record whose worker
+    # thread is dead is a tombstone (server restart / worker crash), so it
+    # must not block; the worker marks it interrupted in place.
+    rec = _mode1_run_record(case_dir)
+    if isinstance(rec, dict) and rec.get("status") == "running":
+        rid = str(rec.get("run_id") or "mode1_full_run")
+        # The caller's own run is not a competitor — it is the run that is
+        # already staging, and its own handler reports it in full.
+        if not (own_run_id and rid == own_run_id):
+            _note(rid, "mode1_full_run")
+
     if not running:
         return None
     return JSONResponse(
@@ -307,6 +354,12 @@ def _lane_gate_error(case_dir: Path):
 #: for ``_mode_route``; WO-1C item 1 removed the per-case mode boundary
 #: (D5 = C: any mode may run on any case, in any order), so no route is guarded
 #: by it any more. The guard that remains is the one-analysis-run-at-a-time
+#: Pipeline modes that are ANALYSIS runs (WO-1C item 2): they interpret
+#: evidence and stage findings, so they carry an ``M1-`` run id, a context
+#: policy and the model actually called, and the busy guard must see them.
+#: ``tools`` is the N2 lane (parse/reindex) — not an analysis run.
+_ANALYSIS_PIPELINE_MODES = frozenset({"coverage", "interpret", "design"})
+
 #: check in ``_busy_run_error``, applied by the run-starting handlers.
 _MODE_ROUTE_OWNERS: dict[str, int] = {
     "/portal/api/mode1/": 1,
@@ -3100,7 +3153,13 @@ async def api_mode1_full_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    wrong = _busy_run_error(case_dir)
+    # The shared busy guard must not read THIS handler's own run as a
+    # competitor: the singleton full-run record is the run this POST would
+    # supersede, and its own thread-aware check below answers 409 with the
+    # record itself (the guard's generic body loses every needle counter).
+    _own = _mode1_run_record(case_dir)
+    own_run_id = str((_own or {}).get("run_id") or "mode1_full_run")
+    wrong = _busy_run_error(case_dir, own_run_id=own_run_id)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)
@@ -5138,7 +5197,41 @@ async def api_pipeline_run(request):
     import threading
     import uuid
 
-    run_id = str(uuid.uuid4())[:8]
+    # WO-1C item 2: an analysis run has an id like Modes 2 and 3, so the run
+    # record, the family ledger and the lineage all say which run did the
+    # work — and so the busy guard can see a Mode 1 run in progress. Tools
+    # /lane runs keep their own (non-analysis) id.
+    if pipeline_mode in _ANALYSIS_PIPELINE_MODES:
+        run_id = (
+            "M1-"
+            + datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+            + f"-{uuid.uuid4().hex[:6]}"
+        )
+    else:
+        run_id = str(uuid.uuid4())[:8]
+
+    # WO-1C item 3: the context policy is decided BEFORE the run and recorded
+    # on it. `independent` (default) sees evidence/leads/digest only;
+    # `informed` passes prior reports and draft summaries as labelled examiner
+    # context — never as evidence.
+    context_policy = str(body.get("context") or "").strip().lower()
+    if context_policy not in ("independent", "informed"):
+        context_policy = str(
+            os.environ.get("NEXUS_CONTEXT_POLICY") or "independent"
+        ).strip().lower()
+    if context_policy not in ("independent", "informed"):
+        context_policy = "independent"
+
+    # WO-1C item 2 / D48: record the model this run actually calls. A run that
+    # has not built a model yet records ``none`` — that is "no model ran",
+    # not "an unnamed model ran", and it is never read as a model having run.
+    from nexus.langgraph.pipeline_runs import configured_model
+
+    run_model: dict[str, str] = {}
+    with contextlib.suppress(Exception):
+        run_model = dict(configured_model() or {})
+    if not run_model:
+        run_model = {"provider": "none", "model": "none"}
 
     # Store run state (memory cache + write-through to the case dir)
     _pipeline_runs[run_id] = {
@@ -5152,6 +5245,8 @@ async def api_pipeline_run(request):
         "stages": [],
         "intake": bool(case_context.get("question") or case_context.get("window")),
         "options": run_options,
+        "context_policy": context_policy,
+        "model": run_model,
     }
     _persist_pipeline_run(case_dir, _pipeline_runs[run_id])
     # Fresh stage feed for this run (a re-run must not replay old stages)
@@ -5182,6 +5277,8 @@ async def api_pipeline_run(request):
                 evidence_paths=evidence_paths,
                 case_context=case_context,
                 progress_path=str(progress_path),
+                # WO-1C item 3: the context policy decided before the run.
+                context_policy=context_policy,
             ))
             record["status"] = "complete"
             record["completed_at"] = datetime.now(UTC).isoformat()
@@ -5204,6 +5301,8 @@ async def api_pipeline_run(request):
         "mode": pipeline_mode,
         "status": "running",
         "options": run_options,
+        "context_policy": context_policy,
+        "model": run_model,
     })
 
 
@@ -7073,11 +7172,13 @@ _mode2_thread_lock = threading.Lock()
 
 def _mode2_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+    context_policy: str = "independent",
 ) -> None:
     try:
         from nexus.modes.multi_role import run_mode2
 
-        run_mode2(case_dir, question, model=model, run_id=run_id, resume=resume)
+        run_mode2(case_dir, question, model=model, run_id=run_id, resume=resume,
+                  context_policy=context_policy)
     except Exception:  # noqa: BLE001 — the run record carries the failure
         logger.exception("Mode 2 run %s failed", run_id)
     finally:
@@ -7087,6 +7188,7 @@ def _mode2_worker_thread(
 
 def _start_mode2_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+    context_policy: str = "independent",
 ) -> None:
     with _mode2_thread_lock:
         live = _mode2_threads.get(run_id)
@@ -7094,7 +7196,7 @@ def _start_mode2_thread(
             raise RuntimeError("run already in progress")
         thread = threading.Thread(
             target=_mode2_worker_thread,
-            args=(case_dir, question, model, run_id, resume),
+            args=(case_dir, question, model, run_id, resume, context_policy),
             daemon=True,
             name=f"mode2-{run_id[-8:]}",
         )
@@ -7109,14 +7211,17 @@ _mode3_thread_lock = threading.Lock()
 
 def _mode3_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+    context_policy: str = "independent",
 ) -> None:
     try:
         from nexus.modes.multi_agent import resume_mode3, run_mode3
 
         if resume:
-            resume_mode3(case_dir, run_id, model=model)
+            resume_mode3(case_dir, run_id, model=model,
+                         context_policy=context_policy)
         else:
-            run_mode3(case_dir, question, model=model, run_id=run_id)
+            run_mode3(case_dir, question, model=model, run_id=run_id,
+                      context_policy=context_policy)
     except Exception:  # noqa: BLE001 — the run record carries the failure
         logger.exception("Mode 3 run %s failed", run_id)
     finally:
@@ -7126,6 +7231,7 @@ def _mode3_worker_thread(
 
 def _start_mode3_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+    context_policy: str = "independent",
 ) -> None:
     with _mode3_thread_lock:
         live = _mode3_threads.get(run_id)
@@ -7133,7 +7239,7 @@ def _start_mode3_thread(
             raise RuntimeError("run already in progress")
         thread = threading.Thread(
             target=_mode3_worker_thread,
-            args=(case_dir, question, model, run_id, resume),
+            args=(case_dir, question, model, run_id, resume, context_policy),
             daemon=True,
             name=f"mode3-{run_id[-8:]}",
         )
@@ -7173,9 +7279,13 @@ async def api_mode3_run(request):
             question = ""
     run_id = str(body.get("run_id") or "").strip() or (
         f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
+    from nexus.analysis.context_policy import policy_from_body
+
+    context_policy = policy_from_body(body)
     model = await asyncio.to_thread(_resolve_run_model)
     try:
-        _start_mode3_thread(case_dir, question, model, run_id, resume=False)
+        _start_mode3_thread(case_dir, question, model, run_id, resume=False,
+                            context_policy=context_policy)
     except RuntimeError:
         return JSONResponse(
             {"error": "a Mode 3 run with this id is already in progress",
@@ -7278,7 +7388,8 @@ async def api_mode3_run_resume(request):
     model = await asyncio.to_thread(_resolve_run_model)
     try:
         _start_mode3_thread(
-            case_dir, str(record.get("question") or ""), model, run_id, resume=True)
+            case_dir, str(record.get("question") or ""), model, run_id, resume=True,
+            context_policy=str(record.get("context_policy") or "independent"))
     except RuntimeError:
         return JSONResponse({"error": "run already in progress", "run_id": run_id},
                             status_code=409)
@@ -7518,8 +7629,13 @@ async def api_mode2_run(request):
     run_id = str(body.get("run_id") or "").strip() or (
         f"M2-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
     model = await asyncio.to_thread(_resolve_run_model)
+    # WO-1C item 3: the context policy the operator picked, recorded on the run.
+    from nexus.analysis.context_policy import policy_from_body
+
+    context_policy = policy_from_body(body)
     try:
-        _start_mode2_thread(case_dir, question, model, run_id, resume=False)
+        _start_mode2_thread(case_dir, question, model, run_id, resume=False,
+                            context_policy=context_policy)
     except RuntimeError:
         return JSONResponse(
             {"error": "a Mode 2 run with this id is already in progress",
@@ -7527,7 +7643,8 @@ async def api_mode2_run(request):
             status_code=409,
         )
     return JSONResponse({"run_id": run_id, "status": "running",
-                         "question": question}, status_code=202)
+                         "question": question,
+                         "context_policy": context_policy}, status_code=202)
 
 
 def late_evidence(case_dir: Path, record: dict) -> dict:
@@ -7763,7 +7880,8 @@ async def api_mode2_run_resume(request):
     model = await asyncio.to_thread(_resolve_run_model)
     try:
         _start_mode2_thread(
-            case_dir, str(record.get("question") or ""), model, run_id, resume=True)
+            case_dir, str(record.get("question") or ""), model, run_id, resume=True,
+            context_policy=str(record.get("context_policy") or "independent"))
     except RuntimeError:
         return JSONResponse({"error": "run already in progress", "run_id": run_id},
                             status_code=409)

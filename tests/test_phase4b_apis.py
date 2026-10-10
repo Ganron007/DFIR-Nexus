@@ -450,61 +450,68 @@ def _make_mode2_case(client) -> str:
     return case_id
 
 
-def test_pipeline_run_mode2_requires_es_url(client, monkeypatch):
-    """WP 4j.5: a Mode 2 case refuses to process while ES is unconfigured —
-    evidence would land only in the CSV pack and the LLM would query an
-    index that never got built."""
+def test_pipeline_run_llm_stage_requires_es_url(client, monkeypatch):
+    """WP 4j.5, re-pointed for D5 = C (operator 2026-10-09).
+
+    The ES requirement follows the RUN's LLM depth, not the case's stored
+    mode: `coverage`/`design` query the N3 index, so they must refuse to start
+    while ES is unconfigured — evidence would land only in the CSV pack and
+    the LLM would query an index that never got built.
+    """
     monkeypatch.delenv("NEXUS_ES_URL", raising=False)
     case_id = _make_mode2_case(client)
-    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    r = client.post("/portal/api/pipeline/run", json={"mode": "coverage", "case_id": case_id})
     assert r.status_code == 409
     assert "elasticsearch" in r.json()["error"].lower()
     assert "nexus_es_url" in r.json()["error"].lower()
 
 
-def test_pipeline_run_mode2_es_unreachable(client, monkeypatch):
-    """WP 4j.5: Mode 2 + configured-but-unreachable ES → 409, distinct message."""
+def test_pipeline_run_llm_stage_es_unreachable(client, monkeypatch):
+    """WP 4j.5, D5 = C: LLM depth + configured-but-unreachable ES → 409,
+    distinct message (the index exists in intent but cannot be read)."""
     import nexus.langgraph.case_index as ci
 
     monkeypatch.setenv("NEXUS_ES_URL", "http://localhost:1")
     monkeypatch.setattr(ci, "es_available", lambda: False)
     case_id = _make_mode2_case(client)
-    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    r = client.post("/portal/api/pipeline/run", json={"mode": "coverage", "case_id": case_id})
     assert r.status_code == 409
     assert "unreachable" in r.json()["error"].lower()
 
 
-def test_pipeline_run_mode2_es_up_passes_gate(client, monkeypatch):
-    """WP 4j.5: Mode 2 + reachable ES → the gate lets the run proceed
-    (this case has no evidence, so it must reach the evidence check)."""
+def test_pipeline_run_llm_stage_es_up_passes_gate(client, monkeypatch):
+    """WP 4j.5, D5 = C: LLM depth + reachable ES → the gate lets the run
+    proceed (this case has no evidence, so it must reach the evidence check)."""
     import nexus.langgraph.case_index as ci
 
     monkeypatch.setenv("NEXUS_ES_URL", "http://localhost:9200")
     monkeypatch.setattr(ci, "es_available", lambda: True)
     case_id = _make_mode2_case(client)
-    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    r = client.post("/portal/api/pipeline/run", json={"mode": "coverage", "case_id": case_id})
     assert r.status_code == 400
     assert "evidence" in r.json()["error"].lower()
 
 
-def test_pipeline_run_mode1_ignores_es(client, monkeypatch):
-    """WP 4j.5: Mode 1 runs on the CSV pack — ES state must not gate it."""
+def test_pipeline_tools_lane_ignores_es(client, monkeypatch):
+    """WP 4j.5, D5 = C: the tools lane produces the CSV pack — ES state must
+    not gate it, on a case stored in ANY mode. The lane is what clears the
+    index gate, so refusing it without ES would deadlock the case."""
     monkeypatch.delenv("NEXUS_ES_URL", raising=False)
-    r = client.post("/portal/api/case/create", json={"name": "M1 No ES"})
-    case_id = r.json()["case_id"]
-    client.post("/portal/api/case/mode", json={"mode": "1", "case_id": case_id})
-    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    for stored_mode in ("1", "2", "3"):
+        r = client.post("/portal/api/case/create", json={"name": f"No ES {stored_mode}"})
+        case_id = r.json()["case_id"]
+        client.post("/portal/api/case/mode", json={"mode": stored_mode, "case_id": case_id})
+        r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+        assert r.status_code == 400, (stored_mode, r.text)  # evidence check, not 409
+
+
+def test_pipeline_interpret_ignores_es(client, monkeypatch):
+    """WP 4j.5, D5 = C: `interpret` is a CSV-pack stage like `tools` — the ES
+    gate belongs to coverage/design only, in any stored mode."""
+    monkeypatch.delenv("NEXUS_ES_URL", raising=False)
+    case_id = _make_mode2_case(client)
+    r = client.post("/portal/api/pipeline/run", json={"mode": "interpret", "case_id": case_id})
     assert r.status_code == 400  # reaches the evidence check, not a 409 ES gate
-
-
-def test_pipeline_run_mode3_requires_es(client, monkeypatch):
-    """WP 4j.5: Mode 3 (agentic) shares the Mode 2 ES invariant."""
-    monkeypatch.delenv("NEXUS_ES_URL", raising=False)
-    r = client.post("/portal/api/case/create", json={"name": "M3 Gate"})
-    case_id = r.json()["case_id"]
-    client.post("/portal/api/case/mode", json={"mode": "3", "case_id": case_id})
-    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
-    assert r.status_code == 409
 
 def test_case_mode_is_fixed_after_processing(client, tmp_path):
     """Segregation: a processed case cannot switch mode (registration alone
@@ -523,8 +530,22 @@ def test_case_mode_is_fixed_after_processing(client, tmp_path):
     assert "fixed" in r.json()["error"].lower()
 
 
-def test_pipeline_mode_must_match_case_mode(client, tmp_path, monkeypatch):
-    """Canonical Mode 2 (multi-role) must not run the LLM coverage stage."""
+def test_pipeline_llm_depth_may_run_on_any_case(client, tmp_path, monkeypatch):
+    """D5 = C (operator 2026-10-09): the per-case mode whitelist is gone.
+
+    `coverage`/`design` are Mode 1 (LLM) depths and used to be refused on a
+    Mode 2 case. Under one-case-three-modes the case does the evidence work
+    once and every mode is an analysis run on it, so the depth follows the
+    run. The ES gate (above) is what still guards the LLM depths.
+
+    The assertion stops at the EVIDENCE gate: the point is that the depth is
+    accepted on a case stored in another mode, not that a real pipeline runs.
+    Starting one here would spawn the stdio MCP child in a daemon thread that
+    outlives the test and the fixture's env reverts - it would then resolve
+    the REAL ~/.nexus/data (the 2026-10-10 tripwire). The gate behaviour is
+    what this test owns; the run itself is covered on the real path by
+    tests/test_wo1c_* and the flow e2e.
+    """
     from nexus.case import CaseManager
     from nexus.config import settings
 
@@ -532,8 +553,15 @@ def test_pipeline_mode_must_match_case_mode(client, tmp_path, monkeypatch):
         "name": "Mode Gate", "description": "d", "mode": "2", "activate": True,
     })
     case_id = r.json()["case_id"]
+    # The registered path deliberately does not exist on disk: the point of
+    # the test is that the depth is ACCEPTED on a case stored in another mode
+    # (no 409, no whitelist refusal) and reaches the evidence resolver. A file
+    # that existed would pass the resolver and start a real pipeline in a
+    # daemon thread that outlives the test - the fixture's env reverts, the
+    # spawned stdio MCP child then resolves the REAL ~/.nexus/data and trips
+    # the credential/path tripwire. The run itself is covered on the real
+    # path by tests/test_wo1c_* and the flow e2e.
     ev = tmp_path / "artifact.evtx"
-    ev.write_bytes(b"evtx")
     mgr = CaseManager(settings.cases_root / "cases.db")
     try:
         mgr.add_evidence(
@@ -543,6 +571,30 @@ def test_pipeline_mode_must_match_case_mode(client, tmp_path, monkeypatch):
     finally:
         mgr.close()
 
+    import nexus.langgraph.case_index as ci
+    monkeypatch.setenv("NEXUS_ES_URL", "http://localhost:9200")
+    monkeypatch.setattr(ci, "es_available", lambda: True)
+
+    # A case stored as Mode 2 accepts a Mode 1 depth: no 409, no whitelist
+    # refusal. It reaches the evidence gate because the registered file does
+    # not exist on disk.
     r = client.post("/portal/api/pipeline/run", json={"mode": "coverage", "case_id": case_id})
-    assert r.status_code == 409
-    assert "does not belong" in r.json()["error"]
+    assert r.status_code == 400, r.text
+    assert "evidence" in r.json()["error"].lower()
+
+    # And the reverse: a case stored as Mode 1 accepts the same depth.
+    r = client.post("/portal/api/case/create", json={
+        "name": "Mode Gate M1", "description": "d", "mode": "1", "activate": True,
+    })
+    m1_case = r.json()["case_id"]
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        mgr.add_evidence(
+            case_id=m1_case, name=ev.name, description="t",
+            file_path=str(ev), file_hash_sha256="0" * 64, collected_by="tester",
+        )
+    finally:
+        mgr.close()
+    r = client.post("/portal/api/pipeline/run", json={"mode": "coverage", "case_id": m1_case})
+    assert r.status_code == 400, r.text
+    assert "evidence" in r.json()["error"].lower()

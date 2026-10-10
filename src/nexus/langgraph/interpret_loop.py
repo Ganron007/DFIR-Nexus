@@ -26,6 +26,7 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -419,6 +420,56 @@ def _persist_round(case_dir: Path, name: str, payload: dict[str, Any]) -> None:
         log.debug("round artifact write failed: %s", exc)
 
 
+def _family_ledger_for_run(case_dir: Path, run_id: str) -> dict[str, Any]:
+    """This run's family coverage ledger, or ``{}`` when it cannot be built.
+
+    WO-1C item 7 (KR4 / D58): a run must account for every indexed family from
+    its own execution records. Best-effort by design — a ledger failure must
+    never take the interpretation down.
+    """
+    if not run_id:
+        return {}
+    try:
+        from nexus.analysis.family_ledger import build_family_ledger
+
+        return build_family_ledger(case_dir, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("family ledger build failed for %s: %s", run_id, exc)
+        return {}
+
+
+def _record_loop_query(
+    case_dir: Path,
+    run_id: str,
+    tool_name: str,
+    payload: dict[str, Any],
+    result: dict[str, Any],
+    entry: dict[str, Any],
+) -> None:
+    """Persist one executed interpret query to the family ledger (WO-1C item 7).
+
+    Only evidence queries are recorded: ``es_search`` / ``es_aggregate`` /
+    ``es_sample``. The query body comes from the executed payload, the status
+    and rows from the tool's own result — never from the plan.
+    """
+    if tool_name not in ("es_search", "es_aggregate", "es_sample"):
+        return
+    from nexus.analysis.family_ledger import record_query
+
+    query = payload.get("query") if isinstance(payload.get("query"), dict) else None
+    if query is None:
+        family = str(payload.get("family") or "").strip()
+        query = {"term": {"family": family}} if family else {"__tool__": tool_name}
+    record_query(
+        case_dir,
+        query,
+        status="FAIL" if entry.get("error") else "OK",
+        rows=int(entry.get("count") or 0),
+        audit_id=str(entry.get("audit_id") or ""),
+        run_id=run_id,
+    )
+
+
 async def run_interpret_loop(
     *,
     case_dir: Path,
@@ -430,6 +481,8 @@ async def run_interpret_loop(
     sections: list[tuple[int, str, str]],
     execute: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
     rounds: int | None = None,
+    run_id: str = "",
+    context_policy: str = "independent",
 ) -> dict[str, Any]:
     """Run the bounded interpretation loop; return messages + round log.
 
@@ -437,7 +490,19 @@ async def run_interpret_loop(
     es_aggregate) and returns the parsed tool dict — the caller wires it to
     the same MCP tool bindings the examiner uses, so every row carries an
     audit_id the findings can cite (FD-001).
+
+    ``run_id`` is this Mode 1 analysis run (WO-1C item 2): every executed
+    query and every round artifact is attributed to it, so the run's family
+    ledger and lineage say which run did the work.
+
+    ``context_policy`` (WO-1C item 3) is ``independent`` by default — the loop
+    sees the evidence only. ``informed`` adds the case's prior report and
+    DRAFT findings as one labelled section: examiner context, never evidence.
     """
+    from nexus.analysis.context_policy import (
+        context_sections,
+        normalize_policy,
+    )
     from nexus.langgraph.prompt_budget import (
         case_window,
         log_usage,
@@ -448,10 +513,29 @@ async def run_interpret_loop(
     case_dir = Path(case_dir)
     rounds_total = _resolve_rounds(state, case_dir, rounds)
     ctx_window = case_window(case_dir)
+    # WO-1C item 2: a Mode 1 run has an id like Modes 2 and 3. The caller
+    # passes it; when it does not, one is minted here and returned so the
+    # run record and the ledger agree.
+    run_id = str(run_id or state.get("run_id") or "").strip()
+    if not run_id:
+        from uuid import uuid4
+
+        run_id = (
+            "M1-"
+            + datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+            + f"-{uuid4().hex[:6]}"
+        )
     intake = state.get("case_context") or {}
     intake_block = "\n".join(
         f"- {key}: {value}" for key, value in intake.items() if value
     ) or "(no examiner intake)"
+
+    # WO-1C item 3: `informed` runs add the case's prior analysis as one
+    # labelled section (examiner context, never evidence). It is added once,
+    # here, so every round of this loop sees the same context — a run cannot
+    # gain evidence mid-loop.
+    policy = normalize_policy(context_policy or state.get("context_policy"))
+    sections = [*sections, *context_sections(case_dir, policy)]
 
     def _packed(tag: str, extra: list[tuple[int, str, str]]) -> str:
         base = [*extra, *sections]
@@ -626,6 +710,10 @@ async def run_interpret_loop(
                 "result_keys": sorted(result.keys())[:24],
             }
             entries.append(entry)
+            # WO-1C item 7 (KR4 / D58): record the query that actually ran, with
+            # its outcome, so the run's family ledger is built from execution
+            # records and not from the plan.
+            _record_loop_query(case_dir, run_id, tool_name, payload, result, entry)
         rounds_run = round_no
         results_block = _render_results(entries)
         evidence_blocks.append(f"## Round {round_no} results\n{results_block}")
@@ -850,10 +938,12 @@ async def run_interpret_loop(
     from nexus.langgraph.pipeline_runs import configured_model
 
     _persist_round(case_dir, "summary", {
+        "run_id": run_id,
         "model": configured_model(),
         "rounds_requested": rounds_total,
         "rounds_run": rounds_run,
         "stop_reason": stop_reason,
+        "context_policy": policy,
         "hypotheses": hypotheses,
         "notes": notes_all,
         "findings_emitted": len(candidates),
@@ -861,6 +951,9 @@ async def run_interpret_loop(
             "addressed": len(checklist.get("addressed") or []),
             "unaddressed": unaddressed_final,
         },
+        # WO-1C item 7: the family coverage ledger this run's own queries
+        # produced, so "not observed" is bounded by what actually ran.
+        "family_ledger": _family_ledger_for_run(case_dir, run_id),
     })
 
     messages.append({
@@ -876,6 +969,7 @@ async def run_interpret_loop(
         messages.append({"role": "assistant", "content": extra_text})
 
     return {
+        "run_id": run_id,
         "messages": messages,
         "rounds_requested": rounds_total,
         "rounds_run": rounds_run,
@@ -884,4 +978,8 @@ async def run_interpret_loop(
         "notes": notes_all,
         "findings_emitted": len(candidates),
         "unaddressed": unaddressed_final,
+        # WO-1C item 3: the policy that produced this loop, so the run record
+        # and the report can always say how much prior context it saw.
+        "context_policy": policy,
+        "family_ledger": _family_ledger_for_run(case_dir, run_id),
     }

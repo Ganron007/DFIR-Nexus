@@ -606,6 +606,21 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     scan_stats["truncated_reasons"] = cap_reasons
     hits = attach_hit_fields(case_dir, hits)[:limit]
 
+    # WO-1C item 7 (KR4): the briefing needle scan is an execution record. It
+    # queried the index for every needle across every indexed family, so a run
+    # built from this briefing can credit those families as examined instead of
+    # reporting "no query was run against this family". A needle that could not
+    # be queried is recorded as a failure, never as an examined family.
+    with contextlib.suppress(Exception):
+        from nexus.analysis.family_ledger import record_needle_scan
+
+        record_needle_scan(
+            case_dir,
+            families=families,
+            scanned=len(terms),
+            failed=scan_stats.get("terms_failed") or [],
+        )
+
     # --- needle -> hit count (from matched terms recorded per hit) ---
     counts: dict[str, int] = {t: 0 for t in needle_map}
     for h in hits:
@@ -958,7 +973,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     try:
         from nexus.analysis.absence import absence_statement
 
-        families = sorted((out.get("family_rows") or {}).keys())
+        families = sorted(out.get("families") or sorted((out.get("inventory") or {}).keys()))
         out["absence"] = absence_statement(case_dir, families=families)
     except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
         out["absence"] = {"statement": "", "error": str(exc)[:200]}

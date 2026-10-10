@@ -44,8 +44,8 @@ def test_mode2_run_start_status_steer_pause_resume(tmp_path):
     run_id = "M2-api-test"
     started: list[tuple] = []
 
-    def _fake_start(case_dir, question, model, rid, resume):
-        started.append((str(case_dir.name), question, rid, resume))
+    def _fake_start(case_dir, question, model, rid, resume, context_policy="independent"):
+        started.append((str(case_dir.name), question, rid, resume, context_policy))
 
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
          patch("nexus.dashboard.app._start_mode2_thread", side_effect=_fake_start), \
@@ -151,8 +151,8 @@ def test_mode2_run_generates_m2_run_ids(tmp_path):
     case = _case(tmp_path)
     started: list[tuple] = []
 
-    def _fake_start(case_dir, question, model, rid, resume):
-        started.append((str(case_dir.name), question, rid, resume))
+    def _fake_start(case_dir, question, model, rid, resume, context_policy="independent"):
+        started.append((str(case_dir.name), question, rid, resume, context_policy))
 
     order = m3.WorkOrder(order_id="wo-1", role="evidence", task="t")
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
@@ -171,17 +171,26 @@ def test_mode2_run_generates_m2_run_ids(tmp_path):
     assert started and started[0][2] == run_id
 
 
-def test_mode1_case_cannot_start_mode2_or_mode3_run(tmp_path):
+def test_mode1_case_can_start_mode2_or_mode3_run(tmp_path):
+    """D5 = C (WO-1C item 1): a case's stored mode is only the UI default.
+
+    The old per-case mode boundary refused a Mode 2 or Mode 3 run on a
+    Mode 1 case. That guard is deleted, so the same case now accepts both
+    runs — the case does the evidence work once and every mode analyses it.
+    """
     case = _case(tmp_path)
     (case / "CASE.yaml").write_text(
         "name: mode1\nstatus: active\ninvestigation_mode: 1\nmode_scheme: 2\n",
         encoding="utf-8",
     )
-    with patch("nexus.dashboard.app._get_case_dir", return_value=case):
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
+         patch("nexus.dashboard.app._start_mode2_thread"), \
+         patch("nexus.dashboard.app._start_mode3_thread"), \
+         patch("nexus.dashboard.app._resolve_run_model", return_value=None):
         client = _client()
         mode2 = client.post("/portal/api/mode2/run", json={"question": "who"})
         mode3 = client.post("/portal/api/mode3/run", json={"question": "who"})
-    assert mode2.status_code == 409
-    assert mode3.status_code == 409
-    assert "Mode 1" in mode2.json()["error"]
-    assert "Mode 1" in mode3.json()["error"]
+    assert mode2.status_code == 202
+    assert mode3.status_code == 202
+    assert mode2.json()["run_id"].startswith("M2-")
+    assert mode3.json()["run_id"].startswith("M3-")

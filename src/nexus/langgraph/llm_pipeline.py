@@ -160,6 +160,10 @@ class InvestigationState(TypedDict):
     run_id: str
     run_dir: str
     parent_run_id: str
+    # WO-1C item 3: `independent` (default) or `informed`. Decided before the
+    # run and recorded on the run record, so a report can always say which
+    # policy produced it.
+    context_policy: str
     # Live stage feed (JSONL the dashboard reads while the run is in flight)
     progress_path: str
 
@@ -196,6 +200,7 @@ def make_initial_state(
         "run_id": "",
         "run_dir": "",
         "parent_run_id": "",
+        "context_policy": "independent",
         "progress_path": str(progress_path or ""),
     }
 
@@ -1818,6 +1823,13 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 digest_md=digest_md,
                 sections=sections,
                 execute=_execute_tool,
+                # WO-1C item 2: the interpret loop is an analysis run with its
+                # own id, like Modes 2 and 3, so its queries, round artifacts
+                # and family ledger are attributed to it.
+                run_id=str(state.get("run_id") or ""),
+                # WO-1C item 3: the run's context policy, decided before the
+                # run and recorded on it (independent by default).
+                context_policy=str(state.get("context_policy") or "independent"),
             )
             log.info(
                 "Interpret loop: %d/%d rounds (%s), %d findings, %d unaddressed",
@@ -3049,12 +3061,16 @@ async def run_pipeline(
     evidence_paths: list[str] | None = None,
     case_id: str = "",
     progress_path: str = "",
+    context_policy: str = "independent",
 ):
     """Run the DFIR-Nexus LangGraph investigation pipeline."""
     from langgraph.checkpoint.memory import MemorySaver
     from langgraph.types import Command
 
+    from nexus.analysis.context_policy import normalize_policy
+
     pipeline_mode = resolve_pipeline_mode(mode)
+    policy = normalize_policy(context_policy)
     from_case = (case_id or "").strip()
     log.info("Pipeline mode: %s", pipeline_mode)
 
@@ -3148,6 +3164,9 @@ async def run_pipeline(
         case_id=from_case,
         progress_path=progress_path,
     )
+    # WO-1C item 3: the policy decided before the run travels with the state,
+    # so the interpret loop and the run record cannot disagree about it.
+    initial["context_policy"] = policy
     try:
         result = await compiled.ainvoke(initial, config=cfg)
     except BaseException as exc:

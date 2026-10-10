@@ -1,14 +1,14 @@
-"""The per-case mode boundary must hold on every mode-owned portal route.
+"""The mode-owned route surface must stay registered and reachable.
 
-Regression for the debug-mode exposure probe: 22 of 29 mode-owned endpoints
-answered a case stored in a different mode (six of them with live data), because
-each handler had to opt into the guard individually and most did not. The guard
-now lives at route registration (:func:`nexus.dashboard.app._mode_route`), so a
-new endpoint cannot ship unguarded by omission.
-
-The check is deliberately structural — it walks the built route table rather
-than calling 29 endpoints — so it stays fast and cannot be satisfied by a subset
-of handlers.
+History: this file was written for the per-case mode boundary — a guard at
+route registration that refused a mode-owned endpoint for a case stored in
+another mode (the debug-mode exposure probe found 22 of 29 endpoints
+answering for a wrong-mode case). Operator decision D5 = C (WO-1C item 1)
+deleted that boundary: one case runs all three modes on the same lane and
+index. The registration and discovery checks that made that guard
+trustworthy are kept, because they are what prove the mode surface is
+complete and every endpoint is reachable for the case it belongs to; the
+409 assertions they used to make are now the opposite.
 """
 
 from __future__ import annotations
@@ -108,14 +108,23 @@ def test_mode_routes_are_discovered():
         ("/portal/api/mode3/run/stage", 3),
     ],
 )
-def test_wrong_mode_case_is_refused_with_409(monkeypatch, tmp_path, path, mode):
-    """Each endpoint must answer 409 for a case stored in another mode."""
+def test_wrong_mode_case_is_not_refused(monkeypatch, tmp_path, path, mode):
+    """D5 = C: a case stored in another mode must NOT be refused.
+
+    The per-case mode boundary is deleted (WO-1C item 1) — one case runs all
+    three modes on the same lane and index, in any order the examiner picks.
+    The probe this file was written for (a handler answering for a case
+    stored in another mode) is now the DESIRED behaviour, so what the
+    parametrized sweep asserts is the opposite of the old rule: the endpoint
+    reaches its own logic instead of a 409 from the mode guard. What still
+    guards the case is the one-analysis-run-at-a-time check, which is covered
+    separately in ``tests/test_wo1c_busy_guard.py``.
+    """
     client = _client_for(monkeypatch, tmp_path, wrong_mode={1: 2, 2: 3, 3: 1}[mode], expected=mode)
     resp = client.post(path, json={}, headers={"X-Nexus-Case": "CASE-BOUNDARY"})
-    assert resp.status_code == 409, f"{path} answered {resp.status_code}: {resp.text[:200]}"
-    body = resp.json()
-    assert body["case_mode"] == {1: 2, 2: 3, 3: 1}[mode]
-    assert body["expected_mode"] == mode
+    assert resp.status_code != 409, (
+        f"{path} still enforces the deleted per-case mode boundary: {resp.text[:200]}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -127,12 +136,13 @@ def test_wrong_mode_case_is_refused_with_409(monkeypatch, tmp_path, path, mode):
         ("/portal/api/mode3/run/board", 3),
     ],
 )
-def test_wrong_mode_status_reads_are_refused_with_409(monkeypatch, tmp_path, path, mode):
-    """The read-only status/board endpoints are part of the boundary too."""
+def test_wrong_mode_status_reads_are_not_refused(monkeypatch, tmp_path, path, mode):
+    """The read-only status/board endpoints belong to no mode's case (D5 = C)."""
     client = _client_for(monkeypatch, tmp_path, wrong_mode={1: 2, 2: 3, 3: 1}[mode], expected=mode)
     resp = client.get(path, headers={"X-Nexus-Case": "CASE-BOUNDARY"})
-    assert resp.status_code == 409, f"{path} answered {resp.status_code}: {resp.text[:200]}"
-    assert resp.json()["expected_mode"] == mode
+    assert resp.status_code != 409, (
+        f"{path} still enforces the deleted per-case mode boundary: {resp.text[:200]}"
+    )
 
 
 def test_matching_mode_is_not_blocked(monkeypatch, tmp_path):
