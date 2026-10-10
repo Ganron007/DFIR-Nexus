@@ -11,6 +11,30 @@ from pathlib import Path
 import typer
 
 
+def _lane_tool_pins(versions_file: Path | None = None) -> list[tuple[str, bool, str]]:
+    """The lane tools as pinned in tools/windows/VERSIONS.txt: version and licence (WO-TA item 0).
+
+    A pinned tool is a tab-separated line whose fourth field is a SHA-256. This only reads the record
+    and runs nothing: the smoke test is a separate step.
+    """
+    import re
+
+    if versions_file is None:
+        versions_file = Path(__file__).resolve().parents[3] / "tools" / "windows" / "VERSIONS.txt"
+    try:
+        lines = versions_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return [("lane tools (pinned)", False, f"{versions_file} not found")]
+    rows: list[tuple[str, bool, str]] = []
+    for line in lines:
+        parts = line.split("	")
+        if len(parts) < 5 or not re.fullmatch(r"[0-9a-fA-F]{64}", parts[3].strip()):
+            continue
+        name, version, licence = parts[0].strip(), parts[1].strip(), parts[-1].strip()
+        rows.append((f"pinned {name} {version}", True, f"licence {licence or 'not recorded'}"))
+    return rows
+
+
 def _have(mod: str) -> bool:
     return importlib.util.find_spec(mod) is not None
 
@@ -223,6 +247,7 @@ def doctor(
 
     rows: list[tuple[str, bool, str]] = []
     golden_fail = False
+    rows.extend(_lane_tool_pins())
 
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     rows.append(("python>=3.12", sys.version_info >= (3, 12), py))

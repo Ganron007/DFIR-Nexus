@@ -1007,9 +1007,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         # WO-A4: which build of which tool wrote this output. Additive: a tool
         # that cannot be described still returns, it just says so.
         try:
-            from nexus.tools.lineage import binary_lineage
+            from nexus.tools.lineage import binary_lineage, rules_lineage
 
             tool_lineage = binary_lineage(resolved_path)
+            # WO-TA item 8: the rule set a finding depends on (Hayabusa's rules commit).
+            tool_lineage.update(rules_lineage(binary_key))
         except Exception:  # noqa: BLE001 - lineage must never fail a run
             tool_lineage = {
                 "binary_path": str(resolved_path),

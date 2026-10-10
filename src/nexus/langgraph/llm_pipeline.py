@@ -734,16 +734,15 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
     if existing:
         case_id = existing
         log.info("Reusing case (authority): %s", case_id)
-        step_log = [f"Reusing case {case_id} (no new INC id)"]
-        activate = tools.get("case_activate")
-        if activate:
-            act = _parse_tool_result(
-                await call_tool(activate, {"case_id": case_id}, label="case_activate")
-            )
-            if act.get("error"):
-                step_log.append(f"case_activate warning: {act.get('error')}")
-            else:
-                step_log.append(f"Activated existing case {case_id}")
+        # The run is bound to this case by its id: run_windows_command takes case_id and run_id (D41).
+        # The examiner host's case_activate is not called. Its plain name is the Windows server's tool
+        # (llm_pipeline._load_mcp_tools), and it writes this machine's global active-case pointer
+        # (tools/case.py), which a pipeline run must not change (2026-10-11).
+        from nexus.config import settings as _bind_settings
+
+        if not (_bind_settings.cases_root / case_id / "CASE.yaml").is_file():
+            return {"error": f"Case not found: {case_id}"}
+        step_log = [f"Reusing case {case_id} (no new INC id; the global active case is not changed)"]
     else:
         case_id = f"INC-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
         result = _parse_tool_result(await call_tool(
@@ -1205,16 +1204,9 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
     case_id = (state.get("case_id") or "").strip()
     if not case_id:
         return {"error": "load_existing_case requires case_id"}
-    activate = tools.get("case_activate")
-    step_log = []
-    if activate:
-        act = _parse_tool_result(
-            await call_tool(activate, {"case_id": case_id}, label="case_activate")
-        )
-        if act.get("error"):
-            step_log.append(f"case_activate warning: {act.get('error')}")
-        else:
-            step_log.append(f"Activated existing case {case_id}")
+    # Bound by its case id. The examiner host's case_activate is not called: it writes this machine's
+    # global active-case pointer (tools/case.py), which a pipeline run must not change (2026-10-11).
+    step_log = [f"Bound run to case {case_id} (the global active case is not changed)"]
     case_dir = settings.cases_root / case_id
     from nexus.langgraph.pipeline_runs import create_run, load_manifest, resolve_run
 

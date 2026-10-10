@@ -13,12 +13,15 @@ from pathlib import Path
 from nexus.cli import lane_retry_cmd
 from nexus.langgraph.tool_lane import ToolJob, apply_prior_ok
 
+EVIDENCE_SHA = "ab" * 32  # the registered hash of the evidence every fixture reads (WO-TA item 12)
 
-def _ledger_row(tool: str, status: str, output: str = "") -> dict:
+
+def _ledger_row(tool: str, status: str, output: str = "", evidence_sha: str = EVIDENCE_SHA) -> dict:
     return {
         "host": "windows", "tool": tool, "purpose": f"{tool} purpose",
         "argv": [tool], "status": status, "reason": "" if status == "OK" else "failed",
         "output_saved_to": output, "output_files": [], "audit_id": f"aud-{tool}",
+        "evidence_sha": evidence_sha if status == "OK" else "",
         # An OK row records the version of the binary that wrote it (WO-TA item 8).
         "lineage": {"tool": tool, "file_version": "1.2.3", "version_source": "pe-version-resource"}
         if status == "OK" else {},
@@ -35,6 +38,10 @@ def _run_case(tmp_path: Path, rows: list[dict], manifest_paths: list[str]) -> tu
     (extractions / "_tool_lane_ledger.json").write_text(json.dumps(rows), encoding="utf-8")
     (run_dir / "manifest.json").write_text(
         json.dumps({"status": "completed", "evidence_paths": manifest_paths}), encoding="utf-8")
+    # The registry holds one hash per registered item: the evidence the jobs read.
+    (case_dir / "evidence.json").write_text(json.dumps([
+        {"path": p, "kind": "directory", "sha256": EVIDENCE_SHA} for p in manifest_paths
+    ]), encoding="utf-8")
     return case_dir, extractions
 
 
@@ -47,8 +54,10 @@ def test_apply_prior_ok_reuses_the_run_ledgers_ok_rows_and_not_its_failures(tmp_
         _ledger_row("sbecmd", "FAIL"),
     ], [str(tmp_path / "H")])
 
-    ok_job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
-    failed_job = ToolJob(host="windows", tool="sbecmd", argv=["sbecmd"], purpose="sbecmd purpose")
+    ok_job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd", "-d", str(tmp_path / "H")],
+                     purpose="evtxecmd purpose")
+    failed_job = ToolJob(host="windows", tool="sbecmd", argv=["sbecmd", "-d", str(tmp_path / "H")],
+                         purpose="sbecmd purpose")
     reused = apply_prior_ok([ok_job, failed_job], case_dir, extractions=extractions)
 
     assert reused == 1
@@ -59,8 +68,9 @@ def test_apply_prior_ok_reuses_the_run_ledgers_ok_rows_and_not_its_failures(tmp_
 def test_an_ok_row_whose_output_has_gone_is_run_again(tmp_path, monkeypatch):
     monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
     gone = tmp_path / "deleted.csv"
-    case_dir, extractions = _run_case(tmp_path, [_ledger_row("evtxecmd", "OK", str(gone))], [])
-    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
+    case_dir, extractions = _run_case(tmp_path, [_ledger_row("evtxecmd", "OK", str(gone))], [str(tmp_path / "H")])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd", "-d", str(tmp_path / "H")],
+                  purpose="evtxecmd purpose")
 
     assert apply_prior_ok([job], case_dir, extractions=extractions) == 0
     assert job.status == "PENDING"
@@ -75,8 +85,9 @@ def test_an_ok_row_without_a_declared_version_is_run_again(tmp_path, monkeypatch
     output.write_text("x", encoding="utf-8")
     row = _ledger_row("evtxecmd", "OK", str(output))
     row["lineage"] = {}
-    case_dir, extractions = _run_case(tmp_path, [row], [])
-    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
+    case_dir, extractions = _run_case(tmp_path, [row], [str(tmp_path / "H")])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd", "-d", str(tmp_path / "H")],
+                  purpose="evtxecmd purpose")
 
     assert apply_prior_ok([job], case_dir, extractions=extractions) == 0
     assert job.status == "PENDING"
@@ -86,11 +97,41 @@ def test_a_reused_row_carries_its_lineage(tmp_path, monkeypatch):
     monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
     output = tmp_path / "evtxecmd_ok.csv"
     output.write_text("x", encoding="utf-8")
-    case_dir, extractions = _run_case(tmp_path, [_ledger_row("evtxecmd", "OK", str(output))], [])
-    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
+    case_dir, extractions = _run_case(tmp_path, [_ledger_row("evtxecmd", "OK", str(output))], [str(tmp_path / "H")])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd", "-d", str(tmp_path / "H")],
+                  purpose="evtxecmd purpose")
 
     assert apply_prior_ok([job], case_dir, extractions=extractions) == 1
     assert job.lineage["file_version"] == "1.2.3"
+
+
+def test_a_job_with_no_registered_input_is_run_again(tmp_path, monkeypatch):
+    """WO-TA item 12: reuse is keyed by the evidence hash. A job whose argv names no registered
+    evidence has no hash to key on, so it runs again even when an OK row exists."""
+    monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
+    output = tmp_path / "evtxecmd_ok.csv"
+    output.write_text("x", encoding="utf-8")
+    case_dir, extractions = _run_case(tmp_path, [_ledger_row("evtxecmd", "OK", str(output))], [str(tmp_path / "H")])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
+
+    assert apply_prior_ok([job], case_dir, extractions=extractions) == 0
+    assert job.status == "PENDING"
+    assert job.evidence_sha == ""
+
+
+def test_an_ok_row_for_other_evidence_bytes_is_not_reused(tmp_path, monkeypatch):
+    """Same tool and purpose, but the registered evidence now has a different hash: the row was
+    written for other bytes, so it is not reused."""
+    monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
+    output = tmp_path / "evtxecmd_ok.csv"
+    output.write_text("x", encoding="utf-8")
+    row = _ledger_row("evtxecmd", "OK", str(output), evidence_sha="cd" * 32)
+    case_dir, extractions = _run_case(tmp_path, [row], [str(tmp_path / "H")])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd", "-d", str(tmp_path / "H")],
+                  purpose="evtxecmd purpose")
+
+    assert apply_prior_ok([job], case_dir, extractions=extractions) == 0
+    assert job.status == "PENDING"
 
 
 def test_the_retry_finds_the_run_ledger_and_the_run_folder(tmp_path):
@@ -120,8 +161,10 @@ def test_a_sift_row_is_reused_though_its_output_lives_on_the_sift_host(tmp_path,
     monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
     remote = "/home/sansforensics/.nexus/cases/CASE-RETRY01/extractions/vol/x_vol_stdout.txt"
     row = {**_ledger_row("vol", "OK", remote), "host": "sift"}
-    case_dir, extractions = _run_case(tmp_path, [row], [])
-    job = ToolJob(host="sift", tool="vol", argv=["vol"], purpose="vol purpose")
+    case_dir, extractions = _run_case(tmp_path, [row], [str(tmp_path / "rd01-memory.img")])
+    # The SIFT job names the staged copy, which the staging script verified against the registered hash.
+    job = ToolJob(host="sift", tool="vol", purpose="vol purpose",
+                  argv=["vol", "-f", "/home/sansforensics/.nexus/cases/CASE-RETRY01/evidence/rd01-memory.img"])
 
     assert apply_prior_ok([job], case_dir, extractions=extractions) == 1
     assert job.status == "OK"

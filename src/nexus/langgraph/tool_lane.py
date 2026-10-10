@@ -74,6 +74,9 @@ class ToolJob:
     # job's start; duration_s is its wall time from start to ledger row; tool_elapsed_s is the
     # tool's own elapsed time when it reports one. duration_s - tool_elapsed_s is the lane's
     # overhead for the job (output persist, hashing, promotion, ledger).
+    # WO-TA item 12: the sha256 of the registered evidence this job reads (the registry's hash of the
+    # file or tree that holds its input). Reuse is keyed by it, so a row is reused only for the same bytes.
+    evidence_sha: str = ""
     queued_s: float = 0.0
     duration_s: float = 0.0
     tool_elapsed_s: float = 0.0
@@ -2495,8 +2498,9 @@ def _repo_root() -> Path:
 
 
 
-def _job_reuse_key(host: str, tool: str, purpose: str) -> tuple[str, str, str]:
-    return (host, tool, purpose)
+def _job_reuse_key(host: str, tool: str, purpose: str, evidence_sha: str = "") -> tuple[str, str, str, str]:
+    """What makes two jobs the same work: the host, the tool, the purpose, and the evidence bytes."""
+    return (host, tool, purpose, evidence_sha)
 
 
 def _is_local_path(text: str) -> bool:
@@ -2504,11 +2508,58 @@ def _is_local_path(text: str) -> bool:
     return bool(re.match(r"^[A-Za-z]:[\\/]", text))
 
 
+def _registered_evidence_hashes(case_dir: Path) -> list[tuple[str, str]]:
+    """(path, sha256) of each registered evidence item that carries a hash (the lane's inputs)."""
+    import json
+
+    try:
+        data = json.loads((Path(case_dir) / "evidence.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    items = data.get("evidence", []) if isinstance(data, dict) else data
+    out: list[tuple[str, str]] = []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and item.get("path") and item.get("sha256"):
+            out.append((str(item["path"]), str(item["sha256"])))
+    return out
+
+
+def _norm_path(text: str) -> str:
+    return str(text).replace("\\", "/").rstrip("/").lower()
+
+
+def _evidence_sha_for(job: ToolJob, hashes: list[tuple[str, str]]) -> str:
+    """The sha256 of the registered item that holds this job's input (its longest matching path), or ''.
+
+    A SIFT job names the staged copy on the SIFT host (``.../cases/<id>/evidence/<name>``). The staging
+    script verifies that copy against the registered hash, so the file name under an ``evidence/`` folder
+    identifies the same bytes.
+    """
+    args = [_norm_path(a) for a in (job.argv or []) if a]
+    best_len, best_sha = -1, ""
+    for path, sha in hashes:
+        target = _norm_path(path)
+        if not target:
+            continue
+        name = target.rsplit("/", 1)[-1]
+        for arg in args:
+            if arg == target or arg.startswith(target + "/"):
+                if len(target) > best_len:
+                    best_len, best_sha = len(target), sha
+                break
+            if "/evidence/" in arg and arg.rsplit("/", 1)[-1] == name:
+                if len(target) > best_len:
+                    best_len, best_sha = len(target), sha
+                break
+    return best_sha
+
+
 def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None = None) -> int:
     """Reuse prior OK ledger rows so leftover re-runs do not re-parse Hayabusa/MFT.
 
-    Match on host+tool+purpose (argv changes when cases_root moves).
-    ``NEXUS_TOOL_LANE_RERUN=1`` disables reuse.
+    A row is reused only for the same evidence: the key is host + tool + purpose + the registered
+    sha256 of the job's input (WO-TA item 12). A job with no registered input, and a row with no
+    recorded hash, are run again. ``NEXUS_TOOL_LANE_RERUN=1`` disables reuse.
     """
     import json
 
@@ -2532,7 +2583,7 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None
         if isinstance(loaded, list):
             prior = loaded
             break
-    index: dict[tuple[str, str, str], dict[str, Any]] = {}
+    index: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     for row in prior:
         if row.get("status") != "OK":
             continue
@@ -2540,13 +2591,18 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None
             str(row.get("host") or ""),
             str(row.get("tool") or ""),
             str(row.get("purpose") or ""),
+            str(row.get("evidence_sha") or ""),
         )
         index.setdefault(key, row)
+    hashes = _registered_evidence_hashes(case_dir)
     reused = 0
     for job in jobs:
         if job.status != "PENDING":
             continue
-        old = index.get(_job_reuse_key(job.host, job.tool, job.purpose))
+        job.evidence_sha = _evidence_sha_for(job, hashes)
+        if not job.evidence_sha:
+            continue  # no registered input to key on: the job runs again
+        old = index.get(_job_reuse_key(job.host, job.tool, job.purpose, job.evidence_sha))
         if not old:
             continue
         # An OK row whose local output has gone is not a result: the job runs again. A SIFT
@@ -3953,9 +4009,21 @@ async def run_tool_lane(
         except Exception as exc:  # noqa: BLE001 — a failed probe must not skip the pack
             log.warning("volatility plugin probe skipped: %s", exc)
     if sift_jobs:
-        # case_activate, NOT run_command: the first version passed the wrong
-        # tool, so this called run_command(case_id=...) and activated nothing.
-        await _align_remote_active_case(tools.get("case_activate"), case_id)
+        # The SIFT host's case_activate, never the examiner host's. The merged tool map keeps the
+        # Windows server's copy under the plain name (llm_pipeline._load_mcp_tools, Windows wins), and
+        # that copy writes this machine's global active-case pointer (tools/case.py). Without the SIFT
+        # tool these jobs cannot be bound to the case, so they are refused, not run and reported OK.
+        activate_tool = tools.get("_sift_case_activate")
+        if activate_tool is None:
+            # No SIFT binding: the same rule as an unreachable SIFT host. A case that selects SIFT (critical)
+            # FAILs; otherwise the job SKIPs with its reason. Refusing every SIFT job as FAIL blocked a case
+            # that had cleared its SIFT selection (CASE-C5B04D31, 2026-10-11).
+            for job in sift_jobs:
+                job.status, job.reason = sift_unavailable_outcome(job)
+                _mark(job)
+            sift_jobs = []
+        else:
+            await _align_remote_active_case(activate_tool, case_id)
     await _run_bounded(sift_jobs)
     _index_after_batch(sift_jobs)
     coverage_warned = reconcile_process_list_coverage(

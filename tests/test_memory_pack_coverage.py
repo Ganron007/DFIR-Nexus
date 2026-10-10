@@ -550,9 +550,13 @@ def test_the_alignment_is_handed_case_activate_not_run_command():
     from nexus.langgraph import tool_lane
 
     src = inspect.getsource(tool_lane.run_tool_lane)
-    assert '_align_remote_active_case(tools.get("case_activate")' in src, (
-        "the lane must hand the alignment `case_activate`; passing run_command "
+    assert 'tools.get("_sift_case_activate")' in src, (
+        "the lane must hand the alignment the SIFT host's `_sift_case_activate`; passing run_command "
         "silently activates nothing"
+    )
+    assert 'tools.get("case_activate")' not in src, (
+        "the plain name is the examiner host's tool after the Windows-wins merge; using it writes this "
+        "machine's global active-case pointer"
     )
     assert "_align_remote_active_case(sift_tool" not in src, (
         "`sift_tool` is run_command — passing it here is the bug this pins"

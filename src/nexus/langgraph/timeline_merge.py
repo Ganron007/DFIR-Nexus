@@ -257,29 +257,49 @@ def _artifact_key(d: dict) -> tuple:
     return parts
 
 
+#: The dedupe keys of each store, kept between appends (path -> (mtime_ns, size, keys)). Re-reading the
+#: whole store on every append made an import quadratic: one volume of files is thousands of appends.
+#: The cache is trusted only while the file's size and mtime still match what the last append left.
+_STORE_KEYS: dict[str, tuple[int, int, set[tuple]]] = {}
+
+
+def _store_keys(path: Path) -> set[tuple]:
+    """The content keys already in ``artifacts.jsonl``: read once, then kept up to date."""
+    cache_key = str(path)
+    try:
+        st = path.stat()
+    except OSError:
+        _STORE_KEYS.pop(cache_key, None)
+        return set()
+    cached = _STORE_KEYS.get(cache_key)
+    if cached and (cached[0], cached[1]) == (st.st_mtime_ns, st.st_size):
+        return cached[2]
+    keys: set[tuple] = set()
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    keys.add(_artifact_key(json.loads(line)))
+                except (json.JSONDecodeError, TypeError):
+                    continue
+    except OSError:
+        return set()
+    return keys
+
+
 def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     """Append artifacts to the case ingest store, deduped by content key.
 
-    Reprocessing the same network log must not double the store — keys are
-    compared against the existing ``artifacts.jsonl`` before appending.
+    Reprocessing the same network log must not double the store. Keys are compared against the keys
+    already in ``artifacts.jsonl``; they are read once and kept, not re-read on every append.
     """
     dest_dir = Path(case_dir) / "ingest"
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / "artifacts.jsonl"
-    existing: set[tuple] = set()
-    if path.is_file():
-        try:
-            with path.open("r", encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        existing.add(_artifact_key(json.loads(line)))
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-        except OSError:
-            existing = set()
+    existing = _store_keys(path)
     rows: list[str] = []
     for a in artifacts:
         d = a.to_dict()
@@ -291,6 +311,12 @@ def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     if rows:
         with path.open("a", encoding="utf-8") as fh:
             fh.write("\n".join(rows) + "\n")
+    # The keys now match the file. Remember the signature the append left, so the next call reuses them.
+    try:
+        st = path.stat()
+        _STORE_KEYS[str(path)] = (st.st_mtime_ns, st.st_size, existing)
+    except OSError:
+        _STORE_KEYS.pop(str(path), None)
     return path
 
 

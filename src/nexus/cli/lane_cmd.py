@@ -80,6 +80,12 @@ def skip(
     case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case."),
     reason: str = typer.Option(..., "--reason", help="Why this evidence is skipped (recorded, required)."),
     examiner: str = typer.Option("", "--examiner", help="Examiner id. Default: the active case's examiner."),
+    item: list[str] = typer.Option(
+        None,
+        "--item",
+        help="Skip only the unprocessed items of this tool (repeatable, e.g. --item logfileparser). "
+             "Default: every unprocessed item.",
+    ),
 ) -> None:
     """Record an audited examiner skip for unprocessed evidence.
 
@@ -97,6 +103,18 @@ def skip(
     if not gate:
         typer.echo("The evidence gate is not blocked - nothing to skip.")
         raise typer.Exit(0)
+
+    # --item narrows the skip to the named tools. The selection is made before the password prompt,
+    # so nothing is asked for when no item matches.
+    wanted_tools = {t.strip().lower() for t in (item or []) if t and t.strip()}
+    selected = None
+    if wanted_tools:
+        pool = (list(gate.get("unprocessed") or []) + list(gate.get("waiting_sift") or [])
+                + list(gate.get("not_applicable") or []))
+        selected = [u for u in pool if str(u.get("tool") or "").lower() in wanted_tools]
+        if not selected:
+            typer.echo("No unprocessed item for tool(s): " + ", ".join(sorted(wanted_tools)))
+            raise typer.Exit(1)
 
     who = examiner.strip()
     if not who:
@@ -116,13 +134,14 @@ def skip(
         typer.echo("Incorrect password.")
         raise typer.Exit(1)
 
-    out = examiner_skip(case_dir, examiner=who, reason=reason)
+    out = examiner_skip(case_dir, examiner=who, reason=reason, items=selected)
     try:
         from nexus.audit import AuditWriter
 
         AuditWriter("nexus", audit_dir=case_dir / "audit").log(
             tool="lane_gate_skip",
-            params={"examiner": who, "reason": reason[:200], "scope": "all"},
+            params={"examiner": who, "reason": reason[:200],
+                    "scope": ("tool:" + ",".join(sorted(wanted_tools))) if wanted_tools else "all"},
             result_summary={"added": out.get("added"),
                             "status": (out.get("gate") or {}).get("status")},
             source="cli",

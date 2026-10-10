@@ -795,10 +795,12 @@ def pipeline(
     # record and model. `investigation_mode` in CASE.yaml is now only the UI's
     # default picker value.
     if cid:
-        if not (case or "").strip():
+        # The message names the mode that will run (WO-1C). It used to say "Interpret … (no re-parse)"
+        # for any run without a --case path, including --mode tools, which is a new tools run.
+        if resolved_mode == "interpret":
             typer.echo(f"Interpret from existing case {cid} (no re-parse)")
         else:
-            typer.echo(f"Reusing case {cid} in mode {resolved_mode}")
+            typer.echo(f"Mode {resolved_mode} on existing case {cid} (a new run in the case)")
     elif resolved_mode in {"interpret", "from_case", "from-case"} and not cid:
         typer.echo("interpret mode needs --from-case <case_id>", err=True)
         raise typer.Exit(1)

@@ -60,6 +60,46 @@ _CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 _VERSION_CACHE: dict[tuple[str, str], str] = {}
 
 
+#: Tools whose findings depend on a rule set, and the rules checkout under tools/windows (WO-TA item 8).
+RULE_SETS = {"hayabusa": "hayabusa/rules"}
+
+
+def _git_head_commit(repo: Path) -> str:
+    """The commit HEAD resolves to in a git checkout, read from its files (no git process)."""
+    git_dir = repo / ".git"
+    try:
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not head.startswith("ref: "):
+        return head
+    ref = head[5:].strip()
+    ref_file = git_dir / ref
+    if ref_file.is_file():
+        return ref_file.read_text(encoding="utf-8").strip()
+    packed = git_dir / "packed-refs"
+    if packed.is_file():
+        for line in packed.read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[1] == ref:
+                return parts[0]
+    return ""
+
+
+def rules_lineage(tool: str, tools_root: Path | None = None) -> dict[str, str]:
+    """``rules_version`` for a tool with a rule set: the commit of its rules checkout ('' if unreadable).
+
+    A tool without a rule set returns nothing, so its lineage is unchanged.
+    """
+    rel = RULE_SETS.get(tool)
+    if not rel:
+        return {}
+    root = tools_root or (Path(__file__).resolve().parents[3] / "tools" / "windows")
+    repo = root / rel
+    commit = _git_head_commit(repo) if repo.is_dir() else ""
+    return {"rules_version": f"git:{commit}" if commit else ""}
+
+
 def clear_lineage_cache() -> None:
     """Drop both caches (tests, and long-lived sessions that changed a binary)."""
     _CACHE.clear()

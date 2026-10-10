@@ -486,6 +486,8 @@ def test_bitsparser_stages_repaired_copy(tmp_path: Path, monkeypatch):
 
 
 def test_apply_prior_ok_reuses_matching_purpose(tmp_path: Path, monkeypatch):
+    import json
+
     from nexus.langgraph.tool_lane import ToolJob, apply_prior_ok
 
     monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
@@ -494,11 +496,18 @@ def test_apply_prior_ok_reuses_matching_purpose(tmp_path: Path, monkeypatch):
     (ext / "_tool_lane_ledger.json").write_text(
         '[{"host":"windows","tool":"hayabusa","purpose":"Hayabusa EVTX",'
         '"status":"OK","audit_id":"a1","argv":["hayabusa","-d","old"],'
+        '"evidence_sha":"' + "ab" * 32 + '",'
         '"lineage":{"tool":"hayabusa","file_version":"4.0.0","version_source":"pe-version-resource"}}]',
         encoding="utf-8",
     )
+    # The registered evidence the job reads; its hash is the one the prior row was written for.
+    (tmp_path / "evidence.json").write_text(
+        json.dumps([{"path": str(tmp_path / "H"), "kind": "directory", "sha256": "ab" * 32}]),
+        encoding="utf-8",
+    )
     jobs = [
-        ToolJob(host="windows", tool="hayabusa", argv=["hayabusa", "-d", "new"], purpose="Hayabusa EVTX"),
+        ToolJob(host="windows", tool="hayabusa", argv=["hayabusa", "-d", str(tmp_path / "H")],
+                purpose="Hayabusa EVTX"),
         ToolJob(host="windows", tool="bitsparser", argv=["bitsparser"], purpose="BITS job queue"),
     ]
     assert apply_prior_ok(jobs, tmp_path) == 1
