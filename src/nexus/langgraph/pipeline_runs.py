@@ -272,6 +272,21 @@ def _extractions_have_data(extractions: Path) -> bool:
     return False
 
 
+def has_completed_tools_run(case_dir: Path) -> bool:
+    """True when the case has a committed tools run with output: the input interpret reads.
+
+    An interpret run reads an existing lane run. Without one there is nothing to interpret,
+    and the run would call the model over an empty case, so the start is refused instead.
+    """
+    runs_dir = Path(case_dir) / "runs"
+    if not runs_dir.is_dir():
+        return False
+    return any(
+        run.is_dir() and _run_committed(run) and _run_dir_has_data(run)
+        for run in runs_dir.iterdir()
+    )
+
+
 def _run_dir_has_data(run_dir: Path) -> bool:
     """Parsed output may sit in ``extractions/`` or ``sift/extractions/``.
 

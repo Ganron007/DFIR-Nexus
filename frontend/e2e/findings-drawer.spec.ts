@@ -12,7 +12,9 @@ test("a grid row opens the finding drawer and Escape closes it", async ({ page, 
   await page.getByRole("button", { name: "Continue" }).first().click();
   await page.getByRole("link", { name: "Findings" }).click();
   await expect(page.getByRole("heading", { name: /Findings/ })).toBeVisible();
-  const row = page.getByTestId("grid-row").first();
+  // Select the row by its finding, not by position: other specs seed this same demo case,
+  // and the grid's first row is then a different finding.
+  const row = page.getByTestId("grid-row").filter({ hasText: "Encoded PowerShell" }).first();
   await expect(row).toBeVisible();
   // Playwright's own click never returns on a transformed virtual row: the
   // scroll adjustment and the row's translate fight until the action times

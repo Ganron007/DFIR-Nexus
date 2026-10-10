@@ -18,6 +18,7 @@ const NAV_SPINE = [
   { to: "/evidence", label: "Evidence", stage: "N2", hint: "Registered evidence + N2 processing status" },
   { to: "/briefing", label: "Briefing", stage: "N3.5", hint: "Case briefing — what was found before you dig" },
   { to: "/explore", label: "Explore", stage: "N3·N4", hint: "Index-backed search over parsed evidence" },
+  { to: "/analysis", label: "Analysis", stage: "N5", hint: "Run Mode 1, 2 or 3 on this case: one run at a time, or all three in order" },
   { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
   { to: "/agent-run", label: "Agent Run", stage: "N5", hint: "Mode 2 — multi-role Agent Run; Mode 3 — multi-agent Investigation Board" },
   { to: "/workbench", label: "Workbench", stage: "N5", hint: "Build DRAFT findings from bookmarked hits" },

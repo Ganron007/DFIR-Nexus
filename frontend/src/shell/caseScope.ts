@@ -17,6 +17,7 @@ export const CASE_PAGES = [
   "evidence",
   "briefing",
   "explore",
+  "analysis",
   "steer",
   "agent-run",
   "workbench",

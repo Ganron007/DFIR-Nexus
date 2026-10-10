@@ -19,6 +19,7 @@ const Briefing = lazy(() => import("./pages/Briefing"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const SteerChat = lazy(() => import("./pages/SteerChat"));
+const Analysis = lazy(() => import("./pages/Analysis"));
 const AgentRun = lazy(() => import("./pages/AgentRun"));
 const Workbench = lazy(() => import("./pages/Workbench"));
 const Findings = lazy(() => import("./pages/Findings"));
@@ -36,6 +37,7 @@ const PAGE_COMPONENTS: Record<CasePage, ComponentType> = {
   briefing: Briefing as ComponentType,
   explore: Explore as ComponentType,
   steer: SteerChat as ComponentType,
+  analysis: Analysis as ComponentType,
   "agent-run": AgentRun as ComponentType,
   workbench: Workbench as ComponentType,
   findings: Findings as ComponentType,

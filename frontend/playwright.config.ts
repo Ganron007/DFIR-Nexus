@@ -47,6 +47,10 @@ export default defineConfig({
       NEXUS_REPO_EXPORT: "0",
       NEXUS_PORTAL_RATE_LIMIT: "100000",
       NEXUS_PORTAL_AUTH_RATE_LIMIT: "100000",
+      // The test server never calls a real model: the repository .env names one, and a run that
+      // needs a model is then refused or fails, which the journeys check. An empty value wins over .env.
+      NEXUS_LLM_MODEL: "",
+      NEXUS_LLM_BASE_URL: "",
     },
   },
 });

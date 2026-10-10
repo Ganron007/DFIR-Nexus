@@ -50,6 +50,9 @@ export interface Finding {
   approved_by?: string;
   approved_at?: string;
   examiner_selected?: boolean;
+  /** WO-1C item 5 - the run(s) that raised this DRAFT: a claim several runs reached lists them all. */
+  run_id?: string;
+  run_ids?: string[];
   provenance?: {
     mode?: number;
     origin?: string;

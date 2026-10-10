@@ -88,6 +88,17 @@ const COLUMNS: DataGridColumn<Finding>[] = [
     width: 100,
   },
   {
+    // WO-1C item 5 - filter the findings by the run that raised them.
+    id: "run",
+    header: "Run",
+    accessorFn: (row) => {
+      const runs = row.run_ids?.length ? row.run_ids : [row.run_id || row.provenance?.run_id || ""];
+      return runs.filter(Boolean).join(",");
+    },
+    filterable: true,
+    width: 200,
+  },
+  {
     id: "audit",
     header: "Audit refs",
     accessorFn: (row) => String(row.audit_ids?.length ?? 0),

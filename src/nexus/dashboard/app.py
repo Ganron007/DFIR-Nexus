@@ -5045,6 +5045,25 @@ async def api_case_details(request):
     return JSONResponse(details)
 
 
+async def api_cross_mode(request):
+    """GET /portal/api/cross-mode - shared conclusions and contradictions across this case's modes.
+
+    WO-1C item 5: the cross-mode view inside the case. The same comparison the CLI
+    (`nexus cross-mode --case`) makes, over this case's runs and DRAFTs. A failure is
+    reported with its reason, never shown as an empty comparison.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.analysis.cross_mode import check_cross_mode
+
+    try:
+        report = check_cross_mode(case_dir)
+    except Exception as exc:  # noqa: BLE001 - the view names the reason
+        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+    return JSONResponse(json.loads(json.dumps(report, default=str)))
+
+
 async def api_pipeline_run(request):
     """POST /portal/api/pipeline/run — trigger the N2 processing lane.
 
@@ -5134,6 +5153,17 @@ async def api_pipeline_run(request):
         return JSONResponse({
             "error": "No registered evidence for this case — register evidence first (wizard step 2)"
         }, status_code=400)
+    # Interpret reads a finished tools run. With none, the run would call the model over an
+    # empty case and report nothing: it is refused here, before any run record exists.
+    if pipeline_mode == "interpret":
+        from nexus.langgraph.pipeline_runs import has_completed_tools_run
+
+        if not has_completed_tools_run(case_dir):
+            return JSONResponse(
+                {"error": "No completed tools run in this case to interpret. Run the evidence "
+                           "lane first (Evidence page), then start Mode 1."},
+                status_code=409,
+            )
 
     # ── Examiner intake → pipeline case_context (N1 gate) ──
     # Coverage/design only reach the LLM interpret node when a real question
@@ -8078,6 +8108,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
+        Route("/portal/api/cross-mode", api_cross_mode, methods=["GET"]),
         Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
         # WO-K7: absence honesty - what ran, what is disabled, what was not examined.
         Route("/portal/api/case/absence", api_case_absence, methods=["GET"]),

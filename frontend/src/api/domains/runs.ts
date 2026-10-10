@@ -26,7 +26,19 @@ import type {
   ProposeDraftResponse,
 } from "../client";
 
+/** GET /cross-mode - shared conclusions and contradictions across this case's modes (WO-1C item 5). */
+export interface CrossModeReport {
+  modes_present?: string[];
+  modes_missing?: string[];
+  shared?: unknown[];
+  contradictions?: unknown[];
+  error?: string;
+  [key: string]: unknown;
+}
+
 export const runsApi = {
+  crossMode: () => request<CrossModeReport>("/cross-mode"),
+
   ask: (question: string, limit?: number) =>
     post<AskResponse>("/mode1/ask", { question, limit }),
 
