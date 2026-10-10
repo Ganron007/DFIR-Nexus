@@ -3993,14 +3993,31 @@ def _structured_output_present(job: ToolJob) -> bool:
 
 
 def _find_recmd_batch() -> Path | None:
+    """The registry batch file. DFIRBatch.reb is the default.
+
+    WO-TA item 3: this used to prefer Kroll_Batch.reb on the strength of a
+    comment claiming "DFIRBatch.reb fails this RECmd build (HiveType 'User' not
+    in enum)". That claim is **false**, and it was measured rather than argued:
+
+    * RECmd 2026.5.0, DFIRBatch.reb on SC1's real SYSTEM hive -> 6,173
+      key/value pairs, no error;
+    * the same on a real user hive (rsydow-a\\NTUSER.DAT) -> 49 pairs, no error;
+    * against Kroll_Batch.reb on the same SYSTEM hive, DFIRBatch produces
+      **498 distinct key paths to Kroll's 495, with zero paths lost and zero
+      added** - so the switch costs no coverage.
+
+    Kroll_Batch is v1.22 (654 entries, last updated 2023-06); DFIRBatch is v2.22
+    (1,032 entries). The older batch was winning only because a stale comment
+    put it first in this list, which is exactly the kind of unverified claim the
+    hard rule forbids acting on.
+    """
     root = _repo_root()
     for rel in (
-        # DFIRBatch.reb fails this RECmd build (HiveType 'User' not in enum).
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/Kroll_Batch.reb",
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/RECmd_Batch_MC.reb",
         "tools/windows/kape/Modules/bin/RECmd/RECmd_Batch_MC.reb",
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/BasicSystemInfo.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
     ):
         p = root / rel
         if p.is_file():
