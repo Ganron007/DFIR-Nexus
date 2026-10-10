@@ -3640,6 +3640,8 @@ async def run_tool_lane(
                         "purpose": job.purpose,
                         "timeout": job.timeout,
                         "save_output": True,
+                        # D41 on the lane path: bind the command to this run's case.
+                        "case_id": case_id,
                     },
                     timeout=job.timeout,
                     label=f"run_windows_command({job.tool})",

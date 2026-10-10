@@ -378,15 +378,33 @@ def _active_case_dir() -> Path | None:
     return resolve_active_case_dir()
 
 
-def _case_pipeline_roots() -> list[Path] | None:
+def _case_dir_for_id(case_id: str) -> Path | None:
+    """The directory of a named case under the configured cases root, or None."""
+    from nexus.config import settings
+    from nexus.discipline import validate_case_id
+
+    if validate_case_id(case_id):
+        return None
+    path = Path(settings.cases_root) / case_id
+    return path if path.is_dir() else None
+
+
+def _case_pipeline_roots(case_id: str = "") -> list[Path] | None:
     """Registered evidence plus this case's extractions, or None with no case.
 
-    Reads the flat evidence mirror. It does not open the case database and
-    does not change the active case.
+    ``case_id`` names the run's case: its roots are used, never the active case's
+    (D41 on the lane path). A case_id that does not resolve gives an empty list, so
+    every path is refused. Without a case_id the active case applies (external MCP).
+    Reads the flat evidence mirror and does not change the active case.
     """
-    case_dir = _active_case_dir()
-    if case_dir is None:
-        return None
+    if case_id:
+        case_dir = _case_dir_for_id(case_id)
+        if case_dir is None:
+            return []
+    else:
+        case_dir = _active_case_dir()
+        if case_dir is None:
+            return None
     roots: list[Path] = []
     for name in ("evidence.json", "evidence_registry.json"):
         path = case_dir / name
@@ -710,8 +728,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         timeout: int = 600,
         save_output: bool = True,
         input_files: list[str] | None = None,
+        case_id: str = "",
     ) -> dict:
         """Execute a catalog-approved forensic tool.
+
+        ``case_id`` (lane and pipeline calls) binds the command to that case's
+        registered evidence. Empty means the active case (external MCP callers).
 
         Args:
             command: Command list or string (tool + args). Must start with a cataloged tool.
@@ -757,7 +779,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             )
             return {"success": False, "error": f"Tool not in allowlist: {binary}", "audit_id": audit_id}
 
-        refusal = case_pipeline_refusal(binary_key, parts, _case_pipeline_roots())
+        refusal = case_pipeline_refusal(binary_key, parts, _case_pipeline_roots(case_id))
         if refusal:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
