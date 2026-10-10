@@ -389,6 +389,17 @@ def _case_dir_for_id(case_id: str) -> Path | None:
     return path if path.is_dir() else None
 
 
+def _output_case_dir(case_id: str = "") -> Path | None:
+    """The case a run's output is saved into and registered in (D41, output path).
+
+    A run that names its case saves into that case. Saving into the active case instead
+    put a run's stdout into another case's evidence (36d guard proof, 2026-10-10).
+    """
+    if case_id:
+        return _case_dir_for_id(case_id)
+    return _active_case_dir()
+
+
 def _case_pipeline_roots(case_id: str = "") -> list[Path] | None:
     """Registered evidence plus this case's extractions, or None with no case.
 
@@ -955,7 +966,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 stderr=stderr,
                 command=command_text,
                 purpose=purpose,
-                case_dir=_active_case_dir(),
+                case_dir=_output_case_dir(case_id),
                 register_evidence=True,
             )
             output_files = persisted.get("output_files") or []

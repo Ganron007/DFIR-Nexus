@@ -75,3 +75,50 @@ def test_live_and_sysinternals_tools_are_refused_even_on_registered_evidence(cas
     roots = windows._case_pipeline_roots("CASE-RUN")
     argv = [tool, str(cases["triage"] / "Security.evtx")]
     assert windows.case_pipeline_refusal(tool, argv, roots), tool
+
+
+def _windows_tool(tmp_path):
+    from mcp.server.fastmcp import FastMCP
+
+    from nexus.audit import AuditWriter
+
+    server = FastMCP("binding-output-test")
+    windows.register_tools(server, AuditWriter("t", audit_dir=tmp_path / "audit"))
+    return server._tool_manager._tools["run_windows_command"].fn
+
+
+def test_a_run_saves_its_output_into_its_own_case_not_the_active_one(cases, tmp_path, monkeypatch):
+    """Reproduced 2026-10-10: a run bound to one case registered its stdout as evidence in the
+    active case (run_windows_command passed _active_case_dir() to persist_tool_output)."""
+    import subprocess
+
+    from nexus.case import outputs
+
+    saved: list = []
+
+    class _Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _record(**kwargs):
+        saved.append(kwargs["case_dir"])
+        return {"output_files": [], "warning": ""}
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _Result())
+    monkeypatch.setattr(outputs, "persist_tool_output", _record)
+    tool = _windows_tool(tmp_path)
+    argv = ["mftecmd", "-f", str(cases["triage"] / "Security.evtx")]
+
+    bound = tool(command=argv, purpose="bound run", case_id="CASE-RUN")
+    assert bound.get("success") is True, bound
+    assert saved[-1] == cases["bound"], saved
+
+    # The active case gets its own registered input, so an unbound run is allowed to run.
+    active_input = tmp_path / "active-input"
+    active_input.mkdir()
+    (cases["active"] / "evidence.json").write_text(
+        json.dumps([{"path": str(active_input)}]), encoding="utf-8")
+    unbound = tool(command=["mftecmd", "-f", str(active_input / "a.evtx")], purpose="unbound run")
+    assert unbound.get("success") is True, unbound
+    assert saved[-1] == cases["active"], "a run that names no case saves into the active one"
