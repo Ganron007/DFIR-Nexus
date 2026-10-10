@@ -421,6 +421,35 @@ def doctor(
     except Exception as exc:  # noqa: BLE001
         typer.echo(f"  [info] collect inventory: {exc}")
 
+    # WO-TA item 0: pinned lane tools. Informational; a missing pin is not a
+    # golden-path failure until the lane jobs that call them are the default.
+    repo_root = Path(__file__).resolve().parents[3]
+    extra = repo_root / "Tools" / "windows" / "extra"
+    pinned = (
+        ("memprocfs zip", extra / "memprocfs"),
+        ("mplog_parser", extra / "mplog_parser.exe"),
+        ("dhparser", extra / "dhparser.exe"),
+        ("wmi-parser", extra / "wmi-parser" / "Wmi-Parser.exe"),
+        ("sidr", extra / "sidr.exe"),
+        ("thumbcache_viewer", extra / "thumbcache_viewer" / "thumbcache_viewer.exe"),
+        ("zircolite", extra / "zircolite"),
+        ("yara", extra / "yara"),
+    )
+    for label, path in pinned:
+        mark = "ok" if path.exists() else "miss"
+        typer.echo(f"  [{mark}] pin {label}: {path if path.exists() else 'MISSING'}")
+    try:
+        import memprocfs as _mp
+        typer.echo(f"  [ok] pin memprocfs python: {getattr(_mp, '__version__', 'imported')}")
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"  [miss] pin memprocfs python: {exc}")
+    import importlib.metadata as _meta
+    for dist in ("maldump", "pyhindsight"):
+        try:
+            typer.echo(f"  [ok] pin {dist}: {_meta.version(dist)}")
+        except Exception as exc:  # noqa: BLE001
+            typer.echo(f"  [miss] pin {dist}: {exc}")
+
     if golden_fail:
         typer.echo("golden-path: FAIL")
         raise typer.Exit(1)

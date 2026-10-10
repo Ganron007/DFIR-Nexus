@@ -10,6 +10,14 @@ This is the architecture the CLI and docs describe **now**. MCP tool counts and
 the FastMCP process remain; they are the workstation behind the spine, not the
 first door. Operator detail: [NEXUS-MODE.md](NEXUS-MODE.md).
 
+Stage 0 is the only live collector. It runs against a named host and writes a
+pack the examiner then registers. The case pipeline (tool lane and design-mode
+hunt) parses registered evidence. It refuses the live host commands in
+MAPPING.md section 7, and it refuses any other Windows job whose arguments
+name no path under that evidence or the run's extractions. A live
+`run_windows_command` outside a case is labeled `origin: live:<host>` and is
+not written into the case.
+
 ```
 Stage 0  Collect     nexus collect run     CLI only (portable; freeze-gated)
 Register             case init + evidence register     custody; not N1–N8

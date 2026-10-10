@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -98,6 +99,8 @@ _WIN_CATALOG = {
                    "description": "Parse BITS qmgr.db / qmgr*.dat job queues from an image"},
     "kstrike": {"name": "KStrike.py", "category": "analysis",
                 "description": "Parse Windows Server User Access Logging (UAL) ESE databases"},
+    "sumecmd": {"name": "SumECmd", "category": "zimmerman",
+                "description": "Parse User Access Logging SUM databases (KapeFiles SumECmd.mkape)"},
     "logfileparser": {"name": "LogFileParser64", "category": "analysis",
                       "description": "Parse NTFS $LogFile transaction journal"},
     "regripper": {"name": "rip.exe", "category": "registry",
@@ -135,6 +138,17 @@ _WIN_CATALOG = {
     "net": {"name": "net", "category": "system", "builtin": True,
             "description": "Parse users, groups, shares, sessions"},
 }
+
+# MAPPING.md section 7. These read the examiner host. Stage 0 collects them
+# on a named target. strings64 and sigcheck stay available: they take a file
+# under registered evidence and are not in that excluded list.
+_CASE_PIPELINE_EXCLUDED = frozenset({
+    "winpmem", "dumpit", "procdump", "handle", "moneta", "hollows_hunter",
+    "get_injectedthreadex", "autorunsc", "schtasks",
+    "arp", "route", "ipconfig", "netstat", "dns", "whoami", "systeminfo",
+    "tasklist", "sc", "net", "certutil",
+})
+_PATH_IN_TOKEN = re.compile(r"[A-Za-z]:\\[^\"']+")
 
 _CACHE_TTL = 86400
 _CACHE_MAX = 256
@@ -348,6 +362,83 @@ def _active_case_dir() -> Path | None:
     return resolve_active_case_dir()
 
 
+def _case_pipeline_roots() -> list[Path] | None:
+    """Registered evidence plus this case's extractions, or None with no case.
+
+    Reads the flat evidence mirror. It does not open the case database and
+    does not change the active case.
+    """
+    case_dir = _active_case_dir()
+    if case_dir is None:
+        return None
+    roots: list[Path] = []
+    for name in ("evidence.json", "evidence_registry.json"):
+        path = case_dir / name
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        rows = data if isinstance(data, list) else []
+        if isinstance(data, dict):
+            rows = data.get("evidence") or data.get("items") or []
+        if isinstance(rows, dict):
+            rows = list(rows.values())
+        for row in rows:
+            raw = ""
+            if isinstance(row, dict):
+                raw = str(row.get("path") or row.get("file_path") or "")
+            elif isinstance(row, str):
+                raw = row
+            if raw:
+                roots.append(Path(raw))
+        if roots:
+            break
+    roots.append(case_dir / "extractions")
+    return roots
+
+
+def case_pipeline_refusal(
+    binary_key: str,
+    argv: list[str],
+    roots: list[Path] | None,
+) -> str | None:
+    """Why this command must not run inside a case pipeline, or None.
+
+    ``roots is None`` means there is no active case: live host tools are
+    still refused, and a dead-box parser is left to the caller. A list of
+    roots (even empty) is a case pipeline, and the command must name a path
+    inside one of them.
+    """
+    key = _catalog_key(binary_key) or Path(str(binary_key)).stem.lower()
+    if key in _CASE_PIPELINE_EXCLUDED:
+        return (
+            f"{key} reads the examiner host. Live collection is Stage 0 "
+            "on a named target, not a case-pipeline job."
+        )
+    if roots is None:
+        return None
+    bound: list[Path] = []
+    for root in roots:
+        try:
+            bound.append(Path(root).resolve())
+        except OSError:
+            continue
+    for token in argv[1:]:
+        for match in _PATH_IN_TOKEN.findall(token.strip("\"'")):
+            try:
+                path = Path(match).resolve()
+            except OSError:
+                continue
+            for root in bound:
+                if path == root or root in path.parents:
+                    return None
+    return (
+        "command names no path inside registered evidence or this run's extractions"
+    )
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     if not _IS_WINDOWS:
         logger.debug("Windows tools skipped: not on Windows")
@@ -401,6 +492,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"tools": [], "count": 0, "error": "Windows tools unavailable"}
         result = []
         for key, info in sorted(_WIN_CATALOG.items()):
+            if key in _CASE_PIPELINE_EXCLUDED:
+                continue
             if category and info["category"] != category:
                 continue
             binary = info["name"]
@@ -539,9 +632,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                         break
         except Exception:
             pass
+        offered = []
+        for tn in tool_names:
+            key = _catalog_key(tn) or Path(tn).stem.lower()
+            if key in _CASE_PIPELINE_EXCLUDED:
+                continue
+            offered.append(tn)
         return [
             {"name": tn, "installed": _find_binary(tn) is not None}
-            for tn in tool_names
+            for tn in offered
         ]
 
     @server.tool()
@@ -626,6 +725,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             )
             return {"success": False, "error": f"Binary denied: {binary}", "audit_id": audit_id}
 
+        live_host = binary_key in _CASE_PIPELINE_EXCLUDED
         if binary_key not in _WIN_CATALOG:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
@@ -633,6 +733,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 result_summary={"error": f"Tool not in allowlist: {binary}"},
             )
             return {"success": False, "error": f"Tool not in allowlist: {binary}", "audit_id": audit_id}
+
+        refusal = case_pipeline_refusal(binary_key, parts, _case_pipeline_roots())
+        if refusal:
+            audit_id = audit.log(
+                tool="run_windows_command_blocked",
+                params={"command": command_text[:500], "purpose": purpose[:200]},
+                result_summary={"error": refusal},
+            )
+            return {"success": False, "error": refusal, "audit_id": audit_id}
 
         resolved = _find_binary(binary) or _find_binary(_WIN_CATALOG[binary_key]["name"])
         if resolved:
@@ -788,6 +897,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         output_files: list[dict] = []
         save_warning = ""
         output_saved_to = None
+        # A live host command's stdout is the examiner machine, not the case.
+        # Do not write it under extractions and do not register it as evidence.
+        if live_host:
+            save_output = False
         if save_output:
             from nexus.case.outputs import persist_tool_output
 
@@ -842,6 +955,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "input_detection_method": "llm" if input_files else ("parsed" if detected_inputs else "none"),
                 "output_file": output_saved_to,
                 "tool_lineage": tool_lineage,
+                **({"origin": f"live:{os.environ.get('COMPUTERNAME') or 'host'}"} if live_host else {}),
             },
         )
 
@@ -851,6 +965,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "data": parsed.get("stdout", ""),
             "data_provenance": "tool_output_may_contain_untrusted_evidence",
             "audit_id": audit_id,
+            **({"origin": f"live:{os.environ.get('COMPUTERNAME') or 'host'}"} if live_host else {}),
             "stderr": stderr,
             "exit_code": proc.returncode,
             "exit_code_meaning": "success" if proc.returncode == 0 else "error -- check stderr",

@@ -25,7 +25,6 @@ from __future__ import annotations
 import ast
 import json
 import pathlib
-import re
 
 import pytest
 
@@ -144,7 +143,6 @@ def test_mode_owned_route_answers_for_every_mode(client, cases, route):
     reasserting itself; a 409 from the busy-case guard is the correct, still-live
     refusal. With a fresh case there is no live run, so nothing may 409.
     """
-    mode = re.search(r"/mode(\d)/", route["path"]).group(1)
     for case_mode, cid in cases.items():
         r = client.request(route["method"], route["path"],
                            json={"case_id": cid}, headers={"X-Nexus-Case": cid})

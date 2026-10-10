@@ -71,6 +71,41 @@ class ToolJob:
     result: dict = field(default_factory=dict)
 
 
+class CasePipelineTool:
+    """Hunt wrapper: refuse a live or unbound command before the MCP call."""
+
+    def __init__(self, inner: Any, roots: list[Path]) -> None:
+        self._inner = inner
+        self._roots = list(roots)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    async def ainvoke(self, payload: Any, config: Any = None, **kwargs: Any) -> Any:
+        command = payload.get("command") if isinstance(payload, dict) else None
+        if command is None and isinstance(payload, dict):
+            args = payload.get("args")
+            if isinstance(args, dict):
+                command = args.get("command")
+        from nexus.tools.windows import case_pipeline_refusal
+
+        if isinstance(command, str):
+            try:
+                parts = shlex.split(command)
+            except ValueError:
+                parts = command.split()
+        elif isinstance(command, list):
+            parts = [str(part) for part in command]
+        else:
+            parts = []
+        reason = case_pipeline_refusal(parts[0] if parts else "", parts, self._roots)
+        if reason:
+            return {"success": False, "error": reason, "refused": "case-pipeline"}
+        if config is None:
+            return await self._inner.ainvoke(payload, **kwargs)
+        return await self._inner.ainvoke(payload, config, **kwargs)
+
+
 def timeout_for_bytes(
     nbytes: int,
     *,
@@ -273,6 +308,17 @@ def _zircolite_rules() -> Path | None:
     return None
 
 
+def _lane_opted_in(name: str) -> bool:
+    """Examiner opt-in for tools the default dead-box lane no longer runs.
+
+    ``NEXUS_LANE_OPT_IN=chainsaw,zircolite,regripper,usbdeview``. Absent means
+    those jobs are not planned. Suzaku's EVTX row stays a skip: 2.x is cloud-only.
+    """
+    raw = os.environ.get("NEXUS_LANE_OPT_IN", "")
+    chosen = {part.strip().lower() for part in raw.replace(";", ",").split(",") if part.strip()}
+    return name.strip().lower() in chosen
+
+
 def schedule_evtx_parsers(
     jobs: list[ToolJob],
     evtx_dirs: list[Path],
@@ -344,7 +390,7 @@ def schedule_evtx_parsers(
             "suzaku",
             f"Suzaku 2.x is cloud-log only (no local EVTX timeline) — {label}",
         )
-        if mapping and sigma:
+        if _lane_opted_in("chainsaw") and mapping and sigma:
             cs_dir = extractions / "chainsaw" / label if many else extractions / "chainsaw"
             cs_dir.mkdir(parents=True, exist_ok=True)
             add(
@@ -384,8 +430,8 @@ def schedule_evtx_parsers(
         # Zircolite against its own bundled Windows ruleset - it ships
         # rules/rules_windows_generic_high.json, so no external rule path is
         # needed. The ES-Mapping table lists it as its own EVTX pair.
-        z_rules = _zircolite_rules()
-        if z_rules:
+        z_rules = _zircolite_rules() if _lane_opted_in("zircolite") else None
+        if _lane_opted_in("zircolite") and z_rules:
             z_out = extractions / "zircolite" / label if many else extractions / "zircolite"
             z_out.mkdir(parents=True, exist_ok=True)
             # `--csv` (comma delimiter) instead of the default JSON export. That
@@ -404,10 +450,12 @@ def schedule_evtx_parsers(
                 f"Zircolite detections {label} ({n} logs)",
                 1800,
             )
-        else:
+        elif _lane_opted_in("zircolite"):
             skip("zircolite", "bundled Windows ruleset not found under Tools/windows/extra/zircolite")
 
-    if not mapping or not sigma:
+    if not _lane_opted_in("chainsaw"):
+        skip("chainsaw", "not in the default lane; set NEXUS_LANE_OPT_IN=chainsaw")
+    elif not mapping or not sigma:
         skip(
             "chainsaw",
             "needs mappings/sigma-event-logs-all.yml and a sigma/ rules tree "
@@ -776,14 +824,12 @@ def _plan_single_artifact(
                       "--nl", "true",
                       "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             f"Registry hive ({evidence.name})")
-        # RegRipper reads the same hive through named plugins. Kept alongside
-        # RECmd because the ES-Mapping table lists it as its own tool/evidence
-        # pair, and the two disagree on some keys.
-        # rip prints to stdout; the lane's stdout capture carries it, and the
-        # promotion step makes it reachable by the indexer.
-        out_dir("regripper")
-        add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
-            f"RegRipper plugins ({evidence.name})", 600)
+        # RegRipper is examiner opt-in (NEXUS_LANE_OPT_IN=regripper). RECmd is
+        # the default hive parse.
+        if _lane_opted_in("regripper"):
+            out_dir("regripper")
+            add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
+                f"RegRipper plugins ({evidence.name})", 600)
     elif _artifact_class(evidence) == "jumplist":
         d = out_dir("jlecmd")
         add("jlecmd", ["jlecmd", "-f", str(evidence), "--csv", str(d),
@@ -924,9 +970,10 @@ def _plan_single_artifact(
         # handles. SYSTEM/SOFTWARE/SAM/SECURITY take the branch above, so without
         # this they got RECmd and no RegRipper - and the ES-Mapping table lists
         # RegRipper as its own tool/evidence pair.
-        out_dir("regripper")
-        add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
-            f"RegRipper plugins ({evidence.name})", 600)
+        if _lane_opted_in("regripper"):
+            out_dir("regripper")
+            add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
+                f"RegRipper plugins ({evidence.name})", 600)
         if name == "system":
             ad = out_dir("appcompat")
             add("appcompatcacheparser",
@@ -1795,8 +1842,8 @@ def plan_windows_triage(
     else:
         skip("recmd", f"missing software hive / config dir under {root}")
 
-    # RegRipper — per-hive text plugin output (rip.exe preferred; rip.pl needs perl)
-    regripper_ok = _windows_tool_available("regripper")
+    # RegRipper is examiner opt-in. RECmd/DFIRBatch is the default registry parse.
+    regripper_ok = _lane_opted_in("regripper") and _windows_tool_available("regripper")
     if regripper_ok and _windows_tool_path("regripper").lower().endswith(".pl") and not _perl_available():
         regripper_ok = False
         skip("regripper", "only rip.pl found and perl is not on PATH (fetch rip.exe or install Strawberry Perl)")
@@ -2133,11 +2180,18 @@ def _plan_gap_parsers(
     sum_dir = root / "Windows/System32/LogFiles/SUM"
     mdbs = sorted(sum_dir.glob("*.mdb")) if sum_dir.is_dir() else []
     if mdbs:
-        if not _windows_tool_available("kstrike"):
-            skip("kstrike", "KStrike not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+        # KapeFiles EZTools/SumECmd.mkape: -d <SUM dir> --csv <destination>.
+        if not _windows_tool_available("sumecmd"):
+            skip("sumecmd", "SumECmd not installed — Zimmerman SumECmd (KapeFiles SumECmd.mkape)")
         else:
-            for mdb in mdbs[:4]:
-                add("kstrike", ["kstrike", str(mdb)], f"UAL ESE ({mdb.name})", 600)
+            d = extractions / "sumecmd"
+            d.mkdir(parents=True, exist_ok=True)
+            add(
+                "sumecmd",
+                ["SumECmd", "-d", str(sum_dir), "--csv", str(d)],
+                "UAL SUM database (SumECmd)",
+                600,
+            )
 
     i30_files = [p for p in (root / "$I30", root / "FileSystem" / "$I30") if p.is_file()]
     if i30_files and not quick:
@@ -2171,18 +2225,13 @@ def _plan_gap_parsers(
     else:
         skip("logfileparser", f"missing or too small {logfile}")
 
-    # Scheduled tasks — Windows scheduled task parsing
+    # Scheduled tasks — offline XML only. A live `schtasks /query` reads the
+    # examiner host, not the image (WO-TA item 1). Stage 0 collects live tasks
+    # on a named target. The copy cap is item 4.
     tasks_dir = root / "Windows/System32/Tasks"
     if tasks_dir.is_dir():
         d = extractions / "schtasks"
         d.mkdir(parents=True, exist_ok=True)
-        add(
-            "schtasks",
-            ["schtasks", "/query", "/fo", "csv", "/v", "/nh"],
-            "Scheduled tasks (live query)",
-            120,
-        )
-        # Also copy the task XML files for offline parsing
         task_files = list(tasks_dir.rglob("*"))[:50]
         for tf in task_files:
             if tf.is_file():
@@ -2226,9 +2275,11 @@ def _plan_gap_parsers(
                         skip("hindsight", "hindsight not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
                         break
 
-    # USB artifacts — USBDeview for USB device history
+    # USBDeview is examiner opt-in. RECmd USBSTOR and setupapi cover USB.
     usbstor = root / "Windows/System32/config/SYSTEM"
-    if usbstor.is_file() and _windows_tool_available("usbdeview"):
+    if usbstor.is_file() and not _lane_opted_in("usbdeview"):
+        skip("usbdeview", "not in the default lane; set NEXUS_LANE_OPT_IN=usbdeview")
+    elif usbstor.is_file() and _windows_tool_available("usbdeview"):
         d = extractions / "usbdeview"
         d.mkdir(parents=True, exist_ok=True)
         add(
@@ -2241,8 +2292,10 @@ def _plan_gap_parsers(
     elif usbstor.is_file():
         skip("usbdeview", "usbdeview not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
-    # Zircolite — fast Sigma-based EVTX analysis (bundled merged-high JSON ruleset)
-    if _windows_tool_available("zircolite"):
+    # Second Zircolite job (whole-root ruleset). Same opt-in as the EVTX-dir job.
+    if not _lane_opted_in("zircolite"):
+        skip("zircolite", "not in the default lane; set NEXUS_LANE_OPT_IN=zircolite")
+    elif _windows_tool_available("zircolite"):
         zirc_bin = _windows_tool_path("zircolite")
         zirc_rules = Path(zirc_bin).parent / "rules" / "rules_windows_merged_high.json"
         if zirc_rules.is_file():
@@ -2325,26 +2378,9 @@ def _plan_gap_parsers(
                 if yara_ok:
                     add("yara", ["yara", yara_rules, str(p)], f"yara ({p.name})", 300)
 
-    live = os.environ.get("NEXUS_LIVE_RESPONSE", "").strip().lower() in ("1", "true", "yes")
-    if live:
-        add_installed(
-            "autorunsc",
-            ["autorunsc", "-accepteula", "-a", "*", "-c"],
-            "Live autoruns CSV",
-            300,
-        )
-        add_installed("handle", ["handle", "-accepteula"], "Live open handles", 120)
-        add_installed("get_injectedthreadex", ["get_injectedthreadex"], "Live injected-thread scan", 300)
-        mem = os.environ.get("NEXUS_LIVE_ACQUIRE_MEMORY", "").strip().lower() in ("1", "true", "yes")
-        if mem:
-            out = extractions / "memory"
-            out.mkdir(parents=True, exist_ok=True)
-            add_installed(
-                "winpmem",
-                ["winpmem", str(out / "physical.raw")],
-                "Live physical memory (operator-gated)",
-                3600,
-            )
+    # Live autoruns, handles, injected threads and winpmem are Stage 0
+    # (`nexus collect` against a named host). They are not planned here, even
+    # if NEXUS_LIVE_RESPONSE or NEXUS_LIVE_ACQUIRE_MEMORY is set.
 
 
 def _repo_root() -> Path:
@@ -3418,6 +3454,22 @@ async def run_tool_lane(
             _mark(job)
             _emit(job.status, job, str(job.reason or "planned"), reason=job.reason)
             return
+
+        if job.host == "windows":
+            # The executor used to run argv with no check that it named
+            # registered evidence. That is how schtasks /query saved the
+            # examiner host's tasks into the case. Refuse before RUNNING.
+            from nexus.tools.windows import case_pipeline_refusal
+
+            refusal = case_pipeline_refusal(
+                job.tool, list(job.argv), [Path(p) for p in plan_paths] + [extractions],
+            )
+            if refusal:
+                job.reason = refusal
+                job.status = "FAIL"
+                _mark(job)
+                _emit("FAIL", job, refusal, reason=refusal)
+                return
 
         import time as _time
 

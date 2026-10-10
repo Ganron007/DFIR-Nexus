@@ -243,6 +243,113 @@ def test_live_response_off_does_not_mention_winpmem(tmp_path: Path, monkeypatch)
     assert not any(j.tool == "winpmem" for j in jobs)
 
 
+def test_dead_box_plan_never_queries_the_examiner_host(tmp_path: Path, monkeypatch):
+    """WO-TA item 1: the env gates must not put a live host command on a case plan."""
+    monkeypatch.setenv("NEXUS_LIVE_RESPONSE", "1")
+    monkeypatch.setenv("NEXUS_LIVE_ACQUIRE_MEMORY", "1")
+    root = tmp_path / "C"
+    tasks = root / "Windows" / "System32" / "Tasks"
+    tasks.mkdir(parents=True)
+    (tasks / "Nightly.xml").write_text("<Task/>", encoding="utf-8")
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    live = {"schtasks", "autorunsc", "handle", "get_injectedthreadex", "winpmem"}
+    assert not any(j.tool in live for j in jobs)
+    assert not any(j.argv and j.argv[0] in live for j in jobs)
+    assert not any("/query" in " ".join(j.argv) for j in jobs if j.argv)
+
+
+def test_default_lane_leaves_optional_tools_unscheduled(tmp_path: Path, monkeypatch):
+    """WO-TA trim: Chainsaw, both Zircolite jobs, RegRipper, USBDeview, KStrike."""
+    monkeypatch.delenv("NEXUS_LANE_OPT_IN", raising=False)
+    root = tmp_path / "C"
+    logs = root / "Windows" / "System32" / "winevt" / "Logs"
+    logs.mkdir(parents=True)
+    (logs / "Security.evtx").write_bytes(b"evtx")
+    (root / "Windows" / "System32" / "config").mkdir(parents=True)
+    (root / "Windows" / "System32" / "config" / "SYSTEM").write_bytes(b"hive")
+    sum_dir = root / "Windows" / "System32" / "LogFiles" / "SUM"
+    sum_dir.mkdir(parents=True)
+    (sum_dir / "Current.mdb").write_bytes(b"mdb")
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    pending = {j.tool for j in jobs if j.status == "PENDING"}
+    for name in ("chainsaw", "zircolite", "regripper", "usbdeview", "kstrike"):
+        assert name not in pending
+    assert "suzaku" not in pending
+
+
+def test_usbdeview_returns_when_opted_in(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("NEXUS_LANE_OPT_IN", "usbdeview")
+    monkeypatch.setattr(
+        "nexus.langgraph.tool_lane._windows_tool_available",
+        lambda key: key == "usbdeview",
+    )
+    root = tmp_path / "C"
+    (root / "Windows" / "System32" / "config").mkdir(parents=True)
+    (root / "Windows" / "System32" / "config" / "SYSTEM").write_bytes(b"hive")
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    usb = [j for j in jobs if j.tool == "usbdeview" and j.status == "PENDING"]
+    assert usb
+    assert "/regfile" in usb[0].argv
+
+
+def test_case_pipeline_refuses_live_and_unbound_commands(tmp_path: Path):
+    """The real refusal used by the lane executor and the hunt wrapper."""
+    import asyncio
+
+    from nexus.langgraph.tool_lane import CasePipelineTool
+    from nexus.tools.windows import case_pipeline_refusal
+
+    root = tmp_path / "image"
+    root.mkdir()
+    evtx = root / "Security.evtx"
+    evtx.write_bytes(b"ElfFile")
+    assert case_pipeline_refusal(
+        "schtasks", ["schtasks", "/query", "/fo", "csv", "/v", "/nh"], [root],
+    )
+    assert case_pipeline_refusal("netstat", ["netstat", "-ano"], [root])
+    assert case_pipeline_refusal(
+        "evtxecmd", ["evtxecmd", "-f", str(evtx)], [root],
+    ) is None
+    assert case_pipeline_refusal("strings", ["strings", str(evtx)], [root]) is None
+    assert case_pipeline_refusal("evtxecmd", ["evtxecmd", "-f", r"C:\Windows\System32\config\SAM"], [root])
+
+    class Inner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def ainvoke(self, payload, config=None, **kwargs):
+            self.calls += 1
+            return {"success": True}
+
+    inner = Inner()
+    guarded = CasePipelineTool(inner, [root])
+    refused = asyncio.run(guarded.ainvoke({"command": ["netstat", "-ano"]}))
+    assert refused["success"] is False
+    assert inner.calls == 0
+    allowed = asyncio.run(guarded.ainvoke({"command": ["evtxecmd", "-f", str(evtx)]}))
+    assert allowed["success"] is True
+    assert inner.calls == 1
+
+
+def test_case_pipeline_refuses_host_tools_and_unbound_paths(tmp_path: Path):
+    """The executor refuses a job that reads the examiner host or names no evidence path."""
+    from nexus.tools.windows import _CASE_PIPELINE_EXCLUDED, case_pipeline_refusal
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    for key in ("schtasks", "autorunsc", "handle", "winpmem", "get_injectedthreadex"):
+        assert key in _CASE_PIPELINE_EXCLUDED
+        assert case_pipeline_refusal(key, [key, "/query"], [evidence])
+    unbound = case_pipeline_refusal(
+        "hayabusa", ["hayabusa", r"C:\Windows\System32\winevt"], [evidence],
+    )
+    assert unbound
+    assert case_pipeline_refusal(
+        "hayabusa", ["hayabusa", "-d", str(evidence)], [evidence],
+    ) is None
+    assert case_pipeline_refusal("hayabusa", ["hayabusa", "-h"], None) is None
+
+
 def test_n2_extras_gated_chrome_profile(tmp_path: Path):
     root = tmp_path / "C"
     (root / "Windows" / "System32").mkdir(parents=True)
