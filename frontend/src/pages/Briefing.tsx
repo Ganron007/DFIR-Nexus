@@ -41,6 +41,12 @@ export default function Briefing() {
   // Mode 2 run options — decided BEFORE the run.
   const [interpretRounds, setInterpretRounds] = useState(3);
   const [contextWindow, setContextWindow] = useState(1_000_000);
+  // WO-1C item 3 — context policy, recorded on the run. `independent` sees
+  // evidence/leads/digest only; `informed` also passes prior reports and DRAFT
+  // summaries as labelled examiner context (never as evidence).
+  const [contextPolicy, setContextPolicy] = useState<"independent" | "informed">(
+    "independent",
+  );
   // WP 4j.1: alert rows expand to show interpretation (meaning + what to check)
   const [openAlert, setOpenAlert] = useState<number | null>(null);
   // WP 4j.3: guided first-pass step completion (per-case, local)
@@ -203,6 +209,7 @@ export default function Briefing() {
         question: modeQuestion.trim(),
         interpret_rounds: interpretRounds,
         context_window: contextWindow,
+        context: contextPolicy,
       });
       setModeRunId(r.run_id);
       pollModeRun(r.run_id);
@@ -349,6 +356,19 @@ export default function Briefing() {
                 disabled={modeRunStatus === "running"}
                 className={styles.s12}
               />
+            </label>
+            <label className={styles.s11}
+              title="Context policy: independent = evidence, leads and digest only. informed = also passes prior reports and DRAFT summaries as labelled examiner context, never as evidence.">
+              context
+              <select
+                value={contextPolicy}
+                onChange={(e) => setContextPolicy(e.target.value as "independent" | "informed")}
+                disabled={modeRunStatus === "running"}
+                className={styles.s12}
+              >
+                <option value="independent">independent (evidence only)</option>
+                <option value="informed">informed (+ prior findings)</option>
+              </select>
             </label>
             <label className={styles.s11}
               title="Your model's max context window (tokens). The context allocator packs window × 0.7 so interpretation sees as much of the case as the model can hold.">

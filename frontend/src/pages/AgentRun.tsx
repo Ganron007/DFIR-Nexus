@@ -202,6 +202,14 @@ function MultiRoleAgentRun() {
   const [params, setParams] = useSearchParams();
   const [question, setQuestion] = useState("");
   const [maxOrders, setMaxOrders] = useState(6);
+  // WO-1C item 3: the context policy is decided BEFORE the run and recorded on
+  // it. `independent` (default) sees evidence/leads/digest only; `informed`
+  // passes prior reports and DRAFT summaries as labelled examiner context —
+  // never as evidence. D5 = C puts all three modes on one case, so a later run
+  // on that case can now read what an earlier mode concluded.
+  const [contextPolicy, setContextPolicy] = useState<"independent" | "informed">(
+    "independent",
+  );
   const [runId, setRunId] = useState<string>(params.get("run") || "");
   const [attachId, setAttachId] = useState(params.get("run") || "");
   const [plan, setPlan] = useState<WorkOrder[] | null>(null);
@@ -359,6 +367,7 @@ function MultiRoleAgentRun() {
       const result = await api.mode2RunStart({
         question: question.trim() || undefined,
         max_orders: maxOrders,
+        context: contextPolicy,
       });
       setEvents([]);
       setRunId(result.run_id);
@@ -481,6 +490,21 @@ function MultiRoleAgentRun() {
                 onChange={(e) => setMaxOrders(Math.max(1, Math.min(12, num(e.target.value) || 6)))}
                 className={styles.s7}
               />
+            </label>
+            <label className={styles.s3}>
+              Context policy
+              <select
+                data-testid="context-policy"
+                value={contextPolicy}
+                onChange={(e) =>
+                  setContextPolicy(e.target.value as "independent" | "informed")
+                }
+                className={styles.s7}
+                title="independent = evidence, leads and digest only. informed = also passes prior reports and DRAFT summaries as labelled examiner context, never as evidence."
+              >
+                <option value="independent">independent (evidence only)</option>
+                <option value="informed">informed (+ prior findings)</option>
+              </select>
             </label>
             <button className="btn btn-sm" onClick={handlePreview} disabled={!!busy}>
               {busy === "plan" ? "Planning…" : "Preview plan"}

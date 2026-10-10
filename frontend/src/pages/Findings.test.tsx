@@ -58,6 +58,23 @@ describe("Findings (migrated)", () => {
     expect(screen.getByText("LLM-drafted")).toBeInTheDocument();
   });
 
+  // WO-1C item 4/5 — one DRAFT per claim per case. The mode lineage is what
+  // says a claim was corroborated across modes, not merely restated once.
+  it("shows the mode lineage and the run that produced a claim", async () => {
+    withCase("CASE-FND0002");
+    vi.spyOn(api, "findings").mockResolvedValue({
+      findings: [{
+        ...FINDING,
+        provenance: { mode: 1, run_id: "M1-20261009T060000-a1b2c3", modes: [1, 2, 3] },
+      }],
+    } as never);
+    renderPage(<Findings />);
+    await waitFor(() => expect(screen.getByText("F-abc123")).toBeInTheDocument());
+    // The Modes column renders the merged lineage, so a claim corroborated by
+    // three modes is visible without opening the row.
+    expect(screen.getByText("1,2,3")).toBeInTheDocument();
+  });
+
   it("surfaces a failed findings read instead of an empty grid", async () => {
     withCase("CASE-FND0004");
     vi.spyOn(api, "findings").mockRejectedValue(new Error("case db locked"));

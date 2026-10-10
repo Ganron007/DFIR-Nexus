@@ -153,6 +153,57 @@ describe("Report (migrated)", () => {
     expect(rounds).toHaveTextContent("sha bbbbbbbbbbbb");
   });
 
+  // WO-1C item 5 — the cross-mode view replaces the sibling comparison. It is
+  // read-only and honest: before any report exists it says so, with the reason.
+  it("shows the intra-case cross-mode comparison when one exists", async () => {
+    withCase("CASE-RPT0007");
+    stubReads({
+      reportGrade: {
+        case_id: "CASE-RPT0007",
+        grade: { score: 82 },
+        intra_case: {
+          modes_present: ["Mode 1 (LLM)", "Mode 2 (multi-role)", "Mode 3 (multi-agent)"],
+          modes_missing: [],
+          verdict: "consistent",
+          scope: "intra-case",
+          claim_rows: 12,
+          entity_overlap: { "1-2": 1.0, "1-3": 0.5, "2-3": 0.5 },
+          shared_entities: ["ws01"],
+          counts: { shared: 4, contradictions: 0, row_contradictions: 0 },
+        },
+        reason: null,
+      },
+    });
+    renderPage(<Report />);
+    const summary = await screen.findByTestId("crossmode-summary");
+    expect(summary).toHaveTextContent("consistent");
+    expect(summary).toHaveTextContent("intra-case");
+    expect(summary).toHaveTextContent("12");
+    expect(screen.getByTestId("report-grade")).toHaveTextContent("82");
+    expect(document.body.textContent).toContain("1-2: 1");
+  });
+
+  it("says why there is no cross-mode comparison yet", async () => {
+    withCase("CASE-RPT0008");
+    stubReads({
+      reportGrade: {
+        case_id: "CASE-RPT0008",
+        grade: null,
+        intra_case: null,
+        reason: "not yet graded - generate the report first",
+      },
+    });
+    renderPage(<Report />);
+    expect(
+      await screen.findByText(/No cross-mode comparison yet/),
+    ).toBeInTheDocument();
+    // The reason comes from the endpoint, not from the page's own wording, so
+    // the examiner sees what the product actually reported.
+    expect(
+      await screen.findByText(/not yet graded - generate the report first/),
+    ).toBeInTheDocument();
+  });
+
   it("steers the report and reports the round it applied", async () => {
     withCase("CASE-RPT0006");
     stubReads();

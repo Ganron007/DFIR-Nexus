@@ -34,4 +34,17 @@ export const reportApi = {
         previous_report_sha256?: string;
       }>;
     }>("/report/rounds"),
+  /**
+   * WO-1C item 5 — the cross-mode view inside one case. The sibling comparison
+   * is gone (D5 = C: one case, three modes), so this is the single surface that
+   * says what the modes agreed and contradicted on, plus the report grade.
+   * Read-only and recomputable; `null` with a reason before a report exists.
+   */
+  reportGrade: () =>
+    request<{
+      case_id: string;
+      grade: Record<string, unknown> | null;
+      intra_case: Record<string, unknown> | null;
+      reason: string | null;
+    }>("/report/grade"),
 };

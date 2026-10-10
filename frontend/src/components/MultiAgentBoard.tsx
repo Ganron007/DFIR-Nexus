@@ -22,6 +22,7 @@ import {
   type Mode3RunStatus,
   type Mode3StageResult,
 } from "../api/client";
+import { Field, Select, Textarea } from "../ui/Field";
 
 const TERMINAL = new Set(["completed", "failed", "paused", "stopped"]);
 const MAX_EVENTS = 500;
@@ -55,6 +56,9 @@ function claimLine(claim: {
 
 export default function MultiAgentBoard() {
   const [question, setQuestion] = useState("");
+  const [contextPolicy, setContextPolicy] = useState<"independent" | "informed">(
+    "independent",
+  );
   const [runId, setRunId] = useState("");
   const [attachId, setAttachId] = useState("");
   const [status, setStatus] = useState<Mode3RunStatus | null>(null);
@@ -176,6 +180,7 @@ export default function MultiAgentBoard() {
     try {
       const r = await api.mode3Run({
         question: question.trim() || undefined,
+        context_policy: contextPolicy,
       });
       setRunId(r.run_id);
       setAttachId(r.run_id);
@@ -255,18 +260,35 @@ export default function MultiAgentBoard() {
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Examiner objective (blank uses the case intake question)"
-            rows={2}
-            style={{
-              width: "100%", background: "var(--bg-tertiary)",
-              color: "var(--text-primary)", border: "1px solid var(--border)",
-              borderRadius: 6, padding: "8px 10px", fontSize: 12, resize: "vertical",
-            }}
-          />
+          <Field label="Examiner objective" hint="Blank uses the case intake question">
+            {({ id, describedBy }) => (
+              <Textarea
+                id={id}
+                aria-describedby={describedBy}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Examiner objective (blank uses the case intake question)"
+                rows={2}
+              />
+            )}
+          </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Field label="Context policy" hint="independent = evidence, leads and digest only. informed = also passes prior reports and DRAFT summaries as labelled examiner context, never as evidence.">
+              {({ id, describedBy }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  data-testid="context-policy"
+                  value={contextPolicy}
+                  onChange={(e) =>
+                    setContextPolicy(e.target.value as "independent" | "informed")
+                  }
+                >
+                  <option value="independent">independent (evidence only)</option>
+                  <option value="informed">informed (+ prior findings)</option>
+                </Select>
+              )}
+            </Field>
             <button className="btn btn-sm btn-primary" onClick={handleStart} disabled={!!busy}>
               {busy === "run" ? "Spawning…" : "Start multi-agent run"}
             </button>

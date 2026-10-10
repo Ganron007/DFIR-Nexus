@@ -83,6 +83,26 @@ export function useReportRounds(caseId: string | null | undefined) {
   });
 }
 
+/**
+ * WO-1C item 5 — the cross-mode view within one case. Read-only and
+ * recomputable: it reads the persisted artefacts when they exist and rebuilds
+ * them otherwise, so it is honest before any report has been generated.
+ */
+export function useReportGrade(caseId: string | null | undefined) {
+  return useQuery<{
+    case_id: string;
+    grade: Record<string, unknown> | null;
+    intra_case: Record<string, unknown> | null;
+    reason: string | null;
+  }>({
+    queryKey: caseKey(caseId, "report-grade"),
+    enabled: Boolean(caseId),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: () => api.reportGrade(),
+  });
+}
+
 /** Compile the official report, then refresh the view it produced. */
 export function useGenerateReport(caseId: string | null | undefined) {
   const queryClient = useQueryClient();

@@ -74,6 +74,20 @@ const COLUMNS: DataGridColumn<Finding>[] = [
     width: 100,
   },
   {
+    // WO-1C item 4 — one DRAFT per claim per case, so the lineage says which
+    // runs produced it. A claim corroborated by three modes is not the same
+    // object as a claim one mode produced once.
+    id: "modes",
+    header: "Modes",
+    accessorFn: (row) => {
+      const modes = row.provenance?.modes;
+      if (Array.isArray(modes) && modes.length) return modes.slice().sort().join(",");
+      return row.provenance?.mode ? String(row.provenance.mode) : "";
+    },
+    filterable: true,
+    width: 100,
+  },
+  {
     id: "audit",
     header: "Audit refs",
     accessorFn: (row) => String(row.audit_ids?.length ?? 0),
@@ -117,6 +131,20 @@ function FindingDetail({ finding }: { finding: Finding }) {
         items={[
           { label: "Finding id", value: finding.id, mono: true },
           { label: "Audit references", value: String(finding.audit_ids?.length ?? 0) },
+          // WO-1C item 4 — the producing run and the merged mode lineage. One
+          // DRAFT per claim per case; a run that repeats a claim already staged
+          // is recorded here as lineage, not as a second finding.
+          ...(finding.provenance?.run_id
+            ? [{ label: "Run", value: finding.provenance.run_id, mono: true }]
+            : []),
+          ...(Array.isArray(finding.provenance?.modes) && finding.provenance.modes.length
+            ? [
+                {
+                  label: "Modes",
+                  value: finding.provenance.modes.slice().sort().join(" · "),
+                },
+              ]
+            : []),
         ]}
       />
 

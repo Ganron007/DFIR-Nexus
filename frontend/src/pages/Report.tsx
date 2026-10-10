@@ -27,6 +27,7 @@ import {
   useApprovedFindings,
   useFindingsSummary,
   useGenerateReport,
+  useReportGrade,
   useReportRounds,
   useReportView,
   useSteerReport,
@@ -64,6 +65,9 @@ export default function Report() {
   const summaryQuery = useFindingsSummary(activeCase);
   const viewQuery = useReportView(activeCase);
   const roundsQuery = useReportRounds(activeCase);
+  // WO-1C item 5 — the intra-case cross-mode comparison replaces the sibling
+  // view (D5 = C: one case, three modes).
+  const gradeQuery = useReportGrade(activeCase);
   const generate = useGenerateReport(activeCase);
   const steer = useSteerReport(activeCase);
 
@@ -83,6 +87,10 @@ export default function Report() {
   const summary: FindingsSummary | null = summaryQuery.data ?? null;
   const officialMarkdown = viewQuery.data?.markdown ?? "";
   const rounds = roundsQuery.data?.rounds ?? [];
+  // Read-only, recomputable; null with a reason before a report exists.
+  const grade = gradeQuery.data?.grade ?? null;
+  const intraCase = gradeQuery.data?.intra_case ?? null;
+  const gradeReason = gradeQuery.data?.reason ?? null;
 
   const caseStatus = activeCase ? caseSummaries[activeCase]?.status || "" : "";
   const isSealed = ["sealed", "closed", "archived"].includes(caseStatus);
@@ -248,6 +256,7 @@ export default function Report() {
             label: `Official document ${officialMarkdown ? "(ready)" : "(not generated)"}`,
           },
           { value: "findings", label: `Approved findings (${findings.length})` },
+          { value: "crossmode", label: "Cross-mode" },
         ]}
       >
         <TabPanel value="official">
@@ -430,6 +439,77 @@ export default function Report() {
             )}
           </div>
         </Panel>
+        </TabPanel>
+        <TabPanel value="crossmode">
+          <Panel title="Cross-mode comparison within this case">
+            <div className={styles.body}>
+              {intraCase ? (
+                <>
+                  <p className={styles.findingMeta} data-testid="crossmode-summary">
+                    Verdict{" "}
+                    <Badge
+                      tone={
+                        String(intraCase.verdict) === "consistent"
+                          ? "l1-proven"
+                          : String(intraCase.verdict) === "contradictory"
+                            ? "l1-contradicted"
+                            : "l1-unverifiable"
+                      }
+                    >
+                      {String(intraCase.verdict || "unknown")}
+                    </Badge>{" "}
+                    · scope {String(intraCase.scope || "intra-case")} · claims{" "}
+                    {String(intraCase.claim_rows ?? 0)}
+                  </p>
+                  <p className={styles.findingMeta}>
+                    Modes present:{" "}
+                    {((intraCase.modes_present as string[]) || []).join(", ") || "none"} ·
+                    missing: {((intraCase.modes_missing as string[]) || []).join(", ") || "none"}
+                  </p>
+                  {intraCase.entity_overlap ? (
+                    <p className={styles.findingMeta}>
+                      Entity overlap:{" "}
+                      {Object.entries(
+                        (intraCase.entity_overlap as Record<string, number>) || {},
+                      )
+                        .map(([pair, value]) => `${pair}: ${value}`)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                  {((intraCase.shared_entities as string[]) || []).length ? (
+                    <p className={styles.findingMeta}>
+                      Shared entities:{" "}
+                      {((intraCase.shared_entities as string[]) || []).join(", ")}
+                    </p>
+                  ) : null}
+                  <p className={styles.dim}>
+                    Contradictions:{" "}
+                    {Number(
+                      ((intraCase.counts as Record<string, number>) || {}).contradictions ?? 0,
+                    )}{" "}
+                    · contradicted by cited rows:{" "}
+                    {Number(
+                      ((intraCase.counts as Record<string, number>) || {})
+                        .row_contradictions ?? 0,
+                    )}
+                  </p>
+                </>
+              ) : (
+                <EmptyState
+                  title="No cross-mode comparison yet"
+                  hint={
+                    gradeReason ||
+                    "Generate the official report to compute the intra-case comparison across Modes 1, 2 and 3."
+                  }
+                />
+              )}
+              {grade ? (
+                <p className={styles.findingMeta} data-testid="report-grade">
+                  Report grade: {String((grade as Record<string, unknown>).score ?? "—")}
+                </p>
+              ) : null}
+            </div>
+          </Panel>
         </TabPanel>
       </Tabs>
 

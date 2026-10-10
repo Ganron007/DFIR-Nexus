@@ -247,4 +247,58 @@ describe("AgentRun (Mode 3)", () => {
     expect(await screen.findByText(/Investigate hayabusa/)).toBeTruthy();
     expect(await screen.findByText(/wo-1/)).toBeTruthy();
   });
+
+  // WO-1C item 5 — the context policy is chosen before the run and is sent with
+  // it. `independent` is the default: a mode's verdict is only worth comparing
+  // if it reached its own conclusion from the evidence.
+  it("sends the chosen context policy with a Mode 2 run", async () => {
+    const { api } = await import("../api/client");
+    render(
+      <MemoryRouter>
+        <AgentRun />
+      </MemoryRouter>,
+    );
+    const picker = await screen.findByTestId("context-policy");
+    expect((picker as HTMLSelectElement).value).toBe("independent");
+    await act(async () => {
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+      (picker as HTMLSelectElement).value = "informed";
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const start = screen.getByRole("button", { name: /Approve plan & run/ });
+    await act(async () => {
+      start.click();
+    });
+    await vi.waitFor(() => {
+      expect(api.mode2RunStart).toHaveBeenCalledWith(
+        expect.objectContaining({ context: "informed" }),
+      );
+    });
+  });
+
+  it("sends the chosen context policy with a Mode 3 run", async () => {
+    caseModeState.value = "3";
+    const { api } = await import("../api/client");
+    render(
+      <MemoryRouter>
+        <AgentRun />
+      </MemoryRouter>,
+    );
+    const picker = await screen.findByTestId("context-policy");
+    expect((picker as HTMLSelectElement).value).toBe("independent");
+    await act(async () => {
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+      (picker as HTMLSelectElement).value = "informed";
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const start = await screen.findByRole("button", { name: /Start multi-agent run/ });
+    await act(async () => {
+      start.click();
+    });
+    await vi.waitFor(() => {
+      expect(api.mode3Run).toHaveBeenCalledWith(
+        expect.objectContaining({ context_policy: "informed" }),
+      );
+    });
+  });
 });

@@ -30,7 +30,7 @@ export const runsApi = {
   ask: (question: string, limit?: number) =>
     post<AskResponse>("/mode1/ask", { question, limit }),
 
-  pipelineRun: (params: { mode: string; case_id?: string; question?: string; window?: string; host?: string; notes?: string; interpret_rounds?: number; context_window?: number }) =>
+  pipelineRun: (params: { mode: string; case_id?: string; question?: string; window?: string; host?: string; notes?: string; interpret_rounds?: number; context_window?: number; context?: "independent" | "informed" }) =>
     post<PipelineRunResponse>("/pipeline/run", params),
   pipelineStatus: (runId: string) =>
     request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),
@@ -85,7 +85,8 @@ export const runsApi = {
   // Mode 2 — Multi-role supervised agent run (M6) — same runtime/event stream as the CLI.
   mode2RunPlan: (params: { question?: string; max_orders?: number }) =>
     post<Mode2RunPlanResponse>("/mode2/run/plan", params),
-  mode2RunStart: (params: { question?: string; max_orders?: number; run_id?: string }) =>
+  // WO-1C item 3: the context policy is decided before the run and recorded on it.
+  mode2RunStart: (params: { question?: string; max_orders?: number; run_id?: string; context?: "independent" | "informed" }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
       "/mode2/run",
       params,
@@ -108,7 +109,7 @@ export const runsApi = {
   mode2RunStage: (params: { run_id: string }) =>
     post<Mode2StageResult>("/mode2/run/stage", params),
   // Mode 3 — Multi-agent concurrent board.
-  mode3Run: (params: { question?: string; run_id?: string }) =>
+  mode3Run: (params: { question?: string; run_id?: string; context_policy?: "independent" | "informed" }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
       "/mode3/run",
       params,

@@ -50,7 +50,15 @@ export interface Finding {
   approved_by?: string;
   approved_at?: string;
   examiner_selected?: boolean;
-  provenance?: { mode?: number; origin?: string; path?: string };
+  provenance?: {
+    mode?: number;
+    origin?: string;
+    path?: string;
+    /** WO-1C item 4 — the run that produced the claim (M1-…/M2-…/M3-…). */
+    run_id?: string;
+    /** WO-1C item 4 — one DRAFT per claim per case, merged across modes. */
+    modes?: number[];
+  };
   /** Mode 1 re-check of a model draft. Examiner drafts are "skipped". */
   verifier?: { verdict?: string; reason?: string; audit_ids?: string[] };
   created_at?: string;
