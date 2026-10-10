@@ -881,6 +881,14 @@ def stage_run_candidates(
             "status": "DRAFT",
             "source": run_mode,
             "run_id": run_id,
+            # WO-1C item 5 / D40: a DRAFT names the mode that produced it, in the same
+            # shape Mode 1 writes, so cross-mode lineage and the UI can read it.
+            "provenance": {
+                "mode": 3 if run_mode == "mode3" else 2,
+                "origin": "llm",
+                "path": "multi-agent" if run_mode == "mode3" else "multi-role",
+                "run_id": run_id,
+            },
             "input_call_ids": audit_ids,
             "mitre_ids": mitre,
             "itm_stage": str(candidate.get("itm_stage") or ""),

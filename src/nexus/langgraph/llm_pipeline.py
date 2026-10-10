@@ -1668,6 +1668,30 @@ INTERPRET_TOOL_NAMES = (
 )
 
 
+def make_interpret_executor(case_dir: Path | None, tools: dict):
+    """The evidence executor the Mode 1 interpret loop calls (WO-R2F item 1, D41).
+
+    The run's ES calls read the run's own case through the bound backbone. The MCP
+    tool gate follows the examiner's active case, so routing through it refused
+    every call whenever another case was active (36e real-path test: "no active
+    case"). Other tools keep the MCP path.
+    """
+    async def _execute_tool(name: str, payload: dict) -> dict:
+        if name in ("es_search", "es_aggregate", "es_sample") and case_dir is not None:
+            from nexus.audit import AuditWriter
+            from nexus.langgraph.backbone import backbone_call
+
+            bound_audit = AuditWriter("nexus", audit_dir=Path(case_dir) / "audit")
+            kwargs = {k: v for k, v in payload.items() if k != "case_id"}
+            return backbone_call(name, audit=bound_audit, case_dir=Path(case_dir), **kwargs)
+        tool = tools.get(name)
+        if tool is None:
+            return {"error": f"tool {name} not available"}
+        return _parse_tool_result(await call_tool(tool, payload, label=name))
+
+    return _execute_tool
+
+
 async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     """Coverage/interpret: LLM + RAG + TI on N4 query-pack hits."""
     try:
@@ -1842,14 +1866,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         }
 
     if case_dir_for_ctx is not None and digest:
-        async def _execute_tool(name: str, payload: dict) -> dict:
-            tool = tools.get(name)
-            if tool is None:
-                return {"error": f"tool {name} not available"}
-            return _parse_tool_result(
-                await call_tool(tool, payload, label=name)
-            )
-
         try:
             from nexus.langgraph.interpret_loop import run_interpret_loop
 
@@ -1873,7 +1889,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 digest=digest,
                 digest_md=digest_md,
                 sections=sections,
-                execute=_execute_tool,
+                execute=make_interpret_executor(case_dir_for_ctx, tools),
                 # WO-1C item 2: the interpret loop is an analysis run with its
                 # own id, like Modes 2 and 3, so its queries, round artifacts
                 # and family ledger are attributed to it.

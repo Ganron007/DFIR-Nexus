@@ -270,6 +270,9 @@ def test_stage_run_candidates_lineage_and_filters(tmp_path):
     assert staged[0]["status"] == "DRAFT"
     assert staged[0]["input_call_ids"] == [audit_id]
     assert staged[0].get("source") == "mode2"
+    # WO-1C item 5 / D40: the DRAFT names the mode that produced it.
+    assert staged[0]["provenance"] == {
+        "mode": 2, "origin": "llm", "path": "multi-role", "run_id": "M2-stage"}
     events = m3.read_run_events(case, "M2-stage")
     assert any(e["event_type"] == "finding.staged" for e in events)
 
