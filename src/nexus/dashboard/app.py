@@ -250,9 +250,11 @@ def _busy_run_error(case_dir: Path, own_run_id: str = ""):
     answers 409 with the generic body instead of the run record the caller's
     own richer, thread-aware check produces.
 
-    Read from the run records themselves (``running`` status), not from a lock
+    Read from the run records themselves (a live status), not from a lock
     file, so a crashed process cannot wedge a case forever: a record left
-    ``running`` is reaped at server startup.
+    live is reaped at server startup. The Mode 2/3 half of the list comes
+    from ``nexus.modes.multi_role.busy_runs`` — one source of truth, so the
+    CLI and this handler cannot disagree about whether a case is free.
     """
     running: list[dict[str, str]] = []
 
@@ -260,20 +262,20 @@ def _busy_run_error(case_dir: Path, own_run_id: str = ""):
         running.append({"run_id": run_id, "status": "running", "source": sub})
 
     # Mode 2 / Mode 3 — one record per run.
-    for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
-        d = case_dir / "analysis" / sub
-        if not d.is_dir():
-            continue
-        for rec in sorted(d.glob(f"{prefix}*.json")):
-            try:
-                loaded = json.loads(rec.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if isinstance(loaded, dict) and loaded.get("status") == "running":
-                rid = str(loaded.get("run_id") or rec.stem)
-                if own_run_id and rid == own_run_id:
-                    continue
-                _note(rid, sub)
+    #
+    # WO-1C / 36f: ``planned`` is a LIVE state, not a terminal one. Mode 2's
+    # director writes ``planned`` as soon as the work orders exist and keeps
+    # it for the whole investigation — worker, verify and assess all run in
+    # that state (``multi_role.py`` sets it in ``director_node``). Checking
+    # only ``running`` made every in-flight Mode 2 run invisible, so a second
+    # ``nexus mode2 run`` started on the same case while the first was still
+    # working: two writers interleaving into one findings.json, which is the
+    # exact race this guard exists to stop. The guard must read the run's
+    # status vocabulary, not its own idea of it.
+    from nexus.modes.multi_role import busy_runs
+
+    for entry in busy_runs(case_dir, own_run_id=own_run_id):
+        _note(entry["run_id"], entry["source"])
 
     # Mode 1 — the interpret / coverage / design pipeline run.
     runs_dir = case_dir / "analysis" / "pipeline_runs"

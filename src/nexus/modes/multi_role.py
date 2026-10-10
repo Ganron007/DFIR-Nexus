@@ -1719,6 +1719,57 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
         log.warning("run state persist failed: %s", exc)
 
 
+#: Statuses in which a Mode 2/3 run is still writing to the case. ``planned``
+#: belongs here: the director node writes it as soon as the work orders exist
+#: and it stays for the whole investigation, so a guard that only accepts
+#: ``running`` is blind to every in-flight run.
+MODE_LIVE_STATUSES = ("running", "planned")
+
+
+def busy_runs(case_dir: Path | str, own_run_id: str = "") -> list[dict[str, str]]:
+    """Every Mode 2/3 run still writing to this case, as plain dicts.
+
+    Transport-agnostic on purpose. The dashboard's 409 body and the CLI's
+    refusal must answer from the same list, or the two surfaces disagree
+    about whether a case is free — which is how a second ``nexus mode2 run``
+    got to start while the first was still investigating (36f, reproduced on
+    the real path: a live run in ``planned`` returned no busy runs at all).
+
+    Read from the run records themselves rather than a lock file so a crashed
+    process cannot wedge a case forever; a record left live is reaped on the
+    next start.
+    """
+    case_dir = Path(case_dir)
+    running: list[dict[str, str]] = []
+    for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
+        d = case_dir / "analysis" / sub
+        if not d.is_dir():
+            continue
+        for rec in sorted(d.glob(f"{prefix}*.json")):
+            try:
+                loaded = json.loads(rec.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(loaded, dict):
+                continue
+            if str(loaded.get("status") or "") not in MODE_LIVE_STATUSES:
+                continue
+            rid = str(loaded.get("run_id") or rec.stem)
+            if own_run_id and rid == own_run_id:
+                continue
+            running.append({"run_id": rid, "status": "running", "source": sub})
+    return running
+
+
+def busy_message(busy: list[dict[str, str]]) -> str:
+    """The one refusal text both surfaces print."""
+    ids = ", ".join(str(b.get("run_id") or "") for b in busy) or "unknown"
+    return (
+        "another analysis run is already running on this case "
+        f"({ids}) — wait for it to finish, or stop it, before starting another."
+    )
+
+
 def run_mode2(
     case_dir: Path,
     question: str,

@@ -46,11 +46,17 @@ def run(
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.modes.multi_agent import run_mode3
+    from nexus.modes.multi_role import busy_message, busy_runs
 
     case_dir = _case_dir(case)
     gated = lane_gate_blocked(case_dir)
     if gated:
         typer.echo(gate_message(gated))
+        raise typer.Exit(1)
+    # 36f: one analysis run per case, CLI included — see mode2_cmd.run.
+    busy = busy_runs(case_dir)
+    if busy:
+        typer.echo(busy_message(busy), err=True)
         raise typer.Exit(1)
     from nexus.case.sift_preflight import sift_preflight_message
 

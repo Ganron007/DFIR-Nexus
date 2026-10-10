@@ -111,12 +111,19 @@ def run(
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
     from nexus.analysis.context_policy import normalize_policy
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
-    from nexus.modes.multi_role import run_mode2
+    from nexus.modes.multi_role import busy_message, busy_runs, run_mode2
 
     case_dir = _case_dir(case)
     gated = lane_gate_blocked(case_dir)
     if gated:
         typer.echo(gate_message(gated))
+        raise typer.Exit(1)
+    # 36f: the CLI is a second writer surface, so it takes the same busy guard
+    # the portal takes. Without it a second `nexus mode2 run` starts while the
+    # first is still investigating and both interleave into findings.json.
+    busy = busy_runs(case_dir)
+    if busy:
+        typer.echo(busy_message(busy), err=True)
         raise typer.Exit(1)
     from nexus.case.sift_preflight import sift_preflight_message
 

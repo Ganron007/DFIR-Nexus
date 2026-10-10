@@ -120,3 +120,111 @@ def test_busy_guard_ignores_a_corrupt_run_record(tmp_path: Path):
     d.mkdir(parents=True)
     (d / "M2-bad.json").write_text("{not json", encoding="utf-8")
     assert _busy_run_error(tmp_path) is None
+
+
+def test_busy_guard_sees_a_planned_mode2_run(tmp_path: Path):
+    """The 36f defect, reproduced on the real path.
+
+    Mode 2's ``director_node`` writes ``status="planned"`` the moment the work
+    orders exist and keeps it for the whole investigation — worker, verify and
+    assess all run in that state. The guard only accepted ``"running"``, so an
+    in-flight run was invisible and a second ``nexus mode2 run`` started on the
+    same case. Measured live on CASE-WO1C-REALPATH: the guard returned ``None``
+    while that run was on work order 8 of 7.
+    """
+    from nexus.dashboard.app import _busy_run_error
+
+    _write_run(tmp_path, "mode2_runs", "M2-abc", "planned")
+    err = _busy_run_error(tmp_path)
+    assert err is not None, (
+        "a Mode 2 run in 'planned' state did not block a second run — this is "
+        "the duplicate-run defect"
+    )
+    assert err.status_code == 409
+
+
+def test_busy_guard_sees_a_planned_mode3_run(tmp_path: Path):
+    """Mode 3's live state is also ``planned``; same hole, same fix."""
+    from nexus.dashboard.app import _busy_run_error
+
+    _write_run(tmp_path, "mode3_runs", "M3-abc", "planned")
+    err = _busy_run_error(tmp_path)
+    assert err is not None, "a planned Mode 3 run did not block a second run"
+    assert err.status_code == 409
+
+
+def test_busy_runs_reports_the_blocking_run_id(tmp_path: Path):
+    """The refusal must NAME the run, so the operator can find and stop it."""
+    from nexus.modes.multi_role import busy_message, busy_runs
+
+    _write_run(tmp_path, "mode2_runs", "M2-live", "planned")
+    busy = busy_runs(tmp_path)
+    assert [b["run_id"] for b in busy] == ["M2-live"], busy
+    assert "M2-live" in busy_message(busy)
+
+
+def test_busy_runs_own_run_is_not_a_competitor(tmp_path: Path):
+    """A caller resuming its own run must not be refused by itself."""
+    from nexus.modes.multi_role import busy_runs
+
+    _write_run(tmp_path, "mode2_runs", "M2-own", "planned")
+    assert busy_runs(tmp_path, own_run_id="M2-own") == []
+
+
+def test_busy_runs_ignores_terminal_statuses(tmp_path: Path):
+    """planned/running are live; stopped/completed/failed/paused are not."""
+    from nexus.modes.multi_role import busy_runs
+
+    for status in ("completed", "failed", "stopped", "paused"):
+        _write_run(tmp_path, "mode2_runs", f"M2-{status}", status)
+    assert busy_runs(tmp_path) == []
+
+
+def _write_case(case_dir: Path, name: str) -> None:
+    """Make ``case_dir`` a resolvable case (mirrors test_wo1c_cli_parity)."""
+    (case_dir / "analysis").mkdir(parents=True, exist_ok=True)
+    (case_dir / "CASE.yaml").write_text(f"case_id: {name}\n", encoding="utf-8")
+
+
+def test_mode2_cli_refuses_while_a_run_is_live(tmp_path: Path, monkeypatch):
+    """The CLI is a writer surface too — it must take the same guard.
+
+    Reproduced the real defect: ``mode2_cmd.run`` called ``lane_gate_blocked``
+    and ``sift_preflight_message`` but never the busy check, so a second CLI
+    run started on a case the portal had already refused.
+    """
+    from typer.testing import CliRunner
+
+    from nexus.cli import main as cli_main
+    from nexus.modes.multi_role import busy_runs
+
+    case_dir = tmp_path / "CASE-BUSY2"
+    _write_case(case_dir, "CASE-BUSY2")
+    _write_run(case_dir, "mode2_runs", "M2-live", "planned")
+    monkeypatch.setattr("nexus.cli.mode2_cmd._case_dir", lambda _c: case_dir)
+    monkeypatch.setattr("nexus.langgraph.lane_gate.lane_gate_blocked",
+                        lambda _c: None)
+    result = CliRunner().invoke(cli_main.app,
+                                ["mode2", "run", "--case", "CASE-BUSY2"])
+    assert result.exit_code == 1, result.output
+    assert "already running" in result.output, result.output
+    # And the guard agrees about which run blocks.
+    assert [b["run_id"] for b in busy_runs(case_dir)] == ["M2-live"]
+
+
+def test_mode3_cli_refuses_while_a_run_is_live(tmp_path: Path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from nexus.cli import main as cli_main
+
+    case_dir = tmp_path / "CASE-BUSY3"
+    _write_case(case_dir, "CASE-BUSY3")
+    _write_run(case_dir, "mode3_runs", "M3-live", "planned")
+    monkeypatch.setattr("nexus.cli.mode3_cmd._case_dir", lambda _c: case_dir)
+    monkeypatch.setattr("nexus.langgraph.lane_gate.lane_gate_blocked",
+                        lambda _c: None)
+    result = CliRunner().invoke(cli_main.app,
+                                ["mode3", "run", "--case", "CASE-BUSY3"])
+    assert result.exit_code == 1, result.output
+    assert "already running" in result.output, result.output
+
