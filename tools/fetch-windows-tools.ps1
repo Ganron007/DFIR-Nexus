@@ -400,7 +400,14 @@ try {
 $result | Out-File -Encoding utf8 $Out
 $result
 '@
-    Set-Content -Path (Join-Path $dbDest "run-deepblue.ps1") -Value $wrapper -Encoding UTF8
+    # run-deepblue.ps1 is TRACKED SOURCE (see .gitignore's negations), not a
+    # fetched artifact. Writing it here destroyed the wrapper's documented
+    # reasoning about DeepBlueCLI's own behaviour, so the fetch only creates it
+    # when it is absent and never rewrites the copy in git.
+    $wrapperPath = Join-Path $dbDest "run-deepblue.ps1"
+    if (-not (Test-Path $wrapperPath)) {
+        Set-Content -Path $wrapperPath -Value $wrapper -Encoding UTF8
+    }
     Add-Report "deepbluecli" "FETCHED" "master archive + run-deepblue.ps1 wrapper"
     $script:Versions += "deepbluecli`tmaster`thttps://github.com/sans-blue-team/DeepBlueCLI"
 } catch { Add-Report "deepbluecli" "FAILED" "$_" }

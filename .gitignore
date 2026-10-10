@@ -148,6 +148,11 @@ Tools/windows/extra/*
 !Tools/windows/extra/deepbluecli/
 Tools/windows/extra/deepbluecli/*
 !Tools/windows/extra/deepbluecli/run-deepblue.ps1
+# WO-TA item 6: the MemProcFS wrapper is source for the same reason - it is the
+# lane's integration with a fetched binary, not a fetched artifact.
+!Tools/windows/extra/memprocfs/
+Tools/windows/extra/memprocfs/*
+!Tools/windows/extra/memprocfs/run-memprocfs.py
 
 # ── Scratch ─────────────────────────────────────────────────────────
 .session_state.md
