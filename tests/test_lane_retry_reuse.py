@@ -19,6 +19,9 @@ def _ledger_row(tool: str, status: str, output: str = "") -> dict:
         "host": "windows", "tool": tool, "purpose": f"{tool} purpose",
         "argv": [tool], "status": status, "reason": "" if status == "OK" else "failed",
         "output_saved_to": output, "output_files": [], "audit_id": f"aud-{tool}",
+        # An OK row records the version of the binary that wrote it (WO-TA item 8).
+        "lineage": {"tool": tool, "file_version": "1.2.3", "version_source": "pe-version-resource"}
+        if status == "OK" else {},
     }
 
 
@@ -61,6 +64,33 @@ def test_an_ok_row_whose_output_has_gone_is_run_again(tmp_path, monkeypatch):
 
     assert apply_prior_ok([job], case_dir, extractions=extractions) == 0
     assert job.status == "PENDING"
+
+
+def test_an_ok_row_without_a_declared_version_is_run_again(tmp_path, monkeypatch):
+    """Reproduced on SC1 (2026-10-10): reuse copied the audit id and output path but not
+    lineage, so 420 reused rows reached the committed run with no tool version. A row
+    must carry what a fresh row carries, so one with no version runs again."""
+    monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
+    output = tmp_path / "evtxecmd_ok.csv"
+    output.write_text("x", encoding="utf-8")
+    row = _ledger_row("evtxecmd", "OK", str(output))
+    row["lineage"] = {}
+    case_dir, extractions = _run_case(tmp_path, [row], [])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
+
+    assert apply_prior_ok([job], case_dir, extractions=extractions) == 0
+    assert job.status == "PENDING"
+
+
+def test_a_reused_row_carries_its_lineage(tmp_path, monkeypatch):
+    monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
+    output = tmp_path / "evtxecmd_ok.csv"
+    output.write_text("x", encoding="utf-8")
+    case_dir, extractions = _run_case(tmp_path, [_ledger_row("evtxecmd", "OK", str(output))], [])
+    job = ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"], purpose="evtxecmd purpose")
+
+    assert apply_prior_ok([job], case_dir, extractions=extractions) == 1
+    assert job.lineage["file_version"] == "1.2.3"
 
 
 def test_the_retry_finds_the_run_ledger_and_the_run_folder(tmp_path):

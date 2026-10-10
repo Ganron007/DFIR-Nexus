@@ -70,6 +70,13 @@ class ToolJob:
     # version used returns 0 for every remote job, so the check never fired
     # where it was needed (found during the D12 lane re-run).
     result: dict = field(default_factory=dict)
+    # WO-TA item 10: where a job's time goes. queued_s is the wait from the lane's start to this
+    # job's start; duration_s is its wall time from start to ledger row; tool_elapsed_s is the
+    # tool's own elapsed time when it reports one. duration_s - tool_elapsed_s is the lane's
+    # overhead for the job (output persist, hashing, promotion, ledger).
+    queued_s: float = 0.0
+    duration_s: float = 0.0
+    tool_elapsed_s: float = 0.0
 
 
 class CasePipelineTool:
@@ -414,20 +421,7 @@ def schedule_evtx_parsers(
             f"Parse all EVTX {label} ({n} logs)",
             1800,
         )
-        # DeepBlueCLI: a PowerShell script, which the executor runs through
-        # PowerShell with `-NoProfile -NonInteractive -ExecutionPolicy Bypass
-        # -File` because the script path is catalogue-resolved - no `-Command`,
-        # no metacharacters. Its own wrapper takes -Evtx and -Out, both
-        # mandatory (read from its param block, not guessed).
-        db_out = extractions / "deepbluecli" / label if many else extractions / "deepbluecli"
-        db_out.mkdir(parents=True, exist_ok=True)
-        add(
-            "deepbluecli",
-            ["run-deepblue.ps1", "-Evtx", str(evtx_dir),
-             "-Out", str(db_out / "deepblue.json")],
-            f"DeepBlueCLI detections {label} ({n} logs)",
-            1800,
-        )
+        # DeepBlueCLI runs once per channel below (WO-TA item 2), not per directory here.
         # Zircolite against its own bundled Windows ruleset - it ships
         # rules/rules_windows_generic_high.json, so no external rule path is
         # needed. The ES-Mapping table lists it as its own EVTX pair.
@@ -1838,6 +1832,20 @@ def plan_windows_triage(
                     f"NTUSER.DAT ({user.name}, {user_batch.name})",
                     600,
                 )
+            # WO-TA item 3: each user's UsrClass.dat takes the same batch as NTUSER.DAT.
+            usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
+            if usrclass.is_file():
+                uc_dir = d / "user" / user.name / "usrclass"
+                uc_dir.mkdir(parents=True, exist_ok=True)
+                add(
+                    "recmd",
+                    [
+                        "recmd", "-f", str(usrclass),
+                        "--bn", str(user_batch), "--nl", "true", "--csv", str(uc_dir),
+                    ],
+                    f"UsrClass.dat ({user.name}, {user_batch.name})",
+                    600,
+                )
     elif not batch:
         skip("recmd", "RECmd .reb batch not found under tools/windows")
     else:
@@ -2410,13 +2418,14 @@ def _plan_gap_parsers(
     else:
         skip("zircolite", "zircolite not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
-    # DeepBlueCLI — EVTX attack pattern detection (per .evtx file via run-deepblue.ps1)
+    # DeepBlueCLI: one job per channel its own switch handles (WO-TA item 2). Its wrapper
+    # reads one file at a time, so each channel file is a job. Before this, every .evtx on
+    # the volume ran (361 jobs, 64% of the tool time), and most of them are channels
+    # DeepBlueCLI cannot process.
     if _windows_tool_available("deepbluecli"):
         evtx_files: list[Path] = []
         if root.is_dir():
-            # No cap: a silent skip past the 25th file is a coverage gap the
-            # ledger would not carry. Sorted for a deterministic job order.
-            evtx_files = sorted(root.rglob("*.evtx"))
+            evtx_files = _deepblue_channel_files(root)
         if evtx_files:
             d = extractions / "deepbluecli"
             d.mkdir(parents=True, exist_ok=True)
@@ -2434,7 +2443,7 @@ def _plan_gap_parsers(
                     timeout_for_bytes(nbytes, base=300, per_mb=30, cap=3600),
                 )
         else:
-            skip("deepbluecli", "no .evtx files found for DeepBlueCLI")
+            skip("deepbluecli", "no EVTX for a channel DeepBlueCLI handles (" + ", ".join(DEEPBLUE_LOGNAMES) + ")")
     else:
         skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
@@ -2484,19 +2493,6 @@ def _repo_root() -> Path:
     # .../src/nexus/langgraph/tool_lane.py → repo root
     return Path(__file__).resolve().parents[3]
 
-
-
-def _find_recmd_user_batch() -> Path | None:
-    root = _repo_root()
-    for rel in (
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/UserActivity.reb",
-        "tools/windows/kape/Modules/bin/RECmd/BatchExamples/UserActivity.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
-    ):
-        p = root / rel
-        if p.is_file():
-            return p
-    return None
 
 
 def _job_reuse_key(host: str, tool: str, purpose: str) -> tuple[str, str, str]:
@@ -2559,13 +2555,66 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None
         saved = str(old.get("output_saved_to") or "")
         if saved and _is_local_path(saved) and not Path(saved).exists():
             continue
+        # A reused row must carry what a fresh row carries: the tool's version (WO-TA
+        # item 8). Rows written before lineage was recorded have none, so they run again
+        # rather than reach the committed run without a version (the 2026-10-10 SC1 run
+        # reused 420 rows with empty lineage, and most of the version failures came from them).
+        lineage = dict(old.get("lineage") or {}) if isinstance(old.get("lineage"), dict) else {}
+        if not lineage_version(lineage):
+            continue
         job.status = "OK"
+        job.lineage = lineage
         job.audit_id = str(old.get("audit_id") or "")
         job.output_saved_to = str(old.get("output_saved_to") or "")
         job.output_files = list(old.get("output_files") or [])
         job.reason = "reused prior OK (from this run's ledger)"
         reused += 1
     return reused
+
+
+def _tool_elapsed(result: Any) -> float:
+    """The tool's own elapsed seconds, when its response reports them (WO-TA item 10)."""
+    try:
+        return round(float((result or {}).get("elapsed_seconds") or 0.0), 1)
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
+def lineage_version(lineage: dict) -> str:
+    """The version a lineage record declares, or "" when it declares none."""
+    for key in ("version", "file_version", "product_version"):
+        text = str((lineage or {}).get(key) or "").strip()
+        if text:
+            return text
+    return ""
+
+
+#: The LogName values DeepBlueCLI's own switch handles (DeepBlue.ps1, the
+#: ``switch ($event.LogName)`` block, lines 672-680). Any other channel makes it exit with
+#: "Logic error 3", so the lane never offers it one.
+DEEPBLUE_LOGNAMES = (
+    "Security",
+    "System",
+    "Application",
+    "Microsoft-Windows-AppLocker/EXE and DLL",
+    "Microsoft-Windows-PowerShell/Operational",
+    "Microsoft-Windows-Sysmon/Operational",
+    "Microsoft-Windows-WMI-Activity/Operational",
+)
+
+
+def _deepblue_channel_files(root: Path) -> list[Path]:
+    """The EVTX files under ``root`` whose channel DeepBlueCLI handles, in a stable order.
+
+    A channel's file is named after it with ``/`` written as ``%4`` (for example
+    ``Microsoft-Windows-PowerShell%4Operational.evtx``).
+    """
+    wanted = {name.lower() for name in DEEPBLUE_LOGNAMES}
+    out: list[Path] = []
+    for evtx in sorted(root.rglob("*.evtx")):
+        if evtx.stem.replace("%4", "/").lower() in wanted:
+            out.append(evtx)
+    return out
 
 
 async def _align_remote_active_case(activate_tool, case_id: str) -> str:
@@ -3526,6 +3575,9 @@ async def run_tool_lane(
         with contextlib.suppress(OSError):
             (stale_dir / "_tool_lane_progress.json").unlink(missing_ok=True)
 
+    import time as _lane_time
+
+    lane_t0 = _lane_time.time()  # WO-TA item 10: the origin for each job's queued_s
     durations: dict[tuple[str, str, str], float] = {}
 
     def _command_text(argv: list[str] | None) -> str:
@@ -3628,6 +3680,7 @@ async def run_tool_lane(
         import time as _time
 
         job.status = "RUNNING"
+        job.queued_s = round(_time.time() - lane_t0, 1)
         command_text = _command_text(job.argv)
         _emit(
             "RUNNING", job, command_text or job.purpose,
@@ -3638,6 +3691,7 @@ async def run_tool_lane(
 
         def _finish(status: str, detail: str, **extra: Any) -> None:
             durations[(job.tool, job.host, job.purpose)] = round(_time.time() - t0, 1)
+            job.duration_s = durations[(job.tool, job.host, job.purpose)]
             job.status = status
             _mark(job)
             _emit(
@@ -3710,6 +3764,7 @@ async def run_tool_lane(
         job.output_saved_to = str(result.get("output_saved_to") or "")
         job.output_files = list(result.get("output_files") or [])
         job.result = dict(result or {})
+        job.tool_elapsed_s = _tool_elapsed(result)
         # WO-A4: copy the tool's own lineage onto the ledger row. A remote tool
         # that declares no version says "undeclared" - we never guess a build.
         if isinstance(result.get("tool_lineage"), dict):
@@ -3726,7 +3781,7 @@ async def run_tool_lane(
             # Promote into the RUN's extraction dir, which is what the indexer
             # walks. Beside the source is the case-level dir the MCP tool chose,
             # and nothing reads that.
-            _dest = _owned_extraction_dir(case_id, run_id)
+            _dest = _promotion_dir(job, _owned_extraction_dir(case_id, run_id))
             promoted = _promote_stdout(job, str(result.get("output_saved_to") or ""),
                                        dest=_dest)
             if promoted:
@@ -4200,16 +4255,15 @@ def _find_recmd_batch() -> Path | None:
 
 
 def _find_recmd_user_batch() -> Path | None:
-    root = _repo_root()
-    for rel in (
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/UserActivity.reb",
-        "tools/windows/kape/Modules/bin/RECmd/BatchExamples/UserActivity.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
-    ):
-        p = root / rel
-        if p.is_file():
-            return p
-    return None
+    """The batch for each user's NTUSER.DAT / UsrClass.dat: DFIRBatch.reb (WO-TA item 3).
+
+    Measured on 2026-10-11 against the real tdungan NTUSER.DAT: DFIRBatch yields 224
+    distinct key paths and UserActivity 45. Fourteen UserActivity key paths are not
+    produced by DFIRBatch (the OpenSaveMRU per-extension keys, StreamMRU, Group Policy
+    history, network). They are recorded with this reason in
+    Docs/internal/TIER1-WORK-ORDERS.md §6; UserActivity is not run as a second job.
+    """
+    return _find_recmd_dfir_batch()
 
 
 def _find_recmd_dfir_batch() -> Path | None:
@@ -4282,6 +4336,29 @@ def _owned_extraction_dir(case_id: str, run_id: str = "") -> Path | None:
         return None
     except Exception:  # noqa: BLE001 - a resolution failure must not break a run
         return None
+
+
+def _promotion_dir(job: ToolJob, extractions_root: Path | None) -> Path | None:
+    """The family folder a stdout-only capture is promoted into, under the run's extractions.
+
+    The indexer reads each top-level folder as one family, and a file sitting at the
+    extractions root is read as a family of its own, named after the file (the
+    2026-10-10 SC1 index held ``lecmd-...-<hash>.txt`` and similar as families). The family
+    is the folder the job writes into, so the capture sits beside its own tool's output.
+    None means no run root is known, and the caller keeps the source's own folder.
+    """
+    if extractions_root is None:
+        return None
+    root = Path(extractions_root)
+    for out in _output_dirs_of(job):
+        try:
+            rel = out.resolve().relative_to(root.resolve())
+        except (ValueError, OSError):
+            continue
+        if rel.parts:
+            return root / rel.parts[0]
+    safe = re.sub(r"[^a-z0-9_-]+", "_", (job.tool or "tool").lower()).strip("_") or "tool"
+    return root / safe
 
 
 def _promote_stdout(job: ToolJob, saved: str, dest: Path | None = None) -> str:

@@ -161,6 +161,20 @@ def parse_task_record(path: Path) -> dict[str, Any] | None:
     }
 
 
+def _task_definition_head(path: Path) -> bool:
+    """True when the file opens like a task definition (XML, UTF-16 or UTF-8)."""
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(1024)
+    except OSError:
+        return False
+    if head[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        text = head.decode("utf-16", errors="ignore")
+    else:
+        text = head.decode("utf-8", errors="ignore")
+    return "<Task" in text or "<?xml" in text
+
+
 def _registration_datetime(record: dict[str, Any]) -> datetime | None:
     raw = str(record.get("registration_date") or "").strip()
     if not raw:
@@ -217,8 +231,11 @@ class ScheduledTasksImporter(Importer):
         if not path.is_file():
             return False
         name_lower = path.name.lower()
-        # File in C:\Windows\System32\Tasks\ — no extension by default
-        if "tasks" in str(path).lower() and path.suffix == "":
+        # File in C:\Windows\System32\Tasks\. Task names are extensionless, or dotted
+        # (".NET Framework NGEN v4.0.30319", "Office Automatic Updates 2.0"), so the
+        # folder and the content decide, not the suffix. The suffix test rejected five
+        # real tasks on SC1 (WO-TA item 4).
+        if any(part.lower() == "tasks" for part in path.parts[:-1]) and _task_definition_head(path):
             return True
         # Or explicitly named .xml with task namespace
         if name_lower.endswith(".xml") or name_lower.endswith(".job"):

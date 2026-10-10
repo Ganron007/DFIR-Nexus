@@ -493,7 +493,8 @@ def test_apply_prior_ok_reuses_matching_purpose(tmp_path: Path, monkeypatch):
     ext.mkdir()
     (ext / "_tool_lane_ledger.json").write_text(
         '[{"host":"windows","tool":"hayabusa","purpose":"Hayabusa EVTX",'
-        '"status":"OK","audit_id":"a1","argv":["hayabusa","-d","old"]}]',
+        '"status":"OK","audit_id":"a1","argv":["hayabusa","-d","old"],'
+        '"lineage":{"tool":"hayabusa","file_version":"4.0.0","version_source":"pe-version-resource"}}]',
         encoding="utf-8",
     )
     jobs = [

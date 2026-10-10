@@ -160,6 +160,39 @@ def source_record_count(path: Path) -> int | None:
     return max(0, rows - subtract)
 
 
+def _is_ingest_family_key(rel: str) -> bool:
+    """A per-family key of the imported store: ``<family>/artifacts.jsonl`` (not ``ingest/...``)."""
+    return rel.endswith("/artifacts.jsonl") and rel.count("/") == 1 and not rel.startswith("ingest/")
+
+
+def _ingest_family_records(path: Path, family: str) -> int | None:
+    """Rows of one importer family in the imported store: the index's own per-family count.
+
+    Reads ``source`` the way ``iter_ingest_records`` does, so the two agree on which rows
+    belong to a family.
+    """
+    if not path.is_file():
+        return None
+    n = 0
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                if str(rec.get("source") or "ingest").strip().lower() == family.lower():
+                    n += 1
+    except OSError:
+        return None
+    return n
+
+
 def _resolved_paths(case_dir: Path) -> dict[str, tuple[Path | None, str | None]]:
     """Map index keys (``file`` values) back to real paths + families.
 
@@ -218,6 +251,7 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
             meta_mtime = meta_path.stat().st_mtime
     counts = meta.get("file_counts") or {}
     paths = _resolved_paths(case_dir)
+    store = case_dir / "ingest" / "artifacts.jsonl"
 
     files: list[dict[str, Any]] = []
     for rel in sorted(counts):
@@ -225,6 +259,9 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
         docs = int(entry.get("docs") or 0)
         deduped = int(entry.get("deduped") or 0)
         path, family = paths.get(rel, (None, None))
+        if path is None and _is_ingest_family_key(rel) and store.is_file():
+            # A family of the imported store (``<family>/artifacts.jsonl``): the same file, one family.
+            path, family = store, rel.split("/", 1)[0]
         if path is None:
             files.append({
                 "file": rel, "family": family, "docs": docs, "deduped": deduped,
@@ -244,6 +281,8 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
             source = None if malformed_at is not None else max(
                 0, rows - (1 if header is not None else 0)
             )
+        elif _is_ingest_family_key(rel):
+            source = _ingest_family_records(path, family or "")
         else:
             source = source_record_count(path)
         status, delta, note, override = _classify(family, source, docs, deduped)

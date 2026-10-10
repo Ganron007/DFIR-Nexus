@@ -544,6 +544,80 @@ def sift_waiting_message(gate: dict[str, Any]) -> str:
     )
 
 
+#: Artifacts the lane copies into a family as text (WO-TA item 9). The copy is the parse for these:
+#: the indexer reads the text directly, so once that family holds documents the artifact is parsed,
+#: whatever tool row the completeness table names for it.
+STAGED_FAMILY = {
+    "PowerShell Transcript Logs": "pstranscript",
+    "SetupAPI Device Log": "setupapi",
+    "Windows Error Reporting": "wer",
+}
+
+
+def _read_json_list(path: Path) -> list[Any]:
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return loaded if isinstance(loaded, list) else []
+
+
+def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> dict[str, int]:
+    """Re-derive the gate from what the index now holds (WO-TA item 9).
+
+    The completeness table is built before anything is indexed, so an artifact the lane copied into
+    an indexed family reads STAGED forever and blocks the gate. After an index pass, a staged
+    artifact whose family holds documents is PARSED, with the family and the count written into its
+    row. An artifact whose family holds nothing keeps its status. The gate is then written again from
+    the completeness rows as they now stand.
+    """
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    case_dir = Path(case_dir)
+    try:
+        extractions = resolve_tools_extractions(case_dir)
+    except ValueError:
+        return {"changed": 0}
+    comp_path = extractions / "_artifact_completeness.json"
+    rows = _read_json_list(comp_path)
+    if not rows:
+        return {"changed": 0}
+    docs_by_family: dict[str, int] = {}
+    for key, entry in (file_counts or {}).items():
+        name = str(key)
+        family = name.split("/", 1)[0] if "/" in name else ""
+        docs_by_family[family] = docs_by_family.get(family, 0) + int((entry or {}).get("docs") or 0)
+    changed = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        family = STAGED_FAMILY.get(str(row.get("artifact") or ""))
+        if not family or str(row.get("status") or "").upper() not in ("STAGED", "PRESENT_NO_PARSER"):
+            continue
+        docs = docs_by_family.get(family, 0)
+        if docs:
+            row["status"] = "PARSED"
+            row["reason"] = f"copied into family {family} and indexed ({docs} docs)"
+            changed += 1
+    if changed:
+        _atomic_write(comp_path, rows)
+    # The gate also audits the examiner's registered items. Without them it cannot be re-derived
+    # honestly (an empty list would hide an unprocessed memory image), so it is left as it was.
+    try:
+        loaded = json.loads((case_dir / "evidence.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"changed": changed}
+    evidence = loaded.get("evidence") if isinstance(loaded, dict) else loaded
+    if not isinstance(evidence, list):
+        return {"changed": changed}
+    ledger = _read_json_list(extractions / "_tool_lane_ledger.json")
+    write_lane_gate(
+        case_dir, extractions.parent.name, ledger,
+        registered_evidence=evidence, completeness=rows,
+    )
+    return {"changed": changed}
+
+
 def lane_stages(case_dir: Path | str) -> list[dict[str, Any]]:
     """N1-N8 stage states derived from case artifacts (no invented states)."""
     case_dir = Path(case_dir)

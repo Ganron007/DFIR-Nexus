@@ -588,7 +588,7 @@ def iter_index_doc_batches(
         })
 
     def _add(path: Path, root: Path, fam: str, i: int, line: str,
-             fields: dict[str, str] | None = None) -> bool:
+             fields: dict[str, str] | None = None, count_key: str | None = None) -> bool:
         nonlocal total
         # Source/provenance columns carry the machine path the parser read
         # (EvtxECmd SourceFile, RECmd HivePath, ...) — that is routing
@@ -602,7 +602,10 @@ def iter_index_doc_batches(
             f"{fam}\x00{path}\x00{i}\x00{text}".encode("utf-8", "replace")
         ).hexdigest()
         rel = _index_rel(path, root)
-        rec = file_counts.setdefault(rel, {"docs": 0, "deduped": 0})
+        # count_key: the imported store holds every importer's rows in one file, so its rows are
+        # counted per family (``<family>/artifacts.jsonl``). A family then reads in the per-file
+        # counts like any other folder (WO-TA item 4: scheduled tasks as family ``tasks``).
+        rec = file_counts.setdefault(count_key or rel, {"docs": 0, "deduped": 0})
         if key in seen:
             rec["deduped"] += 1
             return False
@@ -781,7 +784,9 @@ def iter_index_doc_batches(
                 ):
                     if value not in (None, "", []):
                         art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
-            if _add(ingest_store, case_dir, fam, n, text, art_fields or None):
+            family_key = (fam.replace("/", "_").replace("\\", "_") or "ingest")
+            if _add(ingest_store, case_dir, fam, n, text, art_fields or None,
+                    count_key=f"{family_key}/artifacts.jsonl"):
                 family_counts[fam] = family_counts.get(fam, 0) + 1
             if len(out) >= batch:
                 yield out
@@ -1225,9 +1230,13 @@ def index_case(
             prior_counts = {}
         # WO-3: per-file counts survive for untouched files; changed files get
         # a fresh count and removed files drop out.
+        # The imported store's per-family keys (``<family>/artifacts.jsonl``) all come from one
+        # file: when that file changes or goes, every one of them is stale, not only one.
+        store_changed = bool({"ingest/artifacts.jsonl"} & (set(changed) | set(removed)))
         merged_counts = {
             rel: entry for rel, entry in prior_counts.items()
             if rel not in removed and rel not in changed
+            and not (store_changed and str(rel).endswith("/artifacts.jsonl"))
         }
         merged_counts.update(cap_stats.get("file_counts") or {})
         # R09: the baseline advances only for files whose documents are in the index.
@@ -1335,6 +1344,14 @@ def index_case(
         file_mtimes=current_mtimes or _index_file_mtimes(case_dir),
         file_sha256s=baseline_digests,
     )
+    # WO-TA item 9: the gate is re-derived from what the index now holds. The index stands even if
+    # this fails; the gate then keeps its last state, and the log says why.
+    try:
+        from nexus.langgraph.lane_gate import reconcile_after_index
+
+        reconcile_after_index(case_dir, meta.get("file_counts") or {})
+    except Exception as exc:  # noqa: BLE001
+        log.warning("gate reconciliation after indexing failed: %s", exc)
     _schema_cache.pop(case_dir.name, None)
     _fields_props_cache.pop(case_dir.name, None)
     with contextlib.suppress(Exception):

@@ -24,8 +24,12 @@ import pytest
 ES = os.environ.get("NEXUS_TEST_ES_URL", "http://localhost:9200").rstrip("/")
 REAL = Path(__file__).resolve().parents[1] / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd"
 SOURCE = REAL / "20260921194149_EvtxECmd_Output.csv"
-CASE_ID = "CASE-36EREAL01"
-INDEX = "nexus-case-case-36ereal01"
+# This test writes to the real cluster (it is a real-path test), so its index carries the test-*
+# name and its fixture deletes it. The session tripwire (tests/conftest.py) compares the nexus-case-*
+# indexes at session start and end. The old name, case-36ereal01, was already on the cluster when a
+# run started and was removed by that run's teardown (2026-10-11), which the tripwire reported.
+CASE_ID = "TEST-36EREAL01"
+INDEX = "nexus-case-test-36ereal01"
 SHARED_TITLE = "Event 1004 records from Microsoft-Windows-Security-SPP are present on the host"
 SHARED_ENTITY = {"type": "event_id", "value": "1004"}
 # fields.EventId is a long in the real mapping (no .kw subfield). The tool text says
