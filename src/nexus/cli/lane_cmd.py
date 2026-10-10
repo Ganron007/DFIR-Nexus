@@ -68,6 +68,13 @@ def status(case: str = typer.Option("", "--case", help="Case id or directory. De
         raise typer.Exit(1)
 
 
+from nexus.cli.lane_retry_cmd import retry as _retry_command
+
+# WO-TA item 12: registered on this app so `nexus lane retry` sits beside
+# `status` and `skip` rather than opening a second command group.
+app.command("retry")(_retry_command)
+
+
 @app.command("skip")
 def skip(
     case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case."),
