@@ -284,3 +284,33 @@ def test_failed_job_is_named_as_pending(tmp_path: Path):
     notice = pending_family_notice(tmp_path)
     assert "NTFS metadata" in notice
     assert "absent" in notice
+
+
+def test_a_blocked_parser_on_present_evidence_is_never_clear(tmp_path: Path):
+    """D43/D53: a parser that could not run on evidence that IS present (maldump not
+    elevated) is BLOCKED. A SKIP would read as not applicable and clear the gate."""
+    blocked_row = {
+        "tool": "maldump",
+        "purpose": "Defender quarantine metadata (maldump)",
+        "reason": "Defender quarantine present, but this lane is not elevated",
+        "status": "BLOCKED",
+    }
+    gate = write_lane_gate(tmp_path, "RUN-1", [blocked_row], ts="2026-10-10T00:00:00Z")
+    assert gate["status"] == "blocked"
+    assert gate["jobs"][0]["state"] == "blocked"
+    assert gate["unprocessed"], "a blocked job must be listed as unprocessed"
+    assert lane_gate_blocked(tmp_path)
+
+
+def test_a_skip_for_a_present_artifact_is_still_not_applicable(tmp_path: Path):
+    """The contrast: a SKIP from the lane is a tool that does not apply, so it does not block."""
+    skip_row = {
+        "tool": "suzaku",
+        "purpose": "Suzaku 2.x cloud-log timeline",
+        "reason": "cloud-log only",
+        "status": "SKIP",
+    }
+    ok_row = {"tool": "hayabusa", "purpose": "EVTX timeline", "reason": "", "status": "OK"}
+    gate = write_lane_gate(tmp_path, "RUN-1", [ok_row, skip_row])
+    assert gate["status"] == "clear"
+    assert gate["unprocessed"] == []

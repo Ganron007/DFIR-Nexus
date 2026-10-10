@@ -1,0 +1,29 @@
+name: mplog_parser
+category: analysis
+description: "Convert Windows Defender MPLog files (MPLog-*.log) to CSV files, one CSV per record type"
+platform: [windows]
+platform_notes: "Standalone Windows executable (mplog-parser v1.0, pinned in Tools/windows/VERSIONS.txt). Runs against a directory of MPLog files."
+artifacts_parsed: [defender_mplog]
+
+caveats:
+  - "The default input folder is C:\\ProgramData\\Microsoft\\Windows Defender\\Support\\; the tool's own help says admin rights are needed to read it"
+  - "A custom input directory must hold files named MPLog-*.log; the MPDetection, MPDeviceControl and MpWppTracing files in the same folder are not parsed by this tool"
+  - "Output is one CSV per record type (BMTelemetry, DetectionAdd, DetectionEvent, Ems, OriginalFilename, ProcessImageName, RTPPerf)"
+
+output_notes:
+  format: csv
+  files: [MPLog_BMTelemetry.csv, MPLog_DetectionAdd.csv, MPLog_DetectionEvent.csv, MPLog_Ems.csv, MPLog_OriginalFilename.csv, MPLog_ProcessImageName.csv, MPLog_RTPPerf.csv]
+
+exit_code_hints:
+  0: "parsed"
+
+advisories:
+  - "Defender detections, quarantine actions and process-image records give the detection timeline; cite the CSV row and the MPLog file it came from"
+  - "The output folder may already exist; the tool still writes its CSVs"
+
+quick_start: "mplog_parser.exe -d \"C:\\ProgramData\\Microsoft\\Windows Defender\\Support\" -o <output folder>"
+
+investigation_sequence:
+  - "Parse every MPLog-*.log in the Support folder into CSV"
+  - "Read DetectionEvent and DetectionAdd for the detection timeline"
+  - "Cross-check ProcessImageName for the process behind each detection"

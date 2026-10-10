@@ -1,0 +1,27 @@
+name: dhparser
+category: analysis
+description: "Parse Windows Defender DetectionHistory files into readable JSON, one file per DetectionHistory entry"
+platform: [windows]
+platform_notes: "DetectionHistory Parser v1.0.1 (Jordan Klepser), pinned in Tools/windows/VERSIONS.txt. Windows executable."
+artifacts_parsed: [defender_detectionhistory]
+
+caveats:
+  - "Options: -f FILE (a file or a directory), -r (recurse), -g (greedy; the tool warns it is for recursive use only), -z, -v, -o OUTPUT (required)"
+  - "Each DetectionHistory file becomes one JSON file in the output folder, named by the source file"
+
+output_notes:
+  format: json
+  key_fields: [Threat, Severity, Type, Path, Action, Time]
+
+exit_code_hints:
+  0: "parsed"
+
+advisories:
+  - "DetectionHistory records what Defender detected and what it did; it is a detection record, not proof the file ran"
+  - "Quote the JSON record and the DetectionHistory file it came from"
+
+quick_start: "dhparser.exe -f \"C:\\ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\Service\\DetectionHistory\" -o <output folder> -r"
+
+investigation_sequence:
+  - "Parse the DetectionHistory folder recursively"
+  - "Group the records by Threat and time, then compare with MPLog detections"

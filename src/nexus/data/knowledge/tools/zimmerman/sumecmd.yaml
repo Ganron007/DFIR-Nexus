@@ -1,0 +1,26 @@
+name: SumECmd
+category: zimmerman
+description: "Parse the Windows User Access Logging (UAL) database (the SUM folder) on Windows Server"
+platform: [windows]
+platform_notes: "Zimmerman tool, 2026.5.0.0 (installed in Tools/windows/zimmerman/net9). The UAL database exists only on Windows Server."
+artifacts_parsed: [user_access_logging]
+
+caveats:
+  - "Only present on Windows Server; absent on workstations, so an absence result there means nothing"
+  - "Not yet verified on a real SUM database in this case set; treat its output as unverified until a real UAL file is parsed"
+
+output_notes:
+  format: csv
+  key_fields: [ClientName, ClientAddress, UserName, RoleGuid, TotalAccesses, InsertDate, LastAccess]
+
+exit_code_hints:
+  0: "parsed"
+
+advisories:
+  - "UAL records which client accessed server roles and when; it is a usage count, not an action log"
+
+quick_start: "SumECmd.exe -d <folder with the SUM database> --csv <output folder>"
+
+investigation_sequence:
+  - "Locate the SUM folder (Windows\\System32\\LogFiles\\SUM)"
+  - "Parse it and review the client addresses and last-access times"

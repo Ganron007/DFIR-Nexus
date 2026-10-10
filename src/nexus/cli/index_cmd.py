@@ -96,11 +96,24 @@ def verify(
 
     changed: list[str] = []
     missing: list[str] = []
+    # R13: the rows were read from the run the index recorded; a current run layout
+    # (runs/<run>/extractions) is checked too, so an unchanged source is not reported missing.
+    case_dir = settings.cases_root / case_id
+    source_root = str(state.get("source_extractions") or "")
     for rel, digest in sorted(recorded.items()):
         rel_path = Path(rel)
-        candidates = [settings.cases_root / case_id / rel_path]
+        candidates = []
+        if source_root and not rel.startswith("ingest/"):
+            candidates.append(Path(source_root) / rel_path)
+        candidates.append(case_dir / rel_path)
         if not rel.startswith("ingest/"):
-            candidates.append(settings.cases_root / case_id / "extractions" / rel_path)
+            candidates.append(case_dir / "extractions" / rel_path)
+            try:
+                from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+                candidates.append(resolve_tools_extractions(case_dir) / rel_path)
+            except Exception:  # noqa: BLE001 - no resolvable run: legacy paths only
+                pass
         found = next((c for c in candidates if c.is_file()), None)
         if found is None:
             missing.append(rel)

@@ -6,11 +6,21 @@ family. A generic spreadsheet stays unrecognized.
 """
 from __future__ import annotations
 
+import csv
+import hashlib
 from pathlib import Path
 
 
 def _columns(header: str) -> set[str]:
-    return {part.strip().lower().strip('"') for part in header.split(",") if part.strip()}
+    # The header is read as a CSV record, so a quoted column that contains a
+    # comma stays one column, and a UTF-8 byte-order mark that a Windows tool
+    # writes before the first column name is removed (R12: EvtxECmd output
+    # starts with BOM and was not recognised by raw comma splitting).
+    text = header.lstrip("﻿")
+    if not text.strip():
+        return set()
+    row = next(csv.reader([text]), [])
+    return {part.strip().lower() for part in row if part.strip()}
 
 
 def family_for_csv_header(header: str) -> str | None:
@@ -43,7 +53,8 @@ def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
     if not source.is_file() or source.suffix.lower() != ".csv":
         return None
     try:
-        lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+        # utf-8-sig: a BOM-prefixed header is still the same header (R12).
+        lines = source.read_text(encoding="utf-8-sig", errors="replace").splitlines()
         header = lines[0] if lines else ""
     except OSError:
         return None
@@ -57,9 +68,20 @@ def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
         return source
     except ValueError:
         pass
+    data = source.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
     dest = dest_dir / source.name
-    if source.resolve() != dest.resolve():
-        dest.write_bytes(source.read_bytes())
+    if dest.exists():
+        # Two different files that share a name (two hosts' parsed.csv) must
+        # not overwrite each other (R11). Equal bytes are one copy, deduplicated;
+        # different bytes get a content-named sibling, and the original stays
+        # registered under its own evidence id.
+        if hashlib.sha256(dest.read_bytes()).hexdigest() == digest:
+            return dest
+        dest = dest_dir / f"{source.stem}-{digest[:12]}{source.suffix}"
+        if dest.exists():
+            return dest
+    dest.write_bytes(data)
     return dest
 
 

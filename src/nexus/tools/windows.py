@@ -113,6 +113,22 @@ _WIN_CATALOG = {
                   "description": "Fast Sigma-based EVTX analysis"},
     "deepbluecli": {"name": "run-deepblue.ps1", "category": "analysis",
                     "description": "EVTX analysis for RDP brute force, password spraying, PS attacks"},
+    # WO-TA item 5/6 parsers. Each name is the file the lane resolves; the
+    # .py wrappers are tracked source (see Tools/windows/extra/*/run-*.py).
+    "mplog": {"name": "mplog_parser", "category": "analysis",
+              "description": "Windows Defender MPLog files to CSV (mplog-parser v1.0)"},
+    "dhparser": {"name": "dhparser", "category": "analysis",
+                 "description": "Windows Defender DetectionHistory to JSON (v1.0.1)"},
+    "maldump": {"name": "run-maldump.py", "category": "analysis",
+                "description": "Defender quarantine metadata (maldump 0.5.0; needs an elevated session)"},
+    "wmi-parser": {"name": "run-wmi-parser.py", "category": "analysis",
+                   "description": "WMI repository OBJECTS.DATA persistence (WMI-Parser v0.0.3)"},
+    "sidr": {"name": "sidr", "category": "analysis",
+             "description": "Windows Search index Windows.edb / Windows.db (SIDR v0.9.2)"},
+    "pff-ost": {"name": "run-pff-ost.py", "category": "analysis",
+                "description": "Outlook OST/PST messages to CSV (libpff-python 20260926)"},
+    "memprocfs": {"name": "run-memprocfs.py", "category": "analysis",
+                  "description": "Memory image through the MemProcFS 5.19 Python API, forensic mode, no mount"},
     "schtasks": {"name": "schtasks", "category": "system", "builtin": True,
                  "description": "Parse Windows scheduled tasks"},
     "certutil": {"name": "certutil", "category": "system", "builtin": True,
@@ -531,6 +547,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "hindsight": "pwsh -File Tools/fetch-windows-tools.ps1  (pip pyhindsight + copied launcher)",
             "usbdeview": "pwsh -File Tools/fetch-windows-tools.ps1  (NirSoft USBDeview x64 zip)",
             "zircolite": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub wagga40/Zircolite release)",
+            "mplog": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub Qazeer/mplog_parser-compiled v1.0)",
+            "dhparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jklepsercyber DetectionHistory parser v1.0.1)",
+            "maldump": "python -m pip install maldump==0.5.0  (then Tools/windows/extra/maldump/run-maldump.py)",
+            "wmi-parser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub AndrewRathbun/WMI-Parser v0.0.3; needs .NET 6 or roll-forward)",
+            "sidr": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub strozfriedberg/sidr v0.9.2)",
+            "pff-ost": "python -m pip install libpff-python==20260926  (then Tools/windows/extra/pff/run-pff-ost.py)",
+            "memprocfs": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub ufrisk/MemProcFS v5.19 + pip memprocfs==5.19.0)",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
             if _find_binary(info["name"]) is None:

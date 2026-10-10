@@ -18,6 +18,7 @@ The LLM does **not** choose whether mandatory parsers run.
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import hashlib
 import logging
 import os
@@ -1876,9 +1877,17 @@ def plan_windows_triage(
         else:
             skip("regripper", "no hives found for RegRipper")
 
+    def blocked(tool: str, reason: str) -> None:
+        # A parser that cannot run on evidence that IS present. The gate counts it as
+        # unprocessed; a SKIP would read as not applicable (D43, D53).
+        jobs.append(ToolJob(
+            host="windows", tool=tool, argv=[], purpose="",
+            status="BLOCKED", reason=reason,
+        ))
+
     _plan_gap_parsers(
         root, users, extractions, add, skip, quick,
-        sample_files=sample_files,
+        sample_files=sample_files, blocked=blocked,
     )
     _plan_n2_extras(root, users, extractions, add, skip, extras or [])
     return jobs
@@ -1982,25 +1991,8 @@ def _plan_n2_extras(
         if not n:
             skip("drivefs", "no Google DriveFS logs under user profiles")
 
-    if "email" in wanted:
-        n = 0
-        dest = extractions / "email"
-        for user in users:
-            for folder in (
-                user / "Documents",
-                user / "AppData/Local/Microsoft/Outlook",
-                user / "AppData/Roaming/Microsoft/Outlook",
-            ):
-                if not folder.is_dir():
-                    continue
-                for pat in ("*.pst", "*.ost"):
-                    for mail in folder.glob(pat):
-                        if mail.is_file() and mail.stat().st_size < 80 * 1024 * 1024:
-                            dest.mkdir(parents=True, exist_ok=True)
-                            _copy_text(dest, f"{user.name}-{mail.name}", mail)
-                            n += 1
-        if not n:
-            skip("email", "no PST/OST under Documents/Outlook")
+    # Outlook stores are parsed by _plan_defender_and_search (WO-TA item 5): default,
+    # no size cap, not an examiner opt-in.
 
     if "usb_serial" in wanted:
         setupapi = extractions / "setupapi" / "setupapi.dev.log"
@@ -2031,6 +2023,123 @@ def _usb_serials_from_setupapi(path: Path) -> list[str]:
     return found
 
 
+def _is_elevated() -> bool:
+    """True when this process holds Administrator rights (always True off Windows)."""
+    if os.name != "nt":
+        return True
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
+
+
+def _unique_name(src: Path) -> str:
+    """A file name that cannot collide with another source file (R11).
+
+    The parent folder name keeps it readable; a digest of the full path keeps two
+    files with one name in different folders apart.
+    """
+    digest = hashlib.sha1(str(src).encode("utf-8", "replace")).hexdigest()[:8]
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{src.parent.name}-{src.stem}")
+    return f"{base}-{digest}{src.suffix}"
+
+
+def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip, blocked) -> None:
+    """Defender, WMI, Windows Search, PowerShell transcripts, WER and Outlook stores.
+
+    WO-TA items 4-5. Parsers run on the registered evidence in place, or on a
+    repaired copy where the database is dirty (the SRUM and BITS pattern). Copies
+    of text artifacts get unique names, so files that share a name stay apart.
+    """
+    def present_tool(key: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+        # The artifact is on the evidence. A missing parser is BLOCKED, not SKIPPED.
+        if not _windows_tool_available(key):
+            blocked(key, f"{key} not installed: the evidence is present and was not examined. "
+                         "Run tools/fetch-windows-tools.ps1 then nexus doctor")
+            return
+        add_installed(key, argv, purpose, timeout)
+
+    support = root / "ProgramData/Microsoft/Windows Defender/Support"
+    if support.is_dir() and any(support.glob("MPLog-*.log")):
+        out = extractions / "mplog"
+        out.mkdir(parents=True, exist_ok=True)
+        present_tool("mplog", ["mplog", "-d", str(support), "-o", str(out)],
+                      "Defender MPLog (mplog_parser)", 900)
+    else:
+        skip("mplog", "no MPLog-*.log under the Defender Support folder")
+
+    detection = root / "ProgramData/Microsoft/Windows Defender/Scans/History/Service/DetectionHistory"
+    if detection.is_dir() and any(p.is_file() for p in detection.rglob("*")):
+        out = extractions / "defender_detectionhistory"
+        out.mkdir(parents=True, exist_ok=True)
+        present_tool("dhparser", ["dhparser", "-f", str(detection), "-o", str(out), "-r"],
+                      "Defender DetectionHistory (dhparser)", 900)
+    else:
+        skip("dhparser", "no Defender DetectionHistory folder")
+
+    quarantine = root / "ProgramData/Microsoft/Windows Defender/Quarantine"
+    if quarantine.is_dir() and any(p.is_file() for p in quarantine.rglob("*")):
+        if not _is_elevated():
+            blocked("maldump", "Defender quarantine present, but this lane is not elevated: "
+                            "maldump needs Administrator rights and was not run")
+        else:
+            out = extractions / "maldump"
+            out.mkdir(parents=True, exist_ok=True)
+            present_tool("maldump", ["maldump", str(root), "-m", "-d", str(out)],
+                          "Defender quarantine metadata (maldump)", 900)
+    else:
+        skip("maldump", "no Defender quarantine entries")
+
+    wmi = root / "Windows/System32/wbem/Repository/OBJECTS.DATA"
+    if wmi.is_file():
+        out = extractions / "wmi_parser"
+        out.mkdir(parents=True, exist_ok=True)
+        present_tool("wmi-parser", ["wmi-parser", "-i", str(wmi), "-o", str(out)],
+                      "WMI repository OBJECTS.DATA (WMI-Parser)", 900)
+    else:
+        skip("wmi-parser", "no WMI repository OBJECTS.DATA")
+
+    search_db = root / "ProgramData/Microsoft/Search/Data/Applications/Windows/Windows.edb"
+    if search_db.is_file():
+        work = extractions / "sidr" / "workdir"
+        out = extractions / "sidr"
+        try:
+            _copy_ese_siblings(search_db.parent, work, ("WINDOWS", "EDB"))
+            _esentutl_repair(work, db_name="Windows.edb", log_bases=("edb",))
+        except OSError as exc:
+            blocked("sidr", f"could not stage Windows.edb: {exc}")
+        else:
+            present_tool("sidr", ["sidr", "-f", "csv", "-o", str(out), str(work)],
+                          "Windows Search index (SIDR, repaired copy)", 1800)
+    else:
+        skip("sidr", "no Windows.edb search index")
+
+    transcripts = sorted(p for p in root.rglob("PowerShell_transcript*.txt") if p.is_file())
+    for txt in transcripts:
+        _copy_text(extractions, f"pstranscript/{_unique_name(txt)}", txt)
+    if not transcripts:
+        skip("pstranscript", "no PowerShell_transcript files on this volume")
+
+    wer_root = root / "ProgramData/Microsoft/Windows/WER"
+    reports = sorted(p for p in wer_root.rglob("*.wer") if p.is_file()) if wer_root.is_dir() else []
+    for rep in reports:
+        _copy_text(extractions, f"wer/{_unique_name(rep)}.txt", rep)
+    if not reports:
+        skip("wer", "no Windows Error Reporting .wer files")
+
+    users_dir = root / "Users"
+    mail_files: list[Path] = []
+    if users_dir.is_dir():
+        mail_files = sorted(p for pat in ("*.ost", "*.pst") for p in users_dir.rglob(pat) if p.is_file())
+    if not mail_files:
+        skip("pff-ost", "no OST/PST under Users")
+    for mail in mail_files:
+        out = extractions / "email"
+        out.mkdir(parents=True, exist_ok=True)
+        present_tool("pff-ost", ["pff-ost", str(mail), str(out / f"{_unique_name(mail)}.csv")],
+                      f"Outlook store {mail.name} (libpff)", 1800)
+
+
 def _plan_gap_parsers(
     root: Path,
     users: list[Path],
@@ -2039,6 +2148,7 @@ def _plan_gap_parsers(
     skip,
     quick: bool,
     sample_files: list[str] | None = None,
+    blocked=None,
 ) -> None:
     """Optional host artifacts — only when present AND the parser is installed.
 
@@ -2050,20 +2160,6 @@ def _plan_gap_parsers(
         _copy_text(extractions, "setupapi/setupapi.dev.log", setupapi)
 
     for user in users:
-        for pattern in (
-            "Documents/PowerShell_transcript*.txt",
-            "Documents/PowerShell/PowerShell_transcript*.txt",
-        ):
-            parent = user / Path(pattern).parent
-            if not parent.is_dir():
-                continue
-            for txt in sorted(parent.glob(Path(pattern).name))[:8]:
-                if txt.is_file():
-                    _copy_text(
-                        extractions,
-                        f"transcripts/{user.name}/{txt.name}",
-                        txt,
-                    )
         hist = (
             user / "AppData/Roaming/Microsoft/Windows/PowerShell"
             / "PSReadLine/ConsoleHost_history.txt"
@@ -2081,6 +2177,8 @@ def _plan_gap_parsers(
             return False
         add(key, argv, purpose, timeout)
         return True
+
+    _plan_defender_and_search(root, extractions, add_installed, skip, blocked or skip)
 
     # Known CLIs only. Thumbcache Viewer CMD and LogFileParser stay
     # cataloged until their argv is verified on a real binary.
@@ -3221,6 +3319,34 @@ def _lane_concurrency() -> int:
         return 1
 
 
+def _memory_image_jobs(evidence_paths: list[str], extractions: Path) -> list[ToolJob]:
+    """One MemProcFS job per registered memory image (WO-TA item 6).
+
+    The image is read in place, never copied. Uses the lane's memory detector
+    (`_MEMORY_SUFFIXES`, `_MEMORY_MIN_BYTES`), so a file is memory in one place only.
+    """
+    jobs: list[ToolJob] = []
+    for raw in evidence_paths:
+        img = Path(raw)
+        if not (img.is_file() and img.suffix.lower() in _MEMORY_SUFFIXES
+                and img.stat().st_size >= _MEMORY_MIN_BYTES):
+            continue
+        out = extractions / "memprocfs" / _unique_name(img)
+        if _windows_tool_available("memprocfs"):
+            jobs.append(ToolJob(
+                host="windows", tool="memprocfs",
+                argv=["memprocfs", "--image", str(img), "--out", str(out)],
+                purpose=f"MemProcFS forensic ({img.name})", timeout=7200,
+            ))
+        else:
+            jobs.append(ToolJob(
+                host="windows", tool="memprocfs", argv=[], purpose="",
+                status="SKIP",
+                reason="memprocfs not installed — run tools/fetch-windows-tools.ps1 then nexus doctor",
+            ))
+    return jobs
+
+
 async def run_tool_lane(
     *,
     tools: dict[str, Any],
@@ -3316,6 +3442,7 @@ async def run_tool_lane(
                 continue
             _planned.add(_key)
             jobs.append(_job)
+    jobs.extend(_memory_image_jobs(plan_paths, extractions))
     try:
         import json as _json
 

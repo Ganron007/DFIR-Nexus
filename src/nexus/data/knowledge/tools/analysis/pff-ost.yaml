@@ -1,0 +1,29 @@
+name: pff-ost
+category: analysis
+description: "Read every message from an Outlook OST or PST with libpff-python and write one CSV row per message"
+platform: [windows]
+platform_notes: "Local wrapper run-pff-ost.py using libpff-python 20260926 (pinned, cp314 win_amd64 wheel). Reads the file in place and never writes beside it."
+artifacts_parsed: [outlook_mail_store]
+
+caveats:
+  - "Columns: folder, delivery_time, sender_name, subject, body_preview. body_preview is the plain-text body cut to 2000 characters, with line breaks replaced by spaces"
+  - "Messages with HTML-only bodies have an empty body_preview"
+  - "Attachments are not extracted; only the message fields are written"
+
+output_notes:
+  format: csv
+  key_fields: [folder, delivery_time, sender_name, subject, body_preview]
+
+exit_code_hints:
+  0: "messages written"
+  2: "usage error, or the mail file was not found"
+
+advisories:
+  - "Mail is evidence of communication, not of an action; quote the row and the store it came from"
+  - "The store contains personal correspondence; keep it within the case"
+
+quick_start: "run-pff-ost.py <mail file.ost> <output.csv>"
+
+investigation_sequence:
+  - "Convert the store to CSV"
+  - "Sort by delivery_time and read subjects and senders around the event of interest"

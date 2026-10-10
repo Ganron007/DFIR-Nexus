@@ -153,6 +153,17 @@ Tools/windows/extra/deepbluecli/*
 !Tools/windows/extra/memprocfs/
 Tools/windows/extra/memprocfs/*
 !Tools/windows/extra/memprocfs/run-memprocfs.py
+# WO-TA item 5: the parser wrappers are source for the same reason as the MemProcFS
+# wrapper: they are the lane's integration with a fetched binary or a pip package.
+!Tools/windows/extra/maldump/
+Tools/windows/extra/maldump/*
+!Tools/windows/extra/maldump/run-maldump.py
+!Tools/windows/extra/pff/
+Tools/windows/extra/pff/*
+!Tools/windows/extra/pff/run-pff-ost.py
+!Tools/windows/extra/wmi-parser/
+Tools/windows/extra/wmi-parser/*
+!Tools/windows/extra/wmi-parser/run-wmi-parser.py
 
 # ── Scratch ─────────────────────────────────────────────────────────
 .session_state.md

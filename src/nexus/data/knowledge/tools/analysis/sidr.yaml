@@ -1,0 +1,29 @@
+name: sidr
+category: analysis
+description: "Parse Windows Search index databases (Windows.edb, Windows.db) into File, Internet History and Activity History reports"
+platform: [windows]
+platform_notes: "SIDR v0.9.2 (Stroz Friedberg / Aon), pinned in Tools/windows/VERSIONS.txt. Rust binary."
+artifacts_parsed: [windows_search_index]
+
+caveats:
+  - "Scans the input directory recursively for Windows.edb and Windows.db"
+  - "Panics with 'wrong checksum' on a dirty Windows.edb (a database that was not shut down cleanly). Run it on a repaired copy: stage the database and its edb*.jtx logs, run esentutl /r edb /i, then esentutl /p Windows.edb /o"
+  - "Writes three reports into the output directory, named HOSTNAME_<Report>_<timestamp>.csv or .json"
+
+output_notes:
+  format: csv
+  reports: [File_Report, Internet_History_Report, Activity_History_Report]
+
+exit_code_hints:
+  0: "reports written"
+
+advisories:
+  - "The File report lists indexed file paths and their metadata; a path in it proves it was indexed, not that it was opened"
+  - "Use the repaired-copy path; never run it on the original evidence file"
+
+quick_start: "sidr.exe -f csv -o <output folder> <folder holding the repaired Windows.edb>"
+
+investigation_sequence:
+  - "Stage a repaired copy of Windows.edb and its logs"
+  - "Run SIDR and read the File report for paths of interest"
+  - "Read the Activity History report for user actions with timestamps"

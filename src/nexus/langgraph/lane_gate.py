@@ -188,6 +188,9 @@ def _job_state(status: str) -> str:
         "RUNNING": "running",
         "SKIP": "skipped",
         "SKIPPED": "skipped",
+        # A parser that cannot run on evidence that is present (D43/D53). Not a SKIP:
+        # the gate treats it as unprocessed, so it never reads as clear.
+        "BLOCKED": "blocked",
     }
     return mapped.get(str(status or "").upper(), "unknown")
 
@@ -374,7 +377,7 @@ def write_lane_gate(
             if state in {"failed", "skipped"}:
                 waiting_sift.append(_pending_entry(row))
             continue
-        if state == "failed":
+        if state in ("failed", "blocked"):
             unprocessed.append(_pending_entry(row))
         elif state == "skipped":
             not_applicable.append(_pending_entry(row))

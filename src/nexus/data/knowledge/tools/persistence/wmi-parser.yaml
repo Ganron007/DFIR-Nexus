@@ -1,0 +1,29 @@
+name: wmi-parser
+category: persistence
+description: "Parse the WMI repository file OBJECTS.DATA for event filter, consumer and binding persistence"
+platform: [windows]
+platform_notes: "WMI-Parser (Mark Woan, updated by Andrew Rathbun). Targets .NET 6; on a host with only .NET 9 or 10 it needs DOTNET_ROLL_FORWARD=Major, which run-wmi-parser.py sets for the child process only."
+artifacts_parsed: [wmi_repository]
+
+caveats:
+  - "The binary self-reports v1.0.0; the KapeFiles module pins v0.0.3. Record which build was run"
+  - "Writes wmi-parser.tsv; the case indexer reads CSV, so the wrapper also writes wmi-parser.csv"
+  - "A common SCM Event Log consumer/filter pair is reported as 'possibly legitimate'; that is the tool's own note, not a verdict"
+
+output_notes:
+  format: tsv
+  key_fields: [Consumer, Filter, Binding, Query, CommandLine]
+
+exit_code_hints:
+  0: "parsed"
+
+advisories:
+  - "Event filter + command-line consumer + binding is the WMI persistence pattern; each part needs its own evidence"
+  - "The binding name alone is not proof of malice; check the consumer's command line and the filter query"
+
+quick_start: "run-wmi-parser.py -i <OBJECTS.DATA> -o <output folder>"
+
+investigation_sequence:
+  - "Parse OBJECTS.DATA"
+  - "For each binding, read the consumer's command line and the filter's query"
+  - "Cross-check the WMI-Activity operational log for when the objects were created"

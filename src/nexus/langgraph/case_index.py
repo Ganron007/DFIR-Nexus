@@ -1136,6 +1136,13 @@ def index_case(
     current_mtimes = _index_file_mtimes(case_dir) if incremental else {}
 
     use_incremental = bool(incremental and prior_mtimes and current_mtimes)
+    # R09: an mtime is not content identity. Archive extraction and preserved
+    # timestamps can keep an mtime while the bytes change, so the change set also
+    # compares each file's digest with the stored baseline (and reindexes any file
+    # that has no baseline digest). The digests are computed once, here.
+    prior_digests: dict[str, str] = prior.get("file_sha256s") or {}
+    current_digests: dict[str, str] = _index_file_digests(case_dir) if use_incremental else {}
+    baseline_digests: dict[str, str] | None = None
     if use_incremental:
         with _client() as client:
             head = client.head(f"/{name}")
@@ -1157,6 +1164,8 @@ def index_case(
         changed = {
             rel for rel, mtime in current_mtimes.items()
             if mtime > float(prior_mtimes.get(rel, -1))
+            or rel not in prior_digests
+            or current_digests.get(rel) != prior_digests.get(rel)
         }
         removed = set(prior_mtimes) - set(current_mtimes)
         errors = 0
@@ -1221,6 +1230,15 @@ def index_case(
             if rel not in removed and rel not in changed
         }
         merged_counts.update(cap_stats.get("file_counts") or {})
+        # R09: the baseline advances only for files whose documents are in the index.
+        # A refused purge keeps the prior baseline; a bulk error drops the changed
+        # files from it, so the next run reindexes them instead of blessing them.
+        baseline_digests = {k: v for k, v in current_digests.items() if k not in removed}
+        if purge_refused:
+            baseline_digests = dict(prior_digests)
+        elif errors:
+            for rel in changed:
+                baseline_digests.pop(rel, None)
         meta = {
             "index": name,
             "docs": docs_total,
@@ -1312,7 +1330,11 @@ def index_case(
         }
 
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    write_index_state(case_dir, meta, file_mtimes=current_mtimes or _index_file_mtimes(case_dir))
+    write_index_state(
+        case_dir, meta,
+        file_mtimes=current_mtimes or _index_file_mtimes(case_dir),
+        file_sha256s=baseline_digests,
+    )
     _schema_cache.pop(case_dir.name, None)
     _fields_props_cache.pop(case_dir.name, None)
     with contextlib.suppress(Exception):
@@ -1377,6 +1399,15 @@ def _newest_extraction_mtime(case_dir: Path) -> float:
     return newest
 
 
+def _source_extractions_text(case_dir: Path) -> str:
+    try:
+        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+        return str(resolve_tools_extractions(case_dir))
+    except Exception:  # noqa: BLE001 - an unresolvable case records no source
+        return ""
+
+
 def write_index_state(
     case_dir: Path,
     meta: dict[str, Any],
@@ -1402,6 +1433,9 @@ def write_index_state(
         "url": es_url(),
         "file_mtimes": file_mtimes if file_mtimes is not None else _index_file_mtimes(case_dir),
         "file_sha256s": file_sha256s if file_sha256s is not None else _index_file_digests(case_dir),
+        # R13: the exact extractions folder the rows were read from (the committed
+        # run's), so verify re-hashes that run's files, not whichever run is newest later.
+        "source_extractions": _source_extractions_text(case_dir),
         "capped": bool(meta.get("capped")),
         "caps": meta.get("caps") or {},
     }

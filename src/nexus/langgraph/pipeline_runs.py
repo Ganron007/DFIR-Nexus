@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import re
 import tempfile
@@ -12,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+log = logging.getLogger(__name__)
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,95}$")
 
@@ -282,6 +285,14 @@ def _run_dir_has_data(run_dir: Path) -> bool:
     )
 
 
+def _run_committed(run_dir: Path) -> bool:
+    """True when the run's manifest says it completed (R10)."""
+    try:
+        return str(load_manifest(Path(run_dir)).get("status") or "") == "completed"
+    except (OSError, ValueError):
+        return False
+
+
 def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     """Extractions of the active tools run, following reuse chains.
 
@@ -303,12 +314,29 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     # (SC1: the pointer chain reached the 07:55 run while the 09:41 lane run —
     # 425 OK rows — held the real output), which blinded the family census.
     if not run_id.strip():
+        # R10 (third-eye review): the committed run is authoritative. The active
+        # pointer names it, and it is used when its manifest says it completed.
+        # Otherwise recovery takes the newest COMPLETED run with data and logs why;
+        # only when no completed run has data does it fall back to the newest data,
+        # with a warning, so a failed run's partial output is never silent.
+        if run is not None and _run_committed(run.path) and _run_dir_has_data(run.path):
+            return run.extractions
         runs_dir = case_dir / "runs"
         if runs_dir.is_dir():
-            for candidate in sorted(
+            ordered = sorted(
                 runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True,
-            ):
+            )
+            for candidate in ordered:
+                if (candidate.is_dir() and _run_committed(candidate)
+                        and _run_dir_has_data(candidate)):
+                    if run is not None and run.run_id != candidate.name:
+                        log.warning("tools run %s is not committed; resolving the "
+                                    "completed run %s", run.run_id, candidate.name)
+                    return candidate / "extractions"
+            for candidate in ordered:
                 if candidate.is_dir() and _run_dir_has_data(candidate):
+                    log.warning("no completed tools run has data; resolving %s, "
+                                "which did not complete", candidate.name)
                     return candidate / "extractions"
 
     seen: set[str] = set()
