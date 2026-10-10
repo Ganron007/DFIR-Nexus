@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,33 +29,81 @@ log = logging.getLogger(__name__)
 _FLAT_FILES = ("evidence.json", "evidence_registry.json")
 
 
-def hash_evidence_path(path: Path) -> tuple[str, int, int]:
-    """Deterministic SHA-256 for a file or directory tree + counts.
+@dataclass(frozen=True)
+class EvidenceHash:
+    """The digest of an evidence path, and what could not be read into it.
 
-    Semantics must stay byte-identical to ``nexus.case_manager._hash_evidence_path``
-    so the same path registered through the portal or MCP yields the same
-    digest (there is a parity test guarding this).
+    ``unreadable`` lists every entry the walk or the hash could not read, with the
+    reason. Each such entry is also a line of the manifest, so the digest commits to
+    the fact that it was not hashed: a later read that succeeds changes the digest.
+    """
+
+    digest: str
+    files: int
+    total_bytes: int
+    unreadable: tuple[dict[str, str], ...] = ()
+
+
+def _reason(err: BaseException) -> str:
+    return f"{type(err).__name__}: {getattr(err, 'strerror', None) or err}"
+
+
+def hash_evidence_tree(path: Path) -> EvidenceHash:
+    """Deterministic SHA-256 for a file or directory tree, recording what was unreadable.
+
+    The manifest holds one line per readable file (``relative\0size\0sha256``), sorted
+    by relative path, exactly as the registry has always written it. An unreadable file
+    or directory gets its own line with the reason instead, and is listed in
+    ``unreadable``. It is never dropped silently and never aborts the registration.
     """
     path = Path(path)
     if path.is_file():
-        return _hash_file(path), 1, path.stat().st_size
+        return EvidenceHash(_hash_file(path), 1, path.stat().st_size)
     if not path.is_dir():
         raise FileNotFoundError(f"Evidence path not found: {path}")
-    manifest = hashlib.sha256()
+    lines: list[tuple[str, str]] = []
+    unreadable: list[dict[str, str]] = []
     count = 0
     total_bytes = 0
-    children = sorted(
-        (p for p in path.rglob("*") if p.is_file()),
-        key=lambda p: p.relative_to(path).as_posix(),
-    )
-    for child in children:
-        relative = child.relative_to(path).as_posix()
-        size = child.stat().st_size
-        file_hash = _hash_file(child)
-        manifest.update(f"{relative}\0{size}\0{file_hash}\n".encode())
-        count += 1
-        total_bytes += size
-    return manifest.hexdigest(), count, total_bytes
+
+    def _unreadable(relative: str, err: BaseException) -> None:
+        reason = _reason(err)
+        unreadable.append({"path": relative, "reason": reason})
+        lines.append((relative, f"{relative}\0UNREADABLE\0{reason}\n"))
+
+    def _on_walk_error(err: OSError) -> None:
+        # os.walk reports a directory it could not list here; it does not descend into it.
+        relative = Path(err.filename or "").relative_to(path).as_posix() if err.filename else "."
+        _unreadable(relative or ".", err)
+
+    for root, _dirs, names in os.walk(path, onerror=_on_walk_error):
+        for name in names:
+            full = Path(root) / name
+            relative = full.relative_to(path).as_posix()
+            try:
+                size = full.stat().st_size
+                file_hash = _hash_file(full)
+            except OSError as err:
+                _unreadable(relative, err)
+                continue
+            lines.append((relative, f"{relative}\0{size}\0{file_hash}\n"))
+            count += 1
+            total_bytes += size
+    manifest = hashlib.sha256()
+    for _relative, line in sorted(lines, key=lambda item: item[0]):
+        manifest.update(line.encode())
+    return EvidenceHash(manifest.hexdigest(), count, total_bytes, tuple(unreadable))
+
+
+def hash_evidence_path(path: Path) -> tuple[str, int, int]:
+    """(digest, files, total_bytes) for a file or directory tree.
+
+    The one hashing rule for every evidence write path (the portal, MCP and the legacy
+    flat-JSON manager all call this). Unreadable entries are recorded in the digest; see
+    :func:`hash_evidence_tree` for the list.
+    """
+    result = hash_evidence_tree(path)
+    return result.digest, result.files, result.total_bytes
 
 
 def _hash_file(path: Path) -> str:
@@ -177,7 +226,12 @@ def register_evidence(
     evidence_path = Path(path_str).resolve()
     if not evidence_path.exists():
         raise FileNotFoundError(f"Evidence path not found: {path_str}")
-    digest, file_count, total_bytes = hash_evidence_path(evidence_path)
+    evidence_hash = hash_evidence_tree(evidence_path)
+    digest = evidence_hash.digest
+    file_count = evidence_hash.files
+    total_bytes = evidence_hash.total_bytes
+    # What could not be read is recorded with its reason, never dropped (custody).
+    unreadable = [dict(item) for item in evidence_hash.unreadable]
 
     mgr = _manager()
     try:
@@ -231,10 +285,12 @@ def register_evidence(
                 "total_bytes": total_bytes,
                 "recognized_family": recognized_family,
                 "placed_at": placed,
+                "unreadable": unreadable,
             },
         )
         return {
             "status": "registered",
+            "unreadable": unreadable,
             "path": str(evidence_path),
             "sha256": digest,
             "files": file_count,

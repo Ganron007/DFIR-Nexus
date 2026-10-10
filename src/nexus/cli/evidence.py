@@ -83,31 +83,32 @@ def register(
         typer.echo(f"Path not found: {path}", err=True)
         raise typer.Exit(1)
 
-    from nexus.case.evidence_service import hash_evidence_path
-
-    # Same content hash the pipeline's evidence_register uses. A 400-file
-    # fingerprint does not match that hash, so a later register raises
-    # "content changed" on evidence that did not change.
-    digest, count, total_bytes = hash_evidence_path(fpath.resolve())
-    size_label = (
-        f"{count} files, {total_bytes:,} bytes"
-        if fpath.is_dir() else f"{total_bytes:,} bytes"
-    )
-
-    mgr = _get_sqlite_mgr()
     from nexus.audit import resolve_examiner
-    mgr.add_evidence(
-        case_id=case_id,
-        name=fpath.name,
-        description=description,
-        file_path=str(fpath.resolve()),
-        file_hash_sha256=digest,
-        collected_by=resolve_examiner(),
-    )
+    from nexus.case.evidence_service import register_evidence
+    from nexus.config import settings
 
-    typer.echo(f"Registered: {fpath.name}")
-    typer.echo(f"  SHA-256: {digest}")
-    typer.echo(f"  Size: {size_label}")
+    # One registration path for every write path (evidence_service): the same hash rule,
+    # the already-registered check, and every unreadable entry recorded with its reason.
+    try:
+        result = register_evidence(
+            settings.cases_root / case_id, str(fpath.resolve()),
+            description=description, examiner=resolve_examiner(),
+        )
+    except ValueError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(1) from err
+
+    verb = "Registered" if result["status"] == "registered" else "Already registered"
+    typer.echo(f"{verb}: {fpath.name or fpath}")
+    typer.echo(f"  SHA-256: {result['sha256']}")
+    if fpath.is_dir():
+        typer.echo(f"  Size: {result['files']} files, {result['total_bytes']:,} bytes")
+    else:
+        typer.echo(f"  Size: {result['total_bytes']:,} bytes")
+    if result.get("unreadable"):
+        typer.echo(
+            f"  Unreadable: {len(result['unreadable'])} entries recorded with their reasons"
+        )
 
 
 @app.command()

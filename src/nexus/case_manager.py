@@ -88,19 +88,10 @@ def _hash_file(path: Path) -> str:
 
 
 def _hash_evidence_path(path: Path) -> tuple[str, int, int]:
-    if path.is_file():
-        return _hash_file(path), 1, path.stat().st_size
-    manifest = hashlib.sha256()
-    count = 0
-    total_bytes = 0
-    for child in sorted((p for p in path.rglob("*") if p.is_file()), key=lambda p: p.relative_to(path).as_posix()):
-        relative = child.relative_to(path).as_posix()
-        size = child.stat().st_size
-        file_hash = _hash_file(child)
-        manifest.update(f"{relative}\0{size}\0{file_hash}\n".encode())
-        count += 1
-        total_bytes += size
-    return manifest.hexdigest(), count, total_bytes
+    """The evidence hash rule, shared with the registry (one rule; D-custody, 2026-10-10)."""
+    from nexus.case.evidence_service import hash_evidence_path
+
+    return hash_evidence_path(path)
 
 
 def _duplicate_key(finding: dict) -> tuple[str, tuple[str, ...]]:
