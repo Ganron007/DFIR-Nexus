@@ -2227,18 +2227,17 @@ def _plan_gap_parsers(
 
     # Scheduled tasks — offline XML only. A live `schtasks /query` reads the
     # examiner host, not the image (WO-TA item 1). Stage 0 collects live tasks
-    # on a named target. The copy cap is item 4.
-    tasks_dir = root / "Windows/System32/Tasks"
-    if tasks_dir.is_dir():
-        d = extractions / "schtasks"
-        d.mkdir(parents=True, exist_ok=True)
-        task_files = list(tasks_dir.rglob("*"))[:50]
-        for tf in task_files:
-            if tf.is_file():
-                rel = f"schtasks/files/{tf.relative_to(tasks_dir)}"
-                _copy_text(extractions, rel, tf)
-    else:
-        skip("schtasks", f"missing {tasks_dir}")
+    # on a named target.
+    #
+    # WO-TA item 4 / D50: there is deliberately NO copy block here. This used to
+    # copy the first 50 of 225 task files as raw text, so 175 tasks - exactly
+    # the ones an intruder plants - never reached the index, while the gate
+    # still reported the lane complete. The task XMLs are not host evidence
+    # (is_host_evidence), so the ingest routing already routes every one of them
+    # to ScheduledTasksImporter, which indexes them under the registry's own
+    # family name (`tasks`) with registration date, principal, actions and
+    # triggers as typed fields. The cap was removed there too; a second cap in
+    # this planner would have reintroduced the same defect one layer down.
 
     # PowerShell history — parse the already-copied ConsoleHost_history.txt
     for user in users:

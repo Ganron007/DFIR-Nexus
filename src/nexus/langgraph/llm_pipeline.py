@@ -921,8 +921,24 @@ async def scope(state: InvestigationState, tools: dict, model) -> dict:
     }
 
 
+def _import_file_cap() -> int:
+    """Optional operator cap on files routed to importers. 0 = unlimited.
+
+    D50's lesson: a silent cap drops evidence while the gate still reports the
+    lane complete. If the operator sets one, every file it drops is counted and
+    reported - never skipped quietly.
+    """
+    raw = os.environ.get("NEXUS_IMPORT_FILE_CAP", "").strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
 async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
-    """Deterministic MCP triage — all applicable tools run (coverage/tools)."""
+    """Deterministic MCP triage - all applicable tools run (coverage/tools)."""
     from nexus.langgraph.tool_lane import run_tool_lane
 
     case_id = state.get("case_id") or ""
@@ -957,8 +973,16 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     ]
     # Directories are routed PER FILE: a mixed tree (one EVTX + pcaps/zeek
     # logs) used to send the WHOLE tree to the host lane, silently skipping
-    # every non-host file. Bounded so a disk image tree cannot flood ingest.
-    _MAX_IMPORTED_FILES = 200
+    # every non-host file.
+    #
+    # WO-TA item 4 / D50: there is no arbitrary file cap. The old bound of 200
+    # silently truncated a real volume - SC1's Windows\System32\Tasks holds 225
+    # files, so 25 tasks never reached the importer and the gate still reported
+    # the lane complete. A cap that drops evidence without recording it is the
+    # same defect as D50's copy cap, one level up. The walk is now bounded only
+    # by what is on the evidence, and every file it drops is recorded.
+    _MAX_IMPORTED_FILES = _import_file_cap()
+    _import_truncated = 0
     ingest_paths: list[str] = []
     raw_skipped: list[str] = []
     for p in all_paths:
@@ -969,16 +993,15 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
 
                 for root_dir, _dirs, files in _os.walk(p_path, followlinks=False):
                     for fname in files:
-                        if len(ingest_paths) >= _MAX_IMPORTED_FILES:
-                            break
+                        if _MAX_IMPORTED_FILES and len(ingest_paths) >= _MAX_IMPORTED_FILES:
+                            _import_truncated += 1
+                            continue
                         fp = str(Path(root_dir) / fname)
                         if is_raw_container(Path(fp)):
                             raw_skipped.append(fname)
                             continue
                         if not is_host_evidence(fp):
                             ingest_paths.append(fp)
-                    if len(ingest_paths) >= _MAX_IMPORTED_FILES:
-                        break
             except OSError:
                 continue
         elif is_raw_container(p_path):
@@ -990,6 +1013,14 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         result["_raw_skipped_note"] = (
             "I1 skipped raw container(s) (SIFT/imager lane, not importers): "
             + ", ".join(sorted(set(raw_skipped))[:6])
+        )
+    if _import_truncated:
+        # A cap the operator set is reported, not hidden: the gate and the
+        # briefing must both show that evidence was left unrouted.
+        result["_import_truncated_note"] = (
+            f"I1 routed {len(ingest_paths)} file(s) to importers; "
+            f"{_import_truncated} more were left unrouted by "
+            f"NEXUS_IMPORT_FILE_CAP={_MAX_IMPORTED_FILES}."
         )
     if ingest_paths:
         import asyncio as _asyncio
