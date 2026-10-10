@@ -1221,7 +1221,9 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
     try:
         tools_run = resolve_run(case_dir, "tools")
     except ValueError as exc:
-        return {"error": str(exc)}
+        # load_error: the graph stops here. Without it the edge went on to interpret, and
+        # the model was called over a case with no tools run (2026-10-10, the picker journey).
+        return {"error": str(exc), "load_error": str(exc)}
     ledger_path = tools_run.extractions / "_tool_lane_ledger.json"
     if not ledger_path.is_file():
         ledger_path = tools_run.path / "ledger" / "_tool_lane_ledger.json"
@@ -1230,9 +1232,10 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         try:
             ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            return {"error": f"ledger unreadable: {exc}"}
+            return {"error": f"ledger unreadable: {exc}", "load_error": f"ledger unreadable: {exc}"}
     if not ledger:
-        return {"error": f"No tool-lane ledger in {tools_run.path}"}
+        msg = f"No tool-lane ledger in {tools_run.path}"
+        return {"error": msg, "load_error": msg}
     interpret_run = create_run(
         case_dir,
         "interpret",
@@ -2672,6 +2675,11 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
 # Graph construction
 # ---------------------------------------------------------------------------
 
+def _route_after_load_existing(state: dict) -> str:
+    """Stop when the case has no tools run to interpret; otherwise interpret it."""
+    return "end" if state.get("load_error") else "interpret"
+
+
 def build_graph(tools: dict, model, mode: str | None = None):
     """Build the investigation graph for ``design``, ``coverage``, or ``tools``."""
     from langgraph.graph import END, StateGraph
@@ -2772,7 +2780,11 @@ def build_graph(tools: dict, model, mode: str | None = None):
         _add_traced("await_approval", await_approval)
         _add_traced("generate_report", _generate_report)
         workflow.add_edge("ensure_rag", "load_existing")
-        workflow.add_edge("load_existing", "interpret")
+        workflow.add_conditional_edges(
+            "load_existing",
+            _route_after_load_existing,
+            {"interpret": "interpret", "end": END},
+        )
         workflow.add_edge("interpret", "stage_findings")
         workflow.add_edge("stage_findings", "await_approval")
         workflow.add_edge("await_approval", "generate_report")
@@ -3059,7 +3071,12 @@ async def _finalize_died(
             snapshot = await _snapshot(compiled, cfg)
             if snapshot is not None:
                 state = _final_state(initial, getattr(snapshot, "values", None))
-        run = _run_to_finalize(state)
+        try:
+            run = _run_to_finalize(state)
+        except ValueError:
+            # The pipeline died before creating a run (e.g. a load error): nothing to finalise.
+            log.info("no run record to finalize: the pipeline stopped before creating one")
+            return
         finalize_run(run, "failed", f"{type(exc).__name__}: {exc}"[:400])
     except Exception:  # noqa: BLE001 — status bookkeeping must not mask the error
         log.exception("could not finalize a run that died")
@@ -3103,7 +3120,13 @@ async def _finalize_if_unfinished(
     try:
         from nexus.langgraph.pipeline_runs import finalize_run
 
-        run = _run_to_finalize(state)
+        try:
+            run = _run_to_finalize(state)
+        except ValueError:
+            # The pipeline stopped before creating a run (e.g. a load error): its own error is
+            # the answer, so there is no run record to finalise.
+            log.info("no run record to finalize: the pipeline stopped before creating one")
+            return
         if pending:
             drafts = len(state.get("draft_finding_ids") or (result or {}).get(
                 "draft_finding_ids") or [])
@@ -3267,3 +3290,4 @@ async def run_pipeline(
     log.info("  Draft:        %s", len(result_state.get("draft_finding_ids", [])))
     log.info("  Report:       %s", result_state.get("report_path", "N/A"))
     log.info("  Steps:        %d", len(result_state.get("step_log", [])))
+    return result_state

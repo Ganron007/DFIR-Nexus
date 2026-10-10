@@ -5302,7 +5302,7 @@ async def api_pipeline_run(request):
             progress_path = _pipeline_run_status_path(case_dir, run_id).with_suffix(
                 ".progress.jsonl"
             )
-            asyncio.run(run_pipeline(
+            result = asyncio.run(run_pipeline(
                 evidence_path=evidence_paths[0],
                 mode=pipeline_mode,
                 case_id=case_id,
@@ -5312,6 +5312,11 @@ async def api_pipeline_run(request):
                 # WO-1C item 3: the context policy decided before the run.
                 context_policy=context_policy,
             ))
+            # A node that failed (e.g. no completed tools run to interpret) ends the run as
+            # failed with its reason, never as complete.
+            node_error = str(result.get("error") or "").strip() if isinstance(result, dict) else ""
+            if node_error:
+                raise RuntimeError(node_error[:400])
             record["status"] = "complete"
             record["completed_at"] = datetime.now(UTC).isoformat()
             _transition_case_status(case_id, "active", allowed_from={"processing"})

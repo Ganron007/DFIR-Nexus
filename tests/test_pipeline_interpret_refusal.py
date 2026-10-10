@@ -94,3 +94,30 @@ def test_a_run_still_running_is_not_interpretable(root):
     case = _case(root, "CASE-INTERP03")
     _committed_run(case, "RUN-20261010T000000Z-tools-live", with_data=True, committed=False)
     assert has_completed_tools_run(case) is False
+
+
+def test_a_case_with_no_tools_run_is_a_load_error_that_stops_the_graph(root):
+    """The graph used to go on to interpret after load_existing failed, and call the model over an
+    empty case. A load error now routes to the end of the graph, with the reason."""
+    import asyncio
+
+    from nexus.langgraph.llm_pipeline import _route_after_load_existing, load_existing_case
+
+    case = _case(root, "CASE-INTERP04")
+    state = asyncio.run(load_existing_case({"case_id": case.name}, {}))
+
+    assert state.get("load_error"), state
+    assert "tools" in state["load_error"].lower()
+    assert _route_after_load_existing(state) == "end"
+    assert _route_after_load_existing({"case_id": case.name}) == "interpret"
+
+
+def test_nexus_interpret_refuses_a_context_it_does_not_know(root):
+    from typer.testing import CliRunner
+
+    from nexus.cli.main import app
+
+    _case(root, "CASE-INTERP05")
+    result = CliRunner().invoke(app, ["interpret", "--case", "CASE-INTERP05", "--context", "bogus"])
+    assert result.exit_code == 1
+    assert "--context must be independent or informed" in result.output

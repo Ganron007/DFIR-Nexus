@@ -2683,7 +2683,16 @@ _EMPTY_OUTPUT_MARKERS: dict[str, tuple[str, ...]] = {
     # CSV. A map that *had* rows writes its file and never reaches this branch,
     # so the phrase can only appear here when the result set is genuinely empty.
     "sqlecmd": ("did not return any results",),
+    # Hayabusa parses every event and writes only the events with a rule hit. Its summary
+    # "Events with hits / Total events: 0 / N" (N > 0) is the tool's own testimony that the
+    # logs held events and none matched: an empty timeline, not an unparsed one. Measured on
+    # the 2026-10-10 design-flow run: 64 events, 0 hits, a 0-byte evtx-timeline.csv.
+    "hayabusa": ("events with hits / total events: 0 /",),
 }
+
+#: Colour codes some tools print into stdout. They break plain-text markers, so they are
+#: removed before a marker is matched.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 
 def _job_row_count(job: ToolJob) -> int:
@@ -4564,7 +4573,7 @@ def _empty_output_status(
         if saved:
             with contextlib.suppress(OSError):
                 text += " " + Path(saved).read_text(encoding="utf-8", errors="replace")
-        lowered = text.lower()
+        lowered = _ANSI_RE.sub("", text).lower()
         if any(marker in lowered for marker in markers):
             return (
                 "SKIP",

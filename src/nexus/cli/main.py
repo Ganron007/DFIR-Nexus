@@ -679,6 +679,41 @@ def cross_mode(
 
 
 @app.command()
+def interpret(
+    case: str = typer.Option("", "--case", help="Case id (default: the active case)"),
+    context_policy: str = typer.Option(
+        "independent",
+        "--context",
+        help="independent (evidence only, the default) | informed (prior reports and DRAFT "
+             "summaries as labelled examiner context)",
+    ),
+    model: str = typer.Option("", "--model", help="LLM model (default: the configured one)"),
+):
+    """Mode 1 analysis run on a case's finished tools run (no re-parse). WO-1C item 6.
+
+    The same run as `nexus pipeline --mode interpret --from-case <case>`, with the context
+    policy named. A case with no completed tools run is refused with the reason.
+    """
+    policy = (context_policy or "").strip().lower()
+    if policy not in ("independent", "informed"):
+        typer.echo(f"--context must be independent or informed, not {context_policy!r}", err=True)
+        raise typer.Exit(1)
+    case_id = (case or "").strip()
+    if not case_id:
+        from nexus.case.outputs import resolve_active_case_dir
+
+        active = resolve_active_case_dir()
+        if active is None:
+            typer.echo("No active case - pass --case.", err=True)
+            raise typer.Exit(1)
+        case_id = active.name
+    pipeline(
+        case="", also=[], from_case=case_id, resume=False, model=model, thread="",
+        mode="interpret", context_policy=policy,
+    )
+
+
+@app.command()
 def pipeline(
     case: str = typer.Option("", "--case", help="Path to evidence directory or file"),
     also: list[str] = typer.Option([], "--also", help="Additional evidence roots on the same case"),
@@ -768,7 +803,7 @@ def pipeline(
         typer.echo("interpret mode needs --from-case <case_id>", err=True)
         raise typer.Exit(1)
 
-    asyncio.run(run_pipeline(
+    result = asyncio.run(run_pipeline(
         evidence_path=case,
         resume=resume,
         thread_id=thread,
@@ -778,6 +813,11 @@ def pipeline(
         case_id=cid,
         context_policy=(context_policy or "").strip() or None,
     ))
+    # A failed node is a failed run: say why, and exit non-zero, never a silent success.
+    node_error = str(result.get("error") or "").strip() if isinstance(result, dict) else ""
+    if node_error:
+        typer.echo(f"Pipeline failed: {node_error}", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
