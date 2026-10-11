@@ -36,11 +36,11 @@ def load_ecs_map() -> dict[str, Any]:
     return doc if isinstance(doc, dict) else {}
 
 
-#: Per-value caps (WO-CS1c item 1): a PowerShell script block may keep 32 KB; other
-#: event_data values 4,096; everything else 4,096.
-MAX_SCRIPT_BLOCK = 32768
-MAX_EVENT_DATA = 4096
-MAX_GENERIC = 4096
+#: No per-value cap (operator decision 2026-10-11: valid evidence is not cut). ``None`` keeps
+#: the value whole. The mapping's keyword ignore_above bounds only the keyword copy.
+MAX_SCRIPT_BLOCK = None
+MAX_EVENT_DATA = None
+MAX_GENERIC = None
 
 
 def _set(doc: dict[str, Any], path: str, value: Any, limit: int | None = None) -> None:
@@ -173,11 +173,11 @@ def _zircolite_event_data(ecs: dict[str, Any], fields: dict[str, Any],
             if isinstance(m, dict):
                 for k, v in m.items():
                     if v not in (None, "", [], {}):
-                        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:MAX_EVENT_DATA])
+                        _set(ecs, f"ecs.winlog.event_data.{k}", str(v))
     for k, v in fields.items():
         if str(k).lower() in rule_cols or k in ("Event Data",):
             continue
-        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:MAX_EVENT_DATA])
+        _set(ecs, f"ecs.winlog.event_data.{k}", str(v))
 
 
 def normalize(
@@ -200,8 +200,8 @@ def normalize(
     ev = _parse_payload(payload)
     if ev:
         for name, value in ev.items():
-            # WO-CS1c item 1: a PowerShell script block keeps up to 32 KB (a real
-            # 4104 carries 20,411 chars); other event_data values 4,096.
+            # WO-CS1c item 1 (cap removed 2026-10-11): a script block (a real 4104 carries
+            # 20,411 chars) and the other event_data values are kept whole.
             limit = MAX_SCRIPT_BLOCK if name == "ScriptBlockText" else MAX_EVENT_DATA
             _set(ecs, f"ecs.winlog.event_data.{name}", value, limit=limit)
         event_id = str(fields.get("EventId") or fields.get("EventID") or "").strip()
@@ -291,7 +291,7 @@ def _apply_mapped(ecs: dict[str, Any], dst: str, value: Any) -> None:
         for k, v in _split_pieces(pieces, base).items():
             _set(ecs, k, v)
         return
-    # WO-CS1c item 1: a script block keeps up to 32 KB, everything else 4,096.
+    # WO-CS1c item 1 (cap removed 2026-10-11): every value is kept whole.
     limit = MAX_SCRIPT_BLOCK if dst.endswith(".ScriptBlockText") else MAX_GENERIC
     _set(ecs, dst, value, limit=limit)
 

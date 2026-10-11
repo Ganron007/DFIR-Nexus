@@ -34,13 +34,15 @@ def test_scriptblocktext_keeps_up_to_32k():
     assert sbt == long_text
 
 
-def test_scriptblocktext_is_cut_at_32k_not_4k():
+def test_scriptblocktext_is_kept_whole_past_32k():
+    """Operator decision 2026-10-11: valid evidence is not cut. The 32 KB script-block cap is
+    gone, so a 40,000-character script block is kept whole."""
     over = "B" * 40000
     fields = {"EventId": "4104", "Channel": "Microsoft-Windows-PowerShell/Operational",
               "Payload": json.dumps({"EventData": {"Data": [
                   {"@Name": "ScriptBlockText", "#text": over}]}})}
     ecs = _norm("evtxecmd", fields)
-    assert len(ecs["winlog"]["event_data"]["ScriptBlockText"]) == 32768
+    assert ecs["winlog"]["event_data"]["ScriptBlockText"] == over
 
 
 def _map():

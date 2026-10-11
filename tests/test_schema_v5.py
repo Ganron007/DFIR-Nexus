@@ -66,7 +66,10 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # v10: WO-CS1 - the common `ecs.*` field set is added at index time (additive).
     # v11: WO-CS1b item 1 (D37) - the column-count/value caps that dropped
     # EvtxECmd's Payload are raised, so Windows EventData reaches the index.
-    assert INDEX_SCHEMA_VERSION == 11
+    # v12: operator 2026-10-11 - no cap or cut on valid evidence (the walk, row text, field
+    # values, columns); a line-based file has a header only when line 1 is tab-separated;
+    # .tsv is walked; host/user carry ignore_above. An index built before it must be rebuilt.
+    assert INDEX_SCHEMA_VERSION == 12
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

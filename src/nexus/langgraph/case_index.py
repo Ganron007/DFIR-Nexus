@@ -30,8 +30,8 @@ from nexus.langgraph.path_sanitize import (
 from nexus.langgraph.query_pack import (
     _DATE_RE,
     _MAX_FILTERED_SCAN_BYTES,
-    _MAX_LINE,
     _SKIP_SUFFIXES,
+    EXTRACTION_PATTERNS,
     _count_fact_sites,
     _row_in_window,
     _scan_prio,
@@ -94,21 +94,16 @@ WILDCARD_IGNORE_ABOVE = 32766
 #     (27 columns, Payload LAST), so no EventData or derived `ecs` field was ever
 #     produced. The cap is raised past the widest real output (JLECmd: 43) and the
 #     per-value cap from 300 to 4096; event_data.ScriptBlockText may reach 32 KB.
-INDEX_SCHEMA_VERSION = 11
+# v12 (2026-10-11): no cap or cut on valid evidence (walked files, row text, field values,
+# columns); a header only for delimited tables (.csv/.tsv); .tsv is walked; host/user carry
+# ignore_above, so a long value cannot reject its document.
+INDEX_SCHEMA_VERSION = 12
 
-#: Keep every column of the widest real tool output (JLECmd has 43). Not a cap in
-#: practice - the registry types the columns, and the index holds all families.
-_MAX_INDEX_FIELDS = 96
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
-# D37: 300 cut real values (a 4624 Payload is ~1,326 chars). 4096 keeps a real row's
-# values whole; the keyword subfield's ignore_above still bounds the keyword copy.
-_MAX_INDEX_FIELD_VALUE = 4096
-# WO-CS1: the EvtxECmd `Payload` JSON is parsed structurally (all EventData names
-# become ecs.winlog.event_data.*), so it must not be cut at the generic value limit.
-_MAX_PAYLOAD_FIELD_VALUE = 65536
-#: One EventData value may be a whole PowerShell script block; the WO allows 32 KB.
-_MAX_EVENT_DATA_VALUE = 32768
+# No column, field value or row text is capped (operator decision 2026-10-11: valid evidence is
+# not cut). The mapping's keyword copies are bounded by ignore_above; the analyzed text, the
+# stored row text and fields.* keep every value whole.
 
 # ES rejects monolithic term scans ("Query rewrite failed: too many clauses"):
 # every needle expands to 2-3 clauses (match_phrase + fields.* multi_match +
@@ -364,25 +359,16 @@ def _fields_from_values(header: list[str], values: list[str]) -> dict[str, str]:
     `doc["fields"]`, not at parse time.
     """
     out: dict[str, str] = {}
-    for name, value in list(zip(header, values, strict=False))[:_MAX_INDEX_FIELDS]:
+    for name, value in zip(header, values, strict=False):
         v = str(value).strip()
         if v and not str(name).startswith("_"):
             out[str(name)] = v
     return out
 
 
-def _cap_field_values(fields: dict[str, str] | None) -> dict[str, str]:
-    """Apply the storage value cap to a field map (WO-CS1b item 1 / D37).
-
-    `normalize()` reads the full map; `doc["fields"]` keeps the capped copy. The
-    storage cap is `_MAX_INDEX_FIELD_VALUE` (4,096), except EvtxECmd's `Payload`
-    JSON which keeps up to `_MAX_PAYLOAD_FIELD_VALUE` (it is parsed structurally).
-    """
-    out: dict[str, str] = {}
-    for k, v in (fields or {}).items():
-        limit = _MAX_PAYLOAD_FIELD_VALUE if str(k) == "Payload" else _MAX_INDEX_FIELD_VALUE
-        out[str(k)] = str(v)[:limit]
-    return out
+def _stored_field_values(fields: dict[str, str] | None) -> dict[str, str]:
+    """The field map stored under ``doc["fields"]``: every value whole (operator decision 2026-10-11)."""
+    return {str(k): str(v) for k, v in (fields or {}).items()}
 
 
 def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
@@ -475,12 +461,12 @@ def _record_fields(line: str) -> dict[str, str]:
     if not isinstance(obj, dict):
         return {}
     out: dict[str, str] = {}
-    for name, value in list(obj.items())[:_MAX_INDEX_FIELDS]:
+    for name, value in obj.items():
         if str(name).startswith("_") or isinstance(value, (dict, list)):
             continue
         if value in (None, ""):
             continue
-        out[str(name)] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+        out[str(name)] = str(value)
     return out
 
 
@@ -527,13 +513,15 @@ def _open_text_auto(path: Path):
 
 
 def _index_header(path: Path) -> list[str] | None:
-    """Header columns when line 1 looks like CSV/TSV; else None.
+    """Header columns of line 1 when it is a header; else None.
 
-    JSON/JSONL/NDJSON files are line records, never delimited tables: a JSON
-    object on line 1 contains commas, and treating it as a header consumed the
-    first record and mapped every later record through pseudo-columns built
-    from it (a 198-record DeepBlueCLI file indexed 197 docs, the first
-    detection lost).
+    A delimited table (.csv/.tsv) has a header when line 1 holds a comma or a tab. A line-based
+    file (.txt, .log) has one only when line 1 is tab-separated, as a Zeek "#fields" table is:
+    a comma in a sentence is not a header. DeepBlueCLI writes its detection summary and status
+    lines as sentences on line 1, and five of them were dropped when any comma counted
+    (CASE-C5B04D31). JSON/JSONL/NDJSON files are line records, never tables: a JSON object on
+    line 1 contains commas, and treating it as a header consumed the first record (a 198-record
+    DeepBlueCLI file indexed 197 docs, the first detection lost).
     """
     if _is_json_records(path):
         return None
@@ -543,9 +531,17 @@ def _index_header(path: Path) -> list[str] | None:
             first = fh.readline().strip()
     except OSError:
         return None
-    if first and ("," in first or "\t" in first):
-        return [c.strip().lstrip("\ufeff").strip('"') for c in _split_row(first)]
-    return None
+    if not first:
+        return None
+    if _is_delimited(path):
+        if "," not in first and "\t" not in first:
+            return None
+    elif "\t" not in first:
+        return None
+    # A TSV header is split on tabs: a column name may contain a comma.
+    is_tsv = path.name.lower().endswith((".tsv", ".tsv.gz"))
+    cells = first.split("\t") if is_tsv else _split_row(first)
+    return [c.strip().lstrip("\ufeff").strip('"') for c in cells]
 
 
 def iter_index_doc_batches(
@@ -603,7 +599,7 @@ def iter_index_doc_batches(
         # metadata, never evidence text. Replace those values outright and
         # normalize remaining machine prefixes (raw files untouched).
         text = sanitize_row_text(
-            line.strip()[:_MAX_LINE], fields, case_dir, roots=sanitize_roots,
+            line.strip(), fields, case_dir, roots=sanitize_roots,
             family=fam
         )
         key = hashlib.sha1(
@@ -633,11 +629,11 @@ def iter_index_doc_batches(
             full_fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
                                              family=fam)
             host, user, event = _host_user_event(full_fields)
-            doc["fields"] = _cap_field_values(full_fields)
+            doc["fields"] = _stored_field_values(full_fields)
             if host:
-                doc["host"] = host.lower()[:120]
+                doc["host"] = host.lower()
             if user:
-                doc["user"] = user.lower()[:120]
+                doc["user"] = user.lower()
             if event:
                 doc["event_id"] = str(event)[:40]
             # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
@@ -718,6 +714,13 @@ def iter_index_doc_batches(
             continue
         if stop:
             break
+    # A family past NEXUS_N4_FILES_PER_FAMILY is skipped by the walk. Record it, so the index
+    # state never reads "not capped" while files were left out.
+    if file_stats.get("files_skipped_family_cap"):
+        caps["files_skipped_family_cap"] = file_stats["files_skipped_family_cap"]
+        for fam in file_stats.get("families_capped") or []:
+            if fam not in caps["families_capped"]:
+                caps["families_capped"].append(fam)
     # Imported non-host evidence (network/cloud/TI): clean searchable rows from
     # the case artifact store, family = source. The raw store JSONL is never
     # indexed — this projection is (CSV-scanner parity).
@@ -743,7 +746,7 @@ def iter_index_doc_batches(
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):
-                    art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+                    art_fields[key_name] = str(value)
             # D34 (WO-KM1 item 1): the importer's normalized columns. They were
             # computed by the importer and stored in ``raw``, but only the
             # envelope above reached the index - so an artifact's process,
@@ -763,7 +766,7 @@ def iter_index_doc_batches(
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):
-                    art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+                    art_fields[key_name] = str(value)
             # WO-8: task definitions carry typed fields inside ``raw``; project
             # the ones the field registry types (keyword / date / boolean) so a
             # scheduled-task investigation can filter instead of substring-search.
@@ -791,7 +794,7 @@ def iter_index_doc_batches(
                     ("trigger_enabled", first_trigger.get("enabled")),
                 ):
                     if value not in (None, "", []):
-                        art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+                        art_fields[key_name] = str(value)
             family_key = (fam.replace("/", "_").replace("\\", "_") or "ingest")
             if _add(ingest_store, case_dir, fam, n, text, art_fields or None,
                     count_key=f"{family_key}/artifacts.jsonl"):
@@ -924,8 +927,8 @@ def _mapping_body() -> dict[str, Any]:
                 "family": {"type": "keyword"},
                 "file": {"type": "keyword"},
                 "line": {"type": "integer"},
-                "host": {"type": "keyword"},
-                "user": {"type": "keyword"},
+                "host": {"type": "keyword", "ignore_above": 1024},
+                "user": {"type": "keyword", "ignore_above": 1024},
                 "event_id": {"type": "keyword"},
                 "text": {
                     "type": "text",
@@ -1533,7 +1536,7 @@ def iter_index_files(case_dir: Path, run_id: str = "") -> list[Path]:
     for root in roots:
         if not root.is_dir():
             continue
-        pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log") if root.name == "ingest" else ("*.csv", "*.txt", "*.json", "*.jsonl")
+        pats = EXTRACTION_PATTERNS
         for pat in pats:
             for p in root.rglob(pat):
                 if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES):
@@ -2237,7 +2240,7 @@ def query_index(
             # Structured matched needles — the primary (ES) path used to omit
             # this, so every downstream consumer comma-split it again (EH-8).
             "terms_list": matched[:6],
-            "text": text[:_MAX_LINE],
+            "text": text,
         }
         if classified.get("facts"):
             hit["fact_terms"] = classified["facts"][:6]
@@ -2360,7 +2363,7 @@ def _shape_es_hit(
         "line": key[1],
         "terms": ",".join(matched[:6]),
         "terms_list": matched[:6],
-        "text": text[:_MAX_LINE],
+        "text": text,
     }
     if classified.get("facts"):
         hit["fact_terms"] = classified["facts"][:6]

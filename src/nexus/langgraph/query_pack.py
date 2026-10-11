@@ -22,7 +22,6 @@ from nexus.langgraph.path_sanitize import (
     sanitize_row_text,
 )
 
-_MAX_LINE = 4000
 _MAX_MD = 60000
 # Full-row index/scan of small CSVs. Hayabusa/USN live above this;
 # N4 still needle-scans them up to _MAX_FILTERED_SCAN_BYTES.
@@ -61,7 +60,16 @@ _MAX_HITS_TOTAL = _env_int("NEXUS_N4_MAX_HITS", 400)
 # / NEXUS_N4_MAX_FILE_MB; the old 80MB/400MB skips silently dropped evidence.
 _MAX_FULL_SCAN_BYTES = _env_mb("NEXUS_SCAN_MAX_FILE_MB", 0)
 _MAX_FILTERED_SCAN_BYTES = _env_mb("NEXUS_N4_MAX_FILE_MB", 0)
-_MAX_FILES_PER_FAMILY = _env_int("NEXUS_N4_FILES_PER_FAMILY", 120)
+# 0 = every file of a family. The old default (120) silently left the rest of a family out
+# of the index (CASE-C5B04D31: 394 PowerShell-transcript and WER files). Valid evidence is not
+# capped (operator decision 2026-10-11); an examiner may still cap a run with the env var.
+_MAX_FILES_PER_FAMILY = _env_int("NEXUS_N4_FILES_PER_FAMILY", 0)
+#: The files the index and the N4 scanner read from an extractions root. Every format a lane
+#: job writes must be listed here, or the index never sees it (`.tsv` was missing).
+EXTRACTION_PATTERNS = (
+    "*.csv", "*.tsv", "*.txt", "*.json", "*.jsonl", "*.log",
+    "*.csv.gz", "*.tsv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz",
+)
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?")
 _EXE_RE = re.compile(r"\b[\w.-]+\.exe\b", re.I)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\\:-]{2,}")
@@ -704,7 +712,7 @@ def _hits_from_file(
                     skipped_cap += 1
                     continue
                 weak_n += 1
-            raw.append((pri, i, matched, line.strip()[:_MAX_LINE], classified))
+            raw.append((pri, i, matched, line.strip(), classified))
     raw.sort(key=lambda row: (row[0], row[1]))
     kept = raw[:_MAX_HITS_PER_FILE]
     capped = skipped_cap > 0 or len(raw) > _MAX_HITS_PER_FILE
@@ -727,7 +735,7 @@ def _hits_from_file(
     return hits, capped
 
 
-def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
+def render_ingest_row(d: dict[str, Any]) -> str:
     """Compact, N4-indexable text for one imported artifact.
 
     Deliberately excludes ids/UUIDs and processing metadata — the raw store
@@ -766,7 +774,7 @@ def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
         f"regvalue={d['registry_value']}" if d.get("registry_value") else "",
         f"action={d['action']}" if d.get("action") else "",
     ]
-    return " ".join(p for p in parts if p).strip()[:max_len]
+    return " ".join(p for p in parts if p).strip()
 
 
 def iter_ingest_records(case_dir: Path):
@@ -960,10 +968,7 @@ def iter_extraction_files(
         files: list[Path] = []
         # 4k.4: `.log` covers Zeek/Suricata/app logs pulled from SIFT too —
         # indexing everything means these must not be silently skipped.
-        pats = (
-            "*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
-            "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz",
-        )
+        pats = EXTRACTION_PATTERNS
         for pat in pats:
             files.extend(root.rglob(pat))
         for path in sorted(set(files), key=_scan_prio):
@@ -989,7 +994,7 @@ def iter_extraction_files(
                 continue
             fam = _family(path, root)
             n = fam_files.get(fam, 0)
-            if n >= file_cap:
+            if file_cap and n >= file_cap:
                 if stats is not None:
                     stats["files_skipped_family_cap"] += 1
                     capped = stats["families_capped"]
@@ -1816,7 +1821,7 @@ def _iter_matching_rows(
                     matched = ["*"]
             if not _row_in_window(line, start, end):
                 continue
-            yield i, matched, line.strip()[:_MAX_LINE]
+            yield i, matched, line.strip()
 
 
 def iter_extraction_hits(

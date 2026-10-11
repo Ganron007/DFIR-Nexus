@@ -317,7 +317,9 @@ def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     assert "192.168.77.62" in yaml_text
 
 
-def test_bmc_tools_file_cap(tmp_path: Path):
+def test_bmc_tools_keeps_every_file_by_default(tmp_path: Path):
+    """Operator decision 2026-10-11: valid evidence is not capped. Every file of a family is
+    walked by default; an explicit family cap still applies when it is asked for."""
     from nexus.langgraph.query_pack import iter_extraction_files
 
     bmc = tmp_path / "extractions" / "bmc-tools"
@@ -325,9 +327,9 @@ def test_bmc_tools_file_cap(tmp_path: Path):
     for i in range(200):
         (bmc / f"tile{i}.txt").write_text("rdp cache tile\n", encoding="utf-8")
     files = iter_extraction_files(tmp_path)
-    bmc_n = sum(1 for _p, _r, fam in files if fam == "bmc-tools")
-    assert bmc_n <= 120
-    assert bmc_n > 0
+    assert sum(1 for _p, _r, fam in files if fam == "bmc-tools") == 200
+    capped = iter_extraction_files(tmp_path, max_files_per_family=120)
+    assert sum(1 for _p, _r, fam in capped if fam == "bmc-tools") == 120
 
 
 def test_n4_scans_hayabusa_named_file(tmp_path: Path):

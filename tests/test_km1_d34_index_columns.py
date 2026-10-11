@@ -98,11 +98,12 @@ def test_an_empty_record_does_not_grow_empty_keys():
     assert text.startswith("2026-09-29T13:04:07Z authlog")
 
 
-def test_the_row_stays_bounded():
-    """``_MAX_LINE`` exists because a million rows are indexed."""
+def test_the_row_keeps_the_whole_command_line():
+    """Operator decision 2026-10-11: valid evidence is not cut. A 100,000-character command
+    line is searchable whole in the row text."""
     loud = dict(RECORD)
     loud["command_line"] = "x" * 100_000
-    assert len(render_ingest_row(loud)) <= render_ingest_row.__defaults__[0]
+    assert f"cmd={'x' * 100_000}" in render_ingest_row(loud)
 
 
 def test_iter_ingest_records_yields_the_projected_text(tmp_path):

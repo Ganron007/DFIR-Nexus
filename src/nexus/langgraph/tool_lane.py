@@ -1627,14 +1627,24 @@ def plan_windows_triage(
             "MFT parse (CSV)",
             1800,
         )
-        body_dir = extractions / "mftecmd-body"
-        body_dir.mkdir(parents=True, exist_ok=True)
-        add(
-            "mftecmd",
-            ["mftecmd", "-f", str(mft), "--body", str(body_dir), "--bdl", "C"],
-            "MFT bodyfile for mactime (FOR508)",
-            1800,
-        )
+        # The bodyfile is the SIFT/Plaso timeline input (mactime, super timeline), not a product
+        # of the Windows lane. The parsed MFT table above is the MFT evidence, so the bodyfile
+        # runs only when the examiner opts in (NEXUS_LANE_OPT_IN=mftecmd-body).
+        if _lane_opted_in("mftecmd-body"):
+            body_dir = extractions / "mftecmd-body"
+            body_dir.mkdir(parents=True, exist_ok=True)
+            add(
+                "mftecmd",
+                ["mftecmd", "-f", str(mft), "--body", str(body_dir), "--bdl", "C"],
+                "MFT bodyfile for mactime (FOR508, opt-in)",
+                1800,
+            )
+        else:
+            skip(
+                "mftecmd-body",
+                "MFT bodyfile is the SIFT/Plaso timeline input, not a default product; "
+                "set NEXUS_LANE_OPT_IN=mftecmd-body",
+            )
     elif mft.is_file() and quick:
         skip("mftecmd", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
     else:

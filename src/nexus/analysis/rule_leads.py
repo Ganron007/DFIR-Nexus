@@ -143,16 +143,16 @@ def _doc_id(path: Path, root: Path, family: str, line: int, raw: str) -> str:
 
     Must equal `case_index._bulk_ndjson`'s hash exactly or the lookup misses:
     ``sha1(family \0 file-relative-to-root \0 line \0 sanitized-text)``, where
-    ``text`` is the sanitized raw record line truncated to the index line cap.
+    ``text`` is the sanitized raw record line, whole (the index keeps every line).
     """
     import hashlib
 
-    from nexus.langgraph.case_index import _MAX_LINE, _index_rel
+    from nexus.langgraph.case_index import _index_rel
     from nexus.langgraph.path_sanitize import sanitize_row_text
 
     case_dir = root.parent.parent
     text = sanitize_row_text(
-        str(raw or "").strip()[:_MAX_LINE], None, case_dir, family=family,
+        str(raw or "").strip(), None, case_dir, family=family,
     )
     return hashlib.sha1(
         f"{family}\x00{_index_rel(path, root)}\x00{line}\x00{text}".encode(
