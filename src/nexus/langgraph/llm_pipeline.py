@@ -841,6 +841,8 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
                 {
                     "path": p,
                     "description": "Evidence for automated investigation",
+                    # The run's own case: the registry takes it there, never the global active case.
+                    "case_id": case_id,
                 },
                 label="evidence_register",
                 # A content hash of a multi-GB image or triage tree is the
@@ -2358,6 +2360,9 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 # no scope to link against → never pad blindly
                 linked = set()
         payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
+        if stage_case_id:
+            # The run's own case: the tool stages there, never into the global active case.
+            payload["case_id"] = stage_case_id
         try:
             result = _parse_tool_result(
                 await call_tool(finding_tool, payload, label="record_finding")
@@ -2402,6 +2407,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                             "description": c.get("observation", c.get("title", ""))[:500],
                             "event_type": c.get("type", "execution"),
                             "host": c.get("host", ""),
+                            "case_id": stage_case_id,
                         },
                         label="record_timeline_event",
                     ))

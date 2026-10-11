@@ -312,15 +312,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return {"status": "closed", "case_id": case_dir.name}
 
     @server.tool()
-    def evidence_register(path: str, description: str = "") -> dict:
+    def evidence_register(path: str, description: str = "", case_id: str = "") -> dict:
         """Register an evidence file — SHA-256 hash, chain of custody.
 
         Registers into the case's SQLite evidence registry (the single system
         of record shared with the Examiner Portal). Confirm with the examiner
-        before registering.
+        before registering. A pipeline run names its own case; an unnamed call
+        registers into the active case.
         """
         try:
-            case_dir = manager.require_active_case()
+            case_dir = (manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip()
+                        else manager.require_active_case())
         except ValueError as e:
             return {"error": str(e)}
 

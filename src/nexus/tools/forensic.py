@@ -3,6 +3,8 @@
 All data is persisted to the active case directory as JSON files.
 """
 
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 from nexus.audit import AuditWriter
@@ -20,6 +22,17 @@ def _validate_str(value: str | None, field: str, max_len: int) -> None:
             raise ValueError(f"{field} exceeds {max_len} characters")
         if "\x00" in value:
             raise ValueError(f"{field} contains null byte")
+
+
+def _target_case_dir(case_id: str) -> Path | None:
+    """The case a tool call names, or None for the active case (interactive use).
+
+    A pipeline run names its own case, so its findings and timeline events never reach the global
+    active-case pointer (2026-10-11: a run on CASE-C5B04D31 staged 7 findings into CASE-D6B93BF1).
+    """
+    if not (case_id or "").strip():
+        return None
+    return manager.resolve_case_dir(case_id.strip())
 
 
 def register_tools(server: FastMCP, audit: AuditWriter):
@@ -48,6 +61,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         itm_objects: list[str] | None = None,
         evidence: list[dict] | None = None,
         entity: dict | None = None,
+        case_id: str = "",
     ) -> dict:
         """Stage a finding as DRAFT for human review.
 
@@ -115,12 +129,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         })
 
         try:
+            target = _target_case_dir(case_id)
+        except ValueError as e:
+            return {"error": str(e)}
+        try:
             result = manager.record_finding(
                 finding_data,
                 examiner_override=analyst_override,
                 supporting_commands=supporting_commands,
                 artifacts=artifacts,
                 audit=audit,
+                case_dir=target,
             )
         except Exception as e:
             return {"error": str(e)}
@@ -144,6 +163,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         host: str = "",
         affected_account: str = "",
         analyst_override: str = "",
+        case_id: str = "",
     ) -> dict:
         """Record a chronological event in the incident narrative.
 
@@ -164,8 +184,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "affected_account": affected_account,
         }
         try:
+            target = _target_case_dir(case_id)
             result = manager.record_timeline_event(
-                event, examiner_override=analyst_override)
+                event, examiner_override=analyst_override, case_dir=target)
         except Exception as e:
             return {"error": str(e)}
 

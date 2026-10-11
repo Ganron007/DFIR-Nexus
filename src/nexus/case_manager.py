@@ -1111,8 +1111,10 @@ class CaseManager:
 
         save_timeline(case_dir, events)
 
-    def record_timeline_event(self, event: dict, examiner_override: str = "") -> dict:
-        case_dir = self.require_active_case()
+    def record_timeline_event(
+        self, event: dict, examiner_override: str = "", case_dir: Path | None = None,
+    ) -> dict:
+        case_dir = Path(case_dir) if case_dir is not None else self.require_active_case()
         exam = (examiner_override.strip().lower()
                 if examiner_override and examiner_override.strip()
                 else self.examiner)
