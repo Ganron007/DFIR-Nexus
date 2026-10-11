@@ -17,6 +17,22 @@ from _nexus_guard import nexus_guard_end, nexus_snapshot  # noqa: E402
 
 _nexus_before = nexus_snapshot()
 
+# The repo's own case store. ~/.nexus/config.yaml sets cases_root to this folder, and the env var below
+# does not override it, so an unpinned run wrote TEST-001 into the real store (2026-10-11). Checked at the end.
+_REPO_CASES = Path(__file__).resolve().parent.parent / "cases"
+
+
+def _repo_cases_state():
+    if not _REPO_CASES.is_dir():
+        return {}, []
+    files = {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in _REPO_CASES.iterdir()
+             if p.is_file() and p.name == "cases.db"}  # the WAL/SHM files change on every read
+    dirs = sorted(p.name for p in _REPO_CASES.iterdir() if p.is_dir())
+    return files, dirs
+
+
+_repo_before = _repo_cases_state()
+
 _tmp_root = tempfile.mkdtemp(prefix="nexus_test_")
 os.environ["NEXUS_CASES_ROOT"] = os.path.join(_tmp_root, "cases")
 # The active-case pointer is separate from the cases root and defaults to the
@@ -31,6 +47,8 @@ from nexus.config import settings as _settings  # noqa: E402
 # The env var is read at settings construction, but `~/.nexus/config.yaml` can
 # also set `data_root`, so pin it explicitly before anything opens the index.
 _settings.data_root = Path(_tmp_root) / "data"
+# Pin the cases root too: the operator's config.yaml would otherwise point it at the repo's cases folder.
+_settings.cases_root = Path(_tmp_root) / "cases"
 
 server = create_server()
 tools = in_process_tools(server)
@@ -238,6 +256,11 @@ check("get_findings (all)", r["total"] == 1, f"{r['total']} total (expected 1)")
 # Cleanup
 os.unlink(ev_path)
 shutil.rmtree(os.environ["NEXUS_CASES_ROOT"], ignore_errors=True)
+
+# The repo's case store must be exactly as it was found.
+if _repo_cases_state() != _repo_before:
+    print('  FAIL: the repo case store (cases/) changed during this run')
+    failed += 1
 
 print()
 print(f"=== {passed} PASSED, {failed} FAILED (out of {passed + failed}) ===")
