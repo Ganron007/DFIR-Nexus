@@ -161,6 +161,7 @@ def test_empty_rebuild_clears_stale_index_documents(tmp_path: Path):
     client.__enter__.return_value = client
     client.__exit__.return_value = False
     client.post.return_value = response
+    client.delete.return_value = MagicMock(status_code=200, text="")
 
     with patch.object(case_index, "iter_index_docs", return_value=[]), \
          patch.object(case_index, "ensure_index", return_value="nexus-case-empty"), \
@@ -171,12 +172,7 @@ def test_empty_rebuild_clears_stale_index_documents(tmp_path: Path):
     assert result["purge_refused"] is False
     calls = [c.args[0] for c in client.post.call_args_list if c.args]
     assert "/nexus-case-empty/_count" in calls
-    assert "/nexus-case-empty/_delete_by_query" in calls
-    delete_call = next(
-        c for c in client.post.call_args_list
-        if c.args and c.args[0] == "/nexus-case-empty/_delete_by_query"
-    )
-    assert delete_call.kwargs["json"] == {"query": {"match_all": {}}}
+    assert client.delete.call_args.args[0] == "/nexus-case-empty", "the stale index is dropped"
     assert not any(call.args and call.args[0] == "/_bulk" for call in client.post.call_args_list)
     assert (case / "analysis" / "index_state.json").is_file()
 

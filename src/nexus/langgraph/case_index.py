@@ -1130,6 +1130,7 @@ def index_case(
     that is a resolver/run-pointer failure, not deleted evidence.
     """
     case_dir = Path(case_dir)
+    started_at = datetime.now(UTC)
     # Only the examiner's ingest folder. Tool output already lands in a
     # family-named subfolder, and moving files during the lane would race the
     # tool that is still writing them.
@@ -1151,8 +1152,14 @@ def index_case(
             prior = {}
     prior_mtimes = prior.get("file_mtimes") or {}
     current_mtimes = _index_file_mtimes(case_dir, run_id) if incremental else {}
+    # A different run from the one indexed (the lane's new run, or a retry over another) replaces the
+    # index. Its documents are dropped with the index in one step, not file by file: a per-file delete
+    # over millions of documents from the superseded run takes far longer than an empty index.
+    prior_source = str(prior.get("source_extractions") or "")
+    current_source = _source_extractions_text(case_dir, run_id)
+    replaces_run = bool(prior_source and current_source and prior_source != current_source)
 
-    use_incremental = bool(incremental and prior_mtimes and current_mtimes)
+    use_incremental = bool(incremental and prior_mtimes and current_mtimes and not replaces_run)
     # R09: an mtime is not content identity. Archive extraction and preserved
     # timestamps can keep an mtime while the bytes change, so the change set also
     # compares each file's digest with the stored baseline (and reindexes any file
@@ -1309,16 +1316,15 @@ def index_case(
                 log.error("index purge refused: %s", purge_refused_reason)
                 docs_total = existing_docs
             else:
-                cleared = client.post(
-                    f"/{name}/_delete_by_query",
-                    params={"refresh": "true", "conflicts": "proceed"},
-                    json={"query": {"match_all": {}}},
-                    timeout=_PURGE_TIMEOUT_S,
-                )
-                if cleared.status_code >= 400:
+                # The whole index is replaced: dropping it removes every document in one request, and
+                # ensure_index recreates it with the mapping. A match-all delete reaches the same empty
+                # index much more slowly over millions of documents.
+                dropped = client.delete(f"/{name}", timeout=_PURGE_TIMEOUT_S)
+                if dropped.status_code >= 400 and dropped.status_code != 404:
                     raise RuntimeError(
-                        f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
+                        f"index drop failed: {dropped.status_code} {dropped.text[:300]}"
                     )
+                name = ensure_index(case_dir.name)
                 errors = 0
                 # EH-11: stream batches — a million-row case must not be
                 # materialized in memory before the first bulk request.
@@ -1351,6 +1357,10 @@ def index_case(
             ),
         }
 
+    # WO-TA item 10: the build's own duration (purge, load, refresh), recorded beside the counts so the
+    # speed of indexing is measured here, not inferred from when the state file was last written.
+    meta["index_started_at"] = started_at.isoformat()
+    meta["index_seconds"] = round((datetime.now(UTC) - started_at).total_seconds(), 1)
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     write_index_state(
         case_dir, meta,

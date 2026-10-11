@@ -124,6 +124,14 @@ class _FakeES:
     def put(self, path, json=None):
         return self._Resp(200, {"acknowledged": True})
 
+    def delete(self, path, timeout=None):
+        # A full rebuild drops the index, and with it every document (index_case). An index-level
+        # path has no "/_" endpoint; a document-level delete does not reach this fake.
+        if "/_" not in path:
+            self.cleared += 1
+            self.docs.clear()
+        return self._Resp(200, {"acknowledged": True})
+
     def post(self, path, json=None, content=None, headers=None, params=None, timeout=None):
         if path.endswith("/_count"):
             return self._Resp(200, {"count": len(self.docs)})

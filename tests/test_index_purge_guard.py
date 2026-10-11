@@ -25,6 +25,8 @@ class _FakeClient:
         self.docs = docs
         self.deletes: list[dict] = []
         self.delete_timeouts: list = []
+        self.index_drops: list[str] = []
+        self.index_drop_timeouts: list = []
         self.bulk_calls = 0
 
     def __enter__(self):
@@ -37,6 +39,12 @@ class _FakeClient:
         return _Resp(200, {})
 
     def get(self, path):
+        return _Resp(200, {})
+
+    def delete(self, path, timeout=None):
+        # A full purge drops the index in one request (index_case); the drop is what clears it.
+        self.index_drops.append(path)
+        self.index_drop_timeouts.append(timeout)
         return _Resp(200, {})
 
     def post(self, path, json=None, params=None, content=None, headers=None, timeout=None):
@@ -93,7 +101,7 @@ def test_fresh_case_stale_index_is_still_cleared(tmp_path, monkeypatch):
     meta = case_index.index_case(case)
 
     assert meta["purge_refused"] is False
-    assert fake.deletes, "a fresh case must clear a stale index"
+    assert fake.index_drops and fake.index_drops[0].startswith("/nexus-case-"), "a fresh case must clear a stale index"
     assert meta["docs"] == 0
 
 
@@ -109,7 +117,7 @@ def test_full_rebuild_purges_when_files_resolve(tmp_path, monkeypatch):
     meta = case_index.index_case(case)
 
     assert meta["purge_refused"] is False
-    assert fake.deletes, "a real rebuild must clear the index"
+    assert fake.index_drops, "a real rebuild must clear the index"
     assert meta["docs"] == 0  # no batches materialized from the fake case dir
 
 
@@ -127,5 +135,5 @@ def test_a_full_purge_may_outlast_the_default_client_timeout(tmp_path, monkeypat
 
     case_index.index_case(case)
 
-    assert fake.delete_timeouts == [case_index._PURGE_TIMEOUT_S]
+    assert fake.index_drop_timeouts == [case_index._PURGE_TIMEOUT_S]
     assert case_index._PURGE_TIMEOUT_S > 120.0
