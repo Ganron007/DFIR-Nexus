@@ -65,6 +65,22 @@ _GLOBAL_SEQ: dict[str, int] = {}
 _GLOBAL_SEQ_LOCK = threading.Lock()
 
 
+def _named_case(params: Any) -> str:
+    """The case a call names in its params (``case_id``), or '' when it names none, or an invalid one.
+
+    A call names its case: the lane's Windows calls carry the run's case (D41). The audit row belongs to that case,
+    whatever case the active pointer names at the moment (CASE-C5B04D31's calls were written into SC1's audit this way).
+    """
+    if not isinstance(params, dict):
+        return ""
+    from nexus.discipline import validate_case_id
+
+    value = str(params.get("case_id") or "").strip()
+    if not value or validate_case_id(value):
+        return ""
+    return value
+
+
 class AuditWriter:
     """Append-only audit trail writer.
     Writes JSONL entries to {audit_dir}/{mcp_name}.jsonl with:
@@ -103,7 +119,8 @@ class AuditWriter:
     ) -> str | None:
         """Write an audit entry. Returns the audit_id or None on failure."""
         try:
-            case_id = os.environ.get("NEXUS_ACTIVE_CASE", "")
+            named = _named_case(params)
+            case_id = named or os.environ.get("NEXUS_ACTIVE_CASE", "")
             examiner = resolve_examiner()
 
             if audit_id is None:
@@ -133,7 +150,7 @@ class AuditWriter:
                 json.dumps(entry, sort_keys=True, default=str).encode()
             ).hexdigest()
 
-            audit_dir = self._get_audit_dir()
+            audit_dir = self._get_audit_dir(named)
             if audit_dir is None:
                 return None
 
@@ -152,9 +169,14 @@ class AuditWriter:
             self._last_audit_id = None
             return None
 
-    def _get_audit_dir(self) -> Path | None:
+    def _get_audit_dir(self, named: str = "") -> Path | None:
         if self._audit_dir_override:
             return self._audit_dir_override
+        if named:
+            # The call names its case: its row goes to that case's audit folder, and never to another case's.
+            # A case that does not exist keeps the row in the process audit folder, not in any case.
+            case_path = settings.cases_root / named
+            return case_path / "audit" if case_path.is_dir() else settings.audit_dir
         env_audit = os.environ.get("NEXUS_AUDIT_DIR")
         if env_audit:
             return Path(env_audit)
