@@ -2926,12 +2926,21 @@ def _case_evidence_paths(case_id: str) -> list[str]:
     items = data if isinstance(data, list) else (data.get("evidence") or [])
     if not isinstance(items, list):
         return []
+    case_root = Path(str(settings.cases_root)) / str(case_id or "").strip()
     out: list[str] = []
     for item in items:
         if not isinstance(item, dict):
             continue
+        # A tool's own output is not evidence (D57). Its registry entry is kind tool_extraction, and a
+        # plain file entry under the case's runs or extractions folders is the same output registered
+        # again. Handing either to the planner, or to the evidence register step, makes a tool output
+        # examiner evidence (found on CASE-C5B04D31: hayabusa_stdout.txt was registered on the re-run).
+        if str(item.get("kind") or "") == "tool_extraction":
+            continue
         raw = str(item.get("path") or "").strip()
         if not raw:
+            continue
+        if _is_under_case_outputs(Path(raw), case_root):
             continue
         try:
             local = Path(raw)
@@ -2940,6 +2949,17 @@ def _case_evidence_paths(case_id: str) -> list[str]:
         except OSError:
             continue
     return out
+
+
+def _is_under_case_outputs(path: Path, case_root: Path) -> bool:
+    """True when a path sits in a case's runs or extractions folder (tool output, never examiner evidence)."""
+    for folder in ("runs", "extractions"):
+        try:
+            path.resolve().relative_to((case_root / folder).resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
 
 
 def _evidence_register_budget(path: str) -> float:
