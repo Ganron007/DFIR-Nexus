@@ -897,6 +897,24 @@ def _hits_from_ingest(
     return hits
 
 
+#: Staging folders the lane writes its parsers' working copies into: copies of ESE databases and their
+#: logs (srum/workdir/SRU.log, bitsparser/workdir/edb.log, _staged/sru/...). A copy is not tool output.
+STAGING_DIR_NAMES = frozenset({"workdir", "_staged"})
+
+
+def is_staging_copy(path: Path, root: Path) -> bool:
+    """True for a file inside a lane staging folder under ``root``.
+
+    The index read these copies as text rows: 11,051 documents from raw ESE logs on CASE-C5B04D31
+    (run RUN-20261011T084105445874Z-tools-b4c9add7), found 2026-10-11.
+    """
+    try:
+        parts = path.relative_to(root).parts[:-1]
+    except ValueError:
+        return False
+    return any(part in STAGING_DIR_NAMES for part in parts)
+
+
 def iter_extraction_files(
     case_dir: Path,
     *,
@@ -949,6 +967,8 @@ def iter_extraction_files(
         for pat in pats:
             files.extend(root.rglob(pat))
         for path in sorted(set(files), key=_scan_prio):
+            if is_staging_copy(path, root):
+                continue
             if path.name.startswith("_"):
                 continue
             if path.name.endswith(_SKIP_SUFFIXES):

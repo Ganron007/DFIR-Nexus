@@ -36,6 +36,7 @@ from nexus.langgraph.query_pack import (
     _row_in_window,
     _scan_prio,
     finalize_hits,
+    is_staging_copy,
     iter_extraction_files,
     needle_in_text,
 )
@@ -1536,6 +1537,8 @@ def iter_index_files(case_dir: Path, run_id: str = "") -> list[Path]:
         for pat in pats:
             for p in root.rglob(pat):
                 if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES):
+                    continue
+                if is_staging_copy(p, root):
                     continue
                 out.append(p)
     return out
