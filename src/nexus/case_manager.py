@@ -94,6 +94,19 @@ def _hash_evidence_path(path: Path) -> tuple[str, int, int]:
     return hash_evidence_path(path)
 
 
+def _evidence_row_identity(row) -> str:
+    """What one evidence row is, for the duplicate rule (WO-1C item 4).
+
+    A row cited by its location (``loc``, file:line) is one row, whatever wording describes it. A row
+    without a location keeps the text rule: its normalised detail.
+    """
+    if not isinstance(row, dict):
+        return " ".join(str(row).split()).lower()
+    if row.get("loc"):
+        return "loc:" + str(row["loc"]).strip().lower()
+    return " ".join(str(row.get("detail") or row).split()).lower()
+
+
 def _duplicate_key(finding: dict) -> tuple[str, str, tuple[str, ...]]:
     """The identity of a finding for duplicate detection (D70).
 
@@ -105,7 +118,7 @@ def _duplicate_key(finding: dict) -> tuple[str, str, tuple[str, ...]]:
     from nexus.discipline import entity_key
 
     evidence = tuple(sorted(
-        " ".join(str(e.get("detail") or e).split()).lower()
+        _evidence_row_identity(e)
         for e in (finding.get("evidence") or [])
         if e
     ))

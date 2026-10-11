@@ -2163,8 +2163,8 @@ def _finding_tool_payload(
     ev_rows = candidate.get("evidence")
     if isinstance(ev_rows, list) and ev_rows:
         payload["evidence"] = ev_rows[:12]
-    if isinstance(candidate.get("entity"), dict) and candidate.get("entity"):
-        payload["entity"] = dict(candidate["entity"])
+    # WO-1C item 4 (option b): the entity is not taken from the model. stage_findings derives it from the
+    # rows the cited audit calls stored, so a model's wording never decides a finding's identity.
     itm_stage = str(candidate.get("itm_stage") or "").strip()
     if itm_stage:
         payload["itm_stage"] = itm_stage[:80]
@@ -2360,6 +2360,15 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 # no scope to link against → never pad blindly
                 linked = set()
         payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
+        if stage_case_dir is not None:
+            from nexus.langgraph.evidence_rows import derive_entity_from_rows, evidence_rows_for_audit_ids
+
+            stored = evidence_rows_for_audit_ids(stage_case_dir, [str(a) for a in payload.get("audit_ids") or []])
+            if stored:
+                payload["evidence"] = stored[:12]
+            entity = derive_entity_from_rows(stored)
+            if entity:
+                payload["entity"] = entity
         if stage_case_id:
             # The run's own case: the tool stages there, never into the global active case.
             payload["case_id"] = stage_case_id

@@ -62,8 +62,31 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
             row["fields"] = {
                 k: str(v)[:240] for k, v in list(fields.items())[:24]
             }
+        # What the row is about, from the hit's own envelope (WO-1C item 4, option b). The 24-field
+        # copy above can cut the event id or host, so the identity is kept whole in its own keys.
+        for key in ("event_id", "host", "user"):
+            value = str(h.get(key) or "").strip()
+            if value:
+                row[key] = value[:200]
         evidence_rows.append(row)
     return evidence_rows
+
+
+def derive_entity_from_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """The entity a finding is about, derived from the rows it cites (WO-1C item 4, option b).
+
+    Operator decision 2026-10-11: the entity comes from the cited rows, not from a model's wording.
+    An event id in any row gives ``event_id``; else a host gives ``host``; else a user gives ``user``.
+    Rows are read in ``loc`` order, so the same citation gives the same entity whatever order it was
+    written in. A finding whose rows carry none of those keys has no entity ({}).
+    """
+    ordered = sorted((r for r in rows or [] if isinstance(r, dict)), key=lambda r: str(r.get("loc") or ""))
+    for kind in ("event_id", "host", "user"):
+        for row in ordered:
+            value = str(row.get(kind) or "").strip()
+            if value:
+                return {"type": kind, "value": value if kind == "event_id" else value.lower()}
+    return {}
 
 
 def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:

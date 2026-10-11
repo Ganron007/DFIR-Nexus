@@ -163,8 +163,9 @@ def test_one_case_modes_one_two_three_then_cross_mode(case, monkeypatch):
     # Mode 1's real promotion: the examiner picks rows the query returned, and the draft
     # carries those rows as its evidence (D70: the same rows Modes 2 and 3 cite).
     picked = backbone_call("es_search", audit=audit, case_dir=case, query=ES_QUERY)["hits"]
-    draft = promote_hits_to_draft(case, picked, SHARED_TITLE, examiner="operator",
-                                  entity=SHARED_ENTITY)
+    draft = promote_hits_to_draft(case, picked, SHARED_TITLE, examiner="operator")
+    # WO-1C item 4 (option b): the entity is what the cited rows are about, derived from them and not passed in.
+    assert draft["entity"] == SHARED_ENTITY, draft["entity"]
     draft.update({
         "severity": "medium", "confidence": "MEDIUM",
         "confidence_justification": "one parser family, rows returned by a real query",

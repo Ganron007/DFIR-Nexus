@@ -31,13 +31,15 @@ def test_a_fenced_json_finding_keeps_its_entity_through_the_parser():
     assert candidate["entity"] == ENTITY
 
 
-def test_the_record_payload_carries_the_entity():
+def test_the_record_payload_no_longer_takes_the_models_entity():
+    """WO-1C item 4 (option b, operator decision 2026-10-11): the entity is derived from the rows a
+    finding cites, in stage_findings. A model's entity is not the identity, so the payload does not carry it."""
     candidate = normalize_candidate({
         "title": "SPP event 1004 present", "observation": "rows returned",
         "interpretation": "recorded", "entity": ENTITY,
     })
     payload = _finding_tool_payload(candidate, trail=[])
-    assert payload["entity"] == ENTITY
+    assert "entity" not in payload
 
 
 def test_the_mcp_record_finding_tool_passes_the_entity_to_the_case(monkeypatch, tmp_path):

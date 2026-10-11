@@ -798,7 +798,10 @@ def stage_run_candidates(
     lineage so the run event stream is the provenance. Approval remains
     password-gated and examiner-only — nothing here approves or promotes.
     """
-    from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+    from nexus.langgraph.evidence_rows import (
+        derive_entity_from_rows,
+        evidence_rows_for_audit_ids,
+    )
     from nexus.modes.llm_desk import save_draft_finding
 
     case_dir = Path(case_dir)
@@ -870,6 +873,9 @@ def stage_run_candidates(
                 or []
             ) if t
         ]
+        # D70: the rows the cited calls stored; model text only when none were stored.
+        staged_rows = (evidence_rows_for_audit_ids(case_dir, audit_ids)
+                       or _normalise_evidence(candidate, source=run_mode))
         draft = {
             "title": title,
             "observation": observation,
@@ -882,10 +888,9 @@ def stage_run_candidates(
             # D70: the evidence is the rows the cited calls returned, the same rows Mode 1
             # drafts carry, so the duplicate rule sees one finding across modes. Model
             # text is the fallback only when no cited call stored rows.
-            "evidence": (evidence_rows_for_audit_ids(case_dir, audit_ids)
-                         or _normalise_evidence(candidate, source=run_mode)),
-            # D70: the entity this candidate is about (the identity with its rows).
-            "entity": candidate.get("entity") if isinstance(candidate.get("entity"), dict) else {},
+            "evidence": staged_rows,
+            # WO-1C item 4 (option b): the entity is what the cited rows are about, not the claim's wording.
+            "entity": derive_entity_from_rows(staged_rows),
             "status": "DRAFT",
             "source": run_mode,
             "run_id": run_id,

@@ -754,7 +754,11 @@ def promote_hits_to_draft(
 
     Returns the DRAFT finding dict (not yet written to findings.json).
     """
-    from nexus.langgraph.evidence_rows import evidence_rows_for_hits, hit_time_of
+    from nexus.langgraph.evidence_rows import (
+        derive_entity_from_rows,
+        evidence_rows_for_hits,
+        hit_time_of,
+    )
 
     evidence_rows = evidence_rows_for_hits(hits)
     # The draft is timed by the last hit, as the row loop always left it.
@@ -795,7 +799,8 @@ def promote_hits_to_draft(
         "type": "finding",
         "audit_ids": audit_ids,
         "evidence": evidence_rows,
-        "entity": dict(entity or {}),
+        # WO-1C item 4 (option b): with no examiner-named entity, the entity is what the rows are about.
+        "entity": dict(entity) if entity is not None else derive_entity_from_rows(evidence_rows),
         "host": "",
         "event_timestamp": hit_time if hits else "",
         "status": "DRAFT",
