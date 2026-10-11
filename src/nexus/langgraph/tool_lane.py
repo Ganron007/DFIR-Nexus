@@ -1666,24 +1666,12 @@ def plan_windows_triage(
             "MFT parse (CSV)",
             1800,
         )
-        # The bodyfile is the SIFT/Plaso timeline input (mactime, super timeline), not a product
-        # of the Windows lane. The parsed MFT table above is the MFT evidence, so the bodyfile
-        # runs only when the examiner opts in (NEXUS_LANE_OPT_IN=mftecmd-body).
-        if _lane_opted_in("mftecmd-body"):
-            body_dir = extractions / "mftecmd-body"
-            body_dir.mkdir(parents=True, exist_ok=True)
-            add(
-                "mftecmd",
-                ["mftecmd", "-f", str(mft), "--body", str(body_dir), "--bdl", "C"],
-                "MFT bodyfile for mactime (FOR508, opt-in)",
-                1800,
-            )
-        else:
-            skip(
-                "mftecmd-body",
-                "MFT bodyfile is the SIFT/Plaso timeline input, not a default product; "
-                "set NEXUS_LANE_OPT_IN=mftecmd-body",
-            )
+        # The MFT bodyfile is the input of the SIFT/Plaso super timeline. The Windows lane never creates it
+        # (operator decision 2026-10-11): the parsed MFT table above is the MFT evidence.
+        skip(
+            "mftecmd-body",
+            "the Windows lane never creates the MFT bodyfile: it is the SIFT/Plaso timeline input only",
+        )
     elif mft.is_file() and quick:
         skip("mftecmd", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
     else:
@@ -3627,6 +3615,33 @@ _VOL_WINDOWS_REGISTRY_KEYS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _vol_token(purpose: str) -> str:
+    """The plugin a Volatility 3 job runs, read from its purpose. Windows and SIFT jobs name it the same way."""
+    text = str(purpose or "")
+    if not text.startswith("Volatility3 "):
+        return ""
+    return text[len("Volatility3 "):].split(" (Windows", 1)[0].strip()
+
+
+def _one_engine_per_plugin(jobs: list[ToolJob]) -> None:
+    """Keep one engine per plugin per image (operator decision 2026-10-11).
+
+    The Windows Volatility 3 run is the lane's memory product. A SIFT plugin that the Windows run plans or
+    already holds is not run again on SIFT: the same plugin on the same image would be indexed twice (88,965
+    documents each on CASE-C5B04D31). A SIFT job that already has an OK row is kept as it is; only a pending
+    SIFT job is skipped, and the row says why.
+    """
+    windows_plugins = {
+        _vol_token(job.purpose) for job in jobs
+        if job.host == "windows" and job.tool == "vol" and job.status in ("PENDING", "OK")
+    }
+    for job in jobs:
+        if (job.host == "sift" and job.tool == "vol" and job.status == "PENDING"
+                and _vol_token(job.purpose) in windows_plugins):
+            job.status = "SKIP"
+            job.reason = "same plugin runs on Windows (one engine per plugin per image): not run again on SIFT"
+
+
 def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[ToolJob]:
     """Volatility 3 2.28.0 on each registered Windows memory image, run on the Windows host.
 
@@ -3860,6 +3875,7 @@ async def run_tool_lane(
         [j for j in jobs if j.host != "windows"], case_dir, extractions=extractions,
         rerun_tools=rerun_tools, carry=carry_ok,
     )
+    _one_engine_per_plugin(jobs)
     carried_rows = _settle_prior_rows(
         jobs, case_dir, extractions, carry_ok=carry_ok, only_tools=only_tools,
     )

@@ -1,8 +1,8 @@
-"""The parsed MFT table is the default MFT product; the bodyfile is opt-in (operator, 2026-10-11).
+"""The Windows lane never creates the MFT bodyfile (operator decision 2026-10-11).
 
-The bodyfile is the SIFT/Plaso timeline input (mactime, super timeline). Before this change the
-planner added it beside the CSV job, so every Windows lane run wrote a 199 MB bodyfile that no
-index read (CASE-C5B04D31). It now runs only with NEXUS_LANE_OPT_IN=mftecmd-body.
+The bodyfile is the input of the SIFT/Plaso super timeline, and the Windows lane has no use for it: the parsed MFT
+table is the MFT evidence. It used to run on an opt-in, and CASE-C5B04D31's runs wrote a 199 MB file that no index
+read. No setting makes the lane create it now.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ def lane_env(monkeypatch):
     return monkeypatch
 
 
-def test_the_default_plan_parses_mft_to_csv_and_no_bodyfile(tmp_path, lane_env):
+def test_the_plan_parses_mft_to_csv_and_never_plans_a_bodyfile(tmp_path, lane_env):
     from nexus.langgraph.tool_lane import plan_windows_triage
 
     extractions = tmp_path / "extractions"
@@ -39,18 +39,18 @@ def test_the_default_plan_parses_mft_to_csv_and_no_bodyfile(tmp_path, lane_env):
     assert "--body" not in argv
     body_row = next(j for j in jobs if j.tool == "mftecmd-body")
     assert body_row.status == "SKIP"
-    assert "NEXUS_LANE_OPT_IN=mftecmd-body" in body_row.reason
+    assert "never creates the MFT bodyfile" in body_row.reason
     assert not (extractions / "mftecmd-body").exists()
 
 
-def test_the_bodyfile_runs_only_on_examiner_opt_in(tmp_path, lane_env):
+def test_no_opt_in_setting_makes_the_lane_create_the_bodyfile(tmp_path, lane_env):
     from nexus.langgraph.tool_lane import plan_windows_triage
 
     lane_env.setenv("NEXUS_LANE_OPT_IN", "mftecmd-body")
     extractions = tmp_path / "extractions"
     extractions.mkdir()
     jobs = plan_windows_triage(str(_volume(tmp_path)), extractions)
-    body_jobs = [j for j in jobs if j.tool == "mftecmd" and "--body" in list(j.argv)]
-    assert len(body_jobs) == 1 and body_jobs[0].status == "PENDING"
-    assert not [j for j in jobs if j.tool == "mftecmd-body"]
-    assert (extractions / "mftecmd-body").is_dir()
+    assert not [j for j in jobs if j.tool == "mftecmd" and "--body" in list(j.argv)]
+    body_row = next(j for j in jobs if j.tool == "mftecmd-body")
+    assert body_row.status == "SKIP"
+    assert not (extractions / "mftecmd-body").exists()
