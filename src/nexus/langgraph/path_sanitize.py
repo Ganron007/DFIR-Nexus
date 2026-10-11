@@ -199,6 +199,42 @@ def _prefix_variants(prefix: str) -> tuple[tuple[str, str], ...]:
     return tuple((v, v.lower()) for v in variants)
 
 
+@lru_cache(maxsize=32)
+def _root_probe(pairs: tuple[tuple[str, str], ...]) -> tuple[re.Pattern[str], re.Pattern[str]] | None:
+    """Two patterns that match exactly when a root variant occurs in a text.
+
+    The first matches a variant as written, the second a lower-cased variant in a lower-cased text:
+    the same two tests the root loop in ``sanitize_machine_paths`` makes for each variant.
+    """
+    variants = [(variant, vlow) for prefix, _label in pairs for variant, vlow in _prefix_variants(prefix)]
+    if not variants:
+        return None
+    return (
+        re.compile("|".join(re.escape(variant) for variant, _vlow in variants)),
+        re.compile("|".join(re.escape(vlow) for _variant, vlow in variants)),
+    )
+
+
+_PROBE_BY_ROOTS: dict[int, tuple[object, int, tuple[re.Pattern[str], re.Pattern[str]] | None]] = {}
+
+
+def _root_probe_for(pairs) -> tuple[re.Pattern[str], re.Pattern[str]] | None:
+    """The root probe for one roots list, cached by that list's identity.
+
+    An index scan passes the same roots list to every call, and rebuilding the key for each field
+    would cost more than the probe saves. The cache holds the list, so its identity cannot be reused,
+    and it is dropped when the list changes length. Callers must not edit a roots list in place.
+    """
+    hit = _PROBE_BY_ROOTS.get(id(pairs))
+    if hit is not None and hit[0] is pairs and hit[1] == len(pairs):
+        return hit[2]
+    probe = _root_probe(tuple((str(prefix), str(label)) for prefix, label in pairs))
+    if len(_PROBE_BY_ROOTS) >= 16:
+        _PROBE_BY_ROOTS.clear()
+    _PROBE_BY_ROOTS[id(pairs)] = (pairs, len(pairs), probe)
+    return probe
+
+
 def sanitize_machine_paths(
     text: str,
     case_dir: Path | None = None,
@@ -214,21 +250,33 @@ def sanitize_machine_paths(
         return text
     out = text
     low = out.lower()
-    for prefix, label in pairs:
-        replaced = False
-        for variant, vlow in _prefix_variants(prefix):
-            if variant in out or vlow in low:
-                out = re.sub(re.escape(variant), label, out, flags=re.IGNORECASE)
-                replaced = True
-        if replaced:
-            low = out.lower()
+    # WO-TA item 10 (speed): most rows hold no machine root, and the root loop below visits every root
+    # for every field. One scan of the text decides whether any root can match, using the same tests
+    # the loop makes. When none can, the loop would change nothing, so it is skipped.
+    probe = _root_probe_for(pairs)
+    if probe is None or probe[0].search(out) or probe[1].search(low):
+        for prefix, label in pairs:
+            replaced = False
+            for variant, vlow in _prefix_variants(prefix):
+                if variant in out or vlow in low:
+                    out = re.sub(re.escape(variant), label, out, flags=re.IGNORECASE)
+                    replaced = True
+            if replaced:
+                low = out.lower()
     # Host-independent machine patterns: case store on any host, SIFT/remote
     # staging and symbol cache. Order matters — the home prefix is consumed
     # first, then the case store collapses to a single <case> badge.
-    out = _ANALYST_STAGING_RE.sub(_LABEL_STAGING, out)
-    out = _ANALYST_CACHE_RE.sub(_LABEL_HOME, out)
-    out = _NEXUS_HOME_RE.sub(_LABEL_HOME, out)
-    out = _NEXUS_CASE_RE.sub(_LABEL_CASE, out)
+    # WO-TA item 10 (speed): each pattern needs a literal. The three /home/ patterns need "/home/", and
+    # the case-store pattern needs ".nex" (not ".nexus": "s" also matches "ſ" under ignore-case). A
+    # literal absent here is absent from every later state, because the labels hold "<" and cannot
+    # create it, so the pattern would match nothing and is skipped.
+    low_now = out.lower()
+    if "/home/" in low_now:
+        out = _ANALYST_STAGING_RE.sub(_LABEL_STAGING, out)
+        out = _ANALYST_CACHE_RE.sub(_LABEL_HOME, out)
+        out = _NEXUS_HOME_RE.sub(_LABEL_HOME, out)
+    if ".nex" in low_now:
+        out = _NEXUS_CASE_RE.sub(_LABEL_CASE, out)
     return out
 
 
