@@ -2522,6 +2522,22 @@ def _norm_path(text: str) -> str:
     return str(text).replace("\\", "/").rstrip("/").lower()
 
 
+def _argv_names_path(arg: str, target: str) -> bool:
+    """True when an argument is the registered path, starts with it, or carries it after a flag's separator.
+
+    logfileparser takes /LogFileFile:H:/C/$LogFile and tools take --image=H:/dump.raw: the path follows the
+    flag's own ':' or '='. Without this the job never matched its registered volume, so its rows had no
+    identity and a retry re-ran them (found on CASE-C5B04D31, run RUN-20261011T084105445874Z-tools-b4c9add7).
+    """
+    if arg == target or arg.startswith(target + "/"):
+        return True
+    for sep in (":", "="):
+        _head, found, value = arg.partition(sep)
+        if found and (value == target or value.startswith(target + "/")):
+            return True
+    return False
+
+
 def _evidence_sha_for(job: ToolJob, hashes: list[tuple[str, str]]) -> str:
     """The sha256 of the registered item that holds this job's input (its longest matching path), or ''.
 
@@ -2537,7 +2553,7 @@ def _evidence_sha_for(job: ToolJob, hashes: list[tuple[str, str]]) -> str:
             continue
         name = target.rsplit("/", 1)[-1]
         for arg in args:
-            if arg == target or arg.startswith(target + "/"):
+            if _argv_names_path(arg, target):
                 if len(target) > best_len:
                     best_len, best_sha = len(target), sha
                 break
