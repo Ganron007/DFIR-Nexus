@@ -24,7 +24,8 @@ def render_hit_detail(hit: dict[str, Any]) -> str:
     from nexus.integration.evidence_table import render_hit_fields
 
     detail = render_hit_fields(hit.get("fields") or {})
-    return detail[:500] if detail else str(hit.get("text") or "")[:500]
+    # No cut (operator decision 2026-10-11): an evidence row quotes the whole detail.
+    return detail or str(hit.get("text") or "")
 
 
 def hit_time_of(hit: dict[str, Any]) -> str:
@@ -60,14 +61,13 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         if fields:
             row["fields"] = {
-                k: str(v)[:240] for k, v in list(fields.items())[:24]
+                k: str(v) for k, v in fields.items()
             }
-        # What the row is about, from the hit's own envelope (WO-1C item 4, option b). The 24-field
-        # copy above can cut the event id or host, so the identity is kept whole in its own keys.
+        # What the row is about, from the hit's own envelope (WO-1C item 4, option b). Kept whole.
         for key in ("event_id", "host", "user"):
             value = str(h.get(key) or "").strip()
             if value:
-                row[key] = value[:200]
+                row[key] = value
         evidence_rows.append(row)
     return evidence_rows
 

@@ -69,7 +69,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # v12: operator 2026-10-11 - no cap or cut on valid evidence (the walk, row text, field
     # values, columns); a line-based file has a header only when line 1 is tab-separated;
     # .tsv is walked; host/user carry ignore_above. An index built before it must be rebuilt.
-    assert INDEX_SCHEMA_VERSION == 12
+    # v13: the wildcard subfields carry no ignore_above, so a substring search reaches a row of any
+    # length (measured on ES 8.17.4). An index built before it must be rebuilt.
+    assert INDEX_SCHEMA_VERSION == 13
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

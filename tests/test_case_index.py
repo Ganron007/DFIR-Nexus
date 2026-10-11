@@ -10,6 +10,7 @@ from nexus.langgraph.case_index import (
     WILDCARD_IGNORE_ABOVE,
     IndexMissing,
     _bulk_ndjson,
+    _wildcard_mapping,
     index_name,
     iter_index_docs,
     query_index,
@@ -49,7 +50,10 @@ def _case(tmp_path: Path) -> Path:
 
 def test_index_name_sanitizes():
     assert index_name("INC-20260813063432") == "nexus-case-inc-20260813063432"
-    assert WILDCARD_IGNORE_ABOVE >= 4096
+    # Operator decision 2026-10-11: no length cap on the wildcard subfields, so a substring
+    # search reaches a row of any length. The mapping carries no ignore_above.
+    assert WILDCARD_IGNORE_ABOVE is None
+    assert _wildcard_mapping() == {"type": "wildcard"}
 
 
 def test_index_docs_match_csv_pack_prefetch(tmp_path: Path):

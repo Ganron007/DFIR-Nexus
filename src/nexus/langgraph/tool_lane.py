@@ -2574,7 +2574,12 @@ def _evidence_sha_for(job: ToolJob, hashes: list[tuple[str, str]]) -> str:
     return best_sha
 
 
-def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None = None) -> int:
+def apply_prior_ok(
+    jobs: list[ToolJob],
+    case_dir: Path,
+    extractions: Path | None = None,
+    rerun_tools: frozenset[str] | None = None,
+) -> int:
     """Reuse prior OK ledger rows so leftover re-runs do not re-parse Hayabusa/MFT.
 
     A row is reused only for the same evidence: the key is host + tool + purpose + the registered
@@ -2622,6 +2627,8 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path, extractions: Path | None
         job.evidence_sha = _evidence_sha_for(job, hashes)
         if not job.evidence_sha:
             continue  # no registered input to key on: the job runs again
+        if rerun_tools and job.tool in rerun_tools:
+            continue  # the examiner asked for this tool to run again: its OK rows are not reused
         old = index.get(_job_reuse_key(job.host, job.tool, job.purpose, job.evidence_sha))
         if not old:
             continue
@@ -3554,6 +3561,7 @@ async def run_tool_lane(
     strict: bool | None = None,
     evidence_paths: list[str] | None = None,
     on_event: Callable[[str, str, dict[str, Any]], None] | None = None,
+    rerun_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Execute the planned triage lane via MCP tools. Returns ledger + audit_ids.
 
@@ -3640,7 +3648,7 @@ async def run_tool_lane(
     jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
     # WO-TA item 12: a job that finished OK in this run's ledger is reused, not run again.
     # apply_prior_ok had no caller before this, so a retry re-ran every job.
-    reused = apply_prior_ok(jobs, case_dir, extractions=extractions)
+    reused = apply_prior_ok(jobs, case_dir, extractions=extractions, rerun_tools=rerun_tools)
     if reused:
         log.info("tool lane reused %d OK job(s) from this run's ledger", reused)
     try:

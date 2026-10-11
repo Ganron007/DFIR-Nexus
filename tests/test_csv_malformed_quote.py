@@ -38,9 +38,14 @@ def test_unterminated_quote_falls_back_to_lines(tmp_path, monkeypatch):
     assert rows[0][1].startswith('1,"never closed')
 
 
-def test_fallback_is_memory_bounded(tmp_path):
+def test_fallback_is_memory_bounded(tmp_path, monkeypatch):
+    """The guard is set explicitly here (the default is 1,000,000 lines / 64 MiB, which a
+    15.7 MB file never reaches): this test checks the fallback and its memory bound at a size
+    where the guard fires. Valid records are far below either limit."""
     from nexus.langgraph.case_index import iter_indexable_rows
 
+    monkeypatch.setenv("NEXUS_CSV_MAX_RECORD_LINES", "10000")
+    monkeypatch.setenv("NEXUS_CSV_MAX_RECORD_BYTES", str(8 * 1024 * 1024))
     case, p = _case(tmp_path)  # 200k rows, ~15.7 MB
     tracemalloc.start()
     with p.open(encoding="utf-8") as fh:

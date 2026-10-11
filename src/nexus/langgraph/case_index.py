@@ -71,7 +71,17 @@ _MAX_DOCS = _env_index_int("NEXUS_INDEX_MAX_DOCS", 0)
 _MAX_DOCS_SMALL = _env_index_int("NEXUS_INDEX_SMALL_DOCS", 0)
 _MAX_DOCS_PER_FAMILY = _env_index_int("NEXUS_INDEX_PER_FAMILY_CAP", 0)
 _MAX_DOCS_PER_FILE = _env_index_int("NEXUS_INDEX_PER_FILE_CAP", 0)
-WILDCARD_IGNORE_ABOVE = 32766
+# No ignore_above on the wildcard subfields (operator decision 2026-10-11). The old 32,766-byte cap
+# was our own setting, not an Elasticsearch limit: ES 8.17.4 indexes a 300 KB value in a wildcard
+# field, and a substring query finds it (measured with a scratch index). None = no cap.
+WILDCARD_IGNORE_ABOVE = None
+
+
+def _wildcard_mapping() -> dict[str, Any]:
+    """The mapping of a wildcard subfield (substring search over the whole value)."""
+    if WILDCARD_IGNORE_ABOVE is None:
+        return {"type": "wildcard"}
+    return {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}
 
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
@@ -97,7 +107,9 @@ WILDCARD_IGNORE_ABOVE = 32766
 # v12 (2026-10-11): no cap or cut on valid evidence (walked files, row text, field values,
 # columns); a header only for delimited tables (.csv/.tsv); .tsv is walked; host/user carry
 # ignore_above, so a long value cannot reject its document.
-INDEX_SCHEMA_VERSION = 12
+# v13 (2026-10-11): the wildcard subfields carry no ignore_above, so a substring search reaches a
+# row of any length (see WILDCARD_IGNORE_ABOVE). An index built before it must be rebuilt.
+INDEX_SCHEMA_VERSION = 13
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -270,8 +282,12 @@ def _csv_record_caps() -> tuple[int, int]:
         except ValueError:
             return default
 
-    return _int("NEXUS_CSV_MAX_RECORD_LINES", 10_000), _int(
-        "NEXUS_CSV_MAX_RECORD_BYTES", 8 * 1024 * 1024
+    # Operator decision 2026-10-11: valid evidence is not cut. No valid record reaches this size (a
+    # 4104 script block is ~20 KB). The guard only stops a stray quote from swallowing the rest of a
+    # file into one record held in memory; the physical-line fallback then keeps every line.
+    return (
+        _int("NEXUS_CSV_MAX_RECORD_LINES", 1_000_000),
+        _int("NEXUS_CSV_MAX_RECORD_BYTES", 64 * 1024 * 1024),
     )
 
 
@@ -900,7 +916,7 @@ def _mapping_body() -> dict[str, Any]:
                         "mapping": {
                             "type": "keyword",
                             "ignore_above": 4096,
-                            "fields": {"wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}},
+                            "fields": {"wc": _wildcard_mapping()},
                         },
                     }
                 },
@@ -915,7 +931,7 @@ def _mapping_body() -> dict[str, Any]:
                             "type": "keyword",
                             "ignore_above": 4096,
                             "fields": {
-                                "wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE},
+                                "wc": _wildcard_mapping(),
                                 "text": {"type": "text"},
                             },
                         },
@@ -932,7 +948,7 @@ def _mapping_body() -> dict[str, Any]:
                 "event_id": {"type": "keyword"},
                 "text": {
                     "type": "text",
-                    "fields": {"wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}},
+                    "fields": {"wc": _wildcard_mapping()},
                 },
                 "ts": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},
                 # Phase 4k.4 — timestamp authority: raw text, origin,

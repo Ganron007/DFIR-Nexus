@@ -35,13 +35,14 @@ def retry(
     case: str = typer.Option("", "--case", help="Case id or directory (required)."),
     tool: str = typer.Option(
         "", "--tool",
-        help="Not supported yet: a retry re-runs every FAIL job in the run.",
+        help="Re-run this tool's jobs in the same run (comma list, e.g. hayabusa,evtxecmd). "
+             "Its OK jobs run again; the other OK rows are reused.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be retried and exit."
     ),
 ) -> None:
-    """Re-run only the jobs that FAILED, inside the same run.
+    """Re-run only the jobs that FAILED, inside the same run; with --tool, every job of those tools.
 
     The lane ledger is the source of truth: every row marked FAIL is a job that did not
     process its evidence. Those are run again; OK rows are reused, not re-run. SKIP rows
@@ -49,13 +50,7 @@ def retry(
     """
     from nexus.langgraph.lane_gate import lane_gate_blocked
 
-    if tool.strip():
-        typer.echo(
-            "--tool is not supported yet: a retry re-runs every FAIL job in the run. "
-            "Run `nexus lane retry --dry-run` to see them.",
-            err=True,
-        )
-        raise typer.Exit(1)
+    tools = {part.strip().lower() for part in tool.replace(";", ",").split(",") if part.strip()}
 
     case_dir = _resolve(case)
     ledger, run_dir = _load_ledger(case_dir)
@@ -70,8 +65,23 @@ def retry(
         )
         raise typer.Exit(1)
 
-    failed = [row for row in ledger if str(row.get("status") or "").upper() == "FAIL"]
+    if tools:
+        # A tool re-run: every job of the named tools runs again, its OK rows included. SKIP rows
+        # are examiner decisions (or a planner's own skip) and stay as they are.
+        failed = [
+            row for row in ledger
+            if str(row.get("tool") or "").lower() in tools
+            and str(row.get("status") or "").upper() != "SKIP"
+        ]
+    else:
+        failed = [row for row in ledger if str(row.get("status") or "").upper() == "FAIL"]
     if not failed:
+        if tools:
+            typer.echo(
+                f"No rows for {', '.join(sorted(tools))} in the lane ledger - nothing to re-run.",
+                err=True,
+            )
+            raise typer.Exit(1)
         typer.echo("No FAIL rows in the lane ledger - nothing to retry.")
         if lane_gate_blocked(case_dir):
             typer.echo(
@@ -83,7 +93,8 @@ def retry(
             raise typer.Exit(1)
         return
 
-    typer.echo(f"{len(failed)} failed job(s) to retry in {run_dir.name}:")
+    verb = "to re-run" if tools else "to retry"
+    typer.echo(f"{len(failed)} job(s) {verb} in {run_dir.name}:")
     for row in failed:
         typer.echo(
             f"  {row.get('tool')}  {str(row.get('purpose') or '')[:70]}  "
@@ -106,9 +117,15 @@ def retry(
     import asyncio
 
     typer.echo(f"Re-running the failed jobs in {run_dir.name}...")
-    result = asyncio.run(_run_retry(case_dir, run_dir.name, evidence_paths))
+    result = asyncio.run(
+        _run_retry(case_dir, run_dir.name, evidence_paths, rerun_tools=frozenset(tools))
+    )
     ledger_now = result.get("tool_run_ledger") or []
-    still = [row for row in ledger_now if str(row.get("status") or "").upper() == "FAIL"]
+    still = [
+        row for row in ledger_now
+        if str(row.get("status") or "").upper() == "FAIL"
+        and (not tools or str(row.get("tool") or "").lower() in tools)
+    ]
     typer.echo(retry_summary_line(ledger_now))
     if still:
         for row in still[:10]:
@@ -147,7 +164,12 @@ def _index_retried_output(case_dir: Path) -> None:
     typer.echo(f"Indexed: {int(meta.get('docs') or 0)} docs in {meta.get('index') or 'the case index'}")
 
 
-async def _run_retry(case_dir: Path, run_id: str, evidence_paths: list[str]) -> dict:
+async def _run_retry(
+    case_dir: Path,
+    run_id: str,
+    evidence_paths: list[str],
+    rerun_tools: frozenset[str] = frozenset(),
+) -> dict:
     """Load the MCP tools the way the pipeline does, then run the lane in the same run.
 
     One event loop, so the MCP sessions stay open for the whole retry.
@@ -173,6 +195,7 @@ async def _run_retry(case_dir: Path, run_id: str, evidence_paths: list[str]) -> 
         skip_rag=True,
         pipeline_mode="tools",
         evidence_paths=evidence_paths,
+        rerun_tools=rerun_tools or None,
     )
 
 

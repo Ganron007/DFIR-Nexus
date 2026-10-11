@@ -147,3 +147,40 @@ def test_host_and_user_keyword_copies_are_bounded_in_the_mapping():
     props = _mapping_body()["mappings"]["properties"]
     assert props["host"]["ignore_above"] == 1024
     assert props["user"]["ignore_above"] == 1024
+
+
+def test_the_wildcard_subfields_have_no_length_cap():
+    """A substring search reaches a row of any length (operator decision 2026-10-11)."""
+    from nexus.langgraph.case_index import _mapping_body
+
+    body = _mapping_body()["mappings"]
+    assert body["properties"]["text"]["fields"]["wc"] == {"type": "wildcard"}
+    ecs_strings = next(d for d in body["dynamic_templates"] if "ecs_strings" in d)["ecs_strings"]
+    assert ecs_strings["mapping"]["fields"]["wc"] == {"type": "wildcard"}
+
+
+def test_the_csv_record_guard_is_far_above_any_valid_record(monkeypatch):
+    """Valid records never reach the guard; it only stops a stray quote from swallowing a file."""
+    from nexus.langgraph.case_index import _csv_record_caps
+
+    monkeypatch.delenv("NEXUS_CSV_MAX_RECORD_LINES", raising=False)
+    monkeypatch.delenv("NEXUS_CSV_MAX_RECORD_BYTES", raising=False)
+    assert _csv_record_caps() == (1_000_000, 64 * 1024 * 1024)
+
+
+def test_a_csv_record_of_many_lines_is_kept_whole():
+    """A quoted field spanning 12,000 physical lines is one record, not a fallback."""
+    import io
+
+    from nexus.langgraph.case_index import iter_record_rows
+
+    body = "line\n" * 12_000
+    fallbacks: list[tuple[int, str]] = []
+    records = list(iter_record_rows(
+        io.StringIO(f'1,"{body}"\n2,tail\n'), delimiter=",",
+        on_fallback=lambda start, reason: fallbacks.append((start, reason)),
+    ))
+    assert fallbacks == []
+    by_id = {cells[0]: cells for _start, _raw, cells in records if cells}
+    assert by_id["1"][1] == body
+    assert by_id["2"][1] == "tail"
