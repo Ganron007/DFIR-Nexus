@@ -3753,7 +3753,10 @@ async def run_tool_lane(
         _write_progress()
 
     async def _run_one(job: ToolJob) -> None:
-        if job.status in ("SKIP", "OK"):
+        # A BLOCKED job is present evidence the lane will not process (an operator decision, or a parser
+        # that cannot read it). It is never run: it keeps its status, and the gate counts it as unprocessed
+        # (D43/D53). Before this, it reached the executor with an empty command and was recorded as a FAIL.
+        if job.status in ("SKIP", "OK", "BLOCKED"):
             _mark(job)
             _emit(job.status, job, str(job.reason or "planned"), reason=job.reason)
             return

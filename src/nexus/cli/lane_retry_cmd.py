@@ -16,9 +16,19 @@ examiner decisions and stay as they are.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import typer
+
+
+def retry_summary_line(ledger: list[dict]) -> str:
+    """The retry's outcome, with every status counted as itself: a SKIP or BLOCKED row is not an OK row."""
+    counts = Counter(str(row.get("status") or "").upper() for row in ledger)
+    return (
+        f"Retry complete: {counts.get('OK', 0)} OK, {counts.get('SKIP', 0)} SKIP, "
+        f"{counts.get('BLOCKED', 0)} BLOCKED, {counts.get('FAIL', 0)} FAIL of {len(ledger)} job(s)."
+    )
 
 
 def retry(
@@ -99,10 +109,7 @@ def retry(
     result = asyncio.run(_run_retry(case_dir, run_dir.name, evidence_paths))
     ledger_now = result.get("tool_run_ledger") or []
     still = [row for row in ledger_now if str(row.get("status") or "").upper() == "FAIL"]
-    typer.echo(
-        f"Retry complete: {len(ledger_now) - len(still)} of {len(ledger_now)} "
-        f"job(s) now OK, {len(still)} still failing."
-    )
+    typer.echo(retry_summary_line(ledger_now))
     if still:
         for row in still[:10]:
             typer.echo(f"  STILL FAILING {row.get('tool')}: "
