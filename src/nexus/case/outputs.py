@@ -86,13 +86,18 @@ def persist_tool_output(
     command: str = "",
     purpose: str = "",
     case_dir: Path | None = None,
-    register_evidence: bool = True,
+    register_evidence: bool = False,
     extractions_root: Path | None = None,
 ) -> dict[str, Any]:
     """Write tool stdout/stderr (+ meta) under ``case/extractions/``.
 
     ``extractions_root`` writes into a run's own folder instead (the lane's run), so a run's
-    output stays with the run; registration still goes to the case.
+    output stays with the run.
+
+    ``register_evidence`` is off by default. A tool's own stdout is not evidence (D57): it is
+    recorded by the run's ledger and folder. Before this default was changed, every lane output was
+    appended to evidence.json as a ``tool_extraction`` item: 232 such items sat in the registry of
+    CASE-C5B04D31, beside the examiner's two evidence items (the H: triage volume and rd01-memory.img).
 
     Always writes when an active case exists and there is any stdout/stderr.
     Returns ``{output_files: [...], case_dir, warning?}``.

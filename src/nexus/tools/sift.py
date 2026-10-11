@@ -720,7 +720,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 command=command,
                 purpose=purpose,
                 case_dir=resolve_active_case_dir(),
-                register_evidence=True,
+                register_evidence=False,  # a tool's stdout is not evidence (D57)
             )
             output_files = persisted.get("output_files") or []
             output_file = next(

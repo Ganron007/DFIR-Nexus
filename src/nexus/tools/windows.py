@@ -999,7 +999,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 command=command_text,
                 purpose=purpose,
                 case_dir=output_case,
-                register_evidence=True,
+                register_evidence=False,  # a tool's stdout is not evidence (D57)
                 extractions_root=run_extractions,
             )
             output_files = persisted.get("output_files") or []
