@@ -10,6 +10,10 @@ This module answers that with stdlib only:
 * Windows PE binaries - the real file/product version out of the version
   resource, via ``ctypes`` (no shelling out, no new dependency).
 * Scripts - their own SHA-256 plus the interpreter that would run them.
+* A standalone binary with no version resource whose SHA-256 is pinned in
+  ``tools/windows/VERSIONS.txt`` - the version the pin records, with
+  ``version_source: "pinned-versions-file"``. The pin is the version the fetch
+  script verified by that same hash.
 * Everything else - the hash alone, with ``version_source: "sha256-only"``:
   never a guess.
 * SIFT-side tools - the tool's own ``--version`` output where it has one, cached
@@ -31,6 +35,7 @@ __all__ = [
     "binary_lineage",
     "clear_lineage_cache",
     "interpreter_for",
+    "pinned_version",
     "tool_version_lineage",
     "version_lineage",
 ]
@@ -280,6 +285,30 @@ def version_lineage(binary_path: str | Path) -> tuple[str, str, str]:
 # the public entry point
 # --------------------------------------------------------------------------
 
+#: The pin file the fetch scripts write: one tab-separated row per tool (name, version, URL, SHA-256, licence).
+PINS_FILE = Path(__file__).resolve().parents[3] / "tools" / "windows" / "VERSIONS.txt"
+
+
+def pinned_version(sha256: str, pins_file: Path | None = None) -> str:
+    """The version the pin file records for a binary with this SHA-256, or "" when none is pinned.
+
+    A standalone tool has no version resource, so its hash is the only identity it has. The pin file
+    records the version each binary was fetched and verified at, by that same hash (WO-TA item 8).
+    """
+    wanted = (sha256 or "").strip().lower()
+    if not wanted:
+        return ""
+    try:
+        text = (pins_file or PINS_FILE).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4 and parts[3].strip().lower() == wanted and parts[1].strip():
+            return parts[1].strip()
+    return ""
+
+
 def binary_lineage(path: str | Path, *, cache: bool = True) -> dict[str, Any]:
     """Everything we can say about the binary that produced a row.
 
@@ -303,6 +332,7 @@ def binary_lineage(path: str | Path, *, cache: bool = True) -> dict[str, Any]:
         "binary_sha256": "",
         "file_version": "",
         "product_version": "",
+        "version": "",
         "version_source": "undeclared",
         "interpreter": "",
     }
@@ -313,6 +343,12 @@ def binary_lineage(path: str | Path, *, cache: bool = True) -> dict[str, Any]:
             result["file_version"] = file_version
             result["product_version"] = product_version
             result["version_source"] = source
+            if not file_version and not product_version:
+                # A standalone tool has no version resource: its pinned hash names the version.
+                pinned = pinned_version(result["binary_sha256"])
+                if pinned:
+                    result["version"] = pinned
+                    result["version_source"] = "pinned-versions-file"
             interpreter = interpreter_for(target)
             if interpreter:
                 result["interpreter"] = interpreter
