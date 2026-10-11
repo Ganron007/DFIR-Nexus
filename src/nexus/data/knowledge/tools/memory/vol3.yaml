@@ -1,0 +1,37 @@
+name: vol3
+category: memory
+description: "Volatility 3 2.28.0 memory forensics framework (Volatility Foundation, VSL 1.0), run on Windows memory through the pinned wrapper"
+platform: [windows, linux]
+platform_notes: "The lane runs it on Windows memory from a pinned venv (Tools/windows/memory/vol3-2.28.0-venv, installed from tools/windows/memory/vol3-2.28.0-requirements.txt). The same framework runs on the SIFT host, which is out of scope for the current case."
+artifacts_parsed: []
+
+caveats:
+  - "Windows kernel symbols are downloaded from the Microsoft symbol server on first use and cached under the venv; without network access the symbol step fails"
+  - "The first run on a new kernel updates the symbol cache and prints progress to stderr before plugin output appears"
+  - "Each plugin reads the whole image again, so on a multi-GB image one plugin can run for many minutes; the lane scales its timeouts to the image size"
+  - "Licence: Volatility Software License 1.0 (VSL)"
+
+output_notes:
+  format: jsonl
+  key_fields: [PID, PPID, ImageFileName, Offset, Value, Variable]
+
+exit_code_hints:
+  0: "success"
+  1: "error: the plugin or the input failed; the lane records the reason"
+  3: "the pinned venv is missing (the wrapper exits before running the framework)"
+
+advisories:
+  - "Read windows.info first to confirm the OS and the kernel base before any other plugin"
+  - "windows.pslist, windows.psscan and windows.psxview disagree about hidden or unlinked processes; the disagreement is the lead"
+  - "windows.malfind lists memory regions with injection indicators; a region is a lead to check in context, not a finding on its own"
+  - "MemProcFS reads the same image without a mount; its outputs corroborate the Volatility plugins"
+
+quick_start: "vol -f memory.raw windows.info"
+
+investigation_sequence:
+  - "windows.info: confirm the OS and the kernel"
+  - "windows.pslist, windows.pstree, windows.psscan, windows.psxview: process views and where they disagree"
+  - "windows.cmdline, windows.dlllist, windows.handles, windows.envars: process context"
+  - "windows.netscan: network connections"
+  - "windows.malfind, windows.ldrmodules: injected or unlinked modules"
+  - "windows.registry.printkey: Run, RunOnce and service keys held in memory"

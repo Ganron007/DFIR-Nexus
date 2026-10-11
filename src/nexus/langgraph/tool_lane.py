@@ -167,28 +167,26 @@ def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> 
             os.chmod(dst, 0o666)
 
 
-def _esentutl_repair(work: Path, *, db_name: str, log_bases: tuple[str, ...]) -> None:
-    """Soft-fail ESE recovery + repair. Missing esentutl is a warning, not SKIP."""
+def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
+    """Replay the transaction logs in the work copy (esentutl /r), with no repair and no ignored logs.
+
+    Operator decision 2026-10-11: the lane does not run ``/p`` (repair, which can discard data) or
+    ``/i`` (a replay that ignores missing logs, the same kind of loss). A replay that cannot finish
+    leaves the copy as it is, and the tool that reads it reports what it can and cannot read. Only the
+    copy is touched, never the evidence. Missing esentutl is a warning, not SKIP.
+    """
     try:
         for base in log_bases:
             subprocess.run(
-                ["esentutl.exe", "/r", base, "/i"],
+                ["esentutl.exe", "/r", base],
                 cwd=str(work),
                 capture_output=True,
                 text=True,
                 timeout=120,
                 check=False,
             )
-        subprocess.run(
-            ["esentutl.exe", "/p", db_name, "/o"],
-            cwd=str(work),
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        log.warning("esentutl repair skipped for %s: %s", db_name, exc)
+        log.warning("esentutl replay skipped for %s: %s", ",".join(log_bases), exc)
 
 
 def find_windows_root(evidence: Path) -> Path | None:
@@ -726,7 +724,7 @@ def _plan_single_artifact(
     elif _artifact_class(evidence) == "bits":
         # BitsParser returns EMPTY output on a raw, dirty ESE database - 0
         # bytes both to stdout and to -o (verified 2026-09-29 on qmgr.db). The
-        # host-scan path already stages a repaired copy with the ESE siblings;
+        # host-scan path already stages a copy with the ESE siblings;
         # the single-file path must do the same. Passing the parent directory
         # was worse still: the tool walked every file in the folder and wrote
         # nothing at all.
@@ -734,12 +732,12 @@ def _plan_single_artifact(
         work = d / f"{_stem(evidence)}-workdir"
         try:
             _copy_ese_siblings(evidence.parent, work, ("QMGR", "EDB"))
-            _esentutl_repair(work, db_name=evidence.name, log_bases=("edb", "qmgr"))
+            _esentutl_replay(work, log_bases=("edb", "qmgr"))
             staged = work / evidence.name
             if staged.is_file():
                 add("bitsparser", ["bitsparser", "-i", str(staged),
                                    "-o", str(d / f"{_stem(evidence)}.json")],
-                    f"BITS job queue ({evidence.name}, repaired copy)",
+                    f"BITS job queue ({evidence.name}, staged copy, logs replayed)",
                     timeout_for_bytes(staged.stat().st_size),
                     optional_output=True)
             else:
@@ -890,7 +888,7 @@ def _plan_single_artifact(
                 purpose=f"Staged {kind} artifact ({evidence.name[:40]})",
                 reason=(
                     "ESE reserve/checkpoint companion - recovered into the BITS "
-                    "queue by the repaired-copy parse; holds no recoverable strings"
+                    "queue by the staged-copy parse; holds no recoverable strings"
                 ),
             ))
         elif evidence.stat().st_size < 8:
@@ -926,7 +924,7 @@ def _plan_single_artifact(
         try:
             work = extractions / "_staged" / "sru"
             _copy_ese_siblings(evidence.parent, work, ("SRU",))
-            _esentutl_repair(work, db_name=evidence.name, log_bases=("sru",))
+            _esentutl_replay(work, log_bases=("sru",))
             candidate = work / evidence.name
             if candidate.is_file():
                 staged = candidate
@@ -1608,12 +1606,12 @@ def plan_windows_triage(
         work = d / "workdir"
         try:
             _copy_ese_siblings(srum.parent, work, ("SRU",))
-            _esentutl_repair(work, db_name="SRUDB.dat", log_bases=("sru",))
+            _esentutl_replay(work, log_bases=("sru",))
             srum_target = work / "SRUDB.dat"
             argv = ["srumecmd", "-f", str(srum_target), "--csv", str(d)]
             if software_hive.is_file():
                 argv.extend(["-r", str(software_hive)])
-            add("srumecmd", argv, "SRUM database (repaired copy)", 600)
+            add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600)
         except OSError as exc:
             skip("srumecmd", f"could not stage SRUDB copy: {exc}")
     else:
@@ -2059,7 +2057,8 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
     """Defender, WMI, Windows Search, PowerShell transcripts, WER and Outlook stores.
 
     WO-TA items 4-5. Parsers run on the registered evidence in place, or on a
-    repaired copy where the database is dirty (the SRUM and BITS pattern). Copies
+    staged copy where the database is dirty (the SRUM and BITS pattern), with its logs replayed and
+    never repaired. Copies
     of text artifacts get unique names, so files that share a name stay apart.
     """
     def present_tool(key: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
@@ -2112,16 +2111,11 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
 
     search_db = root / "ProgramData/Microsoft/Search/Data/Applications/Windows/Windows.edb"
     if search_db.is_file():
-        work = extractions / "sidr" / "workdir"
-        out = extractions / "sidr"
-        try:
-            _copy_ese_siblings(search_db.parent, work, ("WINDOWS", "EDB"))
-            _esentutl_repair(work, db_name="Windows.edb", log_bases=("edb",))
-        except OSError as exc:
-            blocked("sidr", f"could not stage Windows.edb: {exc}")
-        else:
-            present_tool("sidr", ["sidr", "-f", "csv", "-o", str(out), str(work)],
-                          "Windows Search index (SIDR, repaired copy)", 1800)
+        # Operator decision 2026-10-11: sidr is BLOCKED on this evidence. The database is a dirty-shutdown
+        # ESE file, and reading it needs a repair that can discard data. No repair is approved, so the
+        # lane does not run one and does not run sidr on a copy of unknown completeness.
+        blocked("sidr", "Windows.edb is a dirty-shutdown ESE database: reading it needs a repair that can "
+                        "discard data, which was not approved (operator decision 2026-10-11: block sidr)")
     else:
         skip("sidr", "no Windows.edb search index")
 
@@ -2270,7 +2264,7 @@ def _plan_gap_parsers(
             out.mkdir(parents=True, exist_ok=True)
             try:
                 _copy_ese_siblings(qmgr.parent, work, ("QMGR", "EDB"))
-                _esentutl_repair(work, db_name=qmgr.name, log_bases=("edb", "qmgr"))
+                _esentutl_replay(work, log_bases=("edb", "qmgr"))
                 staged = work / qmgr.name
                 if not staged.is_file():
                     skip("bitsparser", f"staged {qmgr.name} missing after copy")
@@ -2279,7 +2273,7 @@ def _plan_gap_parsers(
                     add(
                         "bitsparser",
                         ["bitsparser", "-i", str(staged), "-o", str(out / "bits.json")],
-                        f"BITS job queue ({qmgr.name}, repaired copy)",
+                        f"BITS job queue ({qmgr.name}, staged copy, logs replayed)",
                         timeout_for_bytes(sz),
                         optional_output=True,
                     )
@@ -3226,22 +3220,8 @@ def plan_sift_triage(
             ("linux.sockstat", 3600),
         )
     else:
-        # WO-A9 triage pack. Timeouts are the small-image floor; a multi-GB
-        # image scales them in ``_memory_timeout``.
-        plugins = (
-            ("windows.info", 1800),
-            ("windows.pslist", 3600),
-            ("windows.pstree", 3600),
-            ("windows.psscan", 3600),
-            ("windows.cmdline", 3600),
-            ("windows.dlllist", 7200),
-            ("windows.handles", 7200),
-            ("windows.envars", 3600),
-            ("windows.netscan", 7200),
-            ("windows.malfind", 7200),
-            ("windows.ldrmodules", 7200),
-            ("windows.psxview", 7200),
-        )
+        # WO-A9 triage pack, shared with the Windows memory planner (_VOL_WINDOWS_PLUGINS).
+        plugins = _VOL_WINDOWS_PLUGINS
     if not mem:
         # No image was declared and none is named in the environment. That is a
         # fact about this case, not a hole to paper over with a guessed path:
@@ -3271,11 +3251,7 @@ def plan_sift_triage(
                 timeout=scale_memory_timeout(floor, image_bytes),
             ))
         if profile != "linux":
-            for key, label in (
-                (r"Software\Microsoft\Windows\CurrentVersion\Run", "Run"),
-                (r"Software\Microsoft\Windows\CurrentVersion\RunOnce", "RunOnce"),
-                (r"System\CurrentControlSet\Services", "Services"),
-            ):
+            for key, label in _VOL_WINDOWS_REGISTRY_KEYS:
                 jobs.append(ToolJob(
                     host="sift",
                     tool="vol",
@@ -3447,6 +3423,68 @@ def _lane_concurrency() -> int:
         return 1
 
 
+#: WO-A9 triage pack for Volatility 3 on Windows memory. The SIFT host runs the same plugins
+#: (``plan_sift_triage``). Timeouts are the small-image floor; ``scale_memory_timeout`` scales them to the image.
+_VOL_WINDOWS_PLUGINS: tuple[tuple[str, int], ...] = (
+    ("windows.info", 1800),
+    ("windows.pslist", 3600),
+    ("windows.pstree", 3600),
+    ("windows.psscan", 3600),
+    ("windows.cmdline", 3600),
+    ("windows.dlllist", 7200),
+    ("windows.handles", 7200),
+    ("windows.envars", 3600),
+    ("windows.netscan", 7200),
+    ("windows.malfind", 7200),
+    ("windows.ldrmodules", 7200),
+    ("windows.psxview", 7200),
+)
+_VOL_WINDOWS_REGISTRY_KEYS: tuple[tuple[str, str], ...] = (
+    (r"Software\Microsoft\Windows\CurrentVersion\Run", "Run"),
+    (r"Software\Microsoft\Windows\CurrentVersion\RunOnce", "RunOnce"),
+    (r"System\CurrentControlSet\Services", "Services"),
+)
+
+
+def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[ToolJob]:
+    """Volatility 3 2.28.0 on each registered Windows memory image, run on the Windows host.
+
+    Operator decision 2026-10-11: Volatility 3 runs on Windows, through the pinned ``vol3`` wrapper
+    (Tools/windows/extra/vol3/run-vol3.py and its venv). Each job is tool ``vol``, so the output is the
+    ``vol`` family the index reads. The image is read in place, never copied.
+    """
+    jobs: list[ToolJob] = []
+    for raw in evidence_paths:
+        img = Path(raw)
+        if not (img.is_file() and img.suffix.lower() in _MEMORY_SUFFIXES
+                and img.stat().st_size >= _MEMORY_MIN_BYTES):
+            continue
+        if not _windows_tool_available("vol3"):
+            jobs.append(ToolJob(
+                host="windows", tool="vol", argv=[], purpose="", status="SKIP",
+                reason="vol3 not installed - run Tools/windows/extra/vol3/run-vol3.py's venv setup "
+                       "(Tools/windows/memory/vol3-2.28.0-requirements.txt)",
+            ))
+            continue
+        image_bytes = img.stat().st_size
+        for plugin, floor in _VOL_WINDOWS_PLUGINS:
+            jobs.append(ToolJob(
+                host="windows", tool="vol",
+                argv=["vol3", "-f", str(img), "-r", "jsonl", plugin],
+                purpose=f"Volatility3 {plugin} (Windows, 2.28.0)",
+                timeout=scale_memory_timeout(floor, image_bytes),
+            ))
+        for key, label in _VOL_WINDOWS_REGISTRY_KEYS:
+            jobs.append(ToolJob(
+                host="windows", tool="vol",
+                argv=["vol3", "-f", str(img), "-r", "jsonl",
+                      "windows.registry.printkey", "--key", key],
+                purpose=f"Volatility3 registry.printkey {label} (Windows, 2.28.0)",
+                timeout=scale_memory_timeout(3600, image_bytes),
+            ))
+    return jobs
+
+
 def _memory_image_jobs(evidence_paths: list[str], extractions: Path) -> list[ToolJob]:
     """One MemProcFS job per registered memory image (WO-TA item 6).
 
@@ -3463,8 +3501,10 @@ def _memory_image_jobs(evidence_paths: list[str], extractions: Path) -> list[Too
         if _windows_tool_available("memprocfs"):
             jobs.append(ToolJob(
                 host="windows", tool="memprocfs",
-                argv=["memprocfs", "--image", str(img), "--out", str(out)],
-                purpose=f"MemProcFS forensic ({img.name})", timeout=7200,
+                # --elastic-licence: the operator accepted the Elastic licence for the FindEvil rules on
+                # 2026-10-11 (WO-TA item 6). The wrapper passes -license-accept-elastic-license-2-0 to MemProcFS.
+                argv=["memprocfs", "--image", str(img), "--out", str(out), "--elastic-licence"],
+                purpose=f"MemProcFS forensic + FindEvil, Elastic licence accepted ({img.name})", timeout=7200,
             ))
         else:
             jobs.append(ToolJob(
@@ -3571,6 +3611,7 @@ async def run_tool_lane(
             _planned.add(_key)
             jobs.append(_job)
     jobs.extend(_memory_image_jobs(plan_paths, extractions))
+    jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
     # WO-TA item 12: a job that finished OK in this run's ledger is reused, not run again.
     # apply_prior_ok had no caller before this, so a retry re-ran every job.
     reused = apply_prior_ok(jobs, case_dir, extractions=extractions)

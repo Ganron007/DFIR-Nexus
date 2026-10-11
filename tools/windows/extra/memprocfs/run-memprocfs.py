@@ -10,9 +10,9 @@ rd01-memory.img: 0 -> 100 in about 25 s, with 38 CSV files and the timelines in 
 wrapper read /forensic/ straight after Vmm() returned, found nothing, and recorded no timeline and
 no FindEvil (D68). This one waits for progress 100 and for the listing to settle, then copies.
 
-The FindEvil YARA rules need -license-accept-elastic-license-2-0. That flag is not passed: it is
-the operator's decision, and MemProcFS itself reports the Elastic rules as disabled. Forensic mode
-still runs and writes its own outputs.
+The FindEvil YARA rules need -license-accept-elastic-license-2-0. The lane passes --elastic-licence,
+which the operator approved on 2026-10-11. Without it MemProcFS reports the Elastic rules as disabled,
+and forensic mode still runs and writes its own outputs.
 
 Written under --out:
   processes.csv, processmap.csv, net.csv, sysinfo.csv, modules.csv, threads.csv, handles.csv
@@ -259,6 +259,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", required=True, help="registered memory image")
     parser.add_argument("--out", required=True, help="extractions output directory")
+    parser.add_argument("--elastic-licence", action="store_true",
+                        help="accept the Elastic licence 2.0 for the FindEvil YARA rules "
+                             "(operator decision 2026-10-11)")
     parser.add_argument("--forensic", type=int, default=1,
                         help="1 = forensic mode (in-memory sqlite). Default 1.")
     args = parser.parse_args()
@@ -282,6 +285,10 @@ def main() -> int:
     argv = ["-device", str(image.resolve())]
     if args.forensic:
         argv += ["-forensic", str(args.forensic)]
+    elastic_state = "disabled - -license-accept-elastic-license-2-0 not passed"
+    if args.elastic_licence:
+        argv += ["-license-accept-elastic-license-2-0"]
+        elastic_state = "accepted - -license-accept-elastic-license-2-0 passed (operator decision 2026-10-11)"
     try:
         vmm = memprocfs.Vmm(argv)
     except Exception as exc:  # noqa: BLE001 - the gate must see the reason
@@ -405,8 +412,7 @@ def main() -> int:
                 "wait": wait,
                 "root": forensic_root,
                 "readme": _vfs_read(vfs, FORENSIC + "readme.txt")[:2000],
-                "elastic_yara": "disabled - -license-accept-elastic-license-2-0 "
-                                "not passed (operator decision)",
+                "elastic_yara": elastic_state,
                 "copied": copied,
                 "skipped": skipped,
             },

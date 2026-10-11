@@ -129,6 +129,9 @@ _WIN_CATALOG = {
                 "description": "Outlook OST/PST messages to CSV (libpff-python 20260926)"},
     "memprocfs": {"name": "run-memprocfs.py", "category": "analysis",
                   "description": "Memory image through the MemProcFS 5.19 Python API, forensic mode, no mount"},
+    "vol3": {"name": "run-vol3.py", "category": "analysis",
+             "description": "Volatility 3 2.28.0 (VSL) on Windows memory, from its pinned venv "
+                            "(Tools/windows/memory/vol3-2.28.0-venv)"},
     "schtasks": {"name": "schtasks", "category": "system", "builtin": True,
                  "description": "Parse Windows scheduled tasks"},
     "certutil": {"name": "certutil", "category": "system", "builtin": True,
@@ -601,6 +604,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "sidr": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub strozfriedberg/sidr v0.9.2)",
             "pff-ost": "python -m pip install libpff-python==20260926  (then Tools/windows/extra/pff/run-pff-ost.py)",
             "memprocfs": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub ufrisk/MemProcFS v5.19 + pip memprocfs==5.19.0)",
+            "vol3": "volatility3==2.28.0 wheel (PyPI, VSL) into Tools/windows/memory/vol3-2.28.0-venv "
+                    "(freeze: Tools/windows/memory/vol3-2.28.0-requirements.txt)",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
             if _find_binary(info["name"]) is None:

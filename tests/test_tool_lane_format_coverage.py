@@ -90,7 +90,7 @@ def test_bits_ese_companions_are_planned_not_dropped(tmp_path):
     assert jobs and all(j.tool == "strings" for j in jobs)
 
 
-def test_bitsparser_stages_a_repaired_copy_for_a_single_database(tmp_path, monkeypatch):
+def test_bitsparser_stages_a_staged_copy_for_a_single_database(tmp_path, monkeypatch):
     """BitsParser returns 0 bytes on a raw dirty ESE db.
 
     The host-scan path already staged a repaired copy; the single-file path
@@ -101,11 +101,11 @@ def test_bitsparser_stages_a_repaired_copy_for_a_single_database(tmp_path, monke
 
     called: dict = {}
 
-    def _fake_repair(work, *, db_name, log_bases):
-        called["db_name"] = db_name
+    def _fake_replay(work, *, log_bases):
+        called["work"] = work
         called["log_bases"] = log_bases
 
-    monkeypatch.setattr(tl, "_esentutl_repair", _fake_repair)
+    monkeypatch.setattr(tl, "_esentutl_replay", _fake_replay)
     f = _make(tmp_path, "qmgr.db", b"ese" * 32)
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
     bp = next(j for j in jobs if j.tool == "bitsparser")
@@ -114,8 +114,8 @@ def test_bitsparser_stages_a_repaired_copy_for_a_single_database(tmp_path, monke
     assert staged != f, "the raw database must not be handed to BitsParser"
     assert any(part.endswith("-workdir") for part in staged.parts)
     assert staged.is_file()
-    assert "repaired copy" in bp.purpose
-    assert called["db_name"] == "qmgr.db"
+    assert "staged copy" in bp.purpose and "repaired" not in bp.purpose
+    assert Path(called["work"]) == staged.parent
     assert called["log_bases"] == ("edb", "qmgr")
     assert bp.optional_output is True, (
         "BitsParser writes nothing when the queue holds no recoverable jobs - "

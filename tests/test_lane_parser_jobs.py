@@ -123,14 +123,19 @@ def test_wmi_parser_reads_the_repository_file_in_place(planned, triage):
     assert Path(job.argv[job.argv.index("-o") + 1]) == extractions / "wmi_parser"
 
 
-def test_sidr_runs_on_a_repaired_copy_not_the_dirty_original(planned, triage, tmp_path):
-    jobs, extractions = planned
-    job = _job(jobs, "sidr")
-    work = Path(job.argv[-1])
-    assert work == extractions / "sidr" / "workdir"
-    assert (work / "Windows.edb").is_file()
-    assert Path(job.argv[job.argv.index("-o") + 1]) == extractions / "sidr"
-    assert str(triage) not in " ".join(job.argv)
+def test_sidr_is_blocked_on_the_dirty_database_and_is_never_repaired(planned):
+    jobs, _ = planned
+    sidr = [j for j in jobs if j.tool == "sidr"]
+    assert len(sidr) == 1 and sidr[0].status == "BLOCKED" and not sidr[0].argv
+    assert "dirty-shutdown" in sidr[0].reason and "operator decision 2026-10-11" in sidr[0].reason
+
+
+def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_path, monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(tool_lane.subprocess, "run", lambda argv, **kw: calls.append(list(argv)))
+    tool_lane._esentutl_replay(tmp_path, log_bases=("edb", "qmgr"))
+    assert calls == [["esentutl.exe", "/r", "edb"], ["esentutl.exe", "/r", "qmgr"]]
+    assert all("/p" not in argv and "/i" not in argv for argv in calls)
 
 
 def test_transcripts_are_copied_from_anywhere_under_the_volume(planned):
@@ -180,6 +185,7 @@ def test_memory_image_gets_one_memprocfs_job_read_in_place(tmp_path, monkeypatch
     assert job.tool == "memprocfs" and job.status == "PENDING"
     assert job.argv[:3] == ["memprocfs", "--image", str(image)]
     assert Path(job.argv[4]).parent == tmp_path / "extractions" / "memprocfs"
+    assert job.argv[-1] == "--elastic-licence", "FindEvil needs the licence flag the operator approved"
     assert image.read_text(encoding="utf-8") == "MEMORYIMAGE"
 
 

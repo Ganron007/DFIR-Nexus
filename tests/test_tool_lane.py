@@ -170,7 +170,7 @@ def test_gap_parsers_are_practical(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("NEXUS_SAMPLE_FILES", raising=False)
     monkeypatch.delenv("NEXUS_TOOL_LANE_QUICK", raising=False)
     monkeypatch.setattr(
-        "nexus.langgraph.tool_lane._esentutl_repair",
+        "nexus.langgraph.tool_lane._esentutl_replay",
         lambda *a, **k: None,
     )
     root = tmp_path / "C"
@@ -449,21 +449,20 @@ def test_bmc_stages_nonzero_and_scales_timeout(tmp_path: Path, monkeypatch):
     assert dest.name == "tiles"
 
 
-def test_bitsparser_stages_repaired_copy(tmp_path: Path, monkeypatch):
+def test_bitsparser_stages_a_staged_copy_with_its_logs_replayed(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         "nexus.langgraph.tool_lane._windows_tool_available",
         lambda key: key == "bitsparser",
     )
     called: dict = {}
 
-    def _fake_repair(work, *, db_name, log_bases):
+    def _fake_replay(work, *, log_bases):
         called["work"] = work
-        called["db_name"] = db_name
         called["log_bases"] = log_bases
 
     monkeypatch.setattr(
-        "nexus.langgraph.tool_lane._esentutl_repair",
-        _fake_repair,
+        "nexus.langgraph.tool_lane._esentutl_replay",
+        _fake_replay,
     )
     root = tmp_path / "C"
     (root / "Windows" / "System32").mkdir(parents=True)
@@ -479,9 +478,9 @@ def test_bitsparser_stages_repaired_copy(tmp_path: Path, monkeypatch):
     assert "workdir" in staged.parts
     assert staged.is_file()
     assert (staged.parent / "edb.log").is_file()
-    assert "repaired copy" in bp.purpose
+    assert "staged copy" in bp.purpose and "repaired" not in bp.purpose
     assert "--carveall" not in bp.argv
-    assert called["db_name"] == "qmgr.db"
+    assert Path(called["work"]) == staged.parent, "the replay runs in the staged copy's folder"
     assert called["log_bases"] == ("edb", "qmgr")
 
 
