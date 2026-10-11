@@ -18,11 +18,14 @@ real values back, and the next turn re-sends that assistant message.
 from __future__ import annotations
 
 import contextlib
+import functools
+import inspect
 import json
 import logging
 import os
 import tempfile
 import threading
+from contextvars import ContextVar
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -72,6 +75,8 @@ def load_anonymizer(case_dir: Path | None, allowlist: set[str] | None = None) ->
 
 
 def _load_tokens(case_dir: Path | None) -> dict[str, str]:
+    if case_dir is None:
+        return dict(_call_tokens.get() or {})
     path = _token_path(case_dir)
     if path is None or not path.is_file():
         return {}
@@ -108,6 +113,8 @@ def anonymize_text(text: str, case_dir: Path | None, allowlist: set[str] | None 
             existing = _load_tokens(case_dir)
             existing.update(mapping)
             _write_tokens(path, existing)
+    elif mapping and _call_tokens.get() is not None:
+        _call_tokens.get().update(mapping)
     return rewritten
 
 
@@ -294,35 +301,79 @@ class _StreamRestorer:
         return deanonymize(remainder, self._mapping) if remainder else ""
 
 
-#: The per-call binding the context loop publishes. A module-level attribute
-#: would be shared by every thread and every concurrent seat, which is exactly
-#: the cross-case leak this replaces, so it is thread-local.
-_egress_binding = threading.local()
+#: The case a run's model calls belong to. A ContextVar is per thread and per
+#: asyncio task, so concurrent seats cannot see each other's binding, and a
+#: finished run restores the outer binding (``egress_case``).
+_egress_case: ContextVar[str | None] = ContextVar("egress_case", default=None)
+
+#: The token map of an unbound call (no case). It lives for that one call, so the
+#: response can be restored, and it is never written to any case.
+_call_tokens: ContextVar[dict[str, str] | None] = ContextVar("egress_call_tokens", default=None)
 
 
-def bind_egress_case(case_dir: Path | str | None) -> None:
-    """Bind this thread's LLM calls to ``case_dir`` (None clears the binding)."""
-    _egress_binding.case_dir = str(case_dir) if case_dir else None
+@contextlib.contextmanager
+def _call_scope(case: Path | None):
+    """Scope one model call's tokens: a bound call uses its case file; an unbound call keeps them for this call only."""
+    if case is not None:
+        yield
+        return
+    token = _call_tokens.set({})
+    try:
+        yield
+    finally:
+        _call_tokens.reset(token)
+
+
+@contextlib.contextmanager
+def egress_case(case_dir: Path | str | None):
+    """Bind this run's model calls to ``case_dir`` for the duration of the ``with`` block.
+
+    The outer binding is restored on exit, so a finished seat never leaves its
+    run unbound, and a pooled thread cannot carry a binding into a later run.
+    """
+    token = _egress_case.set(str(case_dir) if case_dir else None)
+    try:
+        yield
+    finally:
+        _egress_case.reset(token)
+
+
+def egress_bound(fn):
+    """Bind a run entry point's case for egress around each call (WO-R2F item 1, D41).
+
+    The entry point takes the run's ``case_dir`` as a parameter, positional or
+    keyword. Wrapping the function keeps its body unchanged.
+    """
+    signature = inspect.signature(fn)
+
+    def _case_of(args, kwargs):
+        return signature.bind_partial(*args, **kwargs).arguments.get("case_dir")
+
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def bound_async(*args, **kwargs):
+            with egress_case(_case_of(args, kwargs)):
+                return await fn(*args, **kwargs)
+
+        return bound_async
+
+    @functools.wraps(fn)
+    def bound(*args, **kwargs):
+        with egress_case(_case_of(args, kwargs)):
+            return fn(*args, **kwargs)
+
+    return bound
 
 
 def _bound_case_dir() -> Path | None:
-    """The case this model's calls belong to.
+    """The case this model's calls belong to, or None when no run has bound one.
 
-    WO-R2F item 1 (D41): an **in-process** run binds its own case, so the
-    token map is written into the run's case, not into whatever case the
-    examiner happens to have active. ``bind_egress_case`` publishes that
-    binding; only an unbound model falls back to the global active-case
-    pointer, which is the right answer for a one-off CLI call with no run.
+    WO-R2F item 1 (D41): there is no fallback to the active-case pointer. An
+    unbound call has no case folder, so its token map stays in memory and
+    nothing is written to a case. A run binds its own case with ``egress_case``.
     """
-    bound = getattr(_egress_binding, "case_dir", None)
-    if bound:
-        return Path(bound)
-    try:
-        from nexus.case_manager import CaseManager
-
-        return CaseManager().require_active_case()
-    except Exception:  # noqa: BLE001 — no case means an in-memory token map
-        return None
+    bound = _egress_case.get()
+    return Path(bound) if bound else None
 
 
 def _active_case_dir() -> Path | None:
@@ -380,70 +431,74 @@ def attach_egress(model):
 
     def _generate(messages, stop=None, run_manager=None, **kwargs):
         case = _active_case_dir()
-        result = original_generate(
-            _anonymize_messages(messages, case), stop=stop,
-            run_manager=run_manager, **kwargs,
-        )
-        _restore_result(result, case)
+        with _call_scope(case):
+            result = original_generate(
+                _anonymize_messages(messages, case), stop=stop,
+                run_manager=run_manager, **kwargs,
+            )
+            _restore_result(result, case)
         return result
 
     async def _agenerate(messages, stop=None, run_manager=None, **kwargs):
         case = _active_case_dir()
-        result = await original_agenerate(
-            _anonymize_messages(messages, case), stop=stop,
-            run_manager=run_manager, **kwargs,
-        )
-        _restore_result(result, case)
+        with _call_scope(case):
+            result = await original_agenerate(
+                _anonymize_messages(messages, case), stop=stop,
+                run_manager=run_manager, **kwargs,
+            )
+            _restore_result(result, case)
         return result
 
     def _stream(messages, stop=None, run_manager=None, **kwargs):
         case = _active_case_dir()
-        restorer = _StreamRestorer(case)
-        held = _HeldToolCalls(case)
-        last = None
-        for chunk in original_stream(
-            _anonymize_messages(messages, case), stop=stop,
-            run_manager=run_manager, **kwargs,
-        ):
-            last = chunk
-            if held.absorb(chunk):
-                continue
-            restored = restorer.push(getattr(chunk, "text", "") or "")
-            if not restored:
-                continue
-            _set_chunk_text(chunk, restored)
-            yield chunk
-        tail = restorer.flush()
-        if tail:
-            final = _text_chunk(last, tail)
-            if final is not None:
-                yield final
-        yield from held.drain()
+        with _call_scope(case):
+            restorer = _StreamRestorer(case)
+            held = _HeldToolCalls(case)
+            last = None
+            for chunk in original_stream(
+                _anonymize_messages(messages, case), stop=stop,
+                run_manager=run_manager, **kwargs,
+            ):
+                last = chunk
+                if held.absorb(chunk):
+                    continue
+                restored = restorer.push(getattr(chunk, "text", "") or "")
+                if not restored:
+                    continue
+                _set_chunk_text(chunk, restored)
+                yield chunk
+            tail = restorer.flush()
+            if tail:
+                final = _text_chunk(last, tail)
+                if final is not None:
+                    yield final
+            yield from held.drain()
 
     async def _astream(messages, stop=None, run_manager=None, **kwargs):
         case = _active_case_dir()
-        restorer = _StreamRestorer(case)
-        held = _HeldToolCalls(case)
-        last = None
-        async for chunk in original_astream(
-            _anonymize_messages(messages, case), stop=stop,
-            run_manager=run_manager, **kwargs,
-        ):
-            last = chunk
-            if held.absorb(chunk):
-                continue
-            restored = restorer.push(getattr(chunk, "text", "") or "")
-            if not restored:
-                continue
-            _set_chunk_text(chunk, restored)
-            yield chunk
-        tail = restorer.flush()
-        if tail:
-            final = _text_chunk(last, tail)
-            if final is not None:
-                yield final
-        for extra in held.drain():
-            yield extra
+        with _call_scope(case):
+            restorer = _StreamRestorer(case)
+            held = _HeldToolCalls(case)
+            last = None
+            async for chunk in original_astream(
+                _anonymize_messages(messages, case), stop=stop,
+                run_manager=run_manager, **kwargs,
+            ):
+                last = chunk
+                if held.absorb(chunk):
+                    continue
+                restored = restorer.push(getattr(chunk, "text", "") or "")
+                if not restored:
+                    continue
+                _set_chunk_text(chunk, restored)
+                yield chunk
+            tail = restorer.flush()
+            if tail:
+                final = _text_chunk(last, tail)
+                if final is not None:
+                    yield final
+            for extra in held.drain():
+                yield extra
 
     model._generate = _generate
     model._agenerate = _agenerate

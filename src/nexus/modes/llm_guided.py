@@ -22,6 +22,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from nexus.llm.egress import egress_bound
+
 log = logging.getLogger(__name__)
 
 _MAX_ITERATIONS = 5
@@ -688,6 +690,7 @@ def _emit(on_event: Any, payload: dict[str, Any]) -> None:
         on_event(payload)
 
 
+@egress_bound
 def run_iterative_loop(
     case_dir: Path,
     question: str,
@@ -739,7 +742,7 @@ def run_iterative_loop(
     dsl0 = str(parsed0.get("dsl_query") or "").strip()
     q0 = dsl0 or " ".join(needles0)
     r0 = backbone_call(
-        "es_search", audit=loop_audit, case_id=case_id,
+        "es_search", audit=loop_audit, case_id=case_id, case_dir=case_dir,
         query=_es_query_from_expr(q0), size=limit,
     )
     if r0.get("error"):
@@ -799,6 +802,7 @@ def run_iterative_loop(
             label = "es_search " + json.dumps(query, sort_keys=True, default=str)[:200]
             all_needles_run.append(label)
             ran = backbone_call("es_search", audit=loop_audit, case_id=case_id,
+                                case_dir=case_dir,
                                 query=query, size=min(max(int(limit or 100), 1), 200))
             if ran.get("error"):
                 iterations.append({"iteration": it, "action": "query_error",
@@ -821,6 +825,7 @@ def run_iterative_loop(
             q = qspec["query"]
             all_needles_run.append(q)
             ran = backbone_call("es_search", audit=loop_audit, case_id=case_id,
+                                case_dir=case_dir,
                                 query=_es_query_from_expr(q), size=limit)
             if ran.get("error"):
                 # gated/no-case — the loop cannot run; surface honestly
@@ -854,6 +859,7 @@ def run_iterative_loop(
         aggregations: list[dict[str, Any]] = []
         for espec in (proposal.get("es_aggregations") or [])[:2]:
             agg = backbone_call("es_aggregate", audit=loop_audit, case_id=case_id,
+                                case_dir=case_dir,
                                 aggs=espec.get("aggs") or {}, query=espec.get("query"))
             if agg.get("error"):
                 continue
@@ -867,7 +873,7 @@ def run_iterative_loop(
             })
         for aspec in (proposal.get("aggregations") or [])[:2]:
             agg = backbone_call(
-                "es_aggregate", audit=loop_audit, case_id=case_id,
+                "es_aggregate", audit=loop_audit, case_id=case_id, case_dir=case_dir,
                 aggs={"v": {"terms": {
                     "field": aspec.get("field", "host"), "size": 15,
                 }}},

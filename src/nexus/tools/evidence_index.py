@@ -92,6 +92,10 @@ def _resolve_active_case(case_id: str, case_dir: Path | str | None = None) -> tu
         problem = validate_case_id(case_id)
         if problem:
             return None, problem
+    if not case_id:
+        # An external caller names the case it reads. Without a name, the call would
+        # read whichever case happens to be active (WO-R2F item 1, D41).
+        return None, "case_id is required: name the case this call reads"
     from nexus.case_manager import CaseManager
 
     manager = CaseManager()
@@ -374,10 +378,15 @@ def invalidate_mappings_cache(case_id: str) -> None:
             _mappings_cache.pop(key, None)
 
 
-def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> dict:
-    """Describe the active case's index: backend, families, fields, census."""
+def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
+                      case_dir: Path | str | None = None) -> dict:
+    """Describe one case's index: backend, families, fields, census.
+
+    The run's own ``case_dir`` is used when bound (WO-R2F item 1, D41). Otherwise the
+    case is an external caller's, gated to the active case.
+    """
     started = time.monotonic()
-    case_dir, err = _resolve_active_case(case_id)
+    case_dir, err = _resolve_active_case(case_id, case_dir)
     if err or case_dir is None:
         return {"error": err or "no active case"}
     # WP 4j.34: cache the census per case (steering calls this every turn).
@@ -475,7 +484,8 @@ def do_family_fields(family: str, audit: AuditWriter | None = None) -> dict:
     }
 
 
-def do_run_record(case_id: str = "", audit: AuditWriter | None = None) -> dict:
+def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
+                  case_dir: Path | str | None = None) -> dict:
     """Return the tool-lane ledger: what actually ran against this case.
 
     This is the honesty tool for negative answers. It lets the model (and the
@@ -487,9 +497,12 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None) -> dict:
     - tool never ran / no ledger exists
 
     Context only — the ledger is routing/provenance, never a finding.
+
+    A run passes its own ``case_dir`` (WO-R2F item 1, D41); without it the case
+    is an external caller's, gated to the active case.
     """
     started = time.monotonic()
-    case_dir, err = _resolve_active_case(case_id)
+    case_dir, err = _resolve_active_case(case_id, case_dir)
     if err or case_dir is None:
         return {"error": err or "no active case"}
 

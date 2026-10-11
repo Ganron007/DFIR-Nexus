@@ -30,17 +30,13 @@ _COLUMNS = [
 
 def _resolve_case_dir(case_id: str):
     """The named case, or the active one. Refuses an id that would traverse."""
-    from nexus.case_manager import CaseManager
     from nexus.config import settings
     from nexus.discipline import validate_case_id
 
     cid = (case_id or "").strip()
     if not cid:
-        try:
-            cid = CaseManager().require_active_case().name
-        except Exception as exc:  # noqa: BLE001
-            typer.echo(f"No active case: {exc}", err=True)
-            raise typer.Exit(1) from None
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
     if validate_case_id(cid):
         typer.echo(f"Invalid case id: {cid}", err=True)
         raise typer.Exit(1)
@@ -53,7 +49,7 @@ def _resolve_case_dir(case_id: str):
 
 @app.command("build")
 def build(
-    case: str = typer.Option("", "--case", "-c", help="Case ID (default: active case)"),
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
     force: bool = typer.Option(False, "--force", help="Rebuild even if the schema is current"),
 ) -> None:
     """Build the events index from the document index (never re-parses evidence)."""
@@ -81,7 +77,7 @@ def build(
 
 @app.command("query")
 def query(
-    case: str = typer.Option("", "--case", "-c", help="Case ID (default: active case)"),
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
     size: int = typer.Option(50, "--size", help="Rows per page (max 1000)"),
     cursor: str = typer.Option("", "--cursor", help="Continue from a previous page"),
     family: str = typer.Option("", "--family", help="Filter: family"),
@@ -134,7 +130,7 @@ def query(
 
 @app.command("export")
 def export(
-    case: str = typer.Option("", "--case", "-c", help="Case ID (default: active case)"),
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
     out: str = typer.Option("", "--out", "-o", help="Write CSV here (default: stdout)"),
     family: str = typer.Option("", "--family", help="Filter: family"),
     since: str = typer.Option("", "--since", help="Filter: ts gte (ISO)"),

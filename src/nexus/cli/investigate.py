@@ -20,7 +20,6 @@ import typer
 
 
 def _resolve_case(case_id: str = "") -> Path | None:
-    from nexus.case.outputs import resolve_active_case_dir
     from nexus.config import settings
 
     if case_id:
@@ -30,15 +29,12 @@ def _resolve_case(case_id: str = "") -> Path | None:
             typer.echo(f"Case not found: {case_id}", err=True)
             return None
         return case_dir
-    case_dir = resolve_active_case_dir()
-    if case_dir:
-        return case_dir
-    typer.echo("No active case. Use 'nexus case activate' or 'nexus case init'", err=True)
+    typer.echo("--case is required: name the case this command acts on.", err=True)
     return None
 
 
 def brief(
-    case_id: str = typer.Argument("", help="Case ID (default: active case)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
     json_out: bool = typer.Option(False, "--json", help="Emit raw JSON"),
     markdown: bool = typer.Option(False, "--markdown", help="Emit markdown report"),
 ):
@@ -100,7 +96,7 @@ def brief(
 
 def hits_cmd(
     needle: str = typer.Argument(..., help="Needle or query text"),
-    case_id: str = typer.Option("", "--case", help="Case ID (default: active case)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     family: str = typer.Option("", "--family", "-f", help="Filter to a family"),
     fields: str = typer.Option("", "--fields", help="Comma-separated field projection"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max hits"),
@@ -145,7 +141,7 @@ def hits_cmd(
 
 def hit_cmd(
     ref: str = typer.Argument(..., help="Hit ref as file:line"),
-    case_id: str = typer.Option("", "--case", help="Case ID (default: active case)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     json_out: bool = typer.Option(False, "--json", help="Emit raw JSON"),
 ):
     """Full field dump for one hit (WP 4i.10)."""

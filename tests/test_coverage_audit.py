@@ -326,13 +326,17 @@ def test_cli_rebuild_and_gate_on_gaps(monkeypatch, tmp_path):
     assert (case / "analysis" / "coverage_audit.json").is_file()
 
 
-def test_cli_reports_no_active_case(monkeypatch, tmp_path):
+def test_cli_refuses_without_a_named_case(monkeypatch, tmp_path):
+    """No --case is a refusal, and the active-case pointer is never read (WO-R2F item 1, D41)."""
     from nexus.cli.main import app
 
-    monkeypatch.setattr("nexus.case.outputs.resolve_active_case_dir", lambda: None)
+    def _pointer_must_not_be_read():
+        raise AssertionError("the active-case pointer was read")
+
+    monkeypatch.setattr("nexus.case.outputs.resolve_active_case_dir", _pointer_must_not_be_read)
     result = runner.invoke(app, ["coverage-audit"])
     assert result.exit_code == 1
-    assert "No active case" in result.output
+    assert "--case is required" in result.output
 
 
 @pytest.mark.parametrize("missing", ["ledger", "index", "signal_map"])

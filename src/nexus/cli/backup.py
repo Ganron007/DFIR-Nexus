@@ -12,29 +12,28 @@ import typer
 app = typer.Typer(help="Backup and restore cases")
 
 
-def _resolve_case_dir() -> Path | None:
-    active = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
-    if active.exists():
-        content = active.read_text().strip()
-        if content:
-            from nexus.config import settings
+def _resolve_case_dir(case: str) -> Path | None:
+    """The folder of the case a backup names. Never the active case (WO-R2F item 1, D41)."""
+    from nexus.config import settings
 
-            case_dir = Path(content) if Path(content).is_absolute() else settings.cases_root / content
-            if case_dir.exists():
-                return case_dir
-    return None
+    name = (case or "").strip()
+    if not name:
+        return None
+    case_dir = Path(name) if Path(name).is_absolute() else settings.cases_root / name
+    return case_dir if case_dir.exists() else None
 
 
 @app.command()
 def create(
     path: str = typer.Argument(..., help="Backup destination path"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     all_data: bool = typer.Option(False, "--all", help="Include evidence and triage data"),
     verify: bool = typer.Option(True, "--verify", help="Verify backup integrity after creation"),
 ):
-    """Backup the active case to a ZIP archive with SHA-256 manifest."""
-    case_dir = _resolve_case_dir()
+    """Backup the named case to a ZIP archive with SHA-256 manifest."""
+    case_dir = _resolve_case_dir(case)
     if not case_dir:
-        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        typer.echo("Pass --case <id>: a backup names the case it archives.", err=True)
         raise typer.Exit(1)
 
     dest = Path(path)

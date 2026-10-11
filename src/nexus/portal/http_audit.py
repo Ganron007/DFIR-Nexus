@@ -147,19 +147,9 @@ def _resolve_case_id(scope: dict[str, Any]) -> str:
             if key == "case_id" and value:
                 case_id = value
                 break
-    if not case_id:
-        case_id = (os.environ.get("NEXUS_ACTIVE_CASE") or "").strip()
-    if not case_id:
-        # The active-case pointer is what production actually uses (the
-        # NEXUS_ACTIVE_CASE env var is a test/child-process convention).
-        try:
-            from nexus.case.outputs import resolve_active_case_dir
-
-            active = resolve_active_case_dir()
-            if active is not None:
-                case_id = active.name
-        except Exception:  # noqa: BLE001 — resolution is best-effort
-            case_id = ""
+    # A request that names no case is recorded in the global chain, never in the
+    # active case. The 36h traffic was filed into SC1 through this fallback
+    # (WO-R2F item 1, D41; 1,645 rows).
     return case_id
 
 

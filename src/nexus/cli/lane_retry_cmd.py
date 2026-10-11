@@ -22,7 +22,7 @@ import typer
 
 
 def retry(
-    case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case."),
+    case: str = typer.Option("", "--case", help="Case id or directory (required)."),
     tool: str = typer.Option(
         "", "--tool",
         help="Not supported yet: a retry re-runs every FAIL job in the run.",
@@ -223,7 +223,6 @@ def _run_evidence_paths(run_dir: Path) -> list[str]:
 
 
 def _resolve(case: str):
-    from nexus.case.outputs import resolve_active_case_dir
     from nexus.config import settings
 
     case_id = (case or "").strip()
@@ -238,8 +237,5 @@ def _resolve(case: str):
             typer.echo(f"Case not found: {candidate}", err=True)
             raise typer.Exit(1)
         return candidate
-    resolved = resolve_active_case_dir()
-    if resolved is None:
-        typer.echo("No active case - pass --case.", err=True)
-        raise typer.Exit(1)
-    return resolved
+    typer.echo("--case is required: name the case this command acts on.", err=True)
+    raise typer.Exit(1)

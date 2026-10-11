@@ -86,7 +86,7 @@ def _entries(case_dir: Path) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_mutating_portal_request_is_audited(case_env):
-    sent = await _call(_app(), "POST", "/portal/api/test?token=supersecret&q=sdelete")
+    sent = await _call(_app(), "POST", "/portal/api/test?case_id=CASE-H&token=supersecret&q=sdelete")
     assert sent and sent[0]["status"] == 200
     rows = _entries(case_env)
     assert len(rows) == 1
@@ -125,10 +125,22 @@ async def test_mcp_call_records_tool_name(case_env):
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": "n4_query", "arguments": {}},
     }).encode()
-    await _call(_app(), "POST", "/mcp", body)
+    await _call(_app(), "POST", "/mcp?case_id=CASE-H", body)
     rows = _entries(case_env)
     assert len(rows) == 1
     assert rows[0]["tool"] == "mcp:tools/call:n4_query"
+
+
+@pytest.mark.asyncio
+async def test_an_unnamed_request_is_not_written_into_the_active_case(case_env):
+    """The active case is not a fallback: an unnamed request never lands in it (WO-R2F item 1, D41).
+
+    The 36h traffic was filed into CASE-D6B93BF1 this way (1,645 rows) while the pointer named it.
+    """
+    sent = await _call(_app(), "POST", "/portal/api/test?token=supersecret")
+
+    assert sent and sent[0]["status"] == 200
+    assert _entries(case_env) == []
 
 
 @pytest.mark.asyncio

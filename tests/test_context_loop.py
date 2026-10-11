@@ -433,7 +433,7 @@ def test_run_record_reads_the_tool_lane_ledger(tmp_path, monkeypatch):
          "purpose": "evtx", "output": "", "audit_id": ""},
     ]), encoding="utf-8")
     monkeypatch.setattr(evidence_index, "_resolve_active_case",
-                        lambda case_id: (case, ""))
+                        lambda case_id, case_dir=None: (case, ""))
     audit = AuditWriter("nexus", audit_dir=case / "audit")
     result = evidence_index.do_run_record(case_id="CASE-LEDGER", audit=audit)
     assert result["available"] is True
@@ -561,7 +561,7 @@ def test_run_record_uses_real_ledger_field_names(tmp_path, monkeypatch):
          "output_saved_to": "hayabusa/evtx-timeline.csv", "audit_id": "hay-1"},
     ]), encoding="utf-8")
     monkeypatch.setattr(evidence_index, "_resolve_active_case",
-                        lambda case_id: (case, ""))
+                        lambda case_id, case_dir=None: (case, ""))
     result = evidence_index.do_run_record(case_id="CASE-LEDGER-REAL")
     entry = result["entries"][0]
     assert "csv-timeline" in entry["command"]
@@ -579,7 +579,7 @@ def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
     rows.append({"tool": "late-fail", "status": "FAIL"})
     (ext / "_tool_lane_ledger.json").write_text(json.dumps(rows), encoding="utf-8")
     monkeypatch.setattr(evidence_index, "_resolve_active_case",
-                        lambda case_id: (case, ""))
+                        lambda case_id, case_dir=None: (case, ""))
     result = evidence_index.do_run_record(case_id="CASE-LEDGER-BIG")
     assert result["counts"]["OK"] == 305
     assert result["counts"]["FAIL"] == 1

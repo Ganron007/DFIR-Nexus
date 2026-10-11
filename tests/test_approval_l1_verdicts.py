@@ -275,7 +275,7 @@ def test_cli_approve_shows_verdict_and_requires_reason(l1_env, monkeypatch):
     from nexus.cli.main import app as cli_app
 
     runner = CliRunner()
-    r = runner.invoke(cli_app, ["approve", bad, "--examiner", EXAMINER])
+    r = runner.invoke(cli_app, ["approve", bad, "--examiner", EXAMINER, "--case", case_id])
     assert r.exit_code == 1, r.output
     assert "L1 UNSUPPORTED" in r.output
     assert "Refused" in r.output
@@ -284,7 +284,7 @@ def test_cli_approve_shows_verdict_and_requires_reason(l1_env, monkeypatch):
 
     r = runner.invoke(
         cli_app,
-        ["approve", bad, "--examiner", EXAMINER, "--reason", "Examiner accepted the beacon"],
+        ["approve", bad, "--examiner", EXAMINER, "--case", case_id, "--reason", "Examiner accepted the beacon"],
     )
     assert r.exit_code == 0, r.output
     assert "APPROVED" in r.output
@@ -531,13 +531,13 @@ def test_cli_approve_seal_less_draft_needs_a_reason(l1_env, monkeypatch):
     from nexus.cli.main import app as cli_app
 
     runner = CliRunner()
-    r = runner.invoke(cli_app, ["approve", fid, "--examiner", EXAMINER])
+    r = runner.invoke(cli_app, ["approve", fid, "--examiner", EXAMINER, "--case", case_id])
     assert r.exit_code == 1, r.output
     assert "UNVERIFIABLE" in r.output
 
     r = runner.invoke(
         cli_app,
-        ["approve", fid, "--examiner", EXAMINER, "--reason", "pre-10.4 draft; reviewed"],
+        ["approve", fid, "--examiner", EXAMINER, "--case", case_id, "--reason", "pre-10.4 draft; reviewed"],
     )
     assert r.exit_code == 0, r.output
     entries = {

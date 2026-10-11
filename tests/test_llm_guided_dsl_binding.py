@@ -273,7 +273,8 @@ def test_backbone_allowlist_reads_evidence(backbone):
 def test_index_mappings_reports_family_fields(backbone):
     from nexus.langgraph.backbone import backbone_call
 
-    r = backbone_call("index_mappings")
+    _tools, cid, case_dir = backbone
+    r = backbone_call("index_mappings", case_id=cid, case_dir=case_dir)
     assert "error" not in r, r
     ff = r["family_fields"]
     assert "hayabusa" in ff

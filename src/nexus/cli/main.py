@@ -139,21 +139,22 @@ _ACTIVE_CASE_FILE = Path(
 
 
 def _resolve_case(case_id: str = "") -> Path | None:
-    from nexus.case.outputs import resolve_active_case_dir
+    """The folder of the case a command names. A command never falls back to the active case.
+
+    Without a name the command is refused, so nothing is read from or written to a case the
+    operator did not name (WO-R2F item 1, D41; the 36h work was filed into another case this way).
+    """
     from nexus.config import settings
 
-    if case_id:
-        p = Path(case_id)
-        case_dir = p if p.is_absolute() else settings.cases_root / case_id
-        if not case_dir.exists():
-            typer.echo(f"Case not found: {case_id}", err=True)
-            return None
-        return case_dir
-    case_dir = resolve_active_case_dir()
-    if case_dir:
-        return case_dir
-    typer.echo("No active case. Use 'nexus case activate' or 'nexus case init'", err=True)
-    return None
+    if not (case_id or "").strip():
+        typer.echo("--case is required: name the case this command acts on", err=True)
+        return None
+    p = Path(case_id.strip())
+    case_dir = p if p.is_absolute() else settings.cases_root / case_id.strip()
+    if not case_dir.exists():
+        typer.echo(f"Case not found: {case_id}", err=True)
+        return None
+    return case_dir
 
 
 def _resolve_analyst(explicit: str = "") -> str:
@@ -177,6 +178,7 @@ def approve(
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive review mode"),
     examiner: str = typer.Option("", "--examiner", "-e", help="Examiner identity (password file name)"),
     clear_lockout: bool = typer.Option(False, "--clear-lockout", help="Clear 15-minute lockout and exit"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
 ):
     """Approve DRAFT findings (requires password — blocks AI approval)."""
     analyst = _resolve_analyst(examiner)
@@ -190,7 +192,7 @@ def approve(
             return
 
     if interactive:
-        _interactive_approve(analyst)
+        _interactive_approve(analyst, case)
         return
 
     if not finding_ids:
@@ -199,7 +201,7 @@ def approve(
 
     from nexus.cli.approve import _require_approval_auth, approve_finding
 
-    case_dir = _resolve_case()
+    case_dir = _resolve_case(case)
     if not case_dir:
         raise typer.Exit(1)
 
@@ -251,7 +253,7 @@ def approve(
         typer.echo("  HMAC verification entry written to ledger")
 
 
-def _interactive_approve(analyst: str):
+def _interactive_approve(analyst: str, case: str = ""):
     """Walk through DRAFT findings for interactive review."""
 
     from nexus.cli.approve import _display_item, _require_approval_auth, approve_finding
@@ -260,7 +262,7 @@ def _interactive_approve(analyst: str):
     if not password:
         raise typer.Exit(1)
 
-    case_dir = _resolve_case()
+    case_dir = _resolve_case(case)
     if not case_dir:
         raise typer.Exit(1)
 
@@ -331,6 +333,7 @@ def reject(
     finding_ids: list[str] = typer.Argument(..., help="Finding IDs to reject"),
     reason: str = typer.Option("", "--reason", "-r", help="Reason for rejection"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive mode"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
 ):
     """Reject DRAFT findings with a reason (human only, password required)."""
     from nexus.config import settings
@@ -341,7 +344,7 @@ def reject(
     if not password:
         raise typer.Exit(1)
 
-    case_dir = _resolve_case()
+    case_dir = _resolve_case(case)
     if not case_dir:
         raise typer.Exit(1)
 
@@ -680,7 +683,7 @@ def cross_mode(
 
 @app.command()
 def interpret(
-    case: str = typer.Option("", "--case", help="Case id (default: the active case)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     context_policy: str = typer.Option(
         "independent",
         "--context",
@@ -700,13 +703,8 @@ def interpret(
         raise typer.Exit(1)
     case_id = (case or "").strip()
     if not case_id:
-        from nexus.case.outputs import resolve_active_case_dir
-
-        active = resolve_active_case_dir()
-        if active is None:
-            typer.echo("No active case - pass --case.", err=True)
-            raise typer.Exit(1)
-        case_id = active.name
+        typer.echo("--case is required: name the case this run acts on.", err=True)
+        raise typer.Exit(1)
     pipeline(
         case="", also=[], from_case=case_id, resume=False, model=model, thread="",
         mode="interpret", context_policy=policy,

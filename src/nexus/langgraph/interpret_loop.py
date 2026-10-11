@@ -30,6 +30,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.llm.egress import egress_bound
+
 log = logging.getLogger(__name__)
 
 _MAX_PLAN_ITEMS = 6
@@ -470,6 +472,7 @@ def _record_loop_query(
     )
 
 
+@egress_bound
 async def run_interpret_loop(
     *,
     case_dir: Path,

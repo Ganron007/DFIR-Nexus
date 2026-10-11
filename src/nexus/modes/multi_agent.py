@@ -25,6 +25,7 @@ from uuid import uuid4
 
 from nexus.langgraph.case_index import elasticsearch_ready
 from nexus.langgraph.prompt_budget import budget_chars, case_window
+from nexus.llm.egress import egress_bound
 from nexus.modes.multi_role import (
     EventSink,
     WorkOrder,
@@ -1402,6 +1403,7 @@ def _verifier_spawn(
     }
 
 
+@egress_bound
 def run_mode3(
     case_dir: Path,
     question: str,
@@ -1543,6 +1545,7 @@ def run_mode3(
                 "index_mappings",
                 audit=run_audit,
                 case_id=case_dir.name,
+                case_dir=case_dir,
             )
             indexed = [
                 (str(name), int(rows or 0))

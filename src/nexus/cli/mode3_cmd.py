@@ -17,7 +17,7 @@ def _case_dir(case_id: str):
 
     case_dir = _resolve_case(case_id)
     if not case_dir:
-        typer.echo("No active case. Create/activate one or pass --case.", err=True)
+        typer.echo("Pass --case <id>: a Mode 3 command acts on the case it names.", err=True)
         raise typer.Exit(1)
     return case_dir
 

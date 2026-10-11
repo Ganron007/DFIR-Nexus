@@ -259,12 +259,10 @@ def activate(case_id: str = typer.Argument(..., help="Case ID to activate")):
 
 
 @app.command()
-def close(case_id: str = typer.Argument("", help="Case ID to close (defaults to active)")):
+def close(case_id: str = typer.Argument("", help="Case ID to close (required)")):
     """Close a case."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No case specified and no active case", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
     mgr = _get_sqlite_mgr()
     from nexus.audit import resolve_examiner
@@ -277,12 +275,10 @@ def close(case_id: str = typer.Argument("", help="Case ID to close (defaults to 
 
 
 @app.command()
-def reopen(case_id: str = typer.Argument("", help="Case ID to reopen (defaults to active)")):
+def reopen(case_id: str = typer.Argument("", help="Case ID to reopen (required)")):
     """Reopen a sealed (completed) or closed case."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No case specified and no active case", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
     mgr = _get_sqlite_mgr()
     from nexus.case import CaseStatus
@@ -358,9 +354,9 @@ def migrate(
 def _case_dir(case_id: str = "") -> Path:
     from nexus.config import settings
 
-    cid = case_id or _get_active_case_id() or ""
+    cid = (case_id or "").strip()
     if not cid:
-        typer.echo("No case specified and no active case", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
     # Tolerate a legacy absolute-path pointer: use the directory name.
     p = Path(cid)
@@ -375,7 +371,7 @@ def _case_dir(case_id: str = "") -> Path:
 
 @app.command("index")
 def index_case(
-    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
 ):
     """N3: index this case's processed outputs into Elasticsearch (NEXUS_ES_URL)."""
     from nexus.langgraph.case_index import es_available, es_url
@@ -396,7 +392,7 @@ def index_case(
 
 @app.command("query")
 def query_case(
-    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
     needles: str = typer.Option(
         "",
         "--needles",
@@ -436,7 +432,7 @@ def query_case(
 
 @app.command("detections")
 def detections_case(
-    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
     finding_ids: str = typer.Option(
         "",
         "--finding-ids",
@@ -456,7 +452,7 @@ def detections_case(
 
 @app.command("intake")
 def intake_case(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     question: str = typer.Option("", "--question"),
     window: str = typer.Option("", "--window"),
     extras: str = typer.Option("", "--extras", help="chrome_profiles,drivefs,email,usb_serial"),
@@ -518,7 +514,7 @@ def intake_case(
 
 @app.command("ask")
 def ask_case(
-    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
     question: str = typer.Option(
         "",
         "--question",
@@ -599,7 +595,7 @@ def ask_case(
 
 @app.command("select")
 def select_case(
-    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
     hits: str = typer.Option(
         "",
         "--hits",
@@ -727,7 +723,7 @@ def select_case(
 
 @app.command("findings")
 def findings_case(
-    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    case_id: str = typer.Argument("", help="Case ID (required)"),
     status: str = typer.Option("", "--status", help="Filter by status: DRAFT|APPROVED|REJECTED"),
 ):
     """List findings for a case."""

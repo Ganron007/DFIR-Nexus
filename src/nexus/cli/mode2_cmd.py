@@ -21,7 +21,7 @@ def _case_dir(case_id: str) -> Path:
 
     case_dir = _resolve_case(case_id)
     if not case_dir:
-        typer.echo("No active case. Create/activate one or pass --case.", err=True)
+        typer.echo("Pass --case <id>: a Mode 2 command acts on the case it names.", err=True)
         raise typer.Exit(1)
     return case_dir
 
@@ -67,7 +67,7 @@ def _print_event(event: dict) -> None:
 @app.command()
 def plan(
     question: str = typer.Option("", "--question", "-q", help="Question/task"),
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     max_orders: int = typer.Option(6, "--max-orders", min=1, max=12),
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ):
@@ -101,7 +101,7 @@ def plan(
 @app.command()
 def run(
     question: str = typer.Option("", "--question", "-q", help="Question/task"),
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Resume/reuse a run id"),
     max_orders: int = typer.Option(6, "--max-orders", min=1, max=12),
     context_policy: str = typer.Option(
@@ -154,7 +154,7 @@ def run(
 
 @app.command()
 def status(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -197,7 +197,7 @@ def status(
 @app.command()
 def steer(
     text: str = typer.Argument(..., help="Examiner directive"),
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
 ):
     """Inject a directive the agents pick up on the next work order."""
@@ -223,7 +223,7 @@ def steer(
 
 @app.command()
 def pause(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
 ):
     """Pause the run between work orders."""
@@ -239,7 +239,7 @@ def pause(
 
 @app.command()
 def stop(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
 ):
     """Halt a run at the next work order (cooperative stop, not approval)."""
@@ -266,7 +266,7 @@ def stop(
 
 @app.command()
 def resume(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
     no_run: bool = typer.Option(False, "--no-run", help="Only clear the pause flag"),
 ):
@@ -302,7 +302,7 @@ def resume(
 
 @app.command()
 def findings(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -330,7 +330,7 @@ def findings(
 
 @app.command()
 def stage(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -370,7 +370,7 @@ def stage(
 
 @app.command()
 def export(
-    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
     output: Path = typer.Option(..., "--output", help="Output JSON path"),
 ):

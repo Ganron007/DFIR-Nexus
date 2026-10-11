@@ -16,7 +16,7 @@ def coverage_audit(
     case: str = typer.Option(
         "",
         "--case",
-        help="Case id or case directory. Default: the active case.",
+        help="Case id or case directory (required).",
     ),
     rebuild: bool = typer.Option(
         False,
@@ -33,7 +33,6 @@ def coverage_audit(
         summary_lines,
         write_coverage_audit,
     )
-    from nexus.case.outputs import resolve_active_case_dir
 
     case_dir: Path | None = None
     if case:
@@ -51,12 +50,7 @@ def coverage_audit(
             typer.echo(f"case not found: {case}")
             raise typer.Exit(1)
     else:
-        try:
-            case_dir = resolve_active_case_dir()
-        except Exception:  # noqa: BLE001
-            case_dir = None
-    if case_dir is None:
-        typer.echo("No active case. Pass --case <id|dir>.")
+        typer.echo("--case is required: name the case this command acts on.")
         raise typer.Exit(1)
 
     if rebuild:

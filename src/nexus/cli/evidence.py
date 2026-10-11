@@ -4,30 +4,12 @@ Backed by the SQLite case stack.
 """
 
 import hashlib
-import os
 import stat
 from pathlib import Path
 
 import typer
 
 app = typer.Typer(help="Manage evidence files")
-
-_ACTIVE_CASE_FILE = Path(
-    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
-)
-
-
-def _get_active_case_id() -> str | None:
-    if _ACTIVE_CASE_FILE.exists():
-        content = _ACTIVE_CASE_FILE.read_text().strip()
-        if content:
-            # Tolerate a legacy absolute-path pointer: use the directory name.
-            p = Path(content)
-            if p.is_absolute():
-                return p.name
-            return content
-    return None
-
 
 def _get_sqlite_mgr():
     from nexus.case import CaseManager
@@ -40,7 +22,7 @@ def _get_sqlite_mgr():
 def register(
     path: str = typer.Argument(..., help="Path to evidence file"),
     description: str = typer.Option("", "--description", "-d", help="Evidence description"),
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     sift_hosted: bool = typer.Option(
         False, "--sift-hosted",
         help="Evidence lives on the SIFT host: PATH is the remote path; no local read",
@@ -51,9 +33,7 @@ def register(
 ):
     """Register an evidence file with SHA-256 hash."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     if sift_hosted:
@@ -113,13 +93,11 @@ def register(
 
 @app.command()
 def list(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """List registered evidence files."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     mgr = _get_sqlite_mgr()
@@ -141,13 +119,11 @@ def list(
 
 @app.command()
 def verify(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """Re-hash registered evidence to verify integrity."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     mgr = _get_sqlite_mgr()
@@ -182,7 +158,7 @@ def verify(
 
 @app.command("status")
 def status(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """Show the captured evidence freshness state (WO-A5).
 
@@ -195,9 +171,7 @@ def status(
     from nexus.config import settings
 
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     fp = Path(settings.cases_root) / case_id / "analysis" / "evidence_freshness.json"
@@ -225,16 +199,14 @@ def pair(
     output_name: str = typer.Argument(..., help="Pre-processed output file name"),
     output_sha256: str = typer.Option(..., "--sha256", help="SHA-256 of the pre-processed output"),
     confirm: bool = typer.Option(False, "--confirm", help="Record the audited pairing"),
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """Pair a raw artifact with a pre-processed output the examiner accepts."""
     from nexus.config import settings
     from nexus.langgraph.lane_gate import confirm_preprocessed_pair
 
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
     if not confirm:
         typer.echo(
@@ -258,11 +230,12 @@ def pair(
 
 @app.command()
 def lock(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """Lock evidence directory to read-only to prevent tampering."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
     mgr = _get_sqlite_mgr()
     evidence_list = mgr.list_evidence(case_id)
     count = 0
@@ -280,11 +253,12 @@ def lock(
 
 @app.command()
 def unlock(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """Unlock evidence directory for new files."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
     mgr = _get_sqlite_mgr()
     evidence_list = mgr.list_evidence(case_id)
     count = 0

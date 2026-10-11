@@ -25,14 +25,6 @@ def _normalize_case_ref(raw: str) -> tuple[str, Path]:
     return cid, settings.cases_root / cid
 
 
-def _get_active_case_id() -> str | None:
-    if _ACTIVE_CASE_FILE.exists():
-        content = _ACTIVE_CASE_FILE.read_text().strip()
-        if content:
-            return content
-    return None
-
-
 def _finding_dicts(findings) -> list[dict]:
     out = []
     for f in findings:
@@ -113,7 +105,7 @@ def _extraction_notes(extractions_dir: Path, limit: int = 40) -> list[str]:
 
 @app.command()
 def generate(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     profile: str = typer.Option(
         "dfir",
         "--profile",
@@ -129,15 +121,7 @@ def generate(
 
     candidate: Path | None = None
     if not case_id:
-        from nexus.case.outputs import resolve_active_case_dir
-
-        resolved = resolve_active_case_dir()
-        if resolved is not None:
-            case_id, candidate = resolved.name, resolved
-        else:
-            case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case the report is for.", err=True)
         raise typer.Exit(1)
     if candidate is None:
         case_id, candidate = _normalize_case_ref(case_id)

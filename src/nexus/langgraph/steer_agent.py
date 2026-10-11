@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.audit import AuditWriter
+from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
@@ -311,7 +312,8 @@ def _looks_like_match_all(dsl: str) -> bool:
     return dsl.strip().lower() in ("", "match_all", "*", "all", "everything")
 
 
-def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWriter) -> tuple[
+def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWriter,
+                     case_dir: Path) -> tuple[
     list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]],
 ]:
     """Step 2: execute the planned queries through the case-gated backbone.
@@ -331,7 +333,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
         why = str(item.get("why") or "")
         if isinstance(item.get("aggs"), dict) and item.get("aggs"):
             result = backbone_call(
-                "es_aggregate", audit=audit, case_id=case_id,
+                "es_aggregate", audit=audit, case_id=case_id, case_dir=case_dir,
                 aggs=item["aggs"], query=item.get("query"),
             )
             if result.get("error"):
@@ -370,7 +372,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             es = item["es"]
             query = es.get("query") if isinstance(es.get("query"), dict) else es
             result = backbone_call(
-                "es_search", audit=audit, case_id=case_id,
+                "es_search", audit=audit, case_id=case_id, case_dir=case_dir,
                 query=query or {"match_all": {}}, size=100,
             )
             if result.get("error"):
@@ -407,7 +409,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             dsl_part = dsl_part.rstrip("|").strip()
             match_all = _looks_like_match_all(dsl_part)
             result = backbone_call(
-                "es_aggregate", audit=audit, case_id=case_id,
+                "es_aggregate", audit=audit, case_id=case_id, case_dir=case_dir,
                 aggs=({"v": {"terms": {"field": agg_field, "size": 15}}}
                       if agg_field else {"v": {"terms": {"field": "host", "size": 15}}}),
                 query=None if match_all else _es_from_expr(dsl_part),
@@ -443,7 +445,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
         else:
             match_all = _looks_like_match_all(q)
             result = backbone_call(
-                "es_search", audit=audit, case_id=case_id,
+                "es_search", audit=audit, case_id=case_id, case_dir=case_dir,
                 query={"match_all": {}} if match_all else _es_from_expr(q),
                 size=100,
             )
@@ -874,6 +876,7 @@ def _run_context_loop_turn(
     }
 
 
+@egress_bound
 def run_steer_agent(
     case_dir: Path,
     question: str,
@@ -906,7 +909,7 @@ def run_steer_agent(
 
     # ── Evidence landscape (deterministic — no LLM needed) ──
     t0 = _time.monotonic()
-    mappings = backbone_call("index_mappings", audit=audit, case_id=case_id)
+    mappings = backbone_call("index_mappings", audit=audit, case_id=case_id, case_dir=case_dir)
     _stage("index_mappings", t0, str(mappings.get("error") or ""))
     if mappings.get("error"):
         return {"error": mappings["error"],
@@ -992,7 +995,7 @@ def run_steer_agent(
     # ── Step 2: execute ──
     t0 = _time.monotonic()
     all_hits, queries_executed, aggregations = _execute_queries(
-        queries, case_id, audit)
+        queries, case_id, audit, case_dir)
     _stage("execute", t0,
            f"{len(queries_executed)} quer(ies), {len(all_hits)} hits")
 

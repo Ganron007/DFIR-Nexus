@@ -93,6 +93,18 @@ class RecordingChatModel(BaseChatModel):
             yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
 
 
+@pytest.fixture(autouse=True)
+def _run_bound_to_egress_case(request):
+    """Each test runs as a run bound to its case, the way a run calls the model (WO-R2F item 1, D41)."""
+    if "egress_case" not in request.fixturenames:
+        yield
+        return
+    from nexus.llm.egress import egress_case as bind_case
+
+    with bind_case(request.getfixturevalue("egress_case")):
+        yield
+
+
 @pytest.fixture
 def egress_case(tmp_path: Path) -> Path:
     """An active case, so the token file has somewhere real to live.

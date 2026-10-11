@@ -31,7 +31,8 @@ from uuid import uuid4
 
 from nexus.audit import AuditWriter
 from nexus.langgraph import backbone as backbone_module
-from nexus.langgraph.backbone import tool_contracts_block
+from nexus.langgraph.backbone import bind_case_args, tool_contracts_block
+from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
@@ -664,6 +665,7 @@ def _fallback_partial_reply(
     return "\n".join(lines)
 
 
+@egress_bound
 def run_context_loop(
     *,
     case_dir: Path,
@@ -690,13 +692,6 @@ def run_context_loop(
     budget = budget or load_loop_budget()
     case_id = case_id or case_dir.name
     audit = audit or AuditWriter("nexus", audit_dir=case_dir / "audit")
-    # WO-R2F item 1 (D41): bind this thread's LLM calls to the run's case, so
-    # the egress token map is written into the run's case rather than into the
-    # globally active one. Cleared on the way out so a pooled thread cannot
-    # carry a binding into a later run on a different case.
-    from nexus.llm.egress import bind_egress_case
-
-    bind_egress_case(case_dir)
     turn_id = uuid4().hex[:12]
     deadline = started + budget.seconds
 
@@ -921,14 +916,9 @@ def run_context_loop(
                 })
                 _emit({"event": "tool_result", "tool": name, "error": message})
                 continue
-            payload = dict(clean_args)
-            if name in ("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record"):
-                # WO-R2F item 1 (D41): bind the call to THIS run's case. The
-                # id alone is gated against the global active case, which is
-                # how 36c's Mode 3 seats were all refused while another case
-                # was active.
-                payload["case_id"] = case_id
-                payload["case_dir"] = case_dir
+            # WO-R2F item 1 (D41): every case-bound tool is bound to THIS run's case. The
+            # list is backbone.CASE_BOUND_TOOLS, so no tool is missed here.
+            payload = bind_case_args(name, clean_args, case_id=case_id, case_dir=case_dir)
             call_key = json.dumps(
                 {"tool": name, "args": clean_args}, sort_keys=True, default=str)
             if call_key in seen_call_keys:
@@ -1021,7 +1011,6 @@ def run_context_loop(
         )
 
     elapsed_ms = round((time.monotonic() - started) * 1000, 1)
-    bind_egress_case(None)
     # WO-R2F item 2: did this turn read any evidence at all? Counted from the
     # calls themselves, so a turn whose every call was refused or zero-hit says
     # so instead of letting the seat infer "checked, nothing there".

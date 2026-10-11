@@ -40,6 +40,7 @@ from nexus.audit import AuditWriter
 from nexus.langgraph.case_index import elasticsearch_ready
 from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
 from nexus.langgraph.prompt_budget import budget_chars, case_window
+from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
@@ -1509,7 +1510,8 @@ def plan_work_orders(
     try:
         from nexus.langgraph.backbone import backbone_call
 
-        index = backbone_call("index_mappings", audit=audit, case_id=case_dir.name)
+        index = backbone_call("index_mappings", audit=audit, case_id=case_dir.name,
+                              case_dir=case_dir)
         families = {
             str(k): int(v or 0)
             for k, v in (index.get("family_rows") or {}).items()
@@ -1785,6 +1787,7 @@ def busy_message(busy: list[dict[str, str]]) -> str:
     )
 
 
+@egress_bound
 def run_mode2(
     case_dir: Path,
     question: str,

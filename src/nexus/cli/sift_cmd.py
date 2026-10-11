@@ -28,16 +28,8 @@ def _resolve_case_dir(case: str) -> Path:
                 return hit
         typer.echo(f"case not found: {case}")
         raise typer.Exit(1)
-    from nexus.case.outputs import resolve_active_case_dir
-
-    try:
-        case_dir = resolve_active_case_dir()
-    except Exception:  # noqa: BLE001
-        case_dir = None
-    if case_dir is None:
-        typer.echo("No active case. Pass --case <id|dir>.")
-        raise typer.Exit(1)
-    return case_dir
+    typer.echo("--case is required: name the case this command acts on.")
+    raise typer.Exit(1)
 
 
 def _context(case_dir: Path) -> dict[str, str]:
@@ -56,7 +48,7 @@ def _required(ctx: dict[str, str]) -> bool:
 
 
 @app.command("status")
-def status(case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case.")):
+def status(case: str = typer.Option("", "--case", help="Case id or directory (required).")):
     """Show the SIFT lane selection, evidence paths, and reachability."""
     from nexus.case.sift_sync import sift_reachable
 
@@ -92,7 +84,7 @@ def status(case: str = typer.Option("", "--case", help="Case id or directory. De
 
 
 @app.command("enable")
-def enable(case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case.")):
+def enable(case: str = typer.Option("", "--case", help="Case id or directory (required).")):
     """Mark SIFT analysis as required for this case and run the online check."""
     from nexus.case.sift_sync import sift_reachable
     from nexus.langgraph.case_intake import persist_case_intake
@@ -111,7 +103,7 @@ def enable(case: str = typer.Option("", "--case", help="Case id or directory. De
 
 
 @app.command("disable")
-def disable(case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case.")):
+def disable(case: str = typer.Option("", "--case", help="Case id or directory (required).")):
     """Clear the SIFT selection (a first-class recovery path)."""
     from nexus.langgraph.case_intake import clear_case_intake
 
@@ -304,7 +296,7 @@ def setup(
 @app.command("ingest")
 def ingest(
     path: str = typer.Argument(..., help="SIFT outputs: a file, a directory, or a .zip"),
-    case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case."),
+    case: str = typer.Option("", "--case", help="Case id or directory (required)."),
     family: str = typer.Option(
         "", "--as", help="Destination family name (plaso / vol / fls / bulk_extractor) for mapping"
     ),

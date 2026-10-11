@@ -25,20 +25,12 @@ def _resolve_case_dir(case: str):
                 return hit
         typer.echo(f"case not found: {case}")
         raise typer.Exit(1)
-    from nexus.case.outputs import resolve_active_case_dir
-
-    try:
-        case_dir = resolve_active_case_dir()
-    except Exception:  # noqa: BLE001
-        case_dir = None
-    if case_dir is None:
-        typer.echo("No active case. Pass --case <id|dir>.")
-        raise typer.Exit(1)
-    return case_dir
+    typer.echo("--case is required: name the case this command acts on.")
+    raise typer.Exit(1)
 
 
 @app.command("status")
-def status(case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case.")) -> None:
+def status(case: str = typer.Option("", "--case", help="Case id or directory (required).")) -> None:
     """Show the evidence gate and the N1-N8 stage states."""
     from nexus.langgraph.lane_gate import (
         lane_gate_blocked,
@@ -77,7 +69,7 @@ app.command("retry")(_retry_command)
 
 @app.command("skip")
 def skip(
-    case: str = typer.Option("", "--case", help="Case id or directory. Default: the active case."),
+    case: str = typer.Option("", "--case", help="Case id or directory (required)."),
     reason: str = typer.Option(..., "--reason", help="Why this evidence is skipped (recorded, required)."),
     examiner: str = typer.Option("", "--examiner", help="Examiner id. Default: the active case's examiner."),
     item: list[str] = typer.Option(

@@ -12,14 +12,6 @@ _ACTIVE_CASE_FILE = Path(
 )
 
 
-def _get_active_case_id() -> str | None:
-    if _ACTIVE_CASE_FILE.exists():
-        content = _ACTIVE_CASE_FILE.read_text().strip()
-        if content:
-            return content
-    return None
-
-
 def _get_case_mgr(case_id: str = ""):
     from nexus.case import CaseManager
     from nexus.config import settings
@@ -29,16 +21,14 @@ def _get_case_mgr(case_id: str = ""):
 
 @app.command()
 def findings(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     detail: bool = typer.Option(False, "--detail", "-d"),
     limit: int = typer.Option(20, "--limit", "-l"),
     status: str = typer.Option("", "--status", help="Filter by status: draft, approved, rejected"),
 ):
     """List findings."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     mgr = _get_case_mgr()
@@ -63,16 +53,14 @@ def findings(
 
 @app.command()
 def timeline(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     start: str = typer.Option("", "--start"),
     end: str = typer.Option("", "--end"),
     event_type: str = typer.Option("", "--type"),
 ):
     """List timeline events (flat-JSON only for now)."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     from nexus.case_manager import CaseManager as FlatCaseManager
@@ -95,13 +83,11 @@ def timeline(
 
 @app.command()
 def iocs(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """List IOCs (flat-JSON only for now)."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     from nexus.case_manager import CaseManager as FlatCaseManager
@@ -123,14 +109,12 @@ def iocs(
 
 @app.command()
 def audit(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     limit: int = typer.Option(100, "--limit", "-l"),
 ):
     """View audit trail."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     mgr = _get_case_mgr()
@@ -148,14 +132,12 @@ def audit(
 
 @app.command()
 def todos(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
     open_only: bool = typer.Option(False, "--open"),
 ):
     """List TODOs (flat-JSON only for now)."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     from nexus.case_manager import CaseManager as FlatCaseManager
@@ -178,13 +160,11 @@ def todos(
 
 @app.command()
 def verify(
-    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    case_id: str = typer.Option("", "--case", help="Case ID (required)"),
 ):
     """HMAC audit-chain integrity verification."""
     if not case_id:
-        case_id = _get_active_case_id() or ""
-    if not case_id:
-        typer.echo("No active case.", err=True)
+        typer.echo("--case is required: name the case this command acts on.", err=True)
         raise typer.Exit(1)
 
     mgr = _get_case_mgr()

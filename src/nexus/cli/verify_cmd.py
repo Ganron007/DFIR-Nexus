@@ -30,20 +30,12 @@ def _resolve_case_dir(case: str):
                 return hit
         typer.echo(f"case not found: {case}")
         raise typer.Exit(1)
-    from nexus.case.outputs import resolve_active_case_dir
-
-    try:
-        case_dir = resolve_active_case_dir()
-    except Exception:  # noqa: BLE001
-        case_dir = None
-    if case_dir is None:
-        typer.echo("No active case. Pass --case <id|dir>.")
-        raise typer.Exit(1)
-    return case_dir
+    typer.echo("--case is required: name the case this command acts on.")
+    raise typer.Exit(1)
 
 
 def verify_claims(
-    case: str = typer.Option("", "--case", help="Case id or case directory. Default: the active case."),
+    case: str = typer.Option("", "--case", help="Case id or case directory (required)."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full ledger as JSON."),
     persist: bool = typer.Option(
         False, "--persist", help="Write analysis/claim_ledger.json (default: read-only)."

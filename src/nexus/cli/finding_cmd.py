@@ -18,15 +18,14 @@ def _resolve_case(case_id: str) -> Path | None:
 
     if case_id:
         return resolve_case_dir(case_id)
-    from nexus.case.outputs import resolve_active_case_dir
-
-    return resolve_active_case_dir()
+    typer.echo("--case is required: name the case this command acts on.", err=True)
+    return None
 
 
 @app.command("exhibit")
 def exhibit(
     finding_id: str = typer.Argument(..., help="the approved finding to bundle"),
-    case: str = typer.Option("", "--case", help="case id (default: the active case)"),
+    case: str = typer.Option("", "--case", help="case id (required)"),
     out: str = typer.Option("", "--out", help="directory for the zip (default: a temp dir)"),
     verify: bool = typer.Option(
         False, "--verify", help="also re-run the recorded argv and diff the cited rows"

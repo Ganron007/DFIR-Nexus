@@ -27,7 +27,10 @@ class _FakeModel:
 
 
 def _mkcase(tmp_path: Path) -> Path:
-    case = tmp_path / "CASE-STEER"
+    from nexus.config import settings
+
+    # Production layout: a case lives under the configured cases_root (WO-R2F item 1, D41).
+    case = settings.cases_root / "CASE-STEER"
     ext = case / "extractions" / "hayabusa"
     ext.mkdir(parents=True)
     (ext / "timeline.csv").write_text(
@@ -37,7 +40,6 @@ def _mkcase(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (case / "CASE.yaml").write_text("question: investigate\n", encoding="utf-8")
-    os.environ["NEXUS_CASES_ROOT"] = str(tmp_path)
     os.environ["NEXUS_ACTIVE_CASE_FILE"] = str(tmp_path / "ptr")
     (tmp_path / "ptr").write_text(str(case))
     return case

@@ -83,7 +83,7 @@ def test_n4_query_validates_dsl(backbone):
 
 def test_n4_aggregate_counts(backbone):
     tools, cid = backbone
-    r = tools["n4_aggregate"].fn(dsl="sdelete OR rundll32", field="host", top=5)
+    r = tools["n4_aggregate"].fn(case_id=cid, dsl="sdelete OR rundll32", field="host", top=5)
     assert "error" not in r, r
     assert r["rows_scanned"] >= 1
     top = {t["value"]: t["count"] for t in r["top"]}
@@ -93,7 +93,7 @@ def test_n4_aggregate_counts(backbone):
 
 def test_index_mappings_grounded(backbone):
     tools, cid = backbone
-    r = tools["index_mappings"].fn()
+    r = tools["index_mappings"].fn(case_id=cid)
     assert "error" not in r, r
     assert "hayabusa" in r["families"], r
     # 4k.6: the catalog surface is typed and complete, not the old 5 fields.
@@ -111,14 +111,16 @@ def test_index_mappings_grounded(backbone):
 
 def test_cached_index_mappings_get_fresh_audit_provenance(backbone):
     from nexus.audit import AuditWriter
+    from nexus.config import settings
     from nexus.langgraph.backbone import backbone_call
     from nexus.tools.evidence_index import invalidate_mappings_cache
 
     _tools, cid = backbone
+    case_dir = settings.cases_root / cid
     invalidate_mappings_cache(cid)
     audit = AuditWriter("nexus")
-    first = backbone_call("index_mappings", audit=audit, case_id=cid)
-    second = backbone_call("index_mappings", audit=audit, case_id=cid)
+    first = backbone_call("index_mappings", audit=audit, case_id=cid, case_dir=case_dir)
+    second = backbone_call("index_mappings", audit=audit, case_id=cid, case_dir=case_dir)
     assert second["cached"] is True
     assert first["provenance"]["audit_id"]
     assert second["provenance"]["audit_id"]

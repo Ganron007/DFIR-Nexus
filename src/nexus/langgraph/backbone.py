@@ -84,6 +84,25 @@ TOOL_ALIASES: dict[str, str] = {
     "run_record": "run_record",
 }
 
+#: Model-facing tools that read one case's evidence or index. A run binds each of them to its own case, and none may
+#: fall back to the global active pointer (WO-R2F item 1, D41).
+CASE_BOUND_TOOLS: frozenset[str] = frozenset({
+    "es_fields", "es_search", "es_aggregate", "es_sample", "index_mappings",
+    "es_mappings", "sample_rows", "run_record",
+})
+
+
+def bind_case_args(name: str, args: dict[str, Any], *, case_id: str, case_dir: Path) -> dict[str, Any]:
+    """Arguments of one tool call, with the run's own case bound when the tool is case-bound.
+
+    The model does not choose the case: the run's id and folder go on every case-bound call. Any other tool gets its
+    arguments back unchanged.
+    """
+    if name not in CASE_BOUND_TOOLS:
+        return dict(args)
+    return {**args, "case_id": case_id, "case_dir": case_dir}
+
+
 _CONTEXT_TOOL_NAMES: tuple[str, ...] = (
     "es_mappings", "es_search", "es_aggregate", "sample_rows",
     "rag_search", "run_record",
@@ -426,6 +445,18 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
     if name not in MODE2_TOOL_ALLOWLIST:
         raise PermissionError(
             f"tool {name!r} is not in the agent allowlist — the LLM cannot call it")
+    if name in CASE_BOUND_TOOLS and not kwargs.get("case_dir"):
+        # WO-R2F item 1 (D41): an in-process call on a case-bound tool carries its run's case. Without one, the call
+        # would resolve through the global active pointer, so it is refused and audited instead.
+        if audit is not None:
+            with contextlib.suppress(Exception):
+                audit.log(
+                    tool=name,
+                    params={"case_id": str(kwargs.get("case_id") or ""), "refused": True},
+                    result_summary={"error": "no case bound to this call"},
+                    elapsed_ms=0.0,
+                )
+        return {"error": f"{name} needs the run's own case, and none is bound to this call"}
     canonical = _resolve_tool(name)
     if canonical in ("es_fields", "es_search", "es_aggregate", "es_sample"):
         return _es_call(canonical, audit=audit, tool_label=name, **kwargs)
@@ -559,8 +590,15 @@ def _rag_call(audit: AuditWriter | None = None, *, alias: str = "",
 
 
 def _run_record_call(audit: AuditWriter | None = None, **kwargs: Any) -> dict[str, Any]:
-    """Tool-lane ledger binding (WP 10.53) — what ran against this case."""
+    """Tool-lane ledger binding (WP 10.53) — what ran against this case.
+
+    The run's own ``case_dir`` is passed through (WO-R2F item 1, D41). Dropping it
+    resolved the case by id against the global active pointer: a bound run was
+    refused while another case was active, and a model-named pointer case read
+    the pointer's ledger silently.
+    """
     return evidence_index.do_run_record(
         case_id=str(kwargs.get("case_id") or ""),
         audit=audit,
+        case_dir=kwargs.get("case_dir"),
     )

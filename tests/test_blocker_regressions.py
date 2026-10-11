@@ -324,20 +324,24 @@ class TestBlocker8Backup:
 class TestBlocker9CaseStackBridge:
     """Report generation must check flat-JSON stack when SQLite misses."""
 
-    def test_report_falls_back_to_flat_json(self, tmp_path: Path) -> None:
-        case_dir = tmp_path / "cases" / "CASE-FLAT"
+    def test_report_falls_back_to_flat_json(self) -> None:
+        """A named case with no SQLite row reads its flat findings.json (WO-R2F item 1: no active pointer)."""
+        from typer.testing import CliRunner
+
+        from nexus.cli.main import app
+        from nexus.config import settings
+
+        case_dir = settings.cases_root / "CASE-FLAT"
         case_dir.mkdir(parents=True)
         findings = [
             {"id": "F1", "title": "Test", "status": "APPROVED",
              "severity": "high", "approved_by": "lead", "description": "test"}
         ]
         (case_dir / "findings.json").write_text(json.dumps(findings))
-        active = tmp_path / "active_case"
-        active.write_text(str(case_dir))
-        with patch("nexus.cli.report.Path.home", return_value=tmp_path), \
-             patch("nexus.cli.report._get_active_case_id", return_value="CASE-FLAT"):
-            from nexus.cli.report import _get_active_case_id
-            assert _get_active_case_id() == "CASE-FLAT"
+
+        result = CliRunner().invoke(app, ["report", "generate", "--case", "CASE-FLAT"])
+
+        assert "Case CASE-FLAT: 1 APPROVED / 1 findings" in result.output, result.output
 
 
 # ---------------------------------------------------------------------------

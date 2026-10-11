@@ -15,7 +15,7 @@ app = typer.Typer(help="Case index maintenance")
 
 @app.command("rebuild")
 def rebuild(
-    case: str = typer.Option("", "--case", "-c", help="Case ID (default: active case)"),
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
 ) -> None:
     """Rebuild the case's Elasticsearch index with the current schema."""
     from nexus.config import settings
@@ -27,13 +27,8 @@ def rebuild(
 
     case_id = case.strip()
     if not case_id:
-        from nexus.case_manager import CaseManager
-
-        try:
-            case_id = CaseManager().require_active_case().name
-        except Exception as exc:  # noqa: BLE001
-            typer.echo(f"No active case: {exc}", err=True)
-            raise typer.Exit(1) from None
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
 
     case_dir = settings.cases_root / case_id
     if not case_dir.is_dir():
@@ -57,7 +52,7 @@ def rebuild(
 
 @app.command("verify")
 def verify(
-    case: str = typer.Option("", "--case", "-c", help="Case ID (default: active case)"),
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
 ) -> None:
     """Prove indexed source files are unmodified since the index build (WO-A5).
 
@@ -72,13 +67,8 @@ def verify(
 
     case_id = case.strip()
     if not case_id:
-        from nexus.case_manager import CaseManager
-
-        try:
-            case_id = CaseManager().require_active_case().name
-        except Exception as exc:  # noqa: BLE001
-            typer.echo(f"No active case: {exc}", err=True)
-            raise typer.Exit(1) from None
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
 
     state_path = settings.cases_root / case_id / "analysis" / "index_state.json"
     if not state_path.is_file():
