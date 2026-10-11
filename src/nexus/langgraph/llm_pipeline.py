@@ -2361,7 +2361,10 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 linked = set()
         payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
         if stage_case_dir is not None:
-            from nexus.langgraph.evidence_rows import derive_entity_from_rows, evidence_rows_for_audit_ids
+            from nexus.langgraph.evidence_rows import (
+                derive_entity_from_rows,
+                evidence_rows_for_audit_ids,
+            )
 
             stored = evidence_rows_for_audit_ids(stage_case_dir, [str(a) for a in payload.get("audit_ids") or []])
             if stored:
@@ -2952,14 +2955,10 @@ def _case_evidence_paths(case_id: str) -> list[str]:
 
 
 def _is_under_case_outputs(path: Path, case_root: Path) -> bool:
-    """True when a path sits in a case's runs or extractions folder (tool output, never examiner evidence)."""
-    for folder in ("runs", "extractions"):
-        try:
-            path.resolve().relative_to((case_root / folder).resolve())
-            return True
-        except (ValueError, OSError):
-            continue
-    return False
+    """True when a path sits in a case's tool-output folders (tool output, never examiner evidence)."""
+    from nexus.langgraph.pipeline_runs import is_tool_output
+
+    return is_tool_output(path, case_root)
 
 
 def _evidence_register_budget(path: str) -> float:
@@ -2998,11 +2997,22 @@ def inherit_evidence_paths(
     scoping an earlier version of this to `tools`/`interpret` left `coverage`
     - which is what Mode 1 runs - planning an empty lane.
     """
+    case = str(case_id or "").strip()
+    if case and evidence_paths:
+        # A tool's output is not evidence, whoever supplies the list. A run inherits its predecessor's list,
+        # and that list held 184 stdout files of an earlier run (CASE-C5B04D31, 2026-10-11).
+        from nexus.config import settings
+        from nexus.langgraph.pipeline_runs import drop_tool_outputs
+
+        kept = drop_tool_outputs(list(evidence_paths), Path(str(settings.cases_root)) / case)
+        if kept:
+            return kept
+        return _case_evidence_paths(case) or kept
     if evidence_path or evidence_paths:
         return evidence_paths
-    if not str(case_id or "").strip():
+    if not case:
         return evidence_paths
-    return _case_evidence_paths(case_id) or evidence_paths
+    return _case_evidence_paths(case) or evidence_paths
 
 
 def _unfinished_reason(result: Any) -> str:

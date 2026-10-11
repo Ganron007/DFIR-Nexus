@@ -110,9 +110,12 @@ def pull_sift_extractions(
         return None
 
     dest = Path(local_output_dir) if local_output_dir else Path(local_case_dir) / "sift" / "extractions"
-    if dest.exists():
-        log.warning("SIFT destination exists; refusing overwrite: %s", dest)
-        return None
+    # A pull adds what the local copy does not have yet, and never overwrites a local file. An empty folder is
+    # no copy: the lane creates one before the pull, and the old guard refused every pull into it, so no SIFT
+    # output ever reached the run (CASE-C5B04D31, 2026-10-11).
+    staging = dest.parent / "extractions_tmp"
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)  # our own staging folder, left by an earlier attempt
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     remote = (
@@ -128,31 +131,48 @@ def pull_sift_extractions(
         "-o", f"ConnectTimeout={_SSH_CONNECT_TIMEOUT}",
         "-r",
         remote,
-        str(dest.parent / "extractions_tmp"),
+        str(staging),
     ]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("SIFT scp failed: %s", exc)
+        shutil.rmtree(staging, ignore_errors=True)
         return None
     if proc.returncode != 0:
         log.warning("SIFT scp rc=%s stderr=%s", proc.returncode, (proc.stderr or "")[:400])
+        shutil.rmtree(staging, ignore_errors=True)
         return None
 
-    tmp = dest.parent / "extractions_tmp"
-    # scp -r may create extractions_tmp/extractions or flatten
-    if (tmp / "extractions").is_dir():
-        tmp = tmp / "extractions"
-    if tmp.is_dir():
-        if dest.exists():
-            shutil.rmtree(dest, ignore_errors=True)
-        tmp.rename(dest)
-        # cleanup wrapper
-        wrap = dest.parent / "extractions_tmp"
-        if wrap.exists() and wrap != dest:
-            shutil.rmtree(wrap, ignore_errors=True)
+    # scp -r may create staging/extractions or flatten
+    pulled = staging / "extractions" if (staging / "extractions").is_dir() else staging
+    if pulled.is_dir():
+        if not dest.exists() or not any(dest.iterdir()):
+            if dest.exists():
+                dest.rmdir()  # an empty folder the lane made: the pull takes its place
+            pulled.rename(dest)
+        else:
+            added, present = _merge_new_files(pulled, dest)
+            log.info("SIFT pull merged into %s: %d new file(s), %d already present", dest, added, present)
+    shutil.rmtree(staging, ignore_errors=True)
     log.info("Pulled SIFT extractions -> %s", dest)
     return dest if dest.is_dir() else None
+
+
+def _merge_new_files(src: Path, dst: Path) -> tuple[int, int]:
+    """Copy each file of ``src`` that ``dst`` does not have yet. Returns (added, already present)."""
+    added = present = 0
+    for path in sorted(src.rglob("*")):
+        if not path.is_file():
+            continue
+        target = dst / path.relative_to(src)
+        if target.exists():
+            present += 1
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+        added += 1
+    return added, present
 
 
 def push_file(local: Path, remote_path: str) -> bool:

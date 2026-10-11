@@ -35,21 +35,19 @@ def retry(
     case: str = typer.Option("", "--case", help="Case id or directory (required)."),
     tool: str = typer.Option(
         "", "--tool",
-        help="Re-run this tool's jobs in the same run (comma list, e.g. hayabusa,evtxecmd). "
-             "Its OK jobs run again; the other OK rows are reused.",
+        help="Re-run only these tools (comma list, e.g. hayabusa,evtxecmd) in the same run. Their OK jobs "
+             "run again; every other row of the run is kept as it is.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be retried and exit."
     ),
 ) -> None:
-    """Re-run only the jobs that FAILED, inside the same run; with --tool, every job of those tools.
+    """Complete the run in place: re-run the FAIL jobs and run every planned job that has no OK row yet.
 
-    The lane ledger is the source of truth: every row marked FAIL is a job that did not
-    process its evidence. Those are run again; OK rows are reused, not re-run. SKIP rows
-    are left alone - they are examiner decisions, and a retry must not silently undo one.
+    Every OK row of the run is carried into the new ledger and never re-run. A job waiting on the SIFT host
+    runs here once the host is available. An examiner's skip still holds. With --tool, only the named tools
+    are planned and run, and every other row is kept as it is.
     """
-    from nexus.langgraph.lane_gate import lane_gate_blocked
-
     tools = {part.strip().lower() for part in tool.replace(";", ",").split(",") if part.strip()}
 
     case_dir = _resolve(case)
@@ -67,39 +65,34 @@ def retry(
 
     if tools:
         # A tool re-run: every job of the named tools runs again, its OK rows included. SKIP rows
-        # are examiner decisions (or a planner's own skip) and stay as they are.
+        # are examiner decisions (or a planner's own skip) and stay as they are; the plain retry
+        # picks up a planner skip once its job becomes runnable.
         failed = [
             row for row in ledger
             if str(row.get("tool") or "").lower() in tools
             and str(row.get("status") or "").upper() != "SKIP"
         ]
-    else:
-        failed = [row for row in ledger if str(row.get("status") or "").upper() == "FAIL"]
-    if not failed:
-        if tools:
+        if not failed:
             typer.echo(
                 f"No rows for {', '.join(sorted(tools))} in the lane ledger - nothing to re-run.",
                 err=True,
             )
             raise typer.Exit(1)
-        typer.echo("No FAIL rows in the lane ledger - nothing to retry.")
-        if lane_gate_blocked(case_dir):
-            typer.echo(
-                "The gate is blocked by something other than a failed job "
-                "(unprocessed evidence, or an examiner skip). `nexus lane status` "
-                "names it.",
-                err=True,
-            )
-            raise typer.Exit(1)
-        return
+    else:
+        failed = [row for row in ledger if str(row.get("status") or "").upper() == "FAIL"]
+        if not failed:
+            # Nothing failed, but the pass still runs: a planned job can be waiting (on the SIFT host, or
+            # planned since the last pass). Every OK row is carried, so nothing that passed runs again.
+            typer.echo("No FAIL rows: the pass runs what is still pending; every OK row is carried, not re-run.")
 
-    verb = "to re-run" if tools else "to retry"
-    typer.echo(f"{len(failed)} job(s) {verb} in {run_dir.name}:")
-    for row in failed:
-        typer.echo(
-            f"  {row.get('tool')}  {str(row.get('purpose') or '')[:70]}  "
-            f"— {str(row.get('reason') or row.get('error') or '')[:60]}"
-        )
+    if failed:
+        verb = "to re-run" if tools else "to retry"
+        typer.echo(f"{len(failed)} job(s) {verb} in {run_dir.name}:")
+        for row in failed:
+            typer.echo(
+                f"  {row.get('tool')}  {str(row.get('purpose') or '')[:70]}  "
+                f"— {str(row.get('reason') or row.get('error') or '')[:60]}"
+            )
 
     if dry_run:
         typer.echo("Dry run - nothing executed.")
@@ -116,9 +109,10 @@ def retry(
 
     import asyncio
 
-    typer.echo(f"Re-running the failed jobs in {run_dir.name}...")
+    typer.echo(f"Running the pass in {run_dir.name}...")
     result = asyncio.run(
-        _run_retry(case_dir, run_dir.name, evidence_paths, rerun_tools=frozenset(tools))
+        _run_retry(case_dir, run_dir.name, evidence_paths,
+                   rerun_tools=frozenset(tools), only_tools=frozenset(tools))
     )
     ledger_now = result.get("tool_run_ledger") or []
     still = [
@@ -169,6 +163,7 @@ async def _run_retry(
     run_id: str,
     evidence_paths: list[str],
     rerun_tools: frozenset[str] = frozenset(),
+    only_tools: frozenset[str] = frozenset(),
 ) -> dict:
     """Load the MCP tools the way the pipeline does, then run the lane in the same run.
 
@@ -196,6 +191,8 @@ async def _run_retry(
         pipeline_mode="tools",
         evidence_paths=evidence_paths,
         rerun_tools=rerun_tools or None,
+        carry_ok=True,
+        only_tools=only_tools or None,
     )
 
 

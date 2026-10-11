@@ -920,7 +920,8 @@ def is_staging_copy(path: Path, root: Path) -> bool:
         parts = path.relative_to(root).parts[:-1]
     except ValueError:
         return False
-    return any(part in STAGING_DIR_NAMES for part in parts)
+    # ``<stem>-workdir`` is the bitsparser staging folder named after the evidence file (tool_lane.py).
+    return any(part in STAGING_DIR_NAMES or part.endswith("-workdir") for part in parts)
 
 
 def iter_extraction_files(

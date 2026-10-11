@@ -77,6 +77,10 @@ class ToolJob:
     # WO-TA item 12: the sha256 of the registered evidence this job reads (the registry's hash of the
     # file or tree that holds its input). Reuse is keyed by it, so a row is reused only for the same bytes.
     evidence_sha: str = ""
+    # The registered evidence a staged job was copied from (its source), for a job whose argv names the
+    # staging copy instead of the evidence. Reuse is keyed on the sha of this source, so a staged job is
+    # reused like any other (2026-10-11: sbecmd, sidr, bitsparser and bmc-tools never matched their OK rows).
+    source: str = ""
     queued_s: float = 0.0
     duration_s: float = 0.0
     tool_elapsed_s: float = 0.0
@@ -153,8 +157,19 @@ def _stem(evidence: Path) -> str:
 
 
 def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> None:
-    """Copy ESE database + log siblings onto a writable local workdir."""
-    work.mkdir(parents=True, exist_ok=True)
+    """Copy ESE database + log siblings onto a writable local workdir, starting from an empty one.
+
+    A replay writes new log generations into the workdir. A second staging over the same folder (a lane
+    retry in the same run) would replay over the first attempt's leftovers: on CASE-C5B04D31 the leftover
+    SRU03FBB.log made the replay fail with JET_errInvalidLogSequence (-515), so srumecmd read a dirty
+    database (2026-10-11). The workdir is the lane's own copy, never evidence, so it is emptied first.
+    Any other folder is refused.
+    """
+    if work.exists():
+        if not (work.name == "workdir" or work.name.endswith("-workdir")):
+            raise OSError(f"refusing to empty {work}: it is not a lane workdir")
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
     prefs = tuple(p.upper() for p in prefixes)
     for src in src_dir.iterdir():
         if not src.is_file():
@@ -174,11 +189,16 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
     ``/i`` (a replay that ignores missing logs, the same kind of loss). A replay that cannot finish
     leaves the copy as it is, and the tool that reads it reports what it can and cannot read. Only the
     copy is touched, never the evidence. Missing esentutl is a warning, not SKIP.
+
+    The log records the database's original location, which is not the work copy. Without the log,
+    system and database folders, the replay stops with JET_errAttachedDatabaseMismatch (-1216) and the
+    database stays dirty (srumecmd on CASE-C5B04D31). With them the replay completes: tested on copies
+    of the SRUM and Windows Search databases (2026-10-11).
     """
     try:
         for base in log_bases:
             subprocess.run(
-                ["esentutl.exe", "/r", base],
+                ["esentutl.exe", "/r", base, f"/l{work}", f"/s{work}", f"/d{work}"],
                 cwd=str(work),
                 capture_output=True,
                 text=True,
@@ -187,6 +207,24 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
             )
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("esentutl replay skipped for %s: %s", ",".join(log_bases), exc)
+
+
+def _ese_state(database: Path) -> str:
+    """The state esentutl /mh reports for a database (read only): Clean Shutdown, Dirty Shutdown, or ""."""
+    try:
+        out = subprocess.run(
+            ["esentutl.exe", "/mh", str(database)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    for line in out.splitlines():
+        if line.strip().startswith("State:"):
+            return line.split(":", 1)[1].strip()
+    return ""
 
 
 def find_windows_root(evidence: Path) -> Path | None:
@@ -495,10 +533,10 @@ def _plan_single_artifact(
     jobs: list[ToolJob] = []
 
     def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
-            *, optional_output: bool = False) -> None:
+            *, optional_output: bool = False, source: str = "") -> None:
         jobs.append(ToolJob(
             host="windows", tool=tool, argv=argv, purpose=purpose, timeout=timeout,
-            optional_output=optional_output,
+            optional_output=optional_output, source=source,
         ))
 
     def skip(tool: str, reason: str) -> None:
@@ -739,7 +777,7 @@ def _plan_single_artifact(
                                    "-o", str(d / f"{_stem(evidence)}.json")],
                     f"BITS job queue ({evidence.name}, staged copy, logs replayed)",
                     timeout_for_bytes(staged.stat().st_size),
-                    optional_output=True)
+                    optional_output=True, source=str(evidence))
             else:
                 jobs.append(ToolJob(
                     host="windows", tool="bitsparser", argv=[], status="SKIP",
@@ -943,7 +981,7 @@ def _plan_single_artifact(
             ))
             return jobs
         add("srumecmd", ["srumecmd", "-f", str(staged), "--csv", str(d)],
-            "SRUM database", 600)
+            "SRUM database", 600, source=str(evidence))
     elif name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat"):
         # RECmd needs a batch (--bn) or a search switch; single-hive runs without
         # it fail with "One of the following switches is required" (W2 finding).
@@ -1539,7 +1577,7 @@ def plan_windows_triage(
     config_dir = root / "Windows/System32/config"
 
     def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
-            *, optional_output: bool = False) -> None:
+            *, optional_output: bool = False, source: str = "") -> None:
         jobs.append(ToolJob(
             host="windows",
             tool=tool,
@@ -1547,6 +1585,7 @@ def plan_windows_triage(
             purpose=purpose,
             timeout=timeout,
             optional_output=optional_output,
+            source=source,
         ))
 
     def skip(tool: str, reason: str) -> None:
@@ -1611,7 +1650,7 @@ def plan_windows_triage(
             argv = ["srumecmd", "-f", str(srum_target), "--csv", str(d)]
             if software_hive.is_file():
                 argv.extend(["-r", str(software_hive)])
-            add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600)
+            add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600, source=str(srum))
         except OSError as exc:
             skip("srumecmd", f"could not stage SRUDB copy: {exc}")
     else:
@@ -1757,6 +1796,7 @@ def plan_windows_triage(
                 ],
                 f"Shellbags UsrClass.dat ({uname})",
                 600,
+                source=str(usrclass),
             )
             sbecmd_n += 1
         cdp = user / "AppData/Local/ConnectedDevicesPlatform"
@@ -2071,13 +2111,14 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
     never repaired. Copies
     of text artifacts get unique names, so files that share a name stay apart.
     """
-    def present_tool(key: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+    def present_tool(key: str, argv: list[str], purpose: str, timeout: int = 600,
+                     *, source: str = "") -> None:
         # The artifact is on the evidence. A missing parser is BLOCKED, not SKIPPED.
         if not _windows_tool_available(key):
             blocked(key, f"{key} not installed: the evidence is present and was not examined. "
                          "Run tools/fetch-windows-tools.ps1 then nexus doctor")
             return
-        add_installed(key, argv, purpose, timeout)
+        add_installed(key, argv, purpose, timeout, source=source)
 
     support = root / "ProgramData/Microsoft/Windows Defender/Support"
     if support.is_dir() and any(support.glob("MPLog-*.log")):
@@ -2121,11 +2162,32 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
 
     search_db = root / "ProgramData/Microsoft/Search/Data/Applications/Windows/Windows.edb"
     if search_db.is_file():
-        # Operator decision 2026-10-11: sidr is BLOCKED on this evidence. The database is a dirty-shutdown
-        # ESE file, and reading it needs a repair that can discard data. No repair is approved, so the
-        # lane does not run one and does not run sidr on a copy of unknown completeness.
-        blocked("sidr", "Windows.edb is a dirty-shutdown ESE database: reading it needs a repair that can "
-                        "discard data, which was not approved (operator decision 2026-10-11: block sidr)")
+        # sidr reads the Windows Search index from a replayed copy (2026-10-11). Replay only: no repair and
+        # no ignored logs. The log generations are complete on the evidence, so the replay reaches a clean
+        # shutdown with nothing discarded. sidr runs only on a clean copy, and writes CSV reports into the
+        # sidr folder, which the index reads.
+        sidr_dir = extractions / "sidr"
+        sidr_work = sidr_dir / "workdir"
+        try:
+            _copy_ese_siblings(search_db.parent, sidr_work, ("WINDOWS", "EDB"))
+            _esentutl_replay(sidr_work, log_bases=("edb",))
+            state = _ese_state(sidr_work / "Windows.edb")
+            if state == "Clean Shutdown":
+                present_tool(
+                    "sidr",
+                    ["sidr", "-f", "csv", "-o", str(sidr_dir), str(sidr_work)],
+                    "Windows Search index (SIDR, replayed copy)",
+                    900,
+                    source=str(search_db),
+                )
+            else:
+                blocked(
+                    "sidr",
+                    "Windows.edb did not reach a clean shutdown after the replay "
+                    f"({state or 'state unreadable'}): sidr is not run on it",
+                )
+        except OSError as exc:
+            skip("sidr", f"could not stage the Windows Search copy: {exc}")
     else:
         skip("sidr", "no Windows.edb search index")
 
@@ -2186,11 +2248,12 @@ def _plan_gap_parsers(
                 hist,
             )
 
-    def add_installed(key: str, argv: list[str], purpose: str, timeout: int = 600) -> bool:
+    def add_installed(key: str, argv: list[str], purpose: str, timeout: int = 600,
+                      *, source: str = "") -> bool:
         if not _windows_tool_available(key):
             skip(key, f"{key} not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
             return False
-        add(key, argv, purpose, timeout)
+        add(key, argv, purpose, timeout, source=source)
         return True
 
     _plan_defender_and_search(root, extractions, add_installed, skip, blocked or skip)
@@ -2215,7 +2278,7 @@ def _plan_gap_parsers(
         if not _windows_tool_available("bmc-tools"):
             skip("bmc-tools", "bmc-tools not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
         else:
-            for user, _cache, tiles in bmc_jobs:
+            for user, cache, tiles in bmc_jobs:
                 usable: list[Path] = []
                 total = 0
                 for p in tiles:
@@ -2253,6 +2316,7 @@ def _plan_gap_parsers(
                         f"{total} bytes staged)"
                     ),
                     timeout_for_bytes(total),
+                    source=str(cache),
                 )
 
     downloader = root / "ProgramData/Microsoft/Network/Downloader"
@@ -2286,6 +2350,7 @@ def _plan_gap_parsers(
                         f"BITS job queue ({qmgr.name}, staged copy, logs replayed)",
                         timeout_for_bytes(sz),
                         optional_output=True,
+                        source=str(qmgr),
                     )
             except OSError as exc:
                 skip("bitsparser", f"could not stage qmgr: {exc}")
@@ -2556,6 +2621,8 @@ def _evidence_sha_for(job: ToolJob, hashes: list[tuple[str, str]]) -> str:
     identifies the same bytes.
     """
     args = [_norm_path(a) for a in (job.argv or []) if a]
+    if job.source:
+        args.insert(0, _norm_path(job.source))  # the registered source the staged copy was made from
     best_len, best_sha = -1, ""
     for path, sha in hashes:
         target = _norm_path(path)
@@ -2574,22 +2641,10 @@ def _evidence_sha_for(job: ToolJob, hashes: list[tuple[str, str]]) -> str:
     return best_sha
 
 
-def apply_prior_ok(
-    jobs: list[ToolJob],
-    case_dir: Path,
-    extractions: Path | None = None,
-    rerun_tools: frozenset[str] | None = None,
-) -> int:
-    """Reuse prior OK ledger rows so leftover re-runs do not re-parse Hayabusa/MFT.
-
-    A row is reused only for the same evidence: the key is host + tool + purpose + the registered
-    sha256 of the job's input (WO-TA item 12). A job with no registered input, and a row with no
-    recorded hash, are run again. ``NEXUS_TOOL_LANE_RERUN=1`` disables reuse.
-    """
+def _prior_ledger_rows(case_dir: Path, extractions: Path | None) -> list[dict[str, Any]]:
+    """The rows of the run's own ledger, or of the flat case ledger for a case that predates runs."""
     import json
 
-    if os.environ.get("NEXUS_TOOL_LANE_RERUN", "").strip().lower() in ("1", "true", "yes"):
-        return 0
     # The run's own ledger first: the lane writes its ledger into its run folder. The flat
     # case-level ledgers are read last, for cases that predate runs.
     paths = [
@@ -2597,7 +2652,6 @@ def apply_prior_ok(
         Path(case_dir) / "extractions" / "_tool_lane_ledger.json",
         Path(case_dir) / "ledger" / "_tool_lane_ledger.json",
     ]
-    prior: list[dict[str, Any]] = []
     for path in paths:
         if not path.is_file():
             continue
@@ -2606,10 +2660,37 @@ def apply_prior_ok(
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(loaded, list):
-            prior = loaded
-            break
+            return loaded
+    return []
+
+
+def _job_key_of_row(row: dict[str, Any]) -> tuple[str, str, str]:
+    """What makes a ledger row the same work as a planned job: its host, tool and purpose."""
+    return (str(row.get("host") or ""), str(row.get("tool") or ""), str(row.get("purpose") or ""))
+
+
+def apply_prior_ok(
+    jobs: list[ToolJob],
+    case_dir: Path,
+    extractions: Path | None = None,
+    rerun_tools: frozenset[str] | None = None,
+    carry: bool = False,
+) -> int:
+    """Reuse prior OK ledger rows so leftover re-runs do not re-parse Hayabusa/MFT.
+
+    A row is reused only for the same evidence: the key is host + tool + purpose + the registered
+    sha256 of the job's input (WO-TA item 12). A job with no registered input, and a row with no
+    recorded hash, are run again. ``NEXUS_TOOL_LANE_RERUN=1`` disables reuse.
+
+    ``carry`` is the retry's rule (2026-10-11): an OK row is reused for the job it recorded, whatever bytes
+    the argv names. A staged copy names its staging folder, so the keyed rule never matched sbecmd, sidr,
+    bitsparser or bmc-tools, and each retry re-ran them and wrote their outputs again.
+    """
+    if os.environ.get("NEXUS_TOOL_LANE_RERUN", "").strip().lower() in ("1", "true", "yes"):
+        return 0
     index: dict[tuple[str, str, str, str], dict[str, Any]] = {}
-    for row in prior:
+    by_job: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in _prior_ledger_rows(case_dir, extractions):
         if row.get("status") != "OK":
             continue
         key = _job_reuse_key(
@@ -2619,17 +2700,23 @@ def apply_prior_ok(
             str(row.get("evidence_sha") or ""),
         )
         index.setdefault(key, row)
+        by_job.setdefault(_job_key_of_row(row), row)
     hashes = _registered_evidence_hashes(case_dir)
     reused = 0
     for job in jobs:
         if job.status != "PENDING":
             continue
         job.evidence_sha = _evidence_sha_for(job, hashes)
-        if not job.evidence_sha:
-            continue  # no registered input to key on: the job runs again
         if rerun_tools and job.tool in rerun_tools:
             continue  # the examiner asked for this tool to run again: its OK rows are not reused
-        old = index.get(_job_reuse_key(job.host, job.tool, job.purpose, job.evidence_sha))
+        if carry:
+            old = by_job.get((job.host, job.tool, job.purpose))
+            if old and job.evidence_sha and str(old.get("evidence_sha") or "") not in ("", job.evidence_sha):
+                continue  # the registered bytes differ from the ones this row was made from: run again
+        else:
+            if not job.evidence_sha:
+                continue  # no registered input to key on: the job runs again
+            old = index.get(_job_reuse_key(job.host, job.tool, job.purpose, job.evidence_sha))
         if not old:
             continue
         # An OK row whose local output has gone is not a result: the job runs again. A SIFT
@@ -2646,6 +2733,7 @@ def apply_prior_ok(
         if not lineage_version(lineage):
             continue
         job.status = "OK"
+        job.evidence_sha = job.evidence_sha or str(old.get("evidence_sha") or "")
         job.lineage = lineage
         job.audit_id = str(old.get("audit_id") or "")
         job.output_saved_to = str(old.get("output_saved_to") or "")
@@ -2653,6 +2741,66 @@ def apply_prior_ok(
         job.reason = "reused prior OK (from this run's ledger)"
         reused += 1
     return reused
+
+
+def _settle_prior_rows(
+    jobs: list[ToolJob],
+    case_dir: Path,
+    extractions: Path | None,
+    *,
+    carry_ok: bool,
+    only_tools: frozenset[str] | None,
+) -> list[dict[str, Any]]:
+    """What a retry keeps of the run's ledger. ``jobs`` is changed in place.
+
+    A retry never touches a passing job. Every OK row of the run is carried into the new ledger, whether or
+    not the plan still names its job: the mftecmd body row was lost when its opt-in changed the plan
+    (2026-10-11). A targeted retry (``--tool``) runs only the named tools. Every other planned job keeps the
+    row the run already has for it, or is recorded SKIP when the run has none. A non-OK row of a job the plan
+    no longer names is superseded, and is dropped. Returns the rows to carry; the lane writes them first.
+    """
+    if not carry_ok:
+        return []
+    prior_by_job: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in _prior_ledger_rows(case_dir, extractions):
+        prior_by_job.setdefault(_job_key_of_row(row), row)
+    planned = {(job.host, job.tool, job.purpose) for job in jobs}
+    carried: list[dict[str, Any]] = []
+    kept: list[ToolJob] = []
+    for job in jobs:
+        key = (job.host, job.tool, job.purpose)
+        if only_tools and job.tool not in only_tools:
+            if key in prior_by_job:
+                carried.append(dict(prior_by_job[key]))  # the run's own row stands; the job is not run again
+                continue
+            if job.status == "PENDING":
+                job.status = "SKIP"
+                job.reason = "not part of this targeted re-run (--tool)"
+        kept.append(job)
+    jobs[:] = kept
+    for key, row in prior_by_job.items():
+        if key not in planned and row.get("status") == "OK":
+            carried.append(dict(row))  # a passing job the plan no longer names keeps its record
+    return carried
+
+
+def _hold_examiner_skips(jobs: list[ToolJob], case_dir: Path) -> None:
+    """A job the examiner skipped (``nexus lane skip``) stays skipped, on every pass (2026-10-11).
+
+    The gate records each skip by its tool and purpose. Without this check a later pass planned the job again
+    and ran it, which overrode the examiner's decision.
+    """
+    from nexus.langgraph.lane_gate import read_lane_gate
+
+    held = {
+        (str(item.get("tool") or ""), str(item.get("purpose") or ""))
+        for item in (read_lane_gate(case_dir).get("examiner_skips") or [])
+        if isinstance(item, dict)
+    }
+    for job in jobs:
+        if job.status == "PENDING" and (job.tool, job.purpose) in held:
+            job.status = "SKIP"
+            job.reason = "examiner skip (recorded with nexus lane skip): not run again"
 
 
 def _tool_elapsed(result: Any) -> float:
@@ -3562,8 +3710,12 @@ async def run_tool_lane(
     evidence_paths: list[str] | None = None,
     on_event: Callable[[str, str, dict[str, Any]], None] | None = None,
     rerun_tools: frozenset[str] | None = None,
+    carry_ok: bool = False,
+    only_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Execute the planned triage lane via MCP tools. Returns ledger + audit_ids.
+
+    ``carry_ok`` and ``only_tools`` are the retry's rules (see ``_settle_prior_rows``).
 
     RAG does not belong in this lane (``skip_rag=True``). Coverage/design load
     RAG in ``ensure_rag`` / interpret. Strict FAIL→error is **tools mode only**.
@@ -3633,6 +3785,13 @@ async def run_tool_lane(
     # Phase 4h: plan across EVERY registered evidence path (single file,
     # multiple files, folder, or drive root), deduping identical jobs.
     plan_paths = [p for p in (evidence_paths or [evidence_path]) if str(p).strip()]
+    # A tool's output is not evidence, even when an inherited list names it (2026-10-11: 184 stdout files).
+    from nexus.langgraph.pipeline_runs import drop_tool_outputs, is_tool_output
+
+    _dropped = [p for p in plan_paths if is_tool_output(Path(p), case_dir)]
+    if _dropped:
+        log.warning("tool lane: %d tool-output path(s) dropped from the evidence list", len(_dropped))
+    plan_paths = drop_tool_outputs(plan_paths, case_dir)
     jobs: list[ToolJob] = []
     _planned: set[tuple] = set()
     for _p in plan_paths:
@@ -3648,7 +3807,9 @@ async def run_tool_lane(
     jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
     # WO-TA item 12: a job that finished OK in this run's ledger is reused, not run again.
     # apply_prior_ok had no caller before this, so a retry re-ran every job.
-    reused = apply_prior_ok(jobs, case_dir, extractions=extractions, rerun_tools=rerun_tools)
+    reused = apply_prior_ok(
+        jobs, case_dir, extractions=extractions, rerun_tools=rerun_tools, carry=carry_ok,
+    )
     if reused:
         log.info("tool lane reused %d OK job(s) from this run's ledger", reused)
     try:
@@ -3694,8 +3855,17 @@ async def run_tool_lane(
         declared=str(ctx.get("sift_required") or "").strip().lower() in ("1", "true", "yes"),
         network_inputs=_net_inputs,
     ))
+    # The SIFT jobs, planned just above, take the same reuse; the retry's rules apply to every job.
+    apply_prior_ok(
+        [j for j in jobs if j.host != "windows"], case_dir, extractions=extractions,
+        rerun_tools=rerun_tools, carry=carry_ok,
+    )
+    carried_rows = _settle_prior_rows(
+        jobs, case_dir, extractions, carry_ok=carry_ok, only_tools=only_tools,
+    )
+    _hold_examiner_skips(jobs, case_dir)
     audit_ids: list[str] = []
-    ledger: list[dict[str, Any]] = []
+    ledger: list[dict[str, Any]] = list(carried_rows)
 
     # WP 4j.5d: incremental progress — every completed job updates
     # _tool_lane_progress.json so /pipeline/status can show per-tool
@@ -3837,7 +4007,7 @@ async def run_tool_lane(
 
         # Snapshot the output dirs before the tool runs, so "did this job write
         # anything" can be answered by diff rather than by guessing the naming.
-        _out_dirs = _output_dirs_of(job)
+        _out_dirs = _output_dirs_of(job, extractions)
         _before = _snapshot(_out_dirs)
 
         if job.host == "windows":
@@ -4574,7 +4744,7 @@ def _tool_wrote_structured_output(job: ToolJob) -> bool:
     return False
 
 
-def _output_dirs_of(job: ToolJob) -> list[Path]:
+def _output_dirs_of(job: ToolJob, root: Path | None = None) -> list[Path]:
     """Directories this job was told to write into.
 
     Used to diff before/after, because tools disagree about naming: `recmd` and
@@ -4600,6 +4770,20 @@ def _output_dirs_of(job: ToolJob) -> list[Path]:
     for target in _windows_switch_output_paths(argv):
         parent = target.parent if target.suffix else target
         out.append(parent)
+    # A job writes into the run's own extractions folder, and names the folder in argv under whatever flag
+    # the tool uses (`mftecmd --body <dir>`, `deepbluecli -o <dir>`). Every such folder is watched, so the row
+    # lists the files the job created there. Before this, the 199 MB body file was never recorded (D77).
+    if root is not None:
+        base = Path(root).resolve()
+        for arg in argv:
+            try:
+                named = Path(arg).resolve()
+                if named == base:
+                    continue  # the whole folder is never a job's output
+                named.relative_to(base)
+            except (ValueError, OSError):
+                continue
+            out.append(named.parent if named.is_file() else named)
     return out
 
 

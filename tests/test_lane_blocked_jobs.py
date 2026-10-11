@@ -86,6 +86,6 @@ def test_a_blocked_sidr_job_is_recorded_blocked_and_never_reaches_the_executor(c
 
     assert sidr_rows, f"the planner did not record sidr at all: {ledger}"
     assert all(r.get("status") == "BLOCKED" for r in sidr_rows), sidr_rows
-    assert "dirty-shutdown" in str(sidr_rows[0].get("reason") or "")
+    assert "clean shutdown" in str(sidr_rows[0].get("reason") or "")
     assert not any("sidr" in json.dumps(args, default=str) for _name, args in calls), (
         "a blocked job must never reach the executor")

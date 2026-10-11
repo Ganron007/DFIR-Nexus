@@ -313,6 +313,31 @@ def _run_committed(run_dir: Path) -> bool:
 _INCOMPLETE_RUNS_WARNED: set[str] = set()
 
 
+#: Case folders that hold what a tool wrote. Nothing under them is examiner evidence.
+TOOL_OUTPUT_FOLDERS = ("runs", "extractions", "ingest", "analysis", "reports", "ledger")
+
+
+def is_tool_output(path: Path, case_root: Path) -> bool:
+    """True when a path sits in one of the case's tool-output folders.
+
+    A tool's output is never evidence. A run inherits the evidence list of the run before it, and that list
+    can hold the stdout files of its tools: planned as evidence, each one becomes a "no recognized evidence
+    shape" row (CASE-C5B04D31, 2026-10-11: 184 such paths in one run's manifest).
+    """
+    for folder in TOOL_OUTPUT_FOLDERS:
+        try:
+            path.resolve().relative_to((case_root / folder).resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
+
+def drop_tool_outputs(paths: list[str], case_root: Path) -> list[str]:
+    """The paths that are not tool output, in their order."""
+    return [p for p in paths if not is_tool_output(Path(p), case_root)]
+
+
 def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     """Extractions of the active tools run, following reuse chains.
 

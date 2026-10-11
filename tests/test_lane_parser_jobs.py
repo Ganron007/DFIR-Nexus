@@ -44,9 +44,9 @@ def planned(triage, tmp_path, monkeypatch):
     extractions = tmp_path / "extractions"
     jobs: list = []
 
-    def add_installed(key, argv, purpose, timeout=600):
+    def add_installed(key, argv, purpose, timeout=600, *, source=""):
         jobs.append(tool_lane.ToolJob(host="windows", tool=key, argv=argv,
-                                      purpose=purpose, timeout=timeout))
+                                      purpose=purpose, timeout=timeout, source=source))
 
     def skip(tool, reason):
         jobs.append(tool_lane.ToolJob(host="windows", tool=tool, argv=[], purpose="",
@@ -91,7 +91,7 @@ def test_maldump_is_blocked_with_a_reason_when_not_elevated(triage, tmp_path, mo
     jobs: list = []
     tool_lane._plan_defender_and_search(
         triage, tmp_path / "e",
-        lambda key, argv, purpose, timeout=600: jobs.append((key, argv)),
+        lambda key, argv, purpose, timeout=600, *, source="": jobs.append((key, argv)),
         lambda tool, reason: jobs.append(("SKIP", tool, reason)),
         lambda tool, reason: jobs.append(("BLOCKED", tool, reason)),
     )
@@ -108,7 +108,7 @@ def test_a_missing_parser_on_present_evidence_is_blocked_not_skipped(triage, tmp
     blocked: dict[str, str] = {}
     tool_lane._plan_defender_and_search(
         triage, tmp_path / "e",
-        lambda key, argv, purpose, timeout=600: None,
+        lambda key, argv, purpose, timeout=600, *, source="": None,
         lambda tool, reason: None,
         lambda tool, reason: blocked.setdefault(tool, reason),
     )
@@ -123,18 +123,25 @@ def test_wmi_parser_reads_the_repository_file_in_place(planned, triage):
     assert Path(job.argv[job.argv.index("-o") + 1]) == extractions / "wmi_parser"
 
 
-def test_sidr_is_blocked_on_the_dirty_database_and_is_never_repaired(planned):
+def test_sidr_is_not_run_on_a_copy_that_did_not_reach_a_clean_shutdown(planned):
+    # The fixture's Windows.edb is not a real ESE database, so the replay cannot reach a clean
+    # shutdown and sidr is recorded as BLOCKED, never run (2026-10-11).
     jobs, _ = planned
     sidr = [j for j in jobs if j.tool == "sidr"]
     assert len(sidr) == 1 and sidr[0].status == "BLOCKED" and not sidr[0].argv
-    assert "dirty-shutdown" in sidr[0].reason and "operator decision 2026-10-11" in sidr[0].reason
+    assert "clean shutdown" in sidr[0].reason
 
 
 def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_path, monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(tool_lane.subprocess, "run", lambda argv, **kw: calls.append(list(argv)))
     tool_lane._esentutl_replay(tmp_path, log_bases=("edb", "qmgr"))
-    assert calls == [["esentutl.exe", "/r", "edb"], ["esentutl.exe", "/r", "qmgr"]]
+    # The log, system and database folders are the work copy: the log records the original location.
+    folders = [f"/l{tmp_path}", f"/s{tmp_path}", f"/d{tmp_path}"]
+    assert calls == [
+        ["esentutl.exe", "/r", "edb", *folders],
+        ["esentutl.exe", "/r", "qmgr", *folders],
+    ]
     assert all("/p" not in argv and "/i" not in argv for argv in calls)
 
 
