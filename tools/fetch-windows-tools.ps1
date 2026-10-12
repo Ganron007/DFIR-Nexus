@@ -112,7 +112,8 @@ function Install-WoTaPins {
     Install-PinnedWheel "maldump" "0.5.0" `
         "https://files.pythonhosted.org/packages/27/22/2d94b48d2ed4948f3324232b5a60dca3fdefaf91dd049e4de82b0e75e8f5/maldump-0.5.0-py3-none-any.whl" `
         "5c7ed44d408fe6a454dbca3bc47795d09cdf0601035fd8fa0dc6004e730c5d6e" "GPL-3.0"
-    # Declared runtime deps of maldump 0.5.0. arc4==0.4.0 has no Python 3.14 wheel.
+    # Declared runtime deps of maldump 0.5.0, which pins kaitaistruct==0.10 and arc4==0.4.0 exactly, so these two
+    # do not move until maldump does. arc4 0.4.0 has no Python 3.14 wheel either (0.5.0 has none).
     Install-PinnedWheel "colorama" "0.4.6" `
         "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl" `
         "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6" "BSD-3-Clause"
@@ -183,16 +184,16 @@ function Install-WoTaPins {
     Add-Report "thumbcache_viewer" "FETCHED" "v1.0.4.0 GUI only (thumbcache_viewer.exe); cmd build is not in this tag"
     $script:Versions += "thumbcache_viewer`tv1.0.4.0`thttps://github.com/thumbcacheviewer/thumbcacheviewer/releases/download/v1.0.4.0/thumbcache_viewer_64.zip`t8D91A3156318ED26DF11202A86DC0B53E2D85FD7E2CB02CAF67F2FB63006E5ED`tNONE"
 
-    Write-Host "==> Zircolite 4.2.0 windows-x64 (upstream SHA256SUMS)"
-    $zrZip = Join-Path $pin "Zircolite-4.2.0-windows-x64.zip"
+    Write-Host "==> Zircolite 4.5.0 windows-x64 (upstream SHA256SUMS)"
+    $zrZip = Join-Path $pin "Zircolite-4.5.0-windows-x64.zip"
     Save-PinnedFile "zircolite" `
-        "https://github.com/wagga40/Zircolite/releases/download/v4.2.0/Zircolite-4.2.0-windows-x64.zip" `
-        "47942EA5CA5D314B1161FE3EE48D6B3E35CEDDFBAEA36E9DB9751A2ED82D6834" $zrZip | Out-Null
+        "https://github.com/wagga40/Zircolite/releases/download/v4.5.0/Zircolite-4.5.0-windows-x64.zip" `
+        "BA3577A30789295C75C714B191CD8217C0B13EE5416D7D8D49E89E8E11AD842D" $zrZip | Out-Null
     $zrDest = Join-Path $Ext "zircolite"
     if (Test-Path $zrDest) { Remove-Item $zrDest -Recurse -Force }
     Expand-To $zrZip $zrDest
-    Add-Report "zircolite" "FETCHED" "4.2.0"
-    $script:Versions += "zircolite`t4.2.0`thttps://github.com/wagga40/Zircolite/releases/download/v4.2.0/Zircolite-4.2.0-windows-x64.zip`t47942EA5CA5D314B1161FE3EE48D6B3E35CEDDFBAEA36E9DB9751A2ED82D6834`tNOASSERTION"
+    Add-Report "zircolite" "FETCHED" "4.5.0"
+    $script:Versions += "zircolite`t4.5.0`thttps://github.com/wagga40/Zircolite/releases/download/v4.5.0/Zircolite-4.5.0-windows-x64.zip`tBA3577A30789295C75C714B191CD8217C0B13EE5416D7D8D49E89E8E11AD842D`tNOASSERTION"
 
     # VirusTotal/yara v4.5.6, v4.5.7 and v4.5.8 published no release assets.
     # v4.5.5 is the newest tag that ships an official win64 zip.
@@ -258,16 +259,27 @@ $haExe = Get-ChildItem $haStage -Filter "hayabusa*.exe" -Recurse | Select-Object
 if (-not $haExe) { throw "no hayabusa exe in $($ha.Asset.name)" }
 Copy-Item $haExe.FullName (Join-Path $Hay "hayabusa.exe") -Force
 Remove-Item $haStage -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem $Hay -Filter "hayabusa-*-win-x64.exe" -File | Where-Object { $_.Name -ne $ha.Asset.name.Replace('.zip', '.exe') } | Remove-Item -Force
 $script:Versions += "hayabusa`t$($ha.Tag)`t$($ha.Asset.browser_download_url)"
 
 Write-Host "==> Suzaku (GitHub latest win-x64)"
 $sz = Get-GitHubAsset "Yamato-Security/suzaku" "suzaku-.*-win-x64\.zip$"
 $szZip = Join-Path $env:TEMP $sz.Asset.name
 Invoke-WebRequest -Uri $sz.Asset.browser_download_url -OutFile $szZip
-Expand-To $szZip $Suz
-Get-ChildItem $Suz -Filter "suzaku*.exe" -Recurse | Select-Object -First 1 | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $Suz "suzaku.exe") -Force
+$szStage = Join-Path $env:TEMP ("suzaku-stage-" + [guid]::NewGuid().ToString("n"))
+Expand-To $szZip $szStage
+$szExeName = $sz.Asset.name.Replace('.zip', '.exe')
+$szRoot = Split-Path (Get-ChildItem $szStage -Filter $szExeName -Recurse | Select-Object -First 1).FullName
+if (-not $szRoot) { throw "no $szExeName in $($sz.Asset.name)" }
+foreach ($d in @("art", "config", "rules")) {
+    $dst = Join-Path $Suz $d
+    if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
+    if (Test-Path (Join-Path $szRoot $d)) { Copy-Item (Join-Path $szRoot $d) $dst -Recurse -Force }
 }
+Copy-Item (Join-Path $szRoot $szExeName) (Join-Path $Suz $szExeName) -Force
+Copy-Item (Join-Path $szRoot $szExeName) (Join-Path $Suz "suzaku.exe") -Force
+Get-ChildItem $Suz -Filter "suzaku-*-win-x64.exe" -File | Where-Object { $_.Name -ne $szExeName } | Remove-Item -Force
+Remove-Item $szStage -Recurse -Force -ErrorAction SilentlyContinue
 $script:Versions += "suzaku`t$($sz.Tag)`t$($sz.Asset.browser_download_url)"
 
 Write-Host "==> Chainsaw (GitHub latest windows-msvc)"
@@ -370,7 +382,7 @@ try {
     $script:Versions += "regripper`tmaster`thttps://github.com/keydet89/RegRipper3.0"
 } catch { Add-Report "regripper" "FAILED" "$_" }
 
-# Zircolite 4.2.0 is pinned in Install-WoTaPins.
+# Zircolite 4.5.0 is pinned in Install-WoTaPins.
 
 Write-Host "==> USBDeview x64 (NirSoft official zip)"
 try {

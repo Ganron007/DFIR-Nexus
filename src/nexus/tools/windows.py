@@ -192,7 +192,7 @@ def _cache_put(key: str, result: dict) -> None:
 
 
 def _catalog_key(token: str) -> str | None:
-    """Map EvtxECmd.exe / hayabusa-4.0.0-win-x64 → catalog key."""
+    """Map EvtxECmd.exe / hayabusa-4.1.0-win-x64 → catalog key."""
     stem = Path(token).stem.lower()
     stem_norm = stem.replace("-", "_")
     if stem in _WIN_CATALOG:
@@ -215,7 +215,7 @@ def _name_matches(filename: str, wanted: str) -> bool:
     wstem = Path(w).stem.lower()
     if f == w or f == f"{wstem}.exe" or f == f"{wstem}.ps1" or f == f"{wstem}.pl" or f == f"{wstem}.py":
         return True
-    # hayabusa-4.0.0-win-x64.exe / suzaku-2.0.0-win-x64.exe
+    # hayabusa-4.1.0-win-x64.exe / suzaku-2.0.1-win-x64.exe
     if f.startswith(f"{wstem}-") and f.endswith(".exe"):
         return True
     return bool(f.startswith(f"{wstem}_") and f.endswith(".exe"))

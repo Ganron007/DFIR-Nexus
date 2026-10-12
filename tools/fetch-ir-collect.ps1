@@ -43,10 +43,13 @@ function Copy-NeedleTree {
     Copy-Item (Join-Path $srcDir "*") $Dest -Recurse -Force
 }
 
-Write-Host "==> Kansa (davehull/Kansa master zip)"
-if (Test-Path (Join-Path $KansaDir "kansa.ps1")) {
-    $script:Versions += "kansa|already-present|$KansaDir"
-    Write-Host "    already present - skip re-download"
+Write-Host "==> Kansa (davehull/Kansa master; refreshed when master has a newer commit)"
+$kansaCommit = (Invoke-RestMethod -Uri "https://api.github.com/repos/davehull/Kansa/commits/master" -Headers $UA).sha
+$kansaRecord = Join-Path $KansaDir ".installed-commit"
+$kansaInstalled = if (Test-Path $kansaRecord) { (Get-Content $kansaRecord -Raw).Trim() } else { "" }
+if ((Test-Path (Join-Path $KansaDir "kansa.ps1")) -and $kansaInstalled -eq $kansaCommit) {
+    $script:Versions += "kansa`tmaster@$($kansaCommit.Substring(0, 12))`tcurrent"
+    Write-Host "    kansa master $($kansaCommit.Substring(0, 12)) already installed"
 } else {
     $kansaZip = Join-Path $env:TEMP "Kansa-master.zip"
     Invoke-WebRequest -Uri "https://github.com/davehull/Kansa/archive/refs/heads/master.zip" -Headers $UA -OutFile $kansaZip
@@ -54,15 +57,19 @@ if (Test-Path (Join-Path $KansaDir "kansa.ps1")) {
     if (Test-Path $kansaTmp) { Remove-Item $kansaTmp -Recurse -Force }
     Expand-Archive -Path $kansaZip -DestinationPath $kansaTmp -Force
     Copy-NeedleTree -ExtractRoot $kansaTmp -Dest $KansaDir -NeedleFile "kansa.ps1"
-    $script:Versions += "kansa`tmaster`thttps://github.com/davehull/Kansa/archive/refs/heads/master.zip"
+    Set-Content -Path $kansaRecord -Value $kansaCommit -Encoding ASCII
+    $script:Versions += "kansa`tmaster@$($kansaCommit.Substring(0, 12))`thttps://github.com/davehull/Kansa/archive/refs/heads/master.zip"
 }
 
 Write-Host '==> UAC (tclahr/uac latest; Linux collector staged on this host)'
-if (Test-Path (Join-Path $UacDir "uac")) {
-    $script:Versions += "uac|already-present|$UacDir"
-    Write-Host "    already present - skip re-download"
+# Refreshed when the latest tag differs from the one recorded beside the tree (.installed-tag).
+$uac = Get-GitHubAsset -Repo "tclahr/uac" -Match "uac-.*\.(tar\.gz|tgz|zip)$"
+$uacRecord = Join-Path $UacDir ".installed-tag"
+$uacInstalled = if (Test-Path $uacRecord) { (Get-Content $uacRecord -Raw).Trim() } else { "" }
+if ((Test-Path (Join-Path $UacDir "uac")) -and $uacInstalled -eq $uac.Tag) {
+    $script:Versions += "uac`t$($uac.Tag)`tcurrent"
+    Write-Host "    uac $($uac.Tag) already installed"
 } else {
-    $uac = Get-GitHubAsset -Repo "tclahr/uac" -Match "uac-.*\.(tar\.gz|tgz|zip)$"
     $uacFile = Join-Path $env:TEMP $uac.Asset.name
     Invoke-WebRequest -Uri $uac.Url -Headers $UA -OutFile $uacFile
     $uacTmp = Join-Path $env:TEMP ("uac-" + [guid]::NewGuid().ToString("n").Substring(0, 8))
@@ -73,18 +80,22 @@ if (Test-Path (Join-Path $UacDir "uac")) {
         tar -xf $uacFile -C $uacTmp
     }
     Copy-NeedleTree -ExtractRoot $uacTmp -Dest $UacDir -NeedleFile "uac"
+    Set-Content -Path $uacRecord -Value $uac.Tag -Encoding ASCII
     $script:Versions += "uac`t$($uac.Tag)`t$($uac.Url)"
 }
 
 Write-Host "==> AVML (microsoft/avml latest Linux x86_64 binary)"
 $avmlBin = Join-Path $AvmlDir "avml"
-if (Test-Path $avmlBin) {
-    $script:Versions += "avml|already-present|$avmlBin"
-    Write-Host "    already present - skip re-download"
+$av = Get-GitHubAsset -Repo "microsoft/avml" -Match "^avml$"
+$avmlRecord = Join-Path $AvmlDir ".installed-tag"
+$avmlInstalled = if (Test-Path $avmlRecord) { (Get-Content $avmlRecord -Raw).Trim() } else { "" }
+if ((Test-Path $avmlBin) -and $avmlInstalled -eq $av.Tag) {
+    $script:Versions += "avml`t$($av.Tag)`tcurrent"
+    Write-Host "    avml $($av.Tag) already installed"
 } else {
-    $av = Get-GitHubAsset -Repo "microsoft/avml" -Match "^avml$"
     New-Item -ItemType Directory -Force -Path $AvmlDir | Out-Null
     Invoke-WebRequest -Uri $av.Url -Headers $UA -OutFile $avmlBin
+    Set-Content -Path $avmlRecord -Value $av.Tag -Encoding ASCII
     $script:Versions += "avml`t$($av.Tag)`t$($av.Url)"
 }
 
@@ -106,16 +117,19 @@ if (Test-Path $kape) {
     Write-Host "==> KAPE: MISSING - unpack KAPE to Tools/windows/kape/"
 }
 
-Write-Host '==> DFIR-ORC (ANSSI GitHub latest) - collect-only snapshot; DumpIt skipped (commercial; use WinPmem --memory)'
+Write-Host '==> DFIR-ORC (DFIR-ORC/dfir-orc latest) - collect-only snapshot; DumpIt skipped (commercial; use WinPmem --memory)'
 $OrcDir = Join-Path $Win "orc"
 New-Item -ItemType Directory -Force -Path $OrcDir | Out-Null
 $orcExe = Join-Path $OrcDir "DFIR-ORC.exe"
-if (Test-Path $orcExe) {
-    $script:Versions += "dfir-orc|already-present|$orcExe"
-    Write-Host "    DFIR-ORC.exe already present - skip re-download"
+$orcAsset = Get-GitHubAsset -Repo "DFIR-ORC/dfir-orc" -Match "^DFIR-ORC\.exe$"
+$orcRecord = Join-Path $OrcDir ".installed-tag-dfir-orc"
+$orcInstalled = if (Test-Path $orcRecord) { (Get-Content $orcRecord -Raw).Trim() } else { "" }
+if ((Test-Path $orcExe) -and $orcInstalled -eq $orcAsset.Tag) {
+    $script:Versions += "dfir-orc|$($orcAsset.Tag)|current"
+    Write-Host "    DFIR-ORC $($orcAsset.Tag) already installed"
 } else {
-    $orcAsset = Get-GitHubAsset -Repo "DFIR-ORC/dfir-orc" -Match "^DFIR-ORC\.exe$"
     Invoke-WebRequest -Uri $orcAsset.Url -Headers $UA -OutFile $orcExe
+    Set-Content -Path $orcRecord -Value $orcAsset.Tag -Encoding ASCII
     $script:Versions += "dfir-orc|$($orcAsset.Tag)|$($orcAsset.Url)"
 }
 
@@ -141,7 +155,9 @@ foreach ($n in @("autorunsc.exe", "handle.exe", "Tcpvcon.exe", "Listdlls.exe")) 
 }
 
 $psniper = Join-Path $cfgTools "PersistenceSniper.psm1"
-if (-not (Test-Path $psniper)) {
+$psRelease = (Invoke-RestMethod -Uri "https://api.github.com/repos/last-byte/PersistenceSniper/releases/latest" -Headers $UA).tag_name -replace '^v', ''
+$psInstalled = if (Test-Path $psniper) { [regex]::Match((Get-Content $psniper -Raw), '\.VERSION\s+(\S+)').Groups[1].Value } else { "" }
+if ($psInstalled -ne $psRelease) {
     $psniperRepo = Join-Path $env:TEMP "PersistenceSniper-git"
     if (Test-Path $psniperRepo) { Remove-Item $psniperRepo -Recurse -Force }
     git clone --depth 1 https://github.com/last-byte/PersistenceSniper.git $psniperRepo
@@ -149,7 +165,7 @@ if (-not (Test-Path $psniper)) {
     if (-not $hit) { throw "PersistenceSniper.psm1 not found after clone" }
     Copy-Item $hit.FullName $psniper -Force
 }
-$script:Versions += "persistencesniper|github-main|https://github.com/last-byte/PersistenceSniper"
+$script:Versions += "persistencesniper|v$psRelease|https://github.com/last-byte/PersistenceSniper"
 
 Write-Host "==> Sigma rules for Chainsaw hunt (SigmaHQ/sigma sparse rules/ — full tree hits Windows MAX_PATH)"
 $SigmaDir = Join-Path $Win "extra\chainsaw\sigma"
