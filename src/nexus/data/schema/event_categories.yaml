@@ -12,6 +12,13 @@ sources:
   version: 2.0.0
   sha256: 84575bbde5dd891882306ca1f6ce16bdc592da2e511ac8960012af2efb9d120b
   module: sigma/pipelines/sysmon/sysmon.py
+- package: elastic-integrations-windows-security
+  version: 59aa0e9
+  commit: 59aa0e901d5683cb933859bb21bf4da590400e94
+  path: packages/windows/data_stream/forwarded/elasticsearch/ingest_pipeline/security_standard.yml
+  sha256: 4c9aef7c941fde2b684e0db6442972545600d6a9e35b524d04bd7d0ff40f7831
+  licence: Elastic-2.0
+  url: https://raw.githubusercontent.com/elastic/integrations/59aa0e901d5683cb933859bb21bf4da590400e94/packages/windows/data_stream/forwarded/elasticsearch/ingest_pipeline/security_standard.yml
 entries:
 - provider: Microsoft-Windows-PowerShell
   event_id: 4103
@@ -22,13 +29,65 @@ entries:
   category: ps_script
   source: pysigma-pipeline-windows
 - provider: Microsoft-Windows-Security-Auditing
+  event_id: 4624
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4625
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4634
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4647
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4648
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
   event_id: 4657
   category: registry_event
   source: pysigma-pipeline-windows
 - provider: Microsoft-Windows-Security-Auditing
+  event_id: 4672
+  category: iam
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
   event_id: 4688
   category: process_creation
   source: pysigma-pipeline-windows
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4768
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4769
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4770
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4771
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4776
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4778
+  category: authentication
+  source: elastic-integrations-windows-security
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4779
+  category: authentication
+  source: elastic-integrations-windows-security
 - provider: Microsoft-Windows-Sysmon
   event_id: 1
   category: process_creation

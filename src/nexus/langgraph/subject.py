@@ -118,6 +118,10 @@ GROUP_OF_CATEGORY = {
     "file_executable_detected": "file",
     "create_stream_hash": "file",
     "registry_event": "registry",
+    # Operator decision 2026-10-12 (D94): the logon categories of the Elastic Windows Security pipeline.
+    # A logon's subject is the account it logs on (user.target.name, see subject_fields), so account.
+    "authentication": "account",
+    "iam": "account",
 }
 
 

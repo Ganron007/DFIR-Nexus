@@ -113,8 +113,8 @@ def test_a_logon_names_the_target_account_on_real_rows():
         pytest.skip("no 4624 document in the index carries a target account")
     for hit in with_target:
         derived = derive_subject([_row(hit)])
-        # Logons have no pinned category yet, so the account rule decides.
-        assert derived["category"] == OTHER
+        # A logon's pinned category is authentication (the Elastic pipeline, D94); the account rule names it.
+        assert derived["category"] == "authentication"
         assert derived["entity"]["type"] == "account"
         assert derived["entity"]["value"] == hit["ecs"]["user.target.name"].lower()
 
@@ -160,8 +160,8 @@ def test_the_majority_category_decides_the_subject_order():
         pytest.skip("not enough real 4688 and 4624 rows in the index for a majority")
     rows = [_row(proc[0]), _row(logons[0]), _row(logons[1])]
     derived = derive_subject(rows)
-    # Two of three rows are logons, which have no pinned category: the account rule decides.
-    assert derived["category"] == OTHER
+    # Two of three rows are logons (authentication, D94), so the majority is authentication and the account rule decides.
+    assert derived["category"] == "authentication"
     assert derived["entity"]["type"] == "account"
 
 

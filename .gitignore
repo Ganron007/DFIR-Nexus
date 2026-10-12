@@ -223,3 +223,6 @@ src/nexus/data/knowledge/mbc/mbc.json
 # Test-run artifacts (never commit a run's output)
 full_suite.log
 full_suite.err
+
+# Raw ELv2 pipeline cached by import_event_categories.py --fetch; the table keeps only derived rows
+devtools/knowledge/pinned/cache/
