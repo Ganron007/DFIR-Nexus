@@ -47,7 +47,7 @@ It is a product highlight: the same command produces a case pack against
 
 **`--profile disk` (ship spine — default):** collectors that must work on the current OS.
 
-- **Windows:** Sysinternals, PersistenceSniper, wevtutil EVTX, KAPE `!SANS_Triage`/`!EZParser`, live Velociraptor `CADRE.Hunts.IRTriage`.
+- **Windows:** Sysinternals, PersistenceSniper, wevtutil EVTX, KAPE `!SANS_Triage` (acquire only; `--kape-module none` is the default, and Stage 0 never parses), live Velociraptor `CADRE.Hunts.IRTriage`.
 - **Linux:** POSIX volatile snapshot, journalctl (30 days) + ausearch, UAC `-p ir_triage` (SANS-style live response; not UAC `full`), live Velociraptor `CADRE.Hunts.LinuxIRTriage`.
 
 **`--profile full`:** extra collectors (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`).

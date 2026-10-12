@@ -54,7 +54,7 @@ def tools_cmd() -> None:
     typer.echo("  collectors: " + ", ".join(ALL_COLLECTORS))
     typer.echo("  profiles: " + ", ".join(f"{n}={len(s)}" for n, s in PROFILES.items()))
     typer.echo("  default windows (disk): Sysinternals + PersistenceSniper + wevtutil")
-    typer.echo("                 + KAPE !SANS_Triage/!EZParser + live Velociraptor IRTriage")
+    typer.echo("                 + KAPE !SANS_Triage (acquire only; --kape-module names an opt-in parse pass) + live Velociraptor IRTriage")
     typer.echo("  default linux (disk): POSIX volatile + journalctl + UAC -p ir_triage + VR LinuxIRTriage")
     typer.echo("  opt in: --profile full (Kansa/ORC/WinPmem/AVML/UAC full)")
     typer.echo("  N2 EVTX parsers (Hayabusa/Suzaku/Chainsaw): nexus pipeline --mode tools")
@@ -167,7 +167,7 @@ def plan_cmd(
     profile: str = typer.Option("disk", "--profile", help="disk (live IR spine) | full | volatile"),
     only: str = typer.Option("", "--only", help="Comma list of collectors (overrides profile)"),
     kape_target: str = typer.Option("!SANS_Triage", "--kape-target"),
-    kape_module: str = typer.Option("!EZParser", "--kape-module", help="none to skip KAPE parse"),
+    kape_module: str = typer.Option("none", "--kape-module", help="none to skip KAPE parse"),
     no_kansa: bool = typer.Option(False, "--no-kansa"),
     no_kape: bool = typer.Option(False, "--no-kape"),
     no_orc: bool = typer.Option(False, "--no-orc"),

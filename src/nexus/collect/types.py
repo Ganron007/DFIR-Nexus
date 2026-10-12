@@ -68,7 +68,7 @@ class CollectOptions:
     kansa: bool = False
     kape: bool = True
     kape_target: str = "!SANS_Triage"
-    kape_module: str = "!EZParser"
+    kape_module: str = "none"
     kape_remote_path: str = ""
     memory: bool = False
     orc: bool = False

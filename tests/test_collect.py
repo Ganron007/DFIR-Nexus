@@ -36,6 +36,17 @@ def test_kape_argv_includes_target_and_module():
     assert "--mdest" in argv
 
 
+def test_kape_parse_pass_is_off_by_default():
+    # Stage 0 acquires and never parses (AGENTS.md). The options dataclass, `plan` and `run` must agree.
+    import inspect
+
+    from nexus.cli.collect_cmd import plan_cmd, run_cmd
+
+    assert CollectOptions().kape_module == "none"
+    for cmd in (plan_cmd, run_cmd):
+        assert inspect.signature(cmd).parameters["kape_module"].default.default == "none"
+
+
 def test_kansa_ps1_argv_has_no_outputpath():
     from nexus.collect.kansa import kansa_ps1_argv
 

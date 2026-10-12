@@ -134,7 +134,7 @@ DFIR-Nexus uses a dual-layer storage model separating immutable forensic state f
 ### Stage 0 — live IR pack (CLI only)
 
 - Authenticated **SSH / WinRM / local** collection: portable, no parsers on the target, freeze-gated.
-- **Windows spine** (`--profile disk`): KAPE `!SANS_Triage` / `!EZParser` + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`.
+- **Windows spine** (`--profile disk`): KAPE `!SANS_Triage` (acquire only; the EZ parse pass is opt-in with `--kape-module`) + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`.
 - **Linux spine**: POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`.
 - Extra collectors (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`) live on `--profile full` and **skip with a reason** when missing or broken.
 - **Hayabusa / Suzaku / Chainsaw are N2 parsers**, not Stage 0 collectors.
