@@ -1,12 +1,3 @@
-# kb: d_5313a9a6ca8d:c0363 (EBOOKS — Applied Incident Response Ch9: volume
-#      shadow copies as differential block backups at the volume root;
-#      restoration/recovery for deleted evidence)
-# kb: d_8beaf108808f:c0318 (EBOOKS — Evasive Malware Ch16: NTFS Alternate
-#      Data Streams to hide files/data; anti-forensic use)
-# kb: d_dc3b13fade46:c0055 (SANS FOR508.5 — $DATA attributes must be named;
-#      resident vs non-resident ADS in the MFT record)
-# kb: d_03c2a24fc8ff:c0071 (SANS FOR500.1 — data recovery: VSS, metadata,
-#      file/stream carving, string searching)
 skill: windows_data_hiding
 title: Hidden/deleted data on NTFS — shadow copies, ADS, recycle bin, timestomp
 description: 'Find data an attacker tried to hide or destroy on an NTFS volume: enumerate
@@ -247,19 +238,6 @@ mitre:
 - T1564.004
 - T1485
 - T1490
-source:
-- chunk_id: d_2987c0399e6c:c0524
-  rel_path: SANS/SANS 585 v2022/FOR585 H01_01 2022 hide01.ir/FOR585 H01_01 2022 hide01.ir.md
-  lines: 19896-19989
-  citation: d_5313a9a6ca8d:c0363
-- chunk_id: d_641ebbbd7339:c0671
-  rel_path: SANS/SANS 585 v2022/FOR585 Book_nosec/FOR585 Book_nosec.md
-  lines: 68516-68606
-  citation: d_8beaf108808f:c0318
-- chunk_id: d_2987c0399e6c:c0574
-  rel_path: SANS/SANS 585 v2022/FOR585 H01_01 2022 hide01.ir/FOR585 H01_01 2022 hide01.ir.md
-  lines: 21932-21991
-  citation: d_dc3b13fade46:c0055
 caveats:
 - Shadow copies age out or are deleted (vssadmin delete shadows is a common ransom
   tactic) — their absence is a gap, and a deleted shadow store is itself suspicious.

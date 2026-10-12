@@ -1,7 +1,3 @@
-# kb: d_a1d3c2f01b9b:c0047 (FOR508.5 — timestomp detection: $SI<$FN creation,
-#      all-zero fractional seconds, compile-vs-file times, ShimCache-vs-mod,
-#      MFT record-number proximity vs legitimate System32 neighbors)
-# kb: FOR508.5 (anti-forensics limits), SpecterOps (evasion TTPs)
 skill: defense_evasion
 title: Defense evasion — AV disable, timestomp, masquerading, process injection
 description: Detect defense-evasion techniques — disabling security tools, timestomping,
@@ -222,19 +218,6 @@ mitre:
 - T1036
 - T1055
 - T1070.006
-source:
-- chunk_id: d_95dc839c4ed9:c0088
-  rel_path: EBOOKS/eBooks/Practical_Threat_Intelligence/Practical_Threat_Intelligence.md
-  lines: 2862-2887
-  citation: d_a1d3c2f01b9b:c0047
-- chunk_id: d_24a6b445a0b3:c0101
-  rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
-  lines: 5799-5966
-  citation: d_a1d3c2f01b9b:c0047
-- chunk_id: d_24a6b445a0b3:c0094
-  rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
-  lines: 5049-5216
-  citation: d_a1d3c2f01b9b:c0047
 caveats:
 - Windows updates legitimately restart Defender — check window and account context.
 - Masquerading needs path+parentage analysis, not just the process name.

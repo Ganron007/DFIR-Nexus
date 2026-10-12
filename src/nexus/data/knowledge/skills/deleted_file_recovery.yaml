@@ -1,6 +1,3 @@
-# kb: d_b9688153219b (CCD M5 T5 Deleted Files) | d_49603464d6ed (13C WE 27 Recycle Bin)
-# kb: d_c00494133f2d (13C WE 28 Permanent Deletion) | d_4a20e905aac2 (13C WE 26 $I30)
-# kb: d_cfd6f88504b6 (CCD M5 $UsnJrnl) | d_260233cb3d09 (13C WE 29 LNK residue)
 skill: deleted_file_recovery
 title: Deleted-file recovery — Recycle Bin, $I30 slack, USN deletes, carving
 description: 'Prove what was deleted, when, and by which path. Deletion is layered:
@@ -217,19 +214,6 @@ mitre:
 - T1070.004
 - T1485
 - T1564
-source:
-- chunk_id: d_a1d3c2f01b9b:c0109
-  rel_path: SANS/SANS 508 v2023/Book FOR508.5/Book FOR508.5.md
-  lines: 2924-2959
-  citation: d_b9688153219b
-- chunk_id: d_3edf38e74d31:c0725
-  rel_path: SANS/SANS 508 v2023/FOR508 I01_01 2023/FOR508 I01_01 2023.md
-  lines: 21284-21319
-  citation: d_49603464d6ed
-- chunk_id: d_547dfe1dbe47:c0014
-  rel_path: DFRWS EU 2026/AutoDFBench-1-0--A-benchmarking-framework-for-d_2026_Forensic-Science-Intern/AutoDFBench-1-0--A-benchmarking-framework-for-d_2026_Forensic-Science-Intern.md
-  lines: 329-345
-  citation: d_c00494133f2d
 caveats:
 - Recycle Bin is per-user — a SYSTEM-context delete (task/service) may leave no $I
   file under any user SID; check USN first.

@@ -1,10 +1,3 @@
-# kb: d_6039bdfd5d72:c0400 (SANS FOR608 Part 4 — Container DFIR: image
-#      enumeration `docker image ls`, runtime/security options, container
-#      inception context, cloud-hosted container triage)
-# kb: d_6039bdfd5d72:c0425 (SANS FOR608 — `docker info`: Storage/Logging
-#      driver json-file, Docker Root Dir, cgroup version, runc/containerd)
-# kb: d_edee2fc1a0ec (13Cubed Linux — appliances/containers as Linux hosts;
-#      /var/log inside the appliance and host)
 skill: container_forensics
 title: Container & Kubernetes investigation — images, overlay layers, runtime
 platform: linux
@@ -246,19 +239,6 @@ mitre:
 - T1611
 - T1613
 - T1525
-source:
-- chunk_id: d_d974994914f3:c0241
-  rel_path: EBOOKS/eBooks/Cyber_TH/Cyber_TH.md
-  lines: 2312-2321
-  citation: d_6039bdfd5d72:c0400
-- chunk_id: d_a6a019d4039b:c0308
-  rel_path: SANS/SANS 530 v2024/SEC530 (2025)/SEC530 (2025).md
-  lines: 10782-10812
-  citation: d_6039bdfd5d72:c0425
-- chunk_id: d_01929e155e30:c0490
-  rel_path: SANS/SANS 588 v2023/SEC588 I01_07 2023 hide01.ir/SEC588 I01_07 2023 hide01.ir.md
-  lines: 17627-17661
-  citation: d_6039bdfd5d72:c0400
 caveats:
 - Containers are ephemeral — `docker rm` destroys the writable layer; recovery depends
   on the host overlay2 data surviving, so capture it before any prune.

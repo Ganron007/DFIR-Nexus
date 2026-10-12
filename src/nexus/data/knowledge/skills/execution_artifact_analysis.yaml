@@ -1,9 +1,3 @@
-# kb: d_5aeea6f2e856 (CCD M5 T9 Prefetch) | d_dbacad7baf4c (CCD M5 ShimCache)
-# kb: d_52edb94c2503 (CCD M5 AmCache) | d_bfa005ec18f7 (CCD M5 BAM/DAM)
-# kb: d_f5ad68c1b019 (CCD M5 UserAssist) | d_426d040d6cb8 (CCD M5 SRUM)
-# kb: d_ea8f1ff52359 (13C WE 12 Prefetch) | d_d1ae4e63463e (13C WE 13 ShimCache)
-# kb: d_9169ff3bbce2 (13C WE 14 AmCache) | d_47e7720ecbfd (13C WE 15 PCA)
-# kb: d_a8a00cbad358 (13C WE 18 SRUM) | d_346b1e448071 (13C Registry cheat sheet)
 skill: execution_artifact_analysis
 title: Evidence-of-execution stack — Prefetch → ShimCache → AmCache → BAM → UserAssist
   → SRUM → PCA
@@ -291,19 +285,6 @@ mitre:
 - T1059
 - T1036
 - T1106
-source:
-- chunk_id: d_d2f44cf330df:c0059
-  rel_path: SANS/SANS 608 v2024/FOR608/FOR608.md
-  lines: 1662-1702
-  citation: d_5aeea6f2e856
-- chunk_id: d_528b56f0bb57:c0035
-  rel_path: SANS/SANS 508 v2025/508.2 Intrusion Analysis/508.2 Intrusion Analysis.md
-  lines: 1236-1317
-  citation: d_dbacad7baf4c
-- chunk_id: d_fc582236409c:c0201
-  rel_path: SANS/SANS 508 v2025/508_merge/508_merge.md
-  lines: 5784-5865
-  citation: d_52edb94c2503
 caveats:
 - ShimCache timestamps are the file's $SI M-time — citing them as execution times
   is a classic report error (13Cubed WE 13).

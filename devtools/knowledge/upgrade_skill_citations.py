@@ -6,7 +6,7 @@ Measured before this: **all 37 skills** cited bare document names ("EIR CH4-1",
 claim cannot be checked against the passage that supports it - and
 `verify_citations` now fails that grade on purpose.
 
-This resolves each skill to real chunks in the local KB (`G:\\doc_extract`) -
+This resolves each skill to real chunks in the design-time KB named by --kb-root -
 `kb find` returns `chunk_id`, the document path and the line range, which is
 exactly the `{chunk_id, rel_path, lines}` shape the loader already accepts.
 
@@ -32,8 +32,9 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 SKILLS = REPO / "src" / "nexus" / "data" / "knowledge" / "skills"
-KB_ROOT = Path("G:/doc_extract")
-KB_PY = KB_ROOT / "kb" / "kb.py"
+# No default corpus path (operator decision 2026-10-12): main() takes --kb-root.
+KB_ROOT: Path | None = None
+KB_PY: Path | None = None
 
 #: ` 31.38  d_291d23d46cc2:c0047  path/to/doc.md:4122-4220  snippet`
 _KB_LINE = re.compile(r"^\s*([\d.]+)\s+(d_[0-9a-f]+:c\d+)\s+(.+?):(\d+-\d+)\s")
@@ -44,7 +45,7 @@ CITATIONS_PER_SKILL = 3
 
 
 def kb_available() -> bool:
-    return KB_PY.is_file()
+    return KB_PY is not None and KB_PY.is_file()
 
 
 def find_chunks(query: str, *, limit: int = 40, timeout: float = 180.0) -> list[dict[str, Any]]:
@@ -170,7 +171,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true",
                         help="exit 1 unless every skill is chunk-grade")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--kb-root", type=Path, default=None,
+                        help="design-time corpus folder that holds kb/kb.py (no default)")
     args = parser.parse_args(argv)
+    global KB_ROOT, KB_PY
+    if args.kb_root is not None:
+        KB_ROOT = args.kb_root
+        KB_PY = KB_ROOT / "kb" / "kb.py"
 
     from nexus.analysis.skill_steps import verify_citations
 
@@ -190,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not kb_available():
-        print(f"KB not available at {KB_PY} - cannot resolve chunks", file=sys.stderr)
+        print("design-time KB not named or not found: pass --kb-root <folder that holds kb/kb.py>",
+              file=sys.stderr)
         return 2
 
     upgraded = 0

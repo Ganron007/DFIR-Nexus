@@ -1,6 +1,3 @@
-# kb: d_448f7674e355 (CCD M5 T5 $MFT) | d_cfd6f88504b6 (CCD M5 $UsnJrnl)
-# kb: d_b4d5d0834a53 (CCD M5 $LogFile) | d_0917a10ed05d (13C WE 25 MFT+USN parse)
-# kb: d_4a20e905aac2 (13C WE 26 $I30) | d_a1d3c2f01b9b:c0027-29 (FOR508.5 MFT attrs + clustering)
 skill: mft_file_activity
 title: NTFS file-system activity — $MFT, $UsnJrnl, $I30 slack, ADS, timestomp
 description: 'Reconstruct file-system truth: the MFT''s per-record timestamps and
@@ -199,24 +196,6 @@ mitre:
 - T1070.006
 - T1036
 - T1564.004
-source:
-- chunk_id: d_8a9f22e58850:c0000
-  rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/07. Module 5 - Disk
-    Forensics - [ @redblock_team ]/25. Topic 5 - Collecting File and Folder Activity
-    - [ @redblock_team ]/25. Topic 5 - Collecting File and Folder Activity - [ @redblock_team
-    ].md
-  lines: 8-36
-  citation: d_a1d3c2f01b9b:c0027
-- chunk_id: d_8d7170660ce3:c1986
-  rel_path: EBOOKS/eBooks/Windows Internals, Part 2. 7th Edition - 2021/Windows Internals,
-    Part 2. 7th Edition - 2021.md
-  lines: 33464-33563
-  citation: d_a1d3c2f01b9b:c0027
-- chunk_id: d_8d7170660ce3:c1705
-  rel_path: EBOOKS/eBooks/Windows Internals, Part 2. 7th Edition - 2021/Windows Internals,
-    Part 2. 7th Edition - 2021.md
-  lines: 26963-26983
-  citation: d_a1d3c2f01b9b:c0027
 caveats:
 - MFT record reuse destroys the old record — cite $I30 slack and $LogFile for what
   the MFT itself no longer shows.

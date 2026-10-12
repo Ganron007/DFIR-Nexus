@@ -1,7 +1,3 @@
-# kb: d_4ef76ae987e4:c0047 (FOR508.3 — Deep Panda/APT19 webshell case:
-#      w3wp.exe spawning net.exe→net1/ipconfig/arp/whoami/sc chain;
-#      webshell = HTTP-enabled backdoor, rogue ASP/PHP page)
-# kb: EIR webshell hunting, CCD M7 (web log analysis), HTB DefSec
 skill: webshell_investigation
 title: Webshell investigation — IIS/Apache exec chains, web log correlation
 description: 'Hunt webshells: the web-server worker process spawning OS commands is
@@ -247,20 +243,6 @@ confidence_rules:
 mitre:
 - T1505.003
 - T1106
-source:
-- chunk_id: d_eaa7d8bcb110:c0075
-  rel_path: SANS/SANS 508 v2023/Book FOR508.3/Book FOR508.3.md
-  lines: 2235-2256
-  citation: d_4ef76ae987e4:c0047
-- chunk_id: d_3edf38e74d31:c0402
-  rel_path: SANS/SANS 508 v2023/FOR508 I01_01 2023/FOR508 I01_01 2023.md
-  lines: 11754-11775
-  citation: d_4ef76ae987e4:c0047
-- chunk_id: d_4ef76ae987e4:c0083
-  rel_path: SANS/SANS 508 v2025/508.3 Memory Forensics in IR and TH/508.3 Memory Forensics
-    in IR and TH.md
-  lines: 2669-2695
-  citation: d_4ef76ae987e4:c0047
 caveats:
 - IIS logs can lag or be disabled — missing access-log evidence doesn't clear the
   exec chain evidence.

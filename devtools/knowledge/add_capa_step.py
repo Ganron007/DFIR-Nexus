@@ -6,7 +6,7 @@ that reads what capa produces - the capabilities a binary declares, mapped to AT
 and MBC. That is the strongest behavioural-intent signal in the malware leg.
 
 The step is authored here, not typed from memory: its two citations are real chunks
-in the local KB (`G:\\doc_extract`), found with `kb find "capa"`:
+in the design-time KB (the folder is named when the step is authored), found with `kb find "capa"`:
   d_0d452e595fff:c0091  Defensive Security ... Live Forensics 2024  (using `capa -r` to
                         see `what binary is doing`)
   d_8beaf108808f:c0075  Evasive Malware (Kyle)  (anti-VM instructions identified by CAPA)

@@ -25,7 +25,6 @@ import yaml
 from nexus.knowledge.loader import det_for, skill_sources, validate_skill
 from nexus.langgraph.query_dsl import parse_query
 
-_KB_DEFAULT = r"G:\doc_extract\kb\kb.py"
 _REPO = Path(__file__).resolve().parents[2]
 _DEFAULT_OUT = _REPO / "Docs" / "internal" / "skill-drafts"
 _SKILLS_DIR = _REPO / "src" / "nexus" / "data" / "knowledge" / "skills"
@@ -51,9 +50,10 @@ Rules:
 
 def acquire_kb_export(folder: str, dest: Path, kb_py: str | None = None) -> Path | None:
     """Run ``kb export --format skill`` and return the produced draft path."""
-    kb = Path(kb_py or _KB_DEFAULT)
-    if not kb.is_file():
+    # No default corpus path (operator decision 2026-10-12): the caller names kb.py.
+    if not kb_py or not Path(kb_py).is_file():
         return None
+    kb = Path(kb_py)
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, str(kb), "export", "--format", "skill",

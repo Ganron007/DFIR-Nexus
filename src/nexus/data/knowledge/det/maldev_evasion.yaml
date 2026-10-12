@@ -5,7 +5,7 @@ description: >-
   Malware-dev/evasion detection dictionary (WP 9.7) — modern evasion techniques
   and the artifacts/telemetry that reveal them, feeding `look_for` + `caveats`.
   Sources: Maldev Academy, Sektor7, Dark Vortex, SilentBreakSecurity, Evasive
-  Malware, Windows APT Warfare, Practical Malware Analysis (KB corpus).
+  Malware, Windows APT Warfare, Practical Malware Analysis.
 source: "Maldev Academy/Sektor7/Dark Vortex + Evasive Malware/Windows APT Warfare"
 entries:
   - id: direct_syscall_evasion

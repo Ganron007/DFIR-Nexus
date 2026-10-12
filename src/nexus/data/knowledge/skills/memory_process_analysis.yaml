@@ -1,10 +1,3 @@
-# kb: d_cc664515f00d:c0002 (13C WM — MemProcFS/Volatility pstree traversal,
-#      circular doubly-linked EPROCESS list; DCOM-spawned processes escape
-#      the linked list — a pslist/pstree blind spot)
-# kb: d_13ccd9bc5c30 (13C WM — malfind: most important plugin for malware
-#      detection), d_577bf6a10f8a (process hollowing class)
-# kb: d_4ef76ae987e4:c0047 (FOR508.3 — w3wp.exe → net.exe/net1/ipconfig/
-#      arp/whoami/sc chain = webshell exec in memory, Deep Panda case)
 skill: memory_process_analysis
 title: Memory process analysis — enumeration, injection classes, hollowing
 description: 'Work a memory image like an examiner: enumerate the process tree, check
@@ -231,19 +224,6 @@ mitre:
 - T1055
 - T1055.001
 - T1055.012
-source:
-- chunk_id: d_7c87cd5c5a98:c0000
-  rel_path: EBOOKS/eBooks/UTF-8=''65/UTF-8=''65.md
-  lines: 8-76
-  citation: d_cc664515f00d:c0002
-- chunk_id: d_36de7e11fde2:c0000
-  rel_path: SANS/Posters/UTF-8=''65/UTF-8=''65.md
-  lines: 8-76
-  citation: d_4ef76ae987e4:c0047
-- chunk_id: d_c18cf969770c:c0001
-  rel_path: SANS/SANS 610 v2021/FOR610_ISO/References/Malware_Analysis_Report_Template/Malware_Analysis_Report_Template.md
-  lines: 118-186
-  citation: d_cc664515f00d:c0002
 caveats:
 - Memory is a snapshot — processes that exited before capture leave no pslist trace;
   corroborate with prefetch/amcache for historical execution.

@@ -1,7 +1,3 @@
-# kb: d_ae743ea2444d:c0082 (FOR528 — dominant IAB vectors: exposed RDP,
-#      border-device exploit, phishing, purchased access/creds)
-# kb: EIR CH4-2 (LNK interactive artifacts), FOR500 (LNK/MOTW parsing),
-#      CCD M5 (execution-artifact corroboration chain)
 skill: initial_access
 title: Initial access — LNK / MSI / CHM / HTML smuggling / macro
 description: Detect user-execution initial-access payloads — shortcut files, MSI installers,
@@ -302,19 +298,6 @@ mitre:
 - T1566.001
 - T1204.001
 - T1204.002
-source:
-- chunk_id: d_6aa7ffe9cde2:c0046
-  rel_path: EBOOKS/Books_2026/dissecting-the-dark-web/dissecting-the-dark-web.md
-  lines: 1530-1561
-  citation: d_ae743ea2444d:c0082
-- chunk_id: d_f0a856066eda:c0078
-  rel_path: SANS/SANS 560 v2022/SEC560 - Book 2/SEC560 - Book 2.md
-  lines: 2535-2595
-  citation: d_ae743ea2444d:c0082
-- chunk_id: d_5673d7c1e6e4:c0207
-  rel_path: SANS/SANS 560 v2022/SEC560_Book/SEC560_Book.md
-  lines: 6328-6388
-  citation: d_ae743ea2444d:c0082
 caveats:
 - Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec)
   is what matters.

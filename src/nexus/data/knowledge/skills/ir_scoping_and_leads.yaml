@@ -1,6 +1,3 @@
-# kb: d_b9e9fc66fd35 (Mandiant EIR Lesson 3 — Investigative Method, lead→timeline→IOC→scope loop)
-# kb: d_42d0d007ee2c (EIR attack vectors + ATT&CK framing) | HTB Incident Handling Process
-# kb: OSIR IR-200 (OffensiveSecurity) — second IR curriculum, cross-checked
 skill: ir_scoping_and_leads
 title: IR scoping & lead management — Mandiant investigative method
 description: 'How a real examiner sequences an intrusion case: start from live-response
@@ -228,20 +225,6 @@ mitre:
 - T1566
 - T1190
 - T1078
-source:
-- chunk_id: d_01929e155e30:c0016
-  rel_path: SANS/SANS 588 v2023/SEC588 I01_07 2023 hide01.ir/SEC588 I01_07 2023 hide01.ir.md
-  lines: 583-622
-  citation: d_b9e9fc66fd35
-- chunk_id: d_b4cdc7ca8de9:c0016
-  rel_path: SANS/SANS 588 v2023/SEC588 Videos 2023/SEC588 I01_07 2023 hide01.ir/SEC588
-    I01_07 2023 hide01.ir.md
-  lines: 583-622
-  citation: d_42d0d007ee2c
-- chunk_id: d_815ea04346a2:c0028
-  rel_path: SANS/SANS 504 v2023/SEC504 2025 - merge/SEC504 2025 - merge.md
-  lines: 878-910
-  citation: d_b9e9fc66fd35
 caveats:
 - Complex incidents rarely have a linear trail — multiple patient zeros and long dwell
   times are the norm in advanced threats (EIR L3).

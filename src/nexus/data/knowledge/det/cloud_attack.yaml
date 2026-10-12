@@ -5,7 +5,7 @@ description: >-
   Cloud identity/attack detection dictionary (WP 9.7) — provider API operations
   and identity techniques that feed `look_for` + `caveats` on hits. Sources:
   SANS SEC541, SANS SEC699, FOR500.4 (M365), PwnedLabs ACRTP, CrowdStrike/
-  Elastic cloud research in the KB corpus.
+  Elastic cloud research.
 source: "SANS SEC541/SEC699 + FOR500.4 + PwnedLabs ACRTP"
 entries:
   - id: aws_iam_persistence

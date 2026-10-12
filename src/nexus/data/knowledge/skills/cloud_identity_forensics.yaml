@@ -1,12 +1,3 @@
-# kb: d_762a214e1f4a:c0041 (SANS FOR500.4 — M365 audit/Exchange Online/
-#      SharePoint/OneDrive log latency: events appear 15-30+ min after the
-#      action; Purview content search)
-# kb: d_0d8eeaa8ab62:c0396-0398 (SANS SEC699 — Azure AD sign-in logs, export
-#      to a storage account; WMI/consent persistence detection)
-# kb: d_a83af400caf0 (SANS SEC541 — cloud security monitoring, CloudTrail/GuardDuty
-#      noise vs signal, atomic vs behavioral indicators)
-# kb: d_5d6485613561 (PwnedLabs ACRTP — AWS attack/defense: IAM, S3, STS,
-#      ListAllMyBuckets and API-driven enumeration)
 skill: cloud_identity_forensics
 title: Cloud identity investigation — CloudTrail, Azure/Entra sign-in, M365 audit
 description: 'Investigate suspected compromise of a cloud identity or tenant: read
@@ -269,19 +260,6 @@ mitre:
 - T1530
 - T1567.002
 - T1556.006
-source:
-- chunk_id: d_9e7d8809d38a:c0018
-  rel_path: Vendor-Research/Unit42/spring-ring-an-inside-look-at-voice-phishing-campaigns-in-microsoft-teams.md
-  lines: 172-174
-  citation: d_762a214e1f4a:c0041
-- chunk_id: d_4ec0a1e59ec5:c0001
-  rel_path: Vendor-Research/Microsoft-Security/passkey-themed-social-engineering-leads-to-identity-and-cloud-compromise.md
-  lines: 36-37
-  citation: d_0d8eeaa8ab62:c0396
-- chunk_id: d_ce08abadfbcb:c0028
-  rel_path: SANS/SANS 509 v2022/FOR509 2022/FOR509 2022.md
-  lines: 2101-2193
-  citation: d_762a214e1f4a:c0041
 caveats:
 - Cloud audit logs have retention limits and latency (M365/Azure events can lag 15-30+
   min) — a quiet window may be a retention/latency gap, not absence of activity.

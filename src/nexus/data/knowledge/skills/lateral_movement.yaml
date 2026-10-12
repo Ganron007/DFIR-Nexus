@@ -1,7 +1,3 @@
-# kb: d_25b6cf33456b (13Cubed WE 21 — SMB/RDP/WMI/PsExec/UAL lateral movement)
-# kb: d_2703d82b642c (EIR CH4-2 — interactive artifacts: user-profile creation
-#      proves interactive logon even without event-log evidence)
-# kb: d_a1d3c2f01b9b (FOR508.5 — anti-forensics; residual artifacts survive)
 skill: lateral_movement
 title: Lateral movement (SMB / WinRM / RDP / psexec)
 description: Detect movement between hosts — remote logons, admin share access, remote
@@ -253,20 +249,6 @@ mitre:
 - T1021
 - T1569.002
 - T1047
-source:
-- chunk_id: d_9f084f9a1e3e:c0068
-  rel_path: EBOOKS/Books_2026/ad-pentest-oscp/ad-pentest-oscp.md
-  lines: 1958-2009
-  citation: d_25b6cf33456b
-- chunk_id: d_d79fe6681932:c0082
-  rel_path: SANS/SANS 528 v2022/PDF/FOR528_H02_04_1642775 [129-263]/FOR528_H02_04_1642775
-    [129-263].md
-  lines: 2610-2650
-  citation: d_2703d82b642c
-- chunk_id: d_40fd028860ee:c0167
-  rel_path: SANS/SANS 528 v2022/PDF/FOR528_H02_04_1642775/FOR528_H02_04_1642775.md
-  lines: 4565-4605
-  citation: d_a1d3c2f01b9b
 caveats:
 - File-server and admin activity legitimately produces 4624 type-3 — corroborate with
   share/service/task artifacts.

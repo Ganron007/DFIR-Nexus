@@ -110,7 +110,6 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the LLM-mode KB context block. |
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
 | `NEXUS_LLM_EGRESS` | unset | `raw` disables the egress anonymizer. By default, when the endpoint is **not** loopback, victim identifiers (hostnames, private IPs) are replaced with stable per-case tokens (`{{HOST_1}}`) before the request and restored in the reply — including on the async and streaming paths. Tokens persist in `analysis/egress_tokens.json` so the same host keeps the same token across turns. Adversary IOCs are meant to be preserved; the anonymizer's current allowlist gaps are tracked in the register (the token file is the audit trail of what was masked). |

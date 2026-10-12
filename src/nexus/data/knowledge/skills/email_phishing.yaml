@@ -1,8 +1,3 @@
-# kb: CCD email-security topics (SPF/DKIM/DMARC, header analysis,
-#      attachment detonation procedures)
-# kb: BTL1 M3 (phishing analysis course — headers, links, attachments)
-# kb: d_ae743ea2444d (FOR528 — phishing as dominant IAB vector),
-#      EIR (phishing initial-compromise scenarios)
 skill: email_phishing
 title: Phishing email analysis — headers, auth checks, payload chain
 description: 'Analyze a suspected phishing email: authenticate the sender (SPF/DKIM/DMARC
@@ -261,22 +256,6 @@ mitre:
 - T1566.001
 - T1566.002
 - T1204
-source:
-- chunk_id: d_68a5f40b7a85:c0000
-  rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/34. Section Introduction/34.
-    Section Introduction.md
-  lines: 8-38
-  citation: d_ae743ea2444d
-- chunk_id: d_6b9fc406f9ae:c0000
-  rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/63. Reactive Immediate
-    Response Process/63. Reactive Immediate Response Process.md
-  lines: 8-44
-  citation: d_ae743ea2444d
-- chunk_id: d_75bdfe209206:c0000
-  rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/77. Video) Phishing Response
-    Walkthrough/77. Video) Phishing Response Walkthrough.md
-  lines: 8-40
-  citation: d_ae743ea2444d
 caveats:
 - SPF/DKIM pass does NOT mean legitimate — attackers own domains and infrastructure;
   it means the mail came from where it claims.

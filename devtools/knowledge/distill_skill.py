@@ -30,7 +30,7 @@ def main() -> int:
     ap.add_argument("--llm", action="store_true", help="use the configured LLM to refine")
     ap.add_argument("--install", action="store_true", help="write into the shipped skills dir if gates pass")
     ap.add_argument("--force", action="store_true", help="overwrite an existing shipped skill")
-    ap.add_argument("--kb", default=None, help="path to kb.py (default G:\\doc_extract\\kb\\kb.py)")
+    ap.add_argument("--kb", default=None, help="path to kb.py (no default; design-time only)")
     args = ap.parse_args()
 
     from devtools.knowledge.distill import distill

@@ -1,8 +1,8 @@
-"""WP 9.1 — skill provenance + citation-schema tests.
+"""WP 9.1 — skill provenance, corpus-free (operator decision 2026-10-12).
 
-Every shipped skill must carry provenance: either a ``# kb:`` comment
-(human-readable, the 4j format) or a machine-readable ``source:`` list.
-Operator machines verify citations at design time via devtools/knowledge.
+Skills are authored in this repo and carry no pointer into the external research corpus.
+The schema still accepts a ``source:`` list for a future machine-readable source; the
+shipped skills have none.
 """
 from __future__ import annotations
 
@@ -27,27 +27,28 @@ def test_skills_dir_present():
     assert len(files) >= 30, f"expected the skill corpus, found {len(files)}"
 
 
-def test_every_skill_has_provenance():
-    """Every skill file cites its KB source (comment or `source:` field)."""
-    missing = []
+def test_no_skill_points_into_the_external_corpus():
+    """No shipped skill cites a chunk, a corpus file or a `# kb:` note.
+
+    The corpus is not a source for any mode, so a skill's provenance is its own content
+    (``version`` is a content hash of the procedure).
+    """
+    pointers = []
     for f in _skill_files():
         text = f.read_text(encoding="utf-8")
         data = yaml.safe_load(text) or {}
-        if "# kb:" in text or (data.get("source") or []):
-            continue
-        missing.append(f.name)
-    assert not missing, f"skills without provenance: {missing}"
+        if "source" in data or "# kb:" in text or "chunk_id" in text or "rel_path" in text:
+            pointers.append(f.name)
+    assert not pointers, f"skills that still point into the corpus: {pointers}"
 
 
-def test_every_skill_validates_and_cites_a_chunk():
-    """Schema-valid, and any chunk citation is well-formed."""
-    """Schema-valid, and any chunk citation is well-formed."""
+def test_every_skill_validates_and_names_no_corpus_chunk():
+    """Schema-valid, and no chunk id survives in the raw file."""
     for f in _skill_files():
         data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
         assert validate_skill(data) == [], f"{f.name}: {validate_skill(data)}"
-        # comment-style citations in the raw file are chunk ids
-        for cid in _CITE_RE.findall(f.read_text(encoding="utf-8")):
-            assert cid.startswith("d_"), f"{f.name}: malformed citation {cid}"
+        leftovers = _CITE_RE.findall(f.read_text(encoding="utf-8"))
+        assert not leftovers, f"{f.name}: corpus chunk ids {leftovers}"
 
 
 def test_source_field_schema():

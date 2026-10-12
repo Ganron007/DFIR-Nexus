@@ -1,9 +1,3 @@
-# kb: d_3edf38e74d31:c0082 (FOR508.2 — DLL hijack classes; SUNSPOT scheduled-
-#      task persistence from the SolarWinds investigation; Autoruns)
-# kb: d_0d8eeaa8ab62:c0396-0398 (SANS SEC699 — WMI persistence: EventFilter +
-#      CommandLineEventConsumer bound via __FilterToConsumerBinding; Sysmon
-#      WMI events 19/20/21 as the detection surface)
-# kb: CCD M5 (registry/service/task artifact procedures), EIR persistence
 skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
 description: Detect mechanisms that survive reboot — autostart registry keys, new
@@ -270,19 +264,6 @@ mitre:
 - T1053.005
 - T1546.003
 - T1053
-source:
-- chunk_id: d_5e18878c26d5:c0004
-  rel_path: Kaspersky/Kaspersky Malware Analysis and Reverse Engineering course/1383_056/1383_056.md
-  lines: 264-320
-  citation: d_3edf38e74d31:c0082
-- chunk_id: d_c55e3c3d8f7e:c0460
-  rel_path: SANS/SANS 599 v2023/SEC599 2023 - Clear/SEC599 2023 - Clear.md
-  lines: 14752-14804
-  citation: d_0d8eeaa8ab62:c0396
-- chunk_id: d_01b61024ae53:c0460
-  rel_path: SANS/SANS 599 v2023/SEC599 2023 - No watermark/SEC599 2023 - No watermark.md
-  lines: 14752-14804
-  citation: d_3edf38e74d31:c0082
 caveats:
 - Installers constantly create services/tasks — filter by signer and path before flagging.
 - Run-key writes by AV/management tools are normal — check the value target, not just

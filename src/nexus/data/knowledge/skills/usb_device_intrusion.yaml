@@ -1,7 +1,3 @@
-# kb: d_eba2fc23f79a (FOR500 Registry-Analysis-Guide USB, canonical 8-step)
-# kb: d_ac4a49434e52 + d_df4631451b98 + d_227d1d04a989 + d_2886bd1a9271 + d_fd8636981fd0
-#     (CCD M5 T7 full USB chain: USBSTOR → setupapi → event logs → wrap-up table)
-# kb: d_eaf7ce666436 (13C WE 9 USB Forensics) | EIR CBE usbstor hits
 skill: usb_device_intrusion
 title: USB device intrusion — serial → GUID → drive letter → user → files
 description: 'The FOR500 eight-step device chain: identify the device in USBSTOR by
@@ -238,23 +234,6 @@ mitre:
 - T1091
 - T1092
 - T1052.001
-source:
-- chunk_id: d_fd8636981fd0:c0000
-  rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/07. Module 5 - Disk
-    Forensics - [ @redblock_team ]/54. Detecting USB Device Intrusion - Wrapping up
-    - [ @redblock_team ]/54. Detecting USB Device Intrusion - Wrapping up - [ @redblock_team
-    ].md
-  lines: 8-69
-  citation: d_eba2fc23f79a
-- chunk_id: d_01ea58aa0cc2:c1095
-  rel_path: SANS/SANS 530 v2024/SEC530 PDF 2025/SEC530_ Defensible Security Architecture
-    and Engineering/SEC530_ Defensible Security Architecture and Engineering.md
-  lines: 35548-35578
-  citation: d_ac4a49434e52
-- chunk_id: d_3958d4070449:c0022
-  rel_path: EBOOKS/Books_2026/SEC530_Section1_StudyNotes/SEC530_Section1_StudyNotes.md
-  lines: 1242-1295
-  citation: d_df4631451b98
 caveats:
 - setupapi.dev.log timestamps are LOCAL time — merge them into a UTC timeline or your
   insert-time will drift by the zone offset.

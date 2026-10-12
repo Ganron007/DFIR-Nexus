@@ -1,12 +1,3 @@
-# kb: d_c202c9615730:c0394 (SANS FOR608 v2024 — mac_apt plugins, APFS mount
-#      `apfs-fuse -o ro /mnt/apfs_mount`, UNIFIEDLOGS .tracev3, QUARANTINE,
-#      QUICKLOOK, PRINTJOBS, Terminal state/sessions, Wi-Fi, utmpx)
-# kb: d_6039bdfd5d72 (SANS 608 — Apple Unified Log `.tracev3`, Console app,
-#      binary log analysis cross-platform with mac_apt)
-# kb: d_72571fb78011:c0203 (EBOOKS — The Art of Mac Malware: tooling and
-#      behaviour analysis on macOS)
-# kb: d_f841fdaaa378:c0043 (SANS FOR518 — iOS/macOS backup decryption,
-#      Manifest.plist IsEncrypted, Elcomsoft/backup tooling)
 skill: macos_forensics
 title: macOS host investigation — APFS, unified log, launchd, quarantine, TCC
 platform: macos
@@ -257,22 +248,6 @@ mitre:
 - T1547.015
 - T1059.002
 - T1555.001
-source:
-- chunk_id: d_ef6d559bf716:c0046
-  rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques
-    - OSINT 11 2025.04.02.md
-  lines: 824-844
-  citation: d_c202c9615730:c0394
-- chunk_id: d_ef6d559bf716:c0037
-  rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques
-    - OSINT 11 2025.04.02.md
-  lines: 671-686
-  citation: d_72571fb78011:c0203
-- chunk_id: d_ef6d559bf716:c0055
-  rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques
-    - OSINT 11 2025.04.02.md
-  lines: 1002-1020
-  citation: d_f841fdaaa378:c0043
 caveats:
 - Unified log retention is limited (days-to-weeks and rotates) — if the window predates
   retention, that is a coverage gap; say so rather than implying clean.

@@ -1,7 +1,3 @@
-# kb: d_c3895644afa2 (CCD M4 T1 Acquisition) | d_670ea514a8d5 (CCD M4 write-blocking)
-# kb: d_38a16f4d6b23 (CCD M4 T3 KAPE triage) | d_593853059137 (CCD M4 memory acq)
-# kb: d_22a1280d0b7d (CCD M4 Wrapping up — canonical acquisition order)
-# kb: BTL1 M5 (order of volatility, chain of custody, live acquisition)
 skill: evidence_acquisition_handling
 title: Evidence acquisition & handling — volatility order, imaging, hashing, custody
 kind: methodology
@@ -249,22 +245,6 @@ confidence_rules:
   low: unverifiable copy — analysis valid, provenance weak
 mitre:
 - T1005
-source:
-- chunk_id: d_c3895644afa2:c0000
-  rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/06. Module 4 - Forensics
-    Evidence Collection - [ @redblock_team ]/4. Acquisition - [ @redblock_team ]/4.
-    Acquisition - [ @redblock_team ].md
-  lines: 8-29
-  citation: d_c3895644afa2
-- chunk_id: d_347bd5a23af3:c0223
-  rel_path: EBOOKS/Books_2026/Anatoly_Tykushin,_Svetlana_Ostrovskaya_Incident_Response_for_Windows/Anatoly_Tykushin,_Svetlana_Ostrovskaya_Incident_Response_for_Windows.md
-  lines: 5628-5689
-  citation: d_670ea514a8d5
-- chunk_id: d_a4341930774e:c0010
-  rel_path: Kaspersky/Kaspersky - Windows incident response/3. Incident detection
-    Network- and system-based/Incident_Response_Field_Guide/Incident_Response_Field_Guide.md
-  lines: 323-358
-  citation: d_38a16f4d6b23
 caveats:
 - 'Power state decides the procedure: powered-on encrypted → live-triage BEFORE shutdown;
   powered-off → hiberfil/pagefile may still hold memory.'
