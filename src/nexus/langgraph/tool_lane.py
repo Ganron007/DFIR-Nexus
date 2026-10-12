@@ -3592,6 +3592,10 @@ def _lane_concurrency() -> int:
         return 1
 
 
+#: The Volatility 3 framework the Windows memory run records. It is the version of the pinned venv
+#: (Tools/windows/memory/vol3-<version>-venv) that the wrapper runs.
+_VOL3_WINDOWS_VERSION = "2.28.2"
+
 #: WO-A9 triage pack for Volatility 3 on Windows memory. The SIFT host runs the same plugins
 #: (``plan_sift_triage``). Timeouts are the small-image floor; ``scale_memory_timeout`` scales them to the image.
 _VOL_WINDOWS_PLUGINS: tuple[tuple[str, int], ...] = (
@@ -3643,7 +3647,7 @@ def _one_engine_per_plugin(jobs: list[ToolJob]) -> None:
 
 
 def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[ToolJob]:
-    """Volatility 3 2.28.0 on each registered Windows memory image, run on the Windows host.
+    """Volatility 3 2.28.2 on each registered Windows memory image, run on the Windows host.
 
     Operator decision 2026-10-11: Volatility 3 runs on Windows, through the pinned ``vol3`` wrapper
     (Tools/windows/extra/vol3/run-vol3.py and its venv). Each job is tool ``vol``, so the output is the
@@ -3659,7 +3663,7 @@ def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[Tool
             jobs.append(ToolJob(
                 host="windows", tool="vol", argv=[], purpose="", status="SKIP",
                 reason="vol3 not installed - run Tools/windows/extra/vol3/run-vol3.py's venv setup "
-                       "(Tools/windows/memory/vol3-2.28.0-requirements.txt)",
+                       f"(Tools/windows/memory/vol3-{_VOL3_WINDOWS_VERSION}-requirements.txt)",
             ))
             continue
         image_bytes = img.stat().st_size
@@ -3667,7 +3671,7 @@ def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[Tool
             jobs.append(ToolJob(
                 host="windows", tool="vol",
                 argv=["vol3", "-f", str(img), "-r", "jsonl", plugin],
-                purpose=f"Volatility3 {plugin} (Windows, 2.28.0)",
+                purpose=f"Volatility3 {plugin} (Windows, {_VOL3_WINDOWS_VERSION})",
                 timeout=scale_memory_timeout(floor, image_bytes),
             ))
         for key, label in _VOL_WINDOWS_REGISTRY_KEYS:
@@ -3675,7 +3679,7 @@ def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[Tool
                 host="windows", tool="vol",
                 argv=["vol3", "-f", str(img), "-r", "jsonl",
                       "windows.registry.printkey", "--key", key],
-                purpose=f"Volatility3 registry.printkey {label} (Windows, 2.28.0)",
+                purpose=f"Volatility3 registry.printkey {label} (Windows, {_VOL3_WINDOWS_VERSION})",
                 timeout=scale_memory_timeout(3600, image_bytes),
             ))
     return jobs

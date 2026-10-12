@@ -12,7 +12,7 @@ from nexus.langgraph.tool_lane import ToolJob, _one_engine_per_plugin, _vol_toke
 
 def _windows(plugin: str, status: str = "PENDING") -> ToolJob:
     return ToolJob(host="windows", tool="vol", argv=["vol3", "-f", "img", plugin],
-                   purpose=f"Volatility3 {plugin} (Windows, 2.28.0)", status=status)
+                   purpose=f"Volatility3 {plugin} (Windows, 2.28.2)", status=status)
 
 
 def _sift(plugin: str, status: str = "PENDING") -> ToolJob:
@@ -21,9 +21,9 @@ def _sift(plugin: str, status: str = "PENDING") -> ToolJob:
 
 
 def test_the_plugin_is_read_the_same_way_from_either_engines_purpose():
-    assert _vol_token("Volatility3 windows.pslist (Windows, 2.28.0)") == "windows.pslist"
+    assert _vol_token("Volatility3 windows.pslist (Windows, 2.28.2)") == "windows.pslist"
     assert _vol_token("Volatility3 windows.pslist") == "windows.pslist"
-    assert _vol_token("Volatility3 registry.printkey Run (Windows, 2.28.0)") == "registry.printkey Run"
+    assert _vol_token("Volatility3 registry.printkey Run (Windows, 2.28.2)") == "registry.printkey Run"
     assert _vol_token("Volatility3 registry.printkey Run") == "registry.printkey Run"
     assert _vol_token("MFT parse (CSV)") == ""
 

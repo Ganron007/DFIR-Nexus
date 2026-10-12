@@ -1,0 +1,21 @@
+# Volatility 3 for Windows memory (WO-TA item 6). Operator decision 2026-10-11: it runs on the Windows host.
+# Licence: Volatility Software License 1.0 (VSL, Volatility Foundation).
+#
+# Framework: the official PyPI wheel volatility3-2.28.2-py3-none-any.whl
+#   sha256 0461d6dd71b9ddbaf70c96e079c06efdf174ac65383b3dcf10dd165181fbd3c3
+# Its only runtime requirement is pefile (2024.8.26). The 'full' extra is not installed: its pillow
+# pin has no Python 3.14 build, and the windows.* plugins of the pack do not need it.
+#
+# Install (venv under this folder, which the vol3 wrapper expects):
+#   C:/Python314/python.exe -m venv tools/windows/memory/vol3-2.28.2-venv
+#   tools/windows/memory/vol3-2.28.2-venv/Scripts/python.exe -m pip install volatility3-2.28.2-py3-none-any.whl
+#   tools/windows/memory/vol3-2.28.2-venv/Scripts/python.exe -m pip install pefile==2024.8.26
+#
+# Upgrade 2026-10-12 from 2.28.0 (wheel sha256 68ea2257...). The 13 plugins the lane runs have the same option
+# sets in 2.28.0 and 2.28.2, and the same option sets as the SIFT host. 2.28.2 prints the banner on stdout for
+# -h and --help; a structured renderer (-r jsonl, as the lane runs) keeps it on stderr.
+#
+# Not used: the vol.exe / volshell.exe in volatility3-win-exes-2.28.2 (the release's Windows build; no source or
+# hash record is kept for it here, so the lane runs the venv wheel above).
+volatility3==2.28.2
+pefile==2024.8.26

@@ -1,8 +1,8 @@
 name: vol3
 category: memory
-description: "Volatility 3 2.28.0 memory forensics framework (Volatility Foundation, VSL 1.0), run on Windows memory through the pinned wrapper"
+description: "Volatility 3 2.28.2 memory forensics framework (Volatility Foundation, VSL 1.0), run on Windows memory through the pinned wrapper"
 platform: [windows, linux]
-platform_notes: "The lane runs it on Windows memory from a pinned venv (Tools/windows/memory/vol3-2.28.0-venv, installed from tools/windows/memory/vol3-2.28.0-requirements.txt). The same framework runs on the SIFT host, which is out of scope for the current case."
+platform_notes: "The lane runs it on Windows memory from a pinned venv (Tools/windows/memory/vol3-2.28.2-venv, installed from tools/windows/memory/vol3-2.28.2-requirements.txt). The same framework runs on the SIFT host, which is out of scope for the current case."
 artifacts_parsed: []
 
 caveats:

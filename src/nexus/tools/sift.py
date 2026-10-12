@@ -617,7 +617,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             run_command("fls -f ntfs /evidence/image.dd")
             run_command("bulk_extractor -o /out /evidence/image.dd")
             run_command("strings /evidence/memory.dmp | grep -i password")
-            run_command("python3 /opt/volatility3/vol.py -f memory.dmp windows.info",
+            run_command("vol -f memory.dmp windows.info",
                 input_files=["/evidence/memory.dmp"])
 
         Args:
