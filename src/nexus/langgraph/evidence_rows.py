@@ -70,8 +70,11 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 row[key] = value
         # The subject fields the hit's ECS leaves give (operator decision 2026-10-12): the account,
         # address, process, file and registry the row is about. The top-level host stays first.
-        from nexus.langgraph.subject import subject_fields
+        from nexus.langgraph.subject import family_subject_fields, subject_fields
         for key, value in subject_fields(h.get("ecs")).items():
+            row.setdefault(key, value)
+        # The subject fields the family's own columns give (item 3): PECmd, prefetch and SRUM rows carry no ECS.
+        for key, value in family_subject_fields(h).items():
             row.setdefault(key, value)
         evidence_rows.append(row)
     return evidence_rows

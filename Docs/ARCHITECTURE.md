@@ -462,7 +462,7 @@ A draft's subject (`entity`) and `category` come from the rows its cited audit c
 
 The duplicate check and the cross-mode comparison both key on (subject type, subject value, category). A claim's identity is never its wording: titles and observations are display text, and they name the subject the rows give when there is one.
 
-Known gaps, stated so nobody reads them as coverage. Logons have no pinned category yet, so they resolve through the account rule. Hayabusa rows carry no provider, so they fall back to their host. Prefetch, Amcache, SRUM, WER, JSON and CSV rows have no subject field until their declared columns are mapped.
+Families without ECS subject leaves take their subject from their own columns (`FAMILY_SUBJECT_COLUMNS`): PECmd from `ExecutableName`, prefetch from `Process`, SRUM from `ExeInfo` and then the account. Those rows take the program before the account. Known gaps, stated so nobody reads them as coverage. Logons have no pinned category yet, so they resolve through the account rule. Hayabusa rows carry no provider, so they fall back to their host. Prefetch `Process` is populated on a few rows only, and the memory timeline's free text is not parsed. SRUM `AppId` and `UserId` are numeric table ids, so they are never a subject. Amcache (a GUID key), WER, JSON and CSV rows name no subject, so they have none. PECmd's subject is an NT volume path, which does not equal the EVTX process path for the same file.
 
 ## LLM Client Setup
 

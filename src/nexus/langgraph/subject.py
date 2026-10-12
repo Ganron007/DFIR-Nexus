@@ -71,6 +71,21 @@ ORDER_BY_GROUP = {
     "account": ("account", "source_address", "process", "file", "registry", "host"),
 }
 
+#: The columns a family's own rows name the subject with, for families whose rows carry no ECS subject
+#: leaves (checked against the case index, 2026-10-12). Each entry is (subject field, column). A column is
+#: read from the parsed fields first, then from the hit's envelope. Not here, and why: SRUM AppId and
+#: UserId are numeric table ids; Amcache KeyName is a GUID; WER, JSON and CSV name no subject; prefetch
+#: free text (the memory timeline's Text) is not parsed.
+FAMILY_SUBJECT_COLUMNS = {
+    "pecmd": (("process", "ExecutableName"),),
+    "prefetch": (("process", "Process"),),
+    "srumecmd": (("process", "ExeInfo"), ("account", "user")),
+}
+
+#: The subject order of a family's rows when they carry no pinned category: the program the row is about
+#: comes before the account that ran it (a SRUM row is an app's use by a user).
+FAMILY_ORDER = {family: ORDER_BY_GROUP["process"] for family in FAMILY_SUBJECT_COLUMNS}
+
 #: The group of every category in the pinned table. tests/test_subject.py checks that the
 #: table and this map name the same categories, so a new pinned category needs a decision here.
 GROUP_OF_CATEGORY = {
@@ -184,13 +199,36 @@ def derive_subject(rows: list[dict[str, Any]]) -> dict[str, Any]:
     chosen = next(c for c in categories if counts[c] == top)
 
     group = GROUP_OF_CATEGORY.get(chosen, "account")
-    for field in ORDER_BY_GROUP[group]:
+    order = ORDER_BY_GROUP[group]
+    if chosen == OTHER:
+        order = FAMILY_ORDER.get(_family_of_rows(ordered), order)
+    for field in order:
         for row in ordered:
             value = present(row.get(FIELD_ROW_KEY[field]))
             if value:
                 entity = {"type": FIELD_KIND[field], "value": _normalize(field, value)}
                 return {"entity": entity, "category": chosen}
     return {"entity": {}, "category": chosen}
+
+
+def _family_of_rows(rows: list[dict[str, Any]]) -> str:
+    """The family the rows came from: the most common one, ties to the earliest row (the row's source)."""
+    families = [str(row.get("source") or "").split("/", 1)[0] for row in rows]
+    counts = Counter(families)
+    top = max(counts.values())
+    return next(family for family in families if counts[family] == top)
+
+
+def family_subject_fields(hit: dict[str, Any]) -> dict[str, str]:
+    """The row fields a hit's family columns give (see FAMILY_SUBJECT_COLUMNS), placeholders dropped."""
+    columns = FAMILY_SUBJECT_COLUMNS.get(str(hit.get("family") or ""), ())
+    fields = hit.get("fields") if isinstance(hit.get("fields"), dict) else {}
+    out: dict[str, str] = {}
+    for field, column in columns:
+        value = present(fields[column] if column in fields else hit.get(column))
+        if value:
+            out[FIELD_ROW_KEY[field]] = value
+    return out
 
 
 def subject_key(entity: Any, category: Any) -> str:
