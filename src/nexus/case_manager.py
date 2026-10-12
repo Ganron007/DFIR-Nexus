@@ -115,16 +115,16 @@ def _duplicate_key(finding: dict) -> tuple[str, str, tuple[str, ...]]:
     differently. A finding with no entity keeps the title rule: the normalized
     title plus its evidence lines, so two such DRAFTs match only when both do.
     """
-    from nexus.discipline import entity_key
+    from nexus.langgraph.subject import subject_key
 
     evidence = tuple(sorted(
         _evidence_row_identity(e)
         for e in (finding.get("evidence") or [])
         if e
     ))
-    entity = entity_key(finding.get("entity"))
-    if entity:
-        return "entity", entity, evidence
+    subject = subject_key(finding.get("entity"), finding.get("category"))
+    if subject:
+        return "entity", subject, evidence
     title = " ".join(str(finding.get("title") or "").split()).lower()
     return "title", title, evidence
 
@@ -532,7 +532,7 @@ class CaseManager:
                               "technique_ids", "scribe_source", "examiner_selected",
                               "provenance", "verifier",
                               "run_id", "run_ids", "modes", "input_call_ids", "source",
-                              "entity"}}
+                              "entity", "category"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
@@ -613,6 +613,7 @@ class CaseManager:
             # D70: the entity the finding is about; with the cited rows it is the identity
             # a second mode's DRAFT is matched on.
             "entity": sanitized.get("entity") if isinstance(sanitized.get("entity"), dict) else {},
+            "category": str(sanitized.get("category") or "other"),
             "type": sanitized.get("type", ""),
             "host": sanitized.get("host", ""),
             "affected_account": sanitized.get("affected_account", ""),

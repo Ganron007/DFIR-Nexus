@@ -68,25 +68,13 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
             value = str(h.get(key) or "").strip()
             if value:
                 row[key] = value
+        # The subject fields the hit's ECS leaves give (operator decision 2026-10-12): the account,
+        # address, process, file and registry the row is about. The top-level host stays first.
+        from nexus.langgraph.subject import subject_fields
+        for key, value in subject_fields(h.get("ecs")).items():
+            row.setdefault(key, value)
         evidence_rows.append(row)
     return evidence_rows
-
-
-def derive_entity_from_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
-    """The entity a finding is about, derived from the rows it cites (WO-1C item 4, option b).
-
-    Operator decision 2026-10-11: the entity comes from the cited rows, not from a model's wording.
-    An event id in any row gives ``event_id``; else a host gives ``host``; else a user gives ``user``.
-    Rows are read in ``loc`` order, so the same citation gives the same entity whatever order it was
-    written in. A finding whose rows carry none of those keys has no entity ({}).
-    """
-    ordered = sorted((r for r in rows or [] if isinstance(r, dict)), key=lambda r: str(r.get("loc") or ""))
-    for kind in ("event_id", "host", "user"):
-        for row in ordered:
-            value = str(row.get(kind) or "").strip()
-            if value:
-                return {"type": kind, "value": value if kind == "event_id" else value.lower()}
-    return {}
 
 
 def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:

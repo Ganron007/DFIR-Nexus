@@ -31,6 +31,15 @@ from nexus.analysis.cross_mode import check_cross_mode, collect_mode_claims
 # Mode 1 claim collection (the "not run" lie)
 # --------------------------------------------------------------------------
 
+def _cite(case_dir: Path, audit_id: str, **subject: str) -> None:
+    """Write the rows a cited call stored in the audit trail of the case, in the shape the product writes."""
+    path = case_dir / "audit" / "nexus.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {"loc": f"{audit_id}.csv:1", "detail": "cited row", **subject}
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"audit_id": audit_id, "result_summary": {"evidence_rows": [row]}}) + "\n")
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value), encoding="utf-8")
@@ -38,6 +47,7 @@ def _write_json(path: Path, value: Any) -> None:
 
 def test_collect_mode_claims_reads_mode1_run_records(tmp_path: Path) -> None:
     """A Mode 1 analysis run's candidates are claims, like Mode 2/3's."""
+    _cite(tmp_path, "aud-1", process="lsass.exe")
     (tmp_path / "CASE.yaml").write_text("case_id: CASE-X\n", encoding="utf-8")
     _write_json(tmp_path / "findings.json", [])
     _write_json(
@@ -89,6 +99,7 @@ def test_collect_mode_claims_ignores_non_analysis_pipeline_runs(tmp_path: Path) 
 
 def test_collect_mode_claims_reads_mode1_full_run(tmp_path: Path) -> None:
     """``analysis/mode1_full_run.json`` is the other Mode 1 record shape."""
+    _cite(tmp_path, "aud-2", process="cmd.exe")
     _write_json(tmp_path / "findings.json", [])
     _write_json(
         tmp_path / "analysis" / "mode1_full_run.json",
@@ -107,6 +118,8 @@ def test_collect_mode_claims_reads_mode1_full_run(tmp_path: Path) -> None:
 
 def test_one_case_three_modes_are_all_seen(tmp_path: Path) -> None:
     """The D5 = C shape: one case, M1 + M2 + M3, all three compared."""
+    for audit_id in ("a", "b", "c"):
+        _cite(tmp_path, audit_id, process="lsass.exe")
     _write_json(tmp_path / "findings.json", [])
     _write_json(
         tmp_path / "analysis" / "pipeline_runs" / "M1-20261009T120000-abcdef.json",
@@ -257,6 +270,8 @@ def test_cross_mode_case_flag_compares_one_cases_runs(
          "candidates": [{"title": "lsass.exe executed", "audit_ids": ["b"]}]},
     )
     _write_json(tmp_path / "CASE-ONE" / "findings.json", [])
+    _cite(case_dir, "a", process="lsass.exe")
+    _cite(case_dir, "b", process="lsass.exe")
 
     monkeypatch.setattr("nexus.config.settings.cases_root", tmp_path)
     runner = CliRunner()

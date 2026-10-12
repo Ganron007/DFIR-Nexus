@@ -116,10 +116,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             finding_data["itm_objects"] = itm_objects
         if evidence:
             finding_data["evidence"] = evidence[:12]
-        # D70: the entity the finding is about. Without this parameter the interpret
-        # payload's entity was dropped at the MCP boundary.
-        if isinstance(entity, dict) and entity:
-            finding_data["entity"] = dict(entity)
+        # Operator decision 2026-10-12: the subject and category are derived below, from the rows the
+        # cited audit calls stored in this case. A caller's entity is not taken: identity is not the
+        # agent's to write.
         # Interpret-loop staging is the model, not an examiner selection.
         finding_data.setdefault("examiner_selected", False)
         finding_data.setdefault("provenance", {
@@ -132,6 +131,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             target = _target_case_dir(case_id)
         except ValueError as e:
             return {"error": str(e)}
+        from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+        from nexus.langgraph.subject import derive_subject
+
+        try:
+            case_root = target if target is not None else manager.require_active_case()
+        except Exception:  # noqa: BLE001 - no case: the manager below reports it
+            case_root = None
+        cited = evidence_rows_for_audit_ids(case_root, audit_ids or []) if case_root is not None else []
+        subject = derive_subject(cited)
+        finding_data["entity"] = subject["entity"]
+        finding_data["category"] = subject["category"]
         try:
             result = manager.record_finding(
                 finding_data,

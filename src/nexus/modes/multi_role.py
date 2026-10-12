@@ -463,7 +463,7 @@ ROLES: dict[str, AgentRole] = {
             "run_record before claiming something is absent. Return JSON: "
             '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
             '"audit_ids":["..."]}],"entities":["..."],'
-            '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
+            '"candidate_findings":[{"title":"...","observation":"...",'
             '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
             '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
             '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
@@ -798,10 +798,8 @@ def stage_run_candidates(
     lineage so the run event stream is the provenance. Approval remains
     password-gated and examiner-only — nothing here approves or promotes.
     """
-    from nexus.langgraph.evidence_rows import (
-        derive_entity_from_rows,
-        evidence_rows_for_audit_ids,
-    )
+    from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+    from nexus.langgraph.subject import derive_subject
     from nexus.modes.llm_desk import save_draft_finding
 
     case_dir = Path(case_dir)
@@ -874,8 +872,9 @@ def stage_run_candidates(
             ) if t
         ]
         # D70: the rows the cited calls stored; model text only when none were stored.
-        staged_rows = (evidence_rows_for_audit_ids(case_dir, audit_ids)
-                       or _normalise_evidence(candidate, source=run_mode))
+        audit_rows = evidence_rows_for_audit_ids(case_dir, audit_ids)
+        subject = derive_subject(audit_rows)
+        staged_rows = audit_rows or _normalise_evidence(candidate, source=run_mode)
         draft = {
             "title": title,
             "observation": observation,
@@ -890,7 +889,8 @@ def stage_run_candidates(
             # text is the fallback only when no cited call stored rows.
             "evidence": staged_rows,
             # WO-1C item 4 (option b): the entity is what the cited rows are about, not the claim's wording.
-            "entity": derive_entity_from_rows(staged_rows),
+            "entity": subject["entity"],
+            "category": subject["category"],
             "status": "DRAFT",
             "source": run_mode,
             "run_id": run_id,
@@ -1051,7 +1051,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
     "evidence": (
         '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
         '"audit_ids":["..."]}],"entities":["..."],'
-        '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
+        '"candidate_findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
@@ -1061,7 +1061,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '{"corroborated_entities":["..."],"chains":[{"entities":["..."],'
         '"times":["..."],"evidence":["family/file:line ..."],'
         '"audit_ids":["..."]}],"unexplained":["..."],'
-        '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
+        '"candidate_findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"next_questions":["..."],'
@@ -1070,7 +1070,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
     "pattern": (
         '{"patterns":[{"name":"...","technique_ids":["..."],'
         '"evidence":["family/file:line ..."],"audit_ids":["..."]}],'
-        '"candidate_findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
+        '"candidate_findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"caveats":["..."],"next_questions":["..."],'
@@ -1082,7 +1082,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"not_checked":["..."]}}'
     ),
     "synthesis": (
-        '{"narrative":"...","findings":[{"title":"...","entity":{"type":"...","value":"..."},"observation":"...",'
+        '{"narrative":"...","findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"confidence_justification":"...","audit_ids":["..."],'

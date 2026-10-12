@@ -21,6 +21,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from nexus.langgraph.subject import derive_subject
+
 ES = os.environ.get("NEXUS_TEST_ES_URL", "http://localhost:9200").rstrip("/")
 REAL = Path(__file__).resolve().parents[1] / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd"
 SOURCE = REAL / "20260921194149_EvtxECmd_Output.csv"
@@ -31,7 +33,7 @@ SOURCE = REAL / "20260921194149_EvtxECmd_Output.csv"
 CASE_ID = "TEST-36EREAL01"
 INDEX = "nexus-case-test-36ereal01"
 SHARED_TITLE = "Event 1004 records from Microsoft-Windows-Security-SPP are present on the host"
-SHARED_ENTITY = {"type": "event_id", "value": "1004"}
+# The draft's subject is derived from the rows it cites (operator decision 2026-10-12); nothing fixes it.
 # fields.EventId is a long in the real mapping (no .kw subfield). The tool text says
 # "fields.<Name>.kw"; on a numeric column that matches nothing, silently (register D69).
 ES_QUERY = {"bool": {"filter": [{"term": {"fields.EventId": 1004}}]}}  # most common EventId in the 800-row slice
@@ -91,7 +93,6 @@ def _candidate(audit_id: str) -> dict:
         "observation": "EventID 1004 rows are present in the indexed EvtxECmd output",
         "interpretation": "the event is recorded; its meaning needs the event data",
         "audit_ids": [audit_id],
-        "entity": SHARED_ENTITY,
     }
 
 
@@ -164,8 +165,12 @@ def test_one_case_modes_one_two_three_then_cross_mode(case, monkeypatch):
     # carries those rows as its evidence (D70: the same rows Modes 2 and 3 cite).
     picked = backbone_call("es_search", audit=audit, case_dir=case, query=ES_QUERY)["hits"]
     draft = promote_hits_to_draft(case, picked, SHARED_TITLE, examiner="operator")
-    # WO-1C item 4 (option b): the entity is what the cited rows are about, derived from them and not passed in.
-    assert draft["entity"] == SHARED_ENTITY, draft["entity"]
+    # Operator decision 2026-10-12: the subject is derived from the rows the draft cites, by the rule every
+    # mode uses. Checked against the real rows, not a fixed value.
+    derived = derive_subject(draft["evidence"])
+    assert draft["entity"] == derived["entity"], (draft["entity"], derived)
+    assert draft["category"] == derived["category"]
+    assert draft["entity"].get("type") != "event_id", draft["entity"]
     draft.update({
         "severity": "medium", "confidence": "MEDIUM",
         "confidence_justification": "one parser family, rows returned by a real query",

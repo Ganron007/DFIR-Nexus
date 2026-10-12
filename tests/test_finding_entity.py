@@ -42,9 +42,10 @@ def test_the_record_payload_no_longer_takes_the_models_entity():
     assert "entity" not in payload
 
 
-def test_the_mcp_record_finding_tool_passes_the_entity_to_the_case(monkeypatch, tmp_path):
-    """The interpret payload reaches the case through the MCP tool: its entity must not be
-    dropped at that boundary (D70)."""
+def test_the_mcp_record_finding_tool_takes_no_entity_from_the_caller(monkeypatch, tmp_path):
+    """The MCP tool does not take a caller's entity (operator decision 2026-10-12): the subject is
+    derived from the rows the cited audit calls stored. A call that cites no stored row has no
+    subject, so the model's entity never reaches the case."""
     from mcp.server.fastmcp import FastMCP
 
     from nexus import case_manager
@@ -64,4 +65,5 @@ def test_the_mcp_record_finding_tool_passes_the_entity_to_the_case(monkeypatch, 
     tool(title="SPP event 1004 present", observation="rows returned",
          interpretation="recorded", entity=ENTITY,
          evidence=[{"detail": "EventId 1004"}])
-    assert captured.get("entity") == ENTITY, captured.keys()
+    assert captured.get("entity") == {}, captured.get("entity")
+    assert captured.get("category") == "other", captured.get("category")

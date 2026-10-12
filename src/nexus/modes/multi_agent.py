@@ -432,11 +432,17 @@ def settled_candidates(
             if verifier_basis:
                 justification = f"{justification}\nVerifier: {verifier_basis}"
             from nexus.analysis.titles import claim_title
+            from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+            from nexus.langgraph.subject import derive_subject
 
+            # Operator decision 2026-10-12: the subject is derived from the rows this claim cites,
+            # by the rule every mode uses. The model's entity labels are not the identity.
+            audit_rows = (evidence_rows_for_audit_ids(case_dir, _audit_ids(claim))
+                          if case_dir is not None else [])
+            subject = derive_subject(audit_rows)
             candidates.append({
-                # D70: the claim's entity is the identity its DRAFT is matched on.
-                "entity": ({"type": str(claim.get("entity_type") or ""), "value": entity}
-                           if entity else {}),
+                "entity": subject["entity"],
+                "category": subject["category"],
                 # "evtxecmd: presence" is a dispute key rendered as English. The
                 # claim carries a value and a justification, and either is a
                 # sentence an examiner can read, so one of them leads the title.

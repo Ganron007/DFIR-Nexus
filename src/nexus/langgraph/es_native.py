@@ -417,6 +417,13 @@ def _shape_hit(src: dict[str, Any]) -> dict[str, Any]:
     for key in ("ts_tz_assumed", "ts_year_assumed"):
         if src.get(key) is True:
             hit[key] = True
+    # The ECS subject leaves (operator decision 2026-10-12): the evidence row takes its account,
+    # address, process, file and registry from these (nexus.langgraph.subject). The whole ECS block
+    # is not carried: only the leaves the subject rule reads.
+    from nexus.langgraph.subject import ecs_leaves
+    ecs = ecs_leaves(src.get("ecs"))
+    if ecs:
+        hit["ecs"] = ecs
     return hit
 
 

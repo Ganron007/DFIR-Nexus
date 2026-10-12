@@ -32,6 +32,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+from nexus.langgraph.subject import derive_subject
+
 __all__ = [
     "MODES",
     "collect_mode_claims",
@@ -239,45 +242,52 @@ def _kind_for(claim: dict[str, Any]) -> str:
     return "observation"
 
 
-def _claim_from_finding(mode: str, f: dict[str, Any]) -> list[dict[str, Any]]:
-    """Project one finding into claim rows (one per named entity)."""
+def _claim_from_finding(
+    mode: str, f: dict[str, Any], case_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Project one finding or candidate into a claim row keyed on the subject its rows give.
+
+    Operator decision 2026-10-12: the key is (subject type, subject value, category), derived
+    from the rows the claim cites by the rule staging uses. Two modes that cite the same rows
+    name the same subject whatever words they used; words decide polarity only. A claim whose
+    rows give no subject is not comparable and yields no row.
+    """
     text = " ".join(
         _norm(f.get(k)) for k in ("title", "description", "rationale", "interpretation", "claim")
     )
-    entities = _entities(text)
-    if not entities:
-        # A finding that names no entity still asserts something; key it on the
-        # title so two modes can still be compared on it.
-        t = _norm(f.get("title"))
-        if t:
-            entities = [("finding", t.lower()[:80])]
     pol = _polarity(f.get("polarity") or f.get("status_reason") or text)
-    ids = _audit_ids(f)
-    kind = _kind_for(f)
+    rows = f.get("evidence") if isinstance(f.get("evidence"), list) else []
+    if not rows and case_dir is not None:
+        rows = evidence_rows_for_audit_ids(Path(case_dir), _audit_ids(f))
+    subject = derive_subject(rows)
+    entity = subject["entity"]
+    if not entity:
+        return []
     return [
         {
             "mode": mode,
             "source": f"finding:{_norm(f.get('id')) or '?'}",
-            "key": [etype, evalue, kind],
+            "key": [entity["type"], entity["value"], subject["category"]],
             "polarity": pol,
-            "audit_ids": ids,
+            "audit_ids": _audit_ids(f),
             "title": _norm(f.get("title"))[:160],
             "confidence": f.get("confidence"),
         }
-        for etype, evalue in entities
     ]
 
 
-def _claims_from_run(mode: str, record: dict[str, Any]) -> list[dict[str, Any]]:
+def _claims_from_run(
+    mode: str, record: dict[str, Any], case_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for cand in record.get("candidates") or ():
         if not isinstance(cand, dict):
             continue
-        rows.extend(_claim_from_finding(mode, cand))
+        rows.extend(_claim_from_finding(mode, cand, case_dir))
     for v in record.get("verdicts") or ():
         if not isinstance(v, dict):
             continue
-        rows.extend(_claim_from_finding(mode, {**v, "polarity": v.get("verdict")}))
+        rows.extend(_claim_from_finding(mode, {**v, "polarity": v.get("verdict")}, case_dir))
     return rows
 
 
@@ -328,7 +338,7 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
             stored = _stored_mode(case_dir)
             for f in findings:
                 if isinstance(f, dict):
-                    by_mode[stored].extend(_claim_from_finding(stored, f))
+                    by_mode[stored].extend(_claim_from_finding(stored, f, case_dir))
 
     for mode, sub in (("2", "mode2_runs"), ("3", "mode3_runs")):
         d = case_dir / "analysis" / sub
@@ -340,7 +350,7 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
             except (OSError, ValueError):
                 continue
             if isinstance(loaded, dict):
-                by_mode[mode].extend(_claims_from_run(mode, loaded))
+                by_mode[mode].extend(_claims_from_run(mode, loaded, case_dir))
 
     # WO-1C item 2: Mode 1 analysis runs carry an ``M1-`` run id and live under
     # ``analysis/pipeline_runs`` (alongside the non-analysis tool runs). Before
@@ -356,7 +366,7 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
             except (OSError, ValueError):
                 continue
             if isinstance(loaded, dict):
-                by_mode["1"].extend(_claims_from_run("1", loaded))
+                by_mode["1"].extend(_claims_from_run("1", loaded, case_dir))
     full_run = case_dir / "analysis" / "mode1_full_run.json"
     if full_run.is_file():
         try:
@@ -364,7 +374,7 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
         except (OSError, ValueError):
             loaded = None
         if isinstance(loaded, dict):
-            by_mode["1"].extend(_claims_from_run("1", loaded))
+            by_mode["1"].extend(_claims_from_run("1", loaded, case_dir))
     return by_mode
 
 

@@ -2361,17 +2361,13 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 linked = set()
         payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
         if stage_case_dir is not None:
-            from nexus.langgraph.evidence_rows import (
-                derive_entity_from_rows,
-                evidence_rows_for_audit_ids,
-            )
+            from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
 
             stored = evidence_rows_for_audit_ids(stage_case_dir, [str(a) for a in payload.get("audit_ids") or []])
             if stored:
                 payload["evidence"] = stored[:12]
-            entity = derive_entity_from_rows(stored)
-            if entity:
-                payload["entity"] = entity
+            # record_finding derives the subject and category from these same audit rows (operator
+            # decision 2026-10-12), so the payload carries no identity of its own.
         if stage_case_id:
             # The run's own case: the tool stages there, never into the global active case.
             payload["case_id"] = stage_case_id

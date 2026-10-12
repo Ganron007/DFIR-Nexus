@@ -61,6 +61,14 @@ def policy_from_body(body: Any) -> str:
     return DEFAULT_POLICY
 
 
+def _subject_text(finding: dict[str, Any]) -> str:
+    """The subject a draft names, as ``type=value`` (empty when it names none)."""
+    entity = finding.get("entity")
+    if isinstance(entity, dict) and entity.get("type") and entity.get("value"):
+        return f"{entity['type']}={entity['value']}"
+    return ""
+
+
 def prior_context(case_dir: Path) -> dict[str, Any]:
     """Everything a prior analysis produced on this case, labelled as such.
 
@@ -99,6 +107,8 @@ def prior_context(case_dir: Path) -> dict[str, Any]:
                     "observation": str(f.get("observation") or ""),
                     "interpretation": str(f.get("interpretation") or ""),
                     "technique_ids": f.get("technique_ids") or [],
+                    "subject": _subject_text(f),
+                    "category": str(f.get("category") or ""),
                 })
 
     return {
@@ -128,8 +138,10 @@ def render_prior_context(ctx: dict[str, Any]) -> str:
         parts.append("Draft findings already staged on this case:")
         for d in ctx["drafts"]:
             title = d.get("title") or "(untitled)"
+            subject = d.get("subject") or "no subject derived"
+            category = d.get("category") or "other"
             parts.append(
-                f"- [{d.get('severity') or '?'}] {title} — "
+                f"- [{d.get('severity') or '?'}] {title} — subject {subject} ({category}) — "
                 f"{d.get('interpretation') or d.get('observation') or ''}"
             )
     return "\n".join(parts)

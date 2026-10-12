@@ -426,7 +426,7 @@ audit-backed claims. The **join** groups claims by
 `(entity_type, entity_value, claim_kind)`, opens **disputes** on conflicts and
 can re-dispatch the named seats (bounded); it settles after quiet supersteps
 or when re-dispatch is exhausted. Unresolved disputes are **gaps, never
-findings**; only settled, audit-backed claims become DRAFT candidates.
+findings**; only settled, audit-backed claims become DRAFT candidates. The join compares the seats' labels inside one run; a draft's subject and the cross-mode comparison use the subject derived from the rows each claim cites (ARCHITECTURE.md, Finding subject and category).
 
 Controls and surfaces: `nexus mode3
 run|status|board|steer|pause|resume|stop|stage|export`, the API
