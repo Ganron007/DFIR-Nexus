@@ -4582,7 +4582,6 @@ def _find_recmd_batch() -> Path | None:
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/Kroll_Batch.reb",
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/RECmd_Batch_MC.reb",
-        "tools/windows/kape/Modules/bin/RECmd/RECmd_Batch_MC.reb",
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/BasicSystemInfo.reb",
     ):
         p = root / rel
@@ -4614,7 +4613,6 @@ def _find_recmd_dfir_batch() -> Path | None:
     root = _repo_root()
     for rel in (
         "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
-        "tools/windows/kape/Modules/bin/RECmd/BatchExamples/DFIRBatch.reb",
     ):
         p = root / rel
         if p.is_file():

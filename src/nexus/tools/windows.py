@@ -221,7 +221,21 @@ def _name_matches(filename: str, wanted: str) -> bool:
     return bool(f.startswith(f"{wstem}_") and f.endswith(".exe"))
 
 
+_KAPE_LAUNCHERS = frozenset({"kape.exe", "gkape.exe"})
+
+
+def _is_kape_bundle_copy(p: Path) -> bool:
+    """True for a parser copy shipped inside KAPE's folder. Operator decision 2026-10-13 (D104): never run.
+
+    KAPE's bundled EZ tools are 2022-2023 builds. A tool the current toolset lacks is a SKIP, not a silent run
+    of an old parser. The KAPE launchers are the collector (Stage 0 acquisition), not parsers, and stay resolvable.
+    """
+    parts = [s.lower() for s in Path(p).parts]
+    return "kape" in parts and Path(p).name.lower() not in _KAPE_LAUNCHERS
+
+
 def _prefer_binary(paths: list[Path]) -> Path | None:
+    paths = [p for p in paths if not _is_kape_bundle_copy(p)]
     if not paths:
         return None
     rank = {".exe": 0, ".cmd": 1, ".bat": 1, ".ps1": 3, ".pl": 4, ".py": 4}
@@ -245,7 +259,6 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
         "zimmerman",                              # other Zimmerman copies
         "extra",                                  # curated extras (bmc-tools, hindsight, ...)
         "sysinternals",
-        "kape",                                   # vendor bundle, oldest
     )
 
     def _toolset_rank(p: Path) -> int:
