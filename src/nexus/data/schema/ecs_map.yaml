@@ -40,6 +40,14 @@ winlog_event_data:
       LogonType: ecs.winlog.logon.type
       IpAddress: ecs.source.ip
       IpPort: ecs.source.port
+    # D113 (2026-10-13): the logoff and NTLM validation rows carry the account in TargetUserName, but had no
+    # block here, so their subject fell back to the host. Names checked against the real rows' Payload.
+    "4634":
+      TargetUserName: ecs.user.target.name
+      TargetDomainName: ecs.user.target.domain
+      LogonType: ecs.winlog.logon.type
+    "4776":
+      TargetUserName: ecs.user.target.name
     "4688":
       NewProcessName: ecs.process.executable
       CommandLine: ecs.process.command_line

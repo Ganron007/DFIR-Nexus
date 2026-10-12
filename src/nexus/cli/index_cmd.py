@@ -128,3 +128,47 @@ def verify(
         )
         raise typer.Exit(1)
     typer.echo("All indexed source files match their recorded digests.")
+
+
+@app.command("recompute-ecs")
+def recompute_ecs(
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
+    event: str = typer.Option("4634,4776", "--event", help="Security event ids to recompute (comma-separated)"),
+    apply: bool = typer.Option(False, "--apply", help="Write the recomputed ecs. Without it, report only."),
+) -> None:
+    """Recompute the ecs of stored EVTX documents from their source rows (D113).
+
+    Run after an ecs_map change: a stored document keeps the mapping it was indexed with until it is recomputed.
+    Reads the source rows of the named events and writes only the ecs of documents it can verify. Report only
+    unless --apply is given. Exits 1 when any document was refused.
+    """
+    from nexus.config import settings
+    from nexus.langgraph.case_index import es_url
+    from nexus.langgraph.ecs_recompute import recompute_case
+
+    if not es_url():
+        typer.echo("NEXUS_ES_URL is not set; there is no index to recompute.", err=True)
+        raise typer.Exit(1)
+    case_id = case.strip()
+    if not case_id:
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
+    case_dir = settings.cases_root / case_id
+    if not case_dir.is_dir():
+        typer.echo(f"Case not found: {case_dir}", err=True)
+        raise typer.Exit(1)
+    ids = tuple(x.strip() for x in event.split(",") if x.strip())
+    report = recompute_case(case_id, case_dir, event_ids=ids, apply=apply)
+    mode = "Applied" if apply else "Dry run"
+    typer.echo(
+        f"{mode}: {report['documents']} document(s) in {report['files']} file(s); "
+        f"{report['verified']} verified; {report['changed']} changed; {report['written']} written"
+    )
+    if report["leaves_added"]:
+        typer.echo("  leaves added: " + ", ".join(f"{k} x{v}" for k, v in report["leaves_added"].items()))
+    for problem in report["problems"][:50]:
+        typer.echo(f"  PROBLEM: {problem}")
+    if len(report["problems"]) > 50:
+        typer.echo(f"  ... {len(report['problems']) - 50} more problem(s)")
+    if report["problems"]:
+        raise typer.Exit(1)
