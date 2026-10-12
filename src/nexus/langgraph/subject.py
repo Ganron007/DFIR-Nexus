@@ -5,8 +5,9 @@ destination for a connection, the file or registry key for a file or registry ev
 account for anything else that names one. The host is the last resort.
 
 The event decides the category: the pinned table (``event_categories.yaml``) gives the
-category of each row's provider and event id, and ``other`` when it has none. The category
-chooses which field is the subject. The value is normalized the same way in every mode, so a
+category of each row's provider and event id. A row the pinned table does not name takes its
+family's category (``family_categories.yaml``, D112), and ``other`` when neither names one. The
+category chooses which field is the subject. The value is normalized the same way in every mode, so a
 claim made by Mode 1, Mode 2 or Mode 3 about the same rows names the same subject.
 
 The event id is never the subject. The case, the analysis context (independent or informed)
@@ -20,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.discipline import entity_key
-from nexus.langgraph.event_categories import OTHER, category_for
+from nexus.langgraph.event_categories import OTHER, row_category
 
 #: The ECS leaves a search hit carries into its evidence row, as dotted paths.
 ECS_SUBJECT_PATHS = (
@@ -80,6 +81,10 @@ FAMILY_SUBJECT_COLUMNS = {
     "pecmd": (("process", "ExecutableName"),),
     "prefetch": (("process", "Process"),),
     "srumecmd": (("process", "ExeInfo"), ("account", "user")),
+    # D112 (2026-10-13): AppCompatCache's Path is the executable each row names. A RECmd batch row carries its
+    # key as BatchKeyPath when it has no KeyPath (the ECS map reads KeyPath).
+    "appcompat": (("process", "Path"),),
+    "recmd": (("registry", "BatchKeyPath"),),
 }
 
 #: The subject order of a family's rows when they carry no pinned category: the program the row is about
@@ -171,13 +176,49 @@ def ecs_leaves(ecs: Any) -> dict[str, str]:
     return out
 
 
-def _normalize(field: str, value: str) -> str:
-    text = value.strip().lower()
-    if field == "account":
+#: The kinds a second entity of a time_order claim may name: the subject kinds.
+OTHER_ENTITY_KINDS = frozenset(FIELD_KIND.values())
+
+
+def normalize_entity(kind: str, value: str) -> str:
+    """A subject value as every mode writes it: lower case, one account name, one address, single spaces."""
+    text = str(value or "").strip().lower()
+    if kind == "account":
         text = text.rsplit("\\", 1)[-1]
-    if field in ("source_address", "destination_address"):
+    if kind == "address":
         text = text.strip("[]")
     return " ".join(text.split())
+
+
+def _normalize(field: str, value: str) -> str:
+    return normalize_entity(FIELD_KIND[field], value)
+
+
+def _row_text(node: Any) -> list[str]:
+    """Every string a row holds, at any depth."""
+    if isinstance(node, dict):
+        return [s for v in node.values() for s in _row_text(v)]
+    if isinstance(node, (list, tuple)):
+        return [s for v in node for s in _row_text(v)]
+    return [str(node)] if node is not None else []
+
+
+def ground_other_entity(kind: Any, value: Any, rows: list[dict[str, Any]]) -> dict[str, str]:
+    """The second entity of a time_order claim, when a cited row carries it; ``{}`` otherwise (D87).
+
+    The model names the second entity, and it is kept only when a cited row holds that value as a whole token,
+    so a claim cannot order two entities the evidence does not name. The kind must be a subject kind.
+    """
+    kind = str(kind or "").strip().lower()
+    if kind not in OTHER_ENTITY_KINDS or not present(value):
+        return {}
+    normalized = normalize_entity(kind, str(value))
+    if not normalized:
+        return {}
+    blob = "\n".join(s for row in rows if isinstance(row, dict) for s in _row_text(row)).lower()
+    if not re.search(rf"(?<![a-z0-9]){re.escape(normalized)}(?![a-z0-9])", blob):
+        return {}
+    return {"type": kind, "value": normalized}
 
 
 def _loc_order(row: dict[str, Any]) -> tuple[str, int, str]:
@@ -197,7 +238,7 @@ def derive_subject(rows: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted((r for r in rows or [] if isinstance(r, dict)), key=_loc_order)
     if not ordered:
         return {"entity": {}, "category": OTHER}
-    categories = [category_for(r.get("provider"), r.get("event_id")) for r in ordered]
+    categories = [row_category(r) for r in ordered]
     counts = Counter(categories)
     top = max(counts.values())
     chosen = next(c for c in categories if counts[c] == top)
@@ -257,7 +298,8 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
 
     The claim gets ``subject = {type, value, category}`` derived from the rows its audit calls stored,
     by the rule staging uses. A claim whose rows give no subject gets ``{}``: it cannot be compared with
-    another claim on the board. The audit trail is read once for the whole list.
+    another claim on the board. A time_order claim also gets ``other_subject``: its second entity, kept
+    only when a cited row carries it (``ground_other_entity``, D87). The audit trail is read once.
     """
     from nexus.langgraph.evidence_rows import stored_rows_by_audit_id, unique_rows
 
@@ -266,9 +308,14 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
     for claim in claims:
         if not isinstance(claim, dict):
             continue
-        subject = derive_subject(unique_rows(stored, _claim_audit_ids(claim)))
+        rows = unique_rows(stored, _claim_audit_ids(claim))
+        subject = derive_subject(rows)
         entity = subject["entity"]
         claim["subject"] = (
             {"type": entity["type"], "value": entity["value"], "category": subject["category"]}
             if entity else {}
         )
+        if str(claim.get("claim_kind") or "") == "time_order":
+            claim["other_subject"] = ground_other_entity(
+                claim.get("other_entity_type"), claim.get("other_entity_value"), rows,
+            )

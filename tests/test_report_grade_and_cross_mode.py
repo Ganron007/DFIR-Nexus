@@ -466,7 +466,7 @@ def test_render_and_write(tmp_path):
 def _claims(mode, title, polarity="affirm", audit=("nx-audit-0001",)):
     return [{
         "mode": mode, "source": f"finding:{mode}-1",
-        "key": ["process", "powershell.exe", "other"],
+        "key": ["process", "powershell.exe", "process_creation"],
         "polarity": polarity, "audit_ids": list(audit), "title": title,
         "confidence": "high",
     }]
@@ -537,7 +537,9 @@ def test_wo12_group_check_compares_siblings(tmp_path, monkeypatch):
             json.dumps([finding]), encoding="utf-8"
         )
         if name != "CASE-BBB0002":
-            _cite(case, finding["audit_ids"][0], host="ghosthost.example.com")
+            # A pinned network connection (Sysmon 3): D112 compares only claims that have a category.
+            _cite(case, finding["audit_ids"][0], provider="Microsoft-Windows-Sysmon", event_id="3",
+                  destination_ip="ghosthost.example.com")
     a = root / "CASE-AAA0001"
     b = root / "CASE-BBB0002"
     c = root / "CASE-CCC0003"
@@ -579,8 +581,8 @@ def test_wo12_mode2_findings_are_not_reported_as_mode1(tmp_path):
         }],
     }), encoding="utf-8")
 
-    _cite(case, "nx-audit-1111", process="powershell.exe")
-    _cite(case, "nx-audit-2222", process="powershell.exe")
+    _cite(case, "nx-audit-1111", provider="Microsoft-Windows-Sysmon", event_id="1", process="powershell.exe")
+    _cite(case, "nx-audit-2222", provider="Microsoft-Windows-Sysmon", event_id="1", process="powershell.exe")
     claims = collect_mode_claims(case)
     assert claims["1"] == [], "a Mode 2 case's findings must not be labelled Mode 1"
     assert claims["2"], claims
@@ -657,7 +659,8 @@ def test_denial_detected_from_prose_when_no_polarity_field():
 
     rows = _claim_from_finding("2", {
         "id": "F7", "title": "powershell.exe did not execute on this host",
-        "evidence": [{"loc": "f7.csv:1", "process": "powershell.exe"}],
+        "evidence": [{"loc": "f7.csv:1", "provider": "Microsoft-Windows-Sysmon", "event_id": "1",
+                      "process": "powershell.exe"}],
         "artifacts": [{"audit_id": "nx-audit-0002"}],
     })
     assert rows and rows[0]["polarity"] == "deny"
@@ -673,8 +676,8 @@ def test_denial_detected_from_prose_when_no_polarity_field():
 def test_collect_mode_claims_from_a_case(tmp_path):
     case = tmp_path / "CASE-X"
     (case / "analysis" / "mode3_runs").mkdir(parents=True)
-    _cite(case, "nx-audit-0001", process="powershell.exe")
-    _cite(case, "nx-audit-0002", process="powershell.exe")
+    _cite(case, "nx-audit-0001", provider="Microsoft-Windows-Sysmon", event_id="1", process="powershell.exe")
+    _cite(case, "nx-audit-0002", provider="Microsoft-Windows-Sysmon", event_id="1", process="powershell.exe")
     (case / "findings.json").write_text(json.dumps([
         {"id": "F1", "title": "powershell.exe ran from temp",
          "artifacts": [{"audit_id": "nx-audit-0001"}]},

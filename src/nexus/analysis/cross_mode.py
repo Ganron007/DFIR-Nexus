@@ -33,6 +33,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.event_categories import OTHER
 from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
 from nexus.langgraph.subject import derive_subject
 
@@ -257,6 +258,18 @@ def _claim_from_finding(
         _norm(f.get(k)) for k in ("title", "description", "rationale", "interpretation", "claim")
     )
     pol = _polarity(f.get("polarity") or f.get("status_reason") or text)
+    # D87 (2026-10-13): a time_order candidate names two entities, so it is compared as its pair, in the pair's
+    # canonical polarity (multi_agent._time_order_canonical), not as one subject.
+    if str(f.get("claim_kind") or "") == "time_order" and f.get("subject_pair"):
+        return [{
+            "mode": mode,
+            "source": f"finding:{_norm(f.get('id')) or '?'}",
+            "key": ["pair", str(f["subject_pair"]), "time_order"],
+            "polarity": str(f.get("polarity") or pol),
+            "audit_ids": _audit_ids(f),
+            "title": _norm(f.get("title"))[:160],
+            "confidence": f.get("confidence"),
+        }]
     rows = f.get("evidence") if isinstance(f.get("evidence"), list) else []
     if not rows and case_dir is not None:
         rows = evidence_rows_for_audit_ids(Path(case_dir), _audit_ids(f))
@@ -427,12 +440,20 @@ def check_cross_mode(
     present = [m for m, rows in claims_by_mode.items() if rows]
     missing = [m for m in ("1", "2", "3") if not claims_by_mode.get(m)]
 
+    # D112 (2026-10-13): a claim whose category is `other` names no category, so it is not compared. Two
+    # `other` claims used to match on the entity alone and join unrelated rows. It is counted, not dropped.
     grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
-    for rows in claims_by_mode.values():
+    unclassified: dict[str, int] = {}
+    for mode, rows in claims_by_mode.items():
         for row in rows:
             key = tuple(row["key"])
-            if all(key):
-                grouped.setdefault(key, []).append(row)
+            if not all(key):
+                continue
+            if key[2] == OTHER:
+                unclassified[mode] = unclassified.get(mode, 0) + 1
+                continue
+            grouped.setdefault(key, []).append(row)
+    comparable = sum(len(rows) for rows in grouped.values())
 
     shared: list[dict[str, Any]] = []
     contradictions: list[dict[str, Any]] = []
@@ -507,6 +528,9 @@ def check_cross_mode(
         verdict = "incomplete"
     elif not present:
         verdict = "unknown"
+    elif not comparable:
+        # Every claim is unclassified (D112): nothing was compared, which is not agreement either.
+        verdict = "unknown"
     elif not shared_entities and len(present) >= 2:
         # Zero overlap with no contradiction is NOT agreement. It means the modes
         # share no comparable vocabulary, so there was nothing for them to agree
@@ -531,6 +555,11 @@ def check_cross_mode(
         "verdict": verdict,
         "scope": "intra-case",
         "claim_rows": total,
+        "comparable_claims": comparable,
+        "unclassified": {
+            "claims": sum(unclassified.values()),
+            "by_mode": {MODES.get(m, m): n for m, n in sorted(unclassified.items())},
+        },
         "shared_entities": sorted(shared_entities)[:40],
         "entity_overlap": jaccard,
         "shared": shared,
@@ -650,11 +679,16 @@ def render_consistency_markdown(result: dict[str, Any]) -> str:
         ]
     c = result.get("counts") or {}
     out += [
-        f"- Claim rows compared: {result.get('claim_rows', 0)}",
+        f"- Claim rows: {result.get('claim_rows', 0)}",
+        f"- Claims compared (with a category): {result.get('comparable_claims', 0)}",
         f"- Shared conclusions: {c.get('shared', 0)}",
         f"- Contradictions: {c.get('contradictions', 0)}",
         f"- Contradicted by cited rows: {c.get('row_contradictions', 0)}",
     ]
+    unc = result.get("unclassified") or {}
+    if unc.get("claims"):
+        by_mode = ", ".join(f"{m}: {n}" for m, n in (unc.get("by_mode") or {}).items())
+        out.append(f"- Unclassified, not compared (no category): {unc['claims']} ({by_mode})")
     ov = result.get("entity_overlap") or {}
     if ov:
         out += ["", "**Entity overlap (Jaccard)**", ""]

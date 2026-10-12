@@ -316,11 +316,15 @@ def _claim_key(claim: dict[str, Any]) -> tuple[str, str, str] | None:
     Operator decision 2026-10-12: the subject is the one attach_subjects derived from the rows the claim
     cites, not the seat's entity labels, which are wording. The kind is the model's closed claim vocabulary
     (presence, absence, attribution, time_order), which is a claim type, not an identity. A claim with no
-    derived subject has no key, so the board does not compare it.
+    derived subject has no key, so the board does not compare it. A time_order claim joins on its pair of
+    entities instead (D87): one subject is not an ordering.
     """
     kind = str(claim.get("claim_kind") or "")
     if kind not in _CLAIM_KINDS:
         return None
+    if kind == "time_order":
+        canonical = _time_order_canonical(claim)
+        return ("pair", canonical[0], kind) if canonical else None
     subject = claim.get("subject") if isinstance(claim.get("subject"), dict) else {}
     etype = str(subject.get("type") or "").strip().lower()
     evalue = str(subject.get("value") or "").strip().lower()
@@ -336,14 +340,68 @@ def _audit_ids(claim: dict[str, Any]) -> list[str]:
     return [str(item).strip() for item in raw if str(item).strip()]
 
 
+#: The directions a time_order claim may state: its subject happened before or after its other entity.
+_TIME_ORDER_DIRECTIONS = frozenset({"before", "after"})
+
+
+def _time_order_pair(claim: dict[str, Any]) -> tuple[tuple[str, str], tuple[str, str]] | None:
+    """The two entities of a time_order claim, the subject first; None unless both are grounded and distinct.
+
+    The subject is the one attach_subjects derived from the cited rows. The other entity is kept only when a
+    cited row carries it (subject.ground_other_entity, D87).
+    """
+    subject = claim.get("subject") if isinstance(claim.get("subject"), dict) else {}
+    other = claim.get("other_subject") if isinstance(claim.get("other_subject"), dict) else {}
+    first = (str(subject.get("type") or "").strip().lower(), str(subject.get("value") or "").strip().lower())
+    second = (str(other.get("type") or "").strip().lower(), str(other.get("value") or "").strip().lower())
+    if not all(first) or not all(second) or first == second:
+        return None
+    return first, second
+
+
+def _time_order_canonical(claim: dict[str, Any]) -> tuple[str, str] | None:
+    """The pair key and the polarity of a time_order claim in the pair's sorted order (D87).
+
+    The claim says its subject happened before its other entity ("before") or after it ("after"), and a deny
+    reverses the statement. Two events have one order, so "B before A" is "A after B". The pair is sorted, and
+    the polarity is that of "the sorted first entity happened before the sorted second". So two orderings of
+    one pair conflict as a polarity conflict, as an affirmation and a denial of one ordering do.
+    """
+    pair = _time_order_pair(claim)
+    direction = str(claim.get("value") or "").strip().lower()
+    if pair is None or direction not in _TIME_ORDER_DIRECTIONS:
+        return None
+    subject, _other = pair
+    before = direction == "before"
+    if str(claim.get("polarity") or "affirm") == "deny":
+        before = not before
+    first, second = sorted(pair)
+    first_before_second = before if subject == first else not before
+    return f"{first[0]}:{first[1]}|{second[0]}:{second[1]}", "affirm" if first_before_second else "deny"
+
+
+def _polarity_for_key(claim: dict[str, Any], default: str) -> str:
+    """The polarity a claim is compared by: a time_order claim's canonical polarity, else its own."""
+    if str(claim.get("claim_kind") or "") == "time_order":
+        canonical = _time_order_canonical(claim)
+        if canonical:
+            return canonical[1]
+    return str(claim.get("polarity") or default)
+
+
 def accept_claim(claim: dict[str, Any]) -> str:
-    """FD-001..007 on one board claim. Empty string means keep."""
+    """FD-001..007 on one board claim, and TO-1/TO-2 on a time_order claim. Empty string means keep."""
     if not _audit_ids(claim):
         return "FD-001: claim has no audit_id"
     if str(claim.get("claim_kind") or "") == "attribution":
         return "FD-003: agents do not attribute"
     if not str(claim.get("confidence_justification") or "").strip():
         return "FD-005: confidence has no justification"
+    if str(claim.get("claim_kind") or "") == "time_order":
+        if str(claim.get("value") or "").strip().lower() not in _TIME_ORDER_DIRECTIONS:
+            return "TO-1: time_order names no direction (before or after)"
+        if _time_order_pair(claim) is None:
+            return "TO-2: time_order needs a second entity the cited rows contain, distinct from the subject"
     return ""
 
 
@@ -452,6 +510,12 @@ def settled_candidates(
             # The text names the subject the candidate carries, so its title and its identity cannot
             # disagree. The model's label is the fallback only when the rows name no subject.
             named = (subject["entity"].get("value") if subject["entity"] else "") or entity
+            # D87: a time_order candidate carries its pair and its canonical polarity; cross-mode compares the pair.
+            time_order: dict[str, Any] = {}
+            if kind == "time_order" and key:
+                canonical = _time_order_canonical(claim)
+                if canonical:
+                    time_order = {"claim_kind": kind, "subject_pair": canonical[0], "polarity": canonical[1]}
             candidates.append({
                 "entity": subject["entity"],
                 "category": subject["category"],
@@ -466,6 +530,7 @@ def settled_candidates(
                 "confidence_justification": justification,
                 "audit_ids": _audit_ids(claim),
                 "agent_id": entry.get("agent_id"),
+                **time_order,
             })
     return candidates, gaps
 
@@ -473,8 +538,8 @@ def settled_candidates(
 def find_disputes(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The subject and kind that one claim affirms and another denies.
 
-    Differing wording is not a dispute. Known gap, pending the operator's decision: a time_order claim keeps
-    its ordering in ``value``, so two contradictory orderings with the same polarity are not reported here.
+    Differing wording is not a dispute. A time_order claim is compared on its pair of entities and its canonical
+    polarity (D87), so two orderings of one pair conflict, as do an affirmation and a denial of one ordering.
     """
     grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for entry in board:
@@ -485,7 +550,7 @@ def find_disputes(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if key is None:
                 continue
             grouped.setdefault(key, []).append({
-                "polarity": str(claim.get("polarity") or "affirm"),
+                "polarity": _polarity_for_key(claim, "affirm"),
                 "value": str(claim.get("value") or ""),
                 "agent_id": str(entry.get("agent_id") or ""),
                 "role": str(entry.get("role") or ""),
@@ -517,7 +582,7 @@ def _fingerprint(board: list[dict[str, Any]]) -> list[str]:
             key = _claim_key(claim)
             if key:
                 # Operator decision 2026-10-12: convergence ignores wording, so the fingerprint is key and polarity.
-                rows.append("|".join(key) + "|" + str(claim.get("polarity") or ""))
+                rows.append("|".join(key) + "|" + _polarity_for_key(claim, ""))
     return sorted(rows)
 
 
@@ -873,8 +938,11 @@ def _seat_with_model(
             + _investigative_extras(case_dir)
             + 'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
             '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
-            '"value":"...","audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
+            '"value":"...","other_entity_type":"...","other_entity_value":"...",'
+            '"audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
             '"confidence_justification":"..."}],"open_questions":["..."]}. '
+            'A time_order claim sets value to "before" or "after" (the entity happened before or after the '
+            'other_entity) and names that other entity, which the cited rows must contain. '
             + (
                 'When investigating a lead, also return '
                 '"lead_disposition":{"lead":"<subject>","status":"'
@@ -933,6 +1001,7 @@ def _seat_with_model(
                             '"entity_value":"...",'
                             '"claim_kind":"presence|absence|attribution|time_order",'
                             '"polarity":"affirm|deny","value":"...",'
+                            '"other_entity_type":"...","other_entity_value":"...",'
                             '"audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
                             '"confidence_justification":"..."}],'
                             '"open_questions":["..."]}. If nothing is supportable, '

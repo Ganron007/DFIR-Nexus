@@ -119,7 +119,7 @@ def test_collect_mode_claims_reads_mode1_full_run(tmp_path: Path) -> None:
 def test_one_case_three_modes_are_all_seen(tmp_path: Path) -> None:
     """The D5 = C shape: one case, M1 + M2 + M3, all three compared."""
     for audit_id in ("a", "b", "c"):
-        _cite(tmp_path, audit_id, process="lsass.exe")
+        _cite(tmp_path, audit_id, provider="Microsoft-Windows-Sysmon", event_id="1", process="lsass.exe")
     _write_json(tmp_path / "findings.json", [])
     _write_json(
         tmp_path / "analysis" / "pipeline_runs" / "M1-20261009T120000-abcdef.json",
@@ -270,8 +270,8 @@ def test_cross_mode_case_flag_compares_one_cases_runs(
          "candidates": [{"title": "lsass.exe executed", "audit_ids": ["b"]}]},
     )
     _write_json(tmp_path / "CASE-ONE" / "findings.json", [])
-    _cite(case_dir, "a", process="lsass.exe")
-    _cite(case_dir, "b", process="lsass.exe")
+    _cite(case_dir, "a", provider="Microsoft-Windows-Sysmon", event_id="1", process="lsass.exe")
+    _cite(case_dir, "b", provider="Microsoft-Windows-Sysmon", event_id="1", process="lsass.exe")
 
     monkeypatch.setattr("nexus.config.settings.cases_root", tmp_path)
     runner = CliRunner()
