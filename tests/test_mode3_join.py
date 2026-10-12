@@ -146,6 +146,31 @@ def test_the_pivot_map_follows_the_derived_subject_types():
     assert all(pivot["why"] for pivot in pivots)
 
 
+def test_a_resumed_board_gives_its_saved_claims_the_subject_their_rows_give(tmp_path):
+    """A run saved before the join keyed on subjects has claims with no subject; a resume gives them one."""
+    from nexus.modes.multi_agent import run_mode3
+
+    case = _case(tmp_path)
+    cited = cite_rows(case, [_host_row("ws01")])
+    saved_claim = _claim(cited, label="WS01")  # saved without a subject key
+    resume = {
+        "board": [{"agent_id": "evidence-1", "role": "evidence", "superstep": 1, "claims": [saved_claim]}],
+        "superstep": 1, "quiet": 0, "redispatch_used": 0, "steering_seen": 0,
+    }
+
+    def seat(spawn, _board, step):
+        return {"entry_id": f"{spawn['role']}-{step}", "agent_id": f"{spawn['role']}-{step}",
+                "role": spawn["role"], "family": spawn.get("family") or "", "superstep": step,
+                "claims": [], "open_questions": []}
+
+    record = run_mode3(case, "logons on ws01", families=[("evtx", 1)], seat_fn=seat, es_ok=True,
+                       resume_state=resume)
+    restored = [claim for entry in record["board"] for claim in entry.get("claims") or []
+                if claim.get("audit_ids") == [cited]]
+    assert restored, "the saved claim must still be on the board"
+    assert restored[0]["subject"] == {"type": "host", "value": "ws01", "category": "other"}
+
+
 def test_the_candidate_title_names_the_subject_its_rows_give(tmp_path):
     case = _case(tmp_path)
     cited = cite_rows(case, [_host_row("rd01")])

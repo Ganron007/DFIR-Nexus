@@ -1944,8 +1944,17 @@ def run_mode3(
         "status": "running", "steering_seen": 0,
     }
     if resume_state:
+        restored = list(resume_state.get("board") or [])
+        # A run saved before the join keyed on subjects holds claims with no subject. They get the subject
+        # their rows give here, as they would have at their seat, so a resumed run compares them like the rest.
+        attach_subjects(
+            [claim for entry in restored if isinstance(entry, dict)
+             for claim in entry.get("claims") or []
+             if isinstance(claim, dict) and "subject" not in claim],
+            case_dir,
+        )
         seed.update({
-            "board": list(resume_state.get("board") or []),
+            "board": restored,
             "superstep": int(resume_state.get("superstep") or 0),
             "quiet": int(resume_state.get("quiet") or 0),
             "redispatch_used": int(resume_state.get("redispatch_used") or 0),
