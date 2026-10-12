@@ -115,9 +115,63 @@ def disable(case: str = typer.Option("", "--case", help="Case id or directory (r
                    "SKIP with reasons (never a refusal).")
 
 
+#: The SIFT MCP runs the host's copy of src/nexus, not this tree. A host that is not synced runs old code
+#: without any sign of it (D108), so setup compares the two before it starts or restarts the server.
+def code_manifest(src_dir: Path) -> dict[str, str]:
+    """SHA-256 of every file under ``src_dir/nexus``, keyed by its path relative to ``src_dir``."""
+    import hashlib
+
+    manifest: dict[str, str] = {}
+    for path in sorted((src_dir / "nexus").rglob("*")):
+        if path.is_file() and "__pycache__" not in path.parts:
+            manifest[path.relative_to(src_dir).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return manifest
+
+
+def parse_sha256sum(text: str) -> dict[str, str]:
+    """{path: sha256} from ``sha256sum`` output: one ``<digest>  <path>`` line per file."""
+    manifest: dict[str, str] = {}
+    for line in text.splitlines():
+        digest, _, path = line.strip().partition("  ")
+        if len(digest) == 64 and path:
+            manifest[path] = digest
+    return manifest
+
+
+def compare_manifests(local: dict[str, str], host: dict[str, str]) -> dict[str, list[str]]:
+    """The paths that differ between this tree and the host: changed, only here, only on the host."""
+    return {
+        "changed": sorted(p for p in local.keys() & host.keys() if local[p] != host[p]),
+        "local_only": sorted(local.keys() - host.keys()),
+        "host_only": sorted(host.keys() - local.keys()),
+    }
+
+
+def push_code(src_dir: Path, ssh_base: list[str]) -> bool:
+    """Back up the host's ``src`` and replace its ``src/nexus`` with this tree. The old tree is kept."""
+    import datetime
+    import io
+    import subprocess
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for rel in sorted(code_manifest(src_dir)):
+            tar.add(src_dir / rel, arcname=rel, recursive=False)
+    stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    remote = (f"set -e; cd ~/DFIR-Nexus && cp -a src src.bak-{stamp} && rm -rf src/nexus "
+              "&& tar -xzf - -C src && echo SYNC-OK")
+    proc = subprocess.run([*ssh_base, remote], input=buf.getvalue(), capture_output=True, timeout=600)
+    return proc.returncode == 0 and b"SYNC-OK" in proc.stdout
+
+
 @app.command("setup")
 def setup(
     case: str = typer.Option("", "--case", help="Case id or directory to lay out on the SIFT host"),
+    sync_code: bool = typer.Option(
+        False, "--sync-code",
+        help="Replace the host's src/nexus with this tree when they differ (the old src is kept as src.bak-<stamp>)",
+    ),
 ):
     """Verify the SIFT host and wire it up (Phase 5 bootstrap).
 
@@ -140,12 +194,14 @@ def setup(
         typer.echo(f"SSH key missing: {key}", err=True)
         raise typer.Exit(1)
 
+    ssh_base = [
+        "ssh", "-i", key, "-o", "StrictHostKeyChecking=no",
+        "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+        f"{user}@{host}",
+    ]
+
     def _ssh(remote: str, timeout: int = 60) -> tuple[int, str]:
-        cmd = [
-            "ssh", "-i", key, "-o", "StrictHostKeyChecking=no",
-            "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-            f"{user}@{host}", remote,
-        ]
+        cmd = [*ssh_base, remote]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -158,6 +214,35 @@ def setup(
         typer.echo(f"  SSH: FAILED — {out.strip()[:200]}", err=True)
         raise typer.Exit(1)
     typer.echo(f"  SSH: OK ({out.strip().splitlines()[0]})")
+
+    # D108: the MCP runs the host's src/nexus. Compare it with this tree before anything is started or restarted.
+    src_dir = _P(__file__).resolve().parents[2]
+    local_code = code_manifest(src_dir)
+    rc, out = _ssh("cd ~/DFIR-Nexus/src && find nexus -type f -not -path '*/__pycache__/*' "
+                   "| LC_ALL=C sort | xargs sha256sum")
+    host_code = parse_sha256sum(out) if rc == 0 else {}
+    if not host_code:
+        typer.echo(f"  code: could not read the host's src/nexus ({out.strip()[:160]})", err=True)
+        raise typer.Exit(1)
+    drift = compare_manifests(local_code, host_code)
+    code_synced = False
+    if any(drift.values()):
+        typer.echo(
+            f"  code: host differs from this tree: {len(drift['changed'])} changed, "
+            f"{len(drift['local_only'])} only here, {len(drift['host_only'])} only on the host"
+        )
+        if not sync_code:
+            typer.echo(
+                "  code: the MCP is not started on stale code. Re-run with --sync-code "
+                "(the host's src is kept as src.bak-<stamp>).", err=True)
+            raise typer.Exit(1)
+        if not push_code(src_dir, ssh_base):
+            typer.echo("  code: sync FAILED; the MCP is not started", err=True)
+            raise typer.Exit(1)
+        code_synced = True
+        typer.echo(f"  code: host synced from this tree ({len(local_code)} files)")
+    else:
+        typer.echo(f"  code: host matches this tree ({len(local_code)} files)")
 
     rc, out = _ssh(
         "for t in vol log2timeline.py psort.py fls mmls icat mactime bulk_extractor; do "
@@ -246,11 +331,12 @@ def setup(
     )
     token = (token or "").strip().splitlines()[0].strip() if (token or "").strip() else ""
 
-    if "MCP-UP" in listening and not token_added:
+    # A running server keeps the code and the token it imported at start: new code (code_synced) needs a restart too.
+    if "MCP-UP" in listening and not token_added and not code_synced:
         typer.echo("  MCP: listening on :4508 (bearer token already in place)")
     else:
-        if "MCP-UP" in listening and token_added:
-            typer.echo("  MCP: restarting so the new bearer token takes effect...")
+        if "MCP-UP" in listening and (token_added or code_synced):
+            typer.echo("  MCP: restarting so the new code and bearer token take effect...")
         else:
             typer.echo("  MCP: not running — starting it...")
         start = (
