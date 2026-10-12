@@ -422,11 +422,16 @@ the objective, the indexed families, the board and any steering, and emits the
 seat list (deterministic fallback kept). Evidence seats (one per family),
 correlation and pattern run **in the same superstep**, each with its own
 context, role allowlist and budget, and each publishes one **BoardEntry** of
-audit-backed claims. The **join** groups claims by
-`(entity_type, entity_value, claim_kind)`, opens **disputes** on conflicts and
-can re-dispatch the named seats (bounded); it settles after quiet supersteps
-or when re-dispatch is exhausted. Unresolved disputes are **gaps, never
-findings**; only settled, audit-backed claims become DRAFT candidates. The join compares the seats' labels inside one run; a draft's subject and the cross-mode comparison use the subject derived from the rows each claim cites (ARCHITECTURE.md, Finding subject and category).
+audit-backed claims. The **join** groups claims by the subject their cited rows
+give and the claim kind (`(subject type, subject value, claim_kind)`), never
+by the seats' wording. It opens **disputes** on polarity conflicts (differing
+wording is not one) and can re-dispatch the named seats (bounded); it settles
+after quiet supersteps or when re-dispatch is exhausted. Unresolved disputes
+are **gaps, never findings**; only settled, audit-backed claims become DRAFT
+candidates. A draft's subject and the cross-mode comparison use the same
+subject (ARCHITECTURE.md, Finding subject and category). Known gap: a
+`time_order` claim carries its ordering in its value, so two contradictory
+orderings are not yet a dispute.
 
 Controls and surfaces: `nexus mode3
 run|status|board|steer|pause|resume|stop|stage|export`, the API

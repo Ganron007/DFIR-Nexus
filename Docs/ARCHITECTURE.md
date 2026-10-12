@@ -437,8 +437,19 @@ concurrent multi-agent**: one work order runs at a time.
 supervisor node (model-chosen seats, deterministic fallback) that uses
 LangGraph `Send` to fan out evidence / correlation / pattern seats **in one
 superstep**, a join that groups audit-backed claims by
-`(entity_type, entity_value, claim_kind)`, opens disputes and re-dispatches
-bounded, and synthesis that turns settled claims into DRAFT candidates. The join compares the seats' own labels inside one run. Staging and the cross-mode comparison use the subject derived from the rows each claim cites (see Finding subject and category).
+`(subject type, subject value, claim_kind)`, where the subject is the one
+the claim's cited rows give (see Finding subject and category), opens
+disputes and re-dispatches bounded, and synthesis that turns settled claims
+into DRAFT candidates. Each seat's claims get their subject where they enter
+the board, so the join never compares the seats' labels. A dispute is a
+polarity conflict on one subject and kind: differing wording is not one, and
+a claim whose rows name no subject is not compared. The convergence
+fingerprint is the same key and polarity, so wording alone does not move it.
+The pivot seats follow the subject types (process, address, account, file,
+registry). Known gap, pending the operator's decision: a `time_order` claim
+keeps its ordering in its value, so two contradictory orderings with the same
+polarity are not reported as a dispute. Staging and the cross-mode comparison
+use the same subject.
 Unresolved disputes are gaps, never findings. One `AuditWriter`/`EventSink`
 per run (shared across seats); a run governor caps agents / supersteps / calls
 / seconds; pause / stop / steer apply at superstep boundaries with a
@@ -447,9 +458,9 @@ file-based `resume_state`. Surfaces: `nexus mode3`,
 
 ### Finding subject and category
 
-A draft's subject (`entity`) and `category` come from the rows its cited audit calls stored, by one rule for every mode (`src/nexus/langgraph/subject.py`). The event decides the category. `src/nexus/data/schema/event_categories.yaml` maps each (provider, event id) to a category of the pinned pySigma pipelines; `devtools/knowledge/import_event_categories.py` generates it from the two wheels in `devtools/knowledge/pinned/`, checked by SHA-256. The category chooses the subject field. For process events that is the process, then the account and the host. For network events it is the destination, then the process and the host. For file and registry events it is the path or key, then the process and the host. Other events take the account, then the source address, the process, the file, the registry key and the host, in that order. Subject values are normalized, and placeholder values the logs write for "nothing here" are never a subject.
+A draft's subject (`entity`) and `category` come from the rows its cited audit calls stored, by one rule for every mode (`src/nexus/langgraph/subject.py`). The Mode 3 join and the cross-mode check read the same subject. The event decides the category. `src/nexus/data/schema/event_categories.yaml` maps each (provider, event id) to a category of the pinned pySigma pipelines; `devtools/knowledge/import_event_categories.py` generates it from the two wheels in `devtools/knowledge/pinned/`, checked by SHA-256. The category chooses the subject field. For process events that is the process, then the account and the host. For network events it is the destination, then the process and the host. For file and registry events it is the path or key, then the process and the host. Other events take the account, then the source address, the process, the file, the registry key and the host, in that order. Subject values are normalized, and placeholder values the logs write for "nothing here" are never a subject.
 
-The duplicate check and the cross-mode comparison both key on (subject type, subject value, category). Prose never names a subject; titles and observations are display text.
+The duplicate check and the cross-mode comparison both key on (subject type, subject value, category). A claim's identity is never its wording: titles and observations are display text, and they name the subject the rows give when there is one.
 
 Known gaps, stated so nobody reads them as coverage. Logons have no pinned category yet, so they resolve through the account rule. Hayabusa rows carry no provider, so they fall back to their host. Prefetch, Amcache, SRUM, WER, JSON and CSV rows have no subject field until their declared columns are mapped.
 

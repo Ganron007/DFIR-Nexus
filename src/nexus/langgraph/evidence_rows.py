@@ -77,18 +77,16 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return evidence_rows
 
 
-def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:
-    """The rows the cited audit entries returned, in citation order (D70).
+def stored_rows_by_audit_id(case_dir: Path, audit_ids: list[str]) -> dict[str, list[Any]]:
+    """The rows each cited audit entry stored when its call ran, read once for all the ids (D70).
 
-    Reads the case's audit trail and returns the rows each cited entry stored when its
-    query ran. An id with no stored rows (a call that returned none, or a non-search tool)
-    contributes nothing, so the caller can fall back to what the model wrote.
+    An id with no stored rows (a call that returned none, or a non-search tool) is absent from the result.
     """
-    wanted = [a for a in audit_ids if a]
+    wanted = {a for a in audit_ids if a}
     path = Path(case_dir) / "audit" / "nexus.jsonl"
-    if not wanted or not path.is_file():
-        return []
     stored: dict[str, list[Any]] = {}
+    if not wanted or not path.is_file():
+        return stored
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
@@ -100,9 +98,14 @@ def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[di
         aid = rec.get("audit_id")
         if aid in wanted and isinstance(rows, list):
             stored[aid] = rows
+    return stored
+
+
+def unique_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict[str, Any]]:
+    """The stored rows of the given ids in citation order, duplicates dropped, capped at EVIDENCE_ROW_CAP."""
     out: list[dict[str, Any]] = []
     seen: set[tuple[Any, Any, Any]] = set()
-    for aid in wanted:
+    for aid in audit_ids:
         for row in stored.get(aid, []):
             if not isinstance(row, dict):
                 continue
@@ -112,3 +115,13 @@ def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[di
             seen.add(key)
             out.append(row)
     return out[:EVIDENCE_ROW_CAP]
+
+
+def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:
+    """The rows the cited audit entries returned, in citation order (D70).
+
+    Reads the case's audit trail and returns the rows each cited entry stored when its query ran. An id
+    with no stored rows contributes nothing, so the caller can fall back to what the model wrote.
+    """
+    wanted = [a for a in audit_ids if a]
+    return unique_rows(stored_rows_by_audit_id(case_dir, wanted), wanted)

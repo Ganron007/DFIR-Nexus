@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 import yaml
+from _audit_rows import cite_rows
 
 
 def _case(tmp_path: Path, *, leads: list[dict] | None = None) -> Path:
@@ -168,8 +169,11 @@ def test_a_verifier_seat_runs_each_superstep(tmp_path, monkeypatch):
             ),
         }
 
+    case = _case(tmp_path)
+    cite_rows(case, [{"loc": "hayabusa.csv:1", "detail": "the detection row", "process": "ws01"}],
+              audit_id="audit-1")
     run_mode3(
-        _case(tmp_path), "q", families=[("hayabusa", 10)], seat_fn=seat, es_ok=True,
+        case, "q", families=[("hayabusa", 10)], seat_fn=seat, es_ok=True,
     )
     assert "verifier" in roles, roles
 
@@ -237,7 +241,7 @@ class _ScriptedSeatModel:
             }
         elif "Investigate the lead:" in blob:
             body = {
-                "claims": [_claim("beacon.exe"), _claim("notepad.exe")],
+                "claims": [_claim("beacon.exe", audit="audit-b"), _claim("notepad.exe", audit="audit-n")],
                 "open_questions": ["How did beacon.exe persist?"],
                 "lead_disposition": {
                     "lead": "Defender Alert (Severe)",
@@ -248,6 +252,8 @@ class _ScriptedSeatModel:
         elif "A seat asked:" in blob or "Pivot on" in blob:
             body = {"claims": [], "open_questions": []}
         else:
+            # audit-d is never written: its call stored no rows, so this claim names no subject and the
+            # join does not compare it.
             body = {"claims": [_claim("rd01-host", audit="audit-d")], "open_questions": []}
             body["claims"][0]["entity_type"] = "host"
             body["claims"][0]["entity_value"] = "rd01"
@@ -330,6 +336,10 @@ def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
+    cite_rows(case, [{"loc": "beacon.csv:1", "detail": "the detection row", "process": "beacon.exe"}],
+              audit_id="audit-b")
+    cite_rows(case, [{"loc": "notepad.csv:1", "detail": "a process row", "process": "notepad.exe"}],
+              audit_id="audit-n")
     record = run_mode3(
         case,
         "Compromise suspected.",

@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from _audit_rows import cite_rows
+
 from nexus.modes.multi_agent import (
     accept_claim,
     add_board,
@@ -63,6 +65,9 @@ def test_elasticsearch_required(tmp_path, monkeypatch):
 
 
 def test_two_seats_publish_without_clobber(tmp_path):
+    case = _case(tmp_path)
+    logon = cite_rows(case, [{"loc": "evtx.csv:1", "detail": "a logon row", "host": "ws01"}])
+
     def seat(spawn, _board, step):
         role = spawn["role"]
         return {
@@ -71,12 +76,12 @@ def test_two_seats_publish_without_clobber(tmp_path):
             "role": role,
             "family": spawn.get("family") or "",
             "superstep": step,
-            "claims": [_claim("ws01", "affirm", f"audit-{role}")] if role == "evidence" else [],
+            "claims": [_claim("ws01", "affirm", logon)] if role == "evidence" else [],
             "open_questions": [],
         }
 
     record = run_mode3(
-        _case(tmp_path),
+        case,
         "logons on ws01",
         families=[("evtx", 10), ("mft", 3)],
         seat_fn=seat,
@@ -88,13 +93,16 @@ def test_two_seats_publish_without_clobber(tmp_path):
     assert "pattern" in roles
     assert record["status"] == "completed"
     assert record["candidates"]
-    assert record["candidates"][0]["audit_ids"] == ["audit-evidence"]
+    assert record["candidates"][0]["audit_ids"] == [logon]
     assert record["candidates"][0]["interpretation"]
 
 
 def test_dispute_is_not_a_candidate(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_MODE3_MAX_REDISPATCH", "0")
     monkeypatch.setenv("NEXUS_MODE3_SETTLE_SUPERSTEPS", "1")
+    case = _case(tmp_path)
+    affirmed = cite_rows(case, [{"loc": "evtx.csv:1", "detail": "a logon row", "host": "ws01"}])
+    denied = cite_rows(case, [{"loc": "mft.csv:1", "detail": "a row for the same host", "host": "ws01"}])
 
     def seat(spawn, _board, step):
         polarity = "affirm" if spawn["role"] == "evidence" else "deny"
@@ -104,12 +112,12 @@ def test_dispute_is_not_a_candidate(tmp_path, monkeypatch):
             "role": spawn["role"],
             "family": "evtx",
             "superstep": step,
-            "claims": [_claim("ws01", polarity, f"audit-{spawn['role']}")],
+            "claims": [_claim("ws01", polarity, affirmed if polarity == "affirm" else denied)],
             "open_questions": [],
         }
 
     record = run_mode3(
-        _case(tmp_path),
+        case,
         "was ws01 used",
         families=[("evtx", 4)],
         seat_fn=seat,

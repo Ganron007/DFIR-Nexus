@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 from nexus.discipline import entity_key
@@ -200,3 +201,32 @@ def subject_key(entity: Any, category: Any) -> str:
     """
     key = entity_key(entity)
     return f"{key}|{category or OTHER}" if key else ""
+
+
+def _claim_audit_ids(claim: dict[str, Any]) -> list[str]:
+    raw = claim.get("audit_ids") or claim.get("audit_id") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None:
+    """Attach to each claim the subject its cited rows give (operator decision 2026-10-12).
+
+    The claim gets ``subject = {type, value, category}`` derived from the rows its audit calls stored,
+    by the rule staging uses. A claim whose rows give no subject gets ``{}``: it cannot be compared with
+    another claim on the board. The audit trail is read once for the whole list.
+    """
+    from nexus.langgraph.evidence_rows import stored_rows_by_audit_id, unique_rows
+
+    ids = sorted({aid for c in claims if isinstance(c, dict) for aid in _claim_audit_ids(c)})
+    stored = stored_rows_by_audit_id(case_dir, ids) if case_dir is not None and ids else {}
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        subject = derive_subject(unique_rows(stored, _claim_audit_ids(claim)))
+        entity = subject["entity"]
+        claim["subject"] = (
+            {"type": entity["type"], "value": entity["value"], "category": subject["category"]}
+            if entity else {}
+        )

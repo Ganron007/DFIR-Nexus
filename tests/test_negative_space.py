@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+from _audit_rows import cite_rows
 
 
 @pytest.fixture()
@@ -277,24 +278,32 @@ def test_portal_reject_emits_one_event_per_dismissal(client, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def _board_with_dispute() -> tuple[list, list]:
-    """Two seats, one entity, opposite polarity - a real board dispute."""
+def _board_with_dispute(case_dir: Path) -> tuple[list, list]:
+    """Two seats, one subject, opposite polarity - a real board dispute.
+
+    Each claim cites a call whose rows name the same file, so the subject both claims carry comes from
+    those rows. A board built here has no seat to attach subjects, so the same step runs here.
+    """
+    from nexus.langgraph.subject import attach_subjects
     from nexus.modes.multi_agent import find_disputes
 
+    mft = cite_rows(case_dir, [{"loc": "mft.csv:1", "detail": "the MFT row", "file_path": "C:/tmp/a.exe"}])
+    prefetch = cite_rows(case_dir, [{"loc": "pf.csv:1", "detail": "the prefetch row", "file_path": "C:/tmp/a.exe"}])
     board = [
         {"agent_id": "seat-a", "role": "evidence", "claims": [{
             "entity_type": "file", "entity_value": "C:/tmp/a.exe",
             "claim_kind": "presence", "polarity": "affirm", "value": "present",
             "confidence": "MEDIUM", "confidence_justification": "the MFT row",
-            "audit_ids": ["nx-audit-0001"],
+            "audit_ids": [mft],
         }]},
         {"agent_id": "seat-b", "role": "pattern", "claims": [{
             "entity_type": "file", "entity_value": "C:/tmp/a.exe",
             "claim_kind": "presence", "polarity": "deny", "value": "absent",
             "confidence": "LOW", "confidence_justification": "prefetch says never run",
-            "audit_ids": ["nx-audit-0002"],
+            "audit_ids": [prefetch],
         }]},
     ]
+    attach_subjects([claim for entry in board for claim in entry["claims"]], case_dir)
     return board, find_disputes(board)
 
 
@@ -302,7 +311,7 @@ def test_mode3_disputed_claims_are_recorded_as_refuted(case_dir: Path):
     from nexus.analysis.negative_space import read_events
     from nexus.modes.multi_agent import settled_candidates
 
-    board, disputes = _board_with_dispute()
+    board, disputes = _board_with_dispute(case_dir)
     assert disputes, "the fixture must produce a dispute"
 
     # pure call: no audit emission when no case_dir is given
@@ -314,9 +323,8 @@ def test_mode3_disputed_claims_are_recorded_as_refuted(case_dir: Path):
     assert candidates == []
     events = [e for e in read_events(case_dir) if e["kind"] == "refuted"]
     assert len(events) == 2  # one per disputed claim, never a finding
-    assert {tuple(e["refs"]) for e in events} == {
-        ("nx-audit-0001",), ("nx-audit-0002",)
-    }
+    cited = {tuple(claim["audit_ids"]) for entry in board for claim in entry["claims"]}
+    assert {tuple(e["refs"]) for e in events} == cited
     assert all("disputed" in e["detail"] for e in events)
     assert _findings(case_dir) == []
 

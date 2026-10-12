@@ -25,6 +25,7 @@ from uuid import uuid4
 
 from nexus.langgraph.case_index import elasticsearch_ready
 from nexus.langgraph.prompt_budget import budget_chars, case_window
+from nexus.langgraph.subject import attach_subjects
 from nexus.llm.egress import egress_bound
 from nexus.modes.multi_role import (
     EventSink,
@@ -310,14 +311,22 @@ def add_board(left: list[dict[str, Any]] | None, right: list[dict[str, Any]] | N
 
 
 def _claim_key(claim: dict[str, Any]) -> tuple[str, str, str] | None:
+    """The join key: the subject the claim's cited rows give, and the claim's kind.
+
+    Operator decision 2026-10-12: the subject is the one attach_subjects derived from the rows the claim
+    cites, not the seat's entity labels, which are wording. The kind is the model's closed claim vocabulary
+    (presence, absence, attribution, time_order), which is a claim type, not an identity. A claim with no
+    derived subject has no key, so the board does not compare it.
+    """
     kind = str(claim.get("claim_kind") or "")
     if kind not in _CLAIM_KINDS:
         return None
-    entity_type = str(claim.get("entity_type") or "").strip().lower()
-    entity_value = str(claim.get("entity_value") or "").strip().lower()
-    if not entity_type or not entity_value:
+    subject = claim.get("subject") if isinstance(claim.get("subject"), dict) else {}
+    etype = str(subject.get("type") or "").strip().lower()
+    evalue = str(subject.get("value") or "").strip().lower()
+    if not etype or not evalue:
         return None
-    return (entity_type, entity_value, kind)
+    return (etype, evalue, kind)
 
 
 def _audit_ids(claim: dict[str, Any]) -> list[str]:
@@ -399,7 +408,7 @@ def settled_candidates(
                         from nexus.analysis.negative_space import record
                         record(
                             case_dir, "refuted",
-                            f"{claim.get('entity_value') or '?'} "
+                            f"{key[1]} "
                             f"{claim.get('claim_kind') or '?'}",
                             "the verifier refuted this claim; "
                             "it was excluded from staging",
@@ -415,7 +424,7 @@ def settled_candidates(
 
                         record(
                             case_dir, "refuted",
-                            f"{claim.get('entity_value') or '?'} "
+                            f"{key[1]} "
                             f"{claim.get('claim_kind') or '?'}",
                             "the Mode 3 board disputed this claim; "
                             "it was excluded from staging",
@@ -440,15 +449,18 @@ def settled_candidates(
             audit_rows = (evidence_rows_for_audit_ids(case_dir, _audit_ids(claim))
                           if case_dir is not None else [])
             subject = derive_subject(audit_rows)
+            # The text names the subject the candidate carries, so its title and its identity cannot
+            # disagree. The model's label is the fallback only when the rows name no subject.
+            named = (subject["entity"].get("value") if subject["entity"] else "") or entity
             candidates.append({
                 "entity": subject["entity"],
                 "category": subject["category"],
                 # "evtxecmd: presence" is a dispute key rendered as English. The
                 # claim carries a value and a justification, and either is a
                 # sentence an examiner can read, so one of them leads the title.
-                "title": claim_title(entity, kind, value=value,
+                "title": claim_title(named, kind, value=value,
                                      justification=justification),
-                "observation": value or f"{kind} recorded for {entity}",
+                "observation": value or f"{kind} recorded for {named}",
                 "interpretation": justification,
                 "confidence": str(claim.get("confidence") or "LOW"),
                 "confidence_justification": justification,
@@ -459,6 +471,11 @@ def settled_candidates(
 
 
 def find_disputes(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The subject and kind that one claim affirms and another denies.
+
+    Differing wording is not a dispute. Known gap, pending the operator's decision: a time_order claim keeps
+    its ordering in ``value``, so two contradictory orderings with the same polarity are not reported here.
+    """
     grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for entry in board:
         for claim in entry.get("claims") or []:
@@ -478,8 +495,8 @@ def find_disputes(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     disputes: list[dict[str, Any]] = []
     for key, rows in grouped.items():
         polarities = {row["polarity"] for row in rows}
-        values = {row["value"] for row in rows if row["value"]}
-        if len(polarities) > 1 or len(values) > 1:
+        # Operator decision 2026-10-12: a dispute is a polarity conflict. Differing wording is not one.
+        if len(polarities) > 1:
             disputes.append({
                 "entity_type": key[0],
                 "entity_value": key[1],
@@ -499,7 +516,8 @@ def _fingerprint(board: list[dict[str, Any]]) -> list[str]:
                 continue
             key = _claim_key(claim)
             if key:
-                rows.append("|".join(key) + "|" + str(claim.get("polarity") or "") + "|" + str(claim.get("value") or ""))
+                # Operator decision 2026-10-12: convergence ignores wording, so the fingerprint is key and polarity.
+                rows.append("|".join(key) + "|" + str(claim.get("polarity") or ""))
     return sorted(rows)
 
 
@@ -1133,11 +1151,10 @@ def _open_agenda(
 #: Entity types worth a follow-up seat when first seen (item 7b (c)).
 _PIVOT_ENTITIES = {
     "process": "its parent, persistence and network activity",
-    "domain": "name resolution and the processes that contacted it",
-    "ipv4": "the processes that connected and what they transferred",
+    "address": "the processes that connected and what they transferred",
     "registry": "what wrote it and what it launches",
-    "service": "what installed it and under which account",
-    "user": "how the account was used and from where",
+    "file": "what wrote it and what it runs",
+    "account": "how the account was used and from where",
 }
 
 
@@ -1749,6 +1766,10 @@ def run_mode3(
             if isinstance(claim, dict) and not accept_claim(claim):
                 kept.append(claim)
         entry["claims"] = kept
+        # Operator decision 2026-10-12: every seat's claims enter the board here (the model seat, an injected
+        # seat and the deterministic seat alike), so each claim's subject is attached from the rows it cites,
+        # never from the seat's entity labels (see _claim_key).
+        attach_subjects(kept, case_dir)
         # WO-R1F-M3 item 3: record which lead this seat was spawned for, so a
         # seat that returns no claims still disposes its lead (the disposition
         # is the fact that it was investigated, even when it found nothing).
