@@ -5,6 +5,7 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Win = Join-Path $Root "windows"
+. (Join-Path $Root "lib-git-rules.ps1")
 $Lin = Join-Path $Root "linux"
 $KansaDir = Join-Path $Win "kansa"
 $UacDir = Join-Path $Lin "uac"
@@ -169,20 +170,12 @@ $script:Versions += "persistencesniper|v$psRelease|https://github.com/last-byte/
 
 Write-Host "==> Sigma rules for Chainsaw hunt (SigmaHQ/sigma sparse rules/ — full tree hits Windows MAX_PATH)"
 $SigmaDir = Join-Path $Win "extra\chainsaw\sigma"
-if (Test-Path (Join-Path $SigmaDir "rules")) {
-    $script:Versions += "sigma|already-present|$SigmaDir"
-    Write-Host "    sigma rules already present - skip clone"
-} else {
-    if (Test-Path $SigmaDir) { Remove-Item -LiteralPath $SigmaDir -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path (Split-Path $SigmaDir) | Out-Null
-    git clone --depth 1 --filter=blob:none --sparse https://github.com/SigmaHQ/sigma.git $SigmaDir
-    Push-Location $SigmaDir
-    try { git sparse-checkout set rules } finally { Pop-Location }
-    if (-not (Test-Path (Join-Path $SigmaDir "rules"))) {
-        throw "Sigma sparse checkout did not produce rules/"
-    }
-    $script:Versions += "sigma|master-sparse-rules|https://github.com/SigmaHQ/sigma"
+# Kept at the head of master (lib-git-rules.ps1); the sparse checkout holds rules/ only.
+$sigmaHead = Sync-GitRules -Dir $SigmaDir -Url "https://github.com/SigmaHQ/sigma.git" -Branch "master" -SparsePath "rules"
+if (-not (Test-Path (Join-Path $SigmaDir "rules"))) {
+    throw "Sigma sparse checkout did not produce rules/"
 }
+$script:Versions += "sigma|$sigmaHead|https://github.com/SigmaHQ/sigma"
 
 Write-Host "==> Stage 0 inventory (Hayabusa/Suzaku/Chainsaw/Sysinternals — fetched by tools/fetch-windows-tools.ps1)"
 $Hay = Get-ChildItem (Join-Path $Win "hayabusa") -Filter "hayabusa*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1

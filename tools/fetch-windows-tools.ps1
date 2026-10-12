@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Win = Join-Path $Root "windows"
+. (Join-Path $Root "lib-git-rules.ps1")
 $Zim = Join-Path $Win "zimmerman"
 $Sys = Join-Path $Win "sysinternals"
 $Hay = Join-Path $Win "hayabusa"
@@ -262,6 +263,12 @@ Remove-Item $haStage -Recurse -Force -ErrorAction SilentlyContinue
 Get-ChildItem $Hay -Filter "hayabusa-*-win-x64.exe" -File | Where-Object { $_.Name -ne $ha.Asset.name.Replace('.zip', '.exe') } | Remove-Item -Force
 $script:Versions += "hayabusa`t$($ha.Tag)`t$($ha.Asset.browser_download_url)"
 
+# Rules are upstream's git tree, kept at the head of main (see lib-git-rules.ps1). The binary above is the
+# latest release; its rules are the repo's, not the release snapshot, which lags the repo.
+Write-Host "==> Hayabusa rules (git main)"
+$haRules = Sync-GitRules -Dir (Join-Path $Hay "rules") -Url "https://github.com/Yamato-Security/hayabusa-rules.git" -Branch "main"
+$script:Versions += "hayabusa-rules`t$haRules`thttps://github.com/Yamato-Security/hayabusa-rules"
+
 Write-Host "==> Suzaku (GitHub latest win-x64)"
 $sz = Get-GitHubAsset "Yamato-Security/suzaku" "suzaku-.*-win-x64\.zip$"
 $szZip = Join-Path $env:TEMP $sz.Asset.name
@@ -271,7 +278,8 @@ Expand-To $szZip $szStage
 $szExeName = $sz.Asset.name.Replace('.zip', '.exe')
 $szRoot = Split-Path (Get-ChildItem $szStage -Filter $szExeName -Recurse | Select-Object -First 1).FullName
 if (-not $szRoot) { throw "no $szExeName in $($sz.Asset.name)" }
-foreach ($d in @("art", "config", "rules")) {
+# art and config come from the release. rules come from the repo's main (below), never from the release snapshot.
+foreach ($d in @("art", "config")) {
     $dst = Join-Path $Suz $d
     if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
     if (Test-Path (Join-Path $szRoot $d)) { Copy-Item (Join-Path $szRoot $d) $dst -Recurse -Force }
@@ -281,6 +289,10 @@ Copy-Item (Join-Path $szRoot $szExeName) (Join-Path $Suz "suzaku.exe") -Force
 Get-ChildItem $Suz -Filter "suzaku-*-win-x64.exe" -File | Where-Object { $_.Name -ne $szExeName } | Remove-Item -Force
 Remove-Item $szStage -Recurse -Force -ErrorAction SilentlyContinue
 $script:Versions += "suzaku`t$($sz.Tag)`t$($sz.Asset.browser_download_url)"
+
+Write-Host "==> Suzaku rules (git main)"
+$szRules = Sync-GitRules -Dir (Join-Path $Suz "rules") -Url "https://github.com/Yamato-Security/suzaku-rules.git" -Branch "main"
+$script:Versions += "suzaku-rules`t$szRules`thttps://github.com/Yamato-Security/suzaku-rules"
 
 Write-Host "==> Chainsaw (GitHub latest windows-msvc)"
 try {
