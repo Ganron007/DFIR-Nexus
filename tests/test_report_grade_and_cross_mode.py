@@ -603,7 +603,10 @@ def test_contradiction_is_surfaced_with_both_citations():
     assert c["affirms"][0]["mode"] == "1"
     assert c["denials"][0]["mode"] == "2"
     assert c["affirms"][0]["audit_ids"] and c["denials"][0]["audit_ids"]
+    # The key names the subject and its category; the join's claim kind is not part of a cross-mode key.
+    assert set(c["key"]) == {"entity_type", "entity_value", "category"}
     assert "powershell.exe" in render_consistency_markdown(r)
+    assert f"({c['key']['entity_type']}/{c['key']['category']})" in render_consistency_markdown(r)
 
 
 def test_agreement_is_reported_as_shared_not_contradiction():

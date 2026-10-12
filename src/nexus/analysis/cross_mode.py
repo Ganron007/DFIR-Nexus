@@ -6,10 +6,11 @@ contradiction is a defect rather than a nuance: if one mode asserts a process
 executed and another asserts the same process did not, an examiner reading the
 report cannot tell which is grounded.
 
-This check projects every mode's output into the one claim vocabulary the
-multi-agent board already uses - the dispute key
-``(entity_type, entity_value, claim_kind)`` - so an intra-Mode-3 dispute and a
-cross-mode contradiction are the same object, and the same code decides both.
+This check projects every mode's output into one claim key, ``(subject type,
+subject value, category)``. The subject is what the claim's cited rows are about
+(``nexus.langgraph.subject``), so two modes that cite the same rows name the same
+subject whatever their words. The Mode 3 join keys on that subject with the claim's
+kind in place of the category.
 
 Three surfaces are compared:
 
@@ -449,7 +450,7 @@ def check_cross_mode(
             affirm = by_pol.get("affirm") or []
             deny = by_pol.get("deny") or []
             contradictions.append({
-                "key": {"entity_type": key[0], "entity_value": key[1], "claim_kind": key[2]},
+                "key": {"entity_type": key[0], "entity_value": key[1], "category": key[2]},
                 "modes": modes,
                 "affirms": [
                     {"mode": r["mode"], "source": r["source"], "title": r["title"],
@@ -461,11 +462,11 @@ def check_cross_mode(
                      "audit_ids": r["audit_ids"]}
                     for r in deny
                 ],
-                "why": "the same entity and claim kind is asserted and denied",
+                "why": "the same subject and category is asserted and denied",
             })
         elif len(modes) >= 2:
             shared.append({
-                "key": {"entity_type": key[0], "entity_value": key[1], "claim_kind": key[2]},
+                "key": {"entity_type": key[0], "entity_value": key[1], "category": key[2]},
                 "modes": modes,
                 "polarity": rows[0]["polarity"],
                 "audit_ids": sorted({a for r in rows for a in r["audit_ids"]})[:12],
@@ -482,7 +483,7 @@ def check_cross_mode(
                 if _rows_deny(rows_text, key[1]):
                     row_conflicts.append({
                         "key": {"entity_type": key[0], "entity_value": key[1],
-                                "claim_kind": key[2]},
+                                "category": key[2]},
                         "mode": r["mode"], "source": r["source"], "title": r["title"],
                         "audit_ids": r["audit_ids"],
                         "why": "the cited rows mention this entity only in a denial",
@@ -667,7 +668,7 @@ def render_consistency_markdown(result: dict[str, Any]) -> str:
         for r in rows:
             k = r["key"]
             out.append(
-                f"- `{k['entity_value']}` ({k['entity_type']}/{k['claim_kind']}) - {r['why']}"
+                f"- `{k['entity_value']}` ({k['entity_type']}/{k['category']}) - {r['why']}"
             )
             for side in ("affirms", "denials"):
                 for c2 in r.get(side) or ():
