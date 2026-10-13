@@ -159,104 +159,46 @@ def test_timeline_keeps_i1_when_n4_is_truncated():
     assert "192.168.77.10" in md
 
 
-def test_qa_spine_answers_or_insufficient():
+def test_qa_spine_names_the_approved_findings_highest_severity_first():
+    """D135: the answer names the approved findings; it does not match words against
+    keyword lists from earlier cases, and the conclusion is the examiner's."""
     from nexus.integration.dfir_report import build_qa_spine
 
     rows = build_qa_spine(
-        ["What supports insider staging?", "What supports external compromise?"],
-        [{
-            "id": "F-1",
-            "title": "Recycle Bin contains deleted PST and SDelete",
-            "observation": "sdelete.exe and backup.pst",
-            "status": "APPROVED",
-        }, {
-            "id": "F-014",
-            "title": "No host artifacts in the query pack support external compromise",
-            "observation": "Query pack does not support C2 or malware on this host",
-            "status": "APPROVED",
-        }],
-    )
-    assert "sdelete" in rows[0]["answer"].lower() or "pst" in rows[0]["answer"].lower()
-    assert "INSUFFICIENT" in rows[1]["answer"]
-    assert "F-014" in rows[1]["cite"]
-
-
-def test_qa_spine_ignores_dual_lens_c2_prose():
-    from nexus.integration.dfir_report import build_qa_spine
-
-    rows = build_qa_spine(
-        ["What supports external compromise?"],
-        [{
-            "id": "F-009",
-            "title": "fredr accessed PST stores",
-            "observation": "backup.pst opened",
-            "interpretation": "Under the external-compromise lens, no malicious process or C2 is associated.",
-            "status": "APPROVED",
-        }],
-    )
-    assert "INSUFFICIENT" in rows[0]["answer"]
-
-
-def test_qa_spine_refute_beaconing_is_not_external_support():
-    from nexus.integration.dfir_report import build_qa_spine
-
-    rows = build_qa_spine(
-        ["What supports or refutes external compromise?"],
-        [{
-            "id": "F-016",
-            "title": "PowerShell history records direct SDelete volume wipes",
-            "observation": "sdelete64.exe -nobanner -z -c D:",
-            "interpretation": (
-                "It strengthens the insider-misuse lens; externally it could "
-                "reflect cleanup by an operator, but no malware or C2 beaconing "
-                "is present in the provided hits."
-            ),
-        }],
-    )
-    assert "INSUFFICIENT" in rows[0]["answer"]
-    assert "Supported" not in rows[0]["answer"]
-    assert "beacon" not in rows[0]["answer"].lower()
-
-
-def test_qa_spine_sdelete_row_still_supports_insider():
-    from nexus.integration.dfir_report import build_qa_spine
-
-    findings = [{
-        "id": "F-016",
-        "title": "PowerShell history records direct SDelete volume wipes",
-        "observation": "sdelete64.exe -nobanner -z -c D:",
-        "interpretation": (
-            "It strengthens the insider-misuse lens, but no malware or C2 "
-            "beaconing is present in the provided hits."
-        ),
-    }]
-    rows = build_qa_spine(
+        ["Compromise suspected.", "What persistence was used?"],
         [
-            "What host activity supports or refutes insider misuse / data staging?",
-            "What supports or refutes external compromise?",
+            {"id": "F-2", "title": "Run key launches a renamed binary", "severity": "medium"},
+            {"id": "F-1", "title": "Defender quarantined a beacon loader", "severity": "critical"},
         ],
-        findings,
     )
-    assert "Supported" in rows[0]["answer"] and "sdelete" in rows[0]["answer"]
-    assert "INSUFFICIENT" in rows[1]["answer"]
+    assert [r["question"] for r in rows] == ["Compromise suspected.", "What persistence was used?"]
+    for row in rows:
+        assert row["answer"].startswith("Approved findings bearing on this question: F-1 (")
+        assert "F-2 (Run key launches a renamed binary)" in row["answer"]
+        assert "The conclusion is the examiner's." in row["answer"]
+        assert "Supported" not in row["answer"]
+        assert row["cite"] == "F-1"
 
 
-def test_qa_spine_host_wipe_supports_attacker_activity():
+def test_qa_spine_without_an_approved_finding_is_insufficient():
     from nexus.integration.dfir_report import build_qa_spine
 
-    rows = build_qa_spine(
-        ["What attacker activity is evidenced on this host?"],
-        [{
-            "id": "F-005",
-            "title": "USN overwrite of SECURITY and firewall logs",
-            "observation": "USN DataOverwrite Close on SECURITY.evtx 2023-01-23",
-            "interpretation": "Anti-forensic log wipe on the host.",
-            "status": "DRAFT",
-        }],
-    )
-    assert "Supported" in rows[0]["answer"]
-    assert "INSUFFICIENT" not in rows[0]["answer"]
-    assert "F-005" in rows[0]["cite"]
+    rows = build_qa_spine(["What supports external compromise?"], [])
+    assert rows == [{"question": "What supports external compromise?",
+                     "answer": "INSUFFICIENT — no approved finding.", "cite": ""}]
+
+
+def test_qa_spine_answer_does_not_depend_on_earlier_case_vocabulary():
+    """The same findings answer every question the same way: the answer can no longer
+    flip on words such as sdelete, pst, mimikatz or "no C2" in a finding's text."""
+    from nexus.integration.dfir_report import build_qa_spine
+
+    findings = [{"id": "F-016", "title": "PowerShell history records direct SDelete volume wipes",
+                 "interpretation": "no malware or C2 beaconing is present in the provided hits"}]
+    insider, external = build_qa_spine(
+        ["What supports insider misuse?", "What supports external compromise?"], findings)
+    assert insider["answer"] == external["answer"]
+    assert insider["cite"] == external["cite"] == "F-016"
 
 
 def test_finding_evidence_renders_as_table_not_prose_wall():

@@ -258,22 +258,13 @@ def rows_from_observation(text: str) -> list[dict[str, str]]:
                     flags=re.I,
                 ).strip()
                 rows.append(_row(hit.group("ts"), src, name or "—", f"{name} last run"))
-            # leftover GoogleDriveFS e.g. times
-            eg = re.search(
-                r"(GOOGLEDRIVEFS\.EXE|GoogleDriveFS\.exe).{0,80}?"
-                r"on\s+(20\d{2}-\d{2}-\d{2}).{0,20}?"
-                r"\(([^)]+)\)",
-                chunk,
-                re.I,
-            )
-            if eg:
-                times = ", ".join(_TIME_ONLY.findall(eg.group(3))[:6])
-                rows.append(_row(
-                    f"{eg.group(2)} {times}" if times else eg.group(2),
-                    src,
-                    "GOOGLEDRIVEFS.EXE",
-                    "repeated prefetch / ActivitiesCache runs",
-                ))
+            # Whatever the chunk says beyond its "last run" entries keeps its own row when it
+            # carries a time. This used to be a GoogleDriveFS-only regex from an earlier case
+            # (D135); any program's leftover dated text is kept the same way.
+            remainder = _LAST_RUN.sub(" ", chunk).strip(" ;,.")
+            rest_ts = _first_ts(remainder)
+            if rest_ts and len(remainder) > 20:
+                rows.append(_row(rest_ts, src, _artifact(remainder) or "—", remainder))
             continue
         src = _source_of(chunk)
         if src == "host" and chunk.lower().startswith("host artifacts"):

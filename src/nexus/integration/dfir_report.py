@@ -66,89 +66,40 @@ def build_qa_spine(
     questions: list[str],
     findings: list[dict[str, Any]],
 ) -> list[dict[str, str]]:
-    """N8: each N1 question is answered from findings or INSUFFICIENT."""
+    """N8: each N1 question is answered from the approved findings, or INSUFFICIENT.
+
+    The answer names the approved findings, highest severity first, and the conclusion is
+    the examiner's. It used to decide "Supported" or "INSUFFICIENT" by matching each finding's
+    words against keyword lists from earlier cases (insider: sdelete, pst, recycle, drive;
+    external: mimikatz, rubeus, cobalt, beacon, ...) and a list of refutation phrases, so a
+    new case's report answered by another case's vocabulary (D135).
+    """
+    ranked = sorted(
+        (f for f in findings if isinstance(f, dict)),
+        key=lambda f: _sev_rank(str(f.get("severity") or "")),
+    )
     rows: list[dict[str, str]] = []
-
-    def _blob(f: dict[str, Any]) -> str:
-        return " ".join(
-            str(f.get(k) or "") for k in ("title", "observation", "description", "interpretation")
-        ).lower()
-
-    def _negative(f: dict[str, Any]) -> bool:
-        b = _blob(f)
-        if any(w in b for w in (
-            "no host", "insufficient", "does not support", "not support",
-            "no query pack", "does not corroborate", "no malicious",
-            "lack intrusion", "not supported by the evidence",
-            "do not include indicators of malware",
-            "no malware", "no c2", "no beacon", "no intrusion",
-            "no mimikatz", "no cobalt",
-            "does not show remote", "do not show remote",
-        )):
-            return True
-        return bool(re.search(
-            r"\bno\s+(?:host|malware|c2|beacon|intrusion|mimikatz|cobalt)\b",
-            b,
-        ))
-
     for q in questions:
-        low = q.lower()
-        keys = []
-        if any(w in low for w in ("insider", "staging", "misuse", "wipe", "pst", "exfil")):
-            keys = ["sdelete", "pst", "recycle", "drive", "staging"]
-        elif any(w in low for w in (
-            "external", "compromise", "c2", "malware", "intrusion", "attacker",
-        )):
-            # Host-artifact evidence can support an intrusion/attacker-activity
-            # question. Dual-lens prose using "C2" to refute still uses _negative.
-            keys = [
-                "mimikatz", "rubeus", "cobalt", "beacon", "psexec", "psexesvc",
-                "encodedcommand", "wevtutil", "1102", "overwrite", "usn",
-                "rundll32", "mshta", "lsass", "schtasks", "persistence",
-                "autorun", "wacsvc",
-            ]
-        else:
-            keys = [t for t in re.findall(r"[a-z0-9]{4,}", low) if t not in {
-                "what", "host", "activity", "supports", "refutes", "with", "from",
-            }][:6]
-        external_q = any(w in low for w in (
-            "external", "compromise", "c2", "malware", "intrusion", "attacker",
-        ))
-        matched: list[str] = []
-        cited = ""
-        for f in findings:
-            b = _blob(f)
-            hits = [k for k in keys if k in b]
-            # Refute/absence prose must not count as intrusion evidence.
-            # Do not skip the same row for insider keys (sdelete/PST/Drive).
-            if external_q and _negative(f):
-                if not cited:
-                    cited = str(f.get("id") or f.get("title") or "")
-                continue
-            if not hits:
-                continue
-            matched.extend(hits)
-            if not cited:
-                cited = str(f.get("id") or f.get("title") or "")
-        matched = list(dict.fromkeys(matched))
-        if external_q and not matched:
+        if not ranked:
             rows.append({
                 "question": q,
-                "answer": "INSUFFICIENT — approved findings do not corroborate this on host artifacts.",
-                "cite": cited,
-            })
-        elif matched:
-            rows.append({
-                "question": q,
-                "answer": f"Supported by findings (terms: {', '.join(matched)}).",
-                "cite": cited,
-            })
-        else:
-            rows.append({
-                "question": q,
-                "answer": "INSUFFICIENT — no approved finding rows matched this question.",
+                "answer": "INSUFFICIENT — no approved finding.",
                 "cite": "",
             })
+            continue
+        named = "; ".join(
+            f"{f.get('id') or '?'} ({str(f.get('title') or '').strip()[:120]})"
+            for f in ranked[:5]
+        )
+        more = f" and {len(ranked) - 5} more" if len(ranked) > 5 else ""
+        rows.append({
+            "question": q,
+            "answer": (
+                f"Approved findings bearing on this question: {named}{more}. "
+                "The conclusion is the examiner's."
+            ),
+            "cite": str(ranked[0].get("id") or ranked[0].get("title") or ""),
+        })
     return rows
 
 

@@ -35,14 +35,10 @@ def _needles(findings: list[dict[str, Any]]) -> list[str]:
         for f in findings
         for k in ("title", "observation", "description", "interpretation")
     )
+    # Executables and paths named in the approved findings. A list of tool names from earlier
+    # cases (sdelete, pst, drivefs, mimikatz, rubeus) used to be added from titles (D135).
     found = [m.group(0) for m in _EXE.finditer(blob)]
     found.extend(m.group(0) for m in _PATH.finditer(blob))
-    # Keep distinctive tokens from titles
-    for f in findings:
-        title = str(f.get("title") or "")
-        for tok in ("sdelete", "pst", "drivefs", "mimikatz", "rubeus"):
-            if tok in title.lower():
-                found.append(tok)
     seen: set[str] = set()
     out: list[str] = []
     for t in found:
@@ -92,7 +88,7 @@ def draft_suricata(needles: list[str]) -> str:
     lines = ["# Draft Suricata — file for SIEM/NSM, not loaded into N5"]
     sid = 1100001
     for n in needles:
-        if n.lower().endswith(".exe") or n.lower() in {"sdelete", "mimikatz"}:
+        if n.lower().endswith(".exe"):
             content = n.replace(";", "")
             lines.append(
                 f'alert http any any -> any any (msg:"NEXUS-DRAFT {content}"; '
