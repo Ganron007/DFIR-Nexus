@@ -552,6 +552,12 @@ async def run_interpret_loop(
         log_usage(tag, report)
         return packed
 
+    from nexus.langgraph.llm_pipeline import emit_stage
+
+    def _progress(status: str, detail: str = "") -> None:
+        # A Mode 1 run is minutes of model calls; each phase says where it is (2026-10-14).
+        emit_stage(dict(state), "interpret", status, detail)
+
     messages: list[dict[str, str]] = []
     hypotheses: list[dict[str, Any]] = []
     notes_all: list[dict[str, str]] = []
@@ -630,6 +636,7 @@ async def run_interpret_loop(
     packed = _packed("interpret-orient", [
         (1, "examiner_intake", intake_block),
     ])
+    _progress("orient", f"planning hypotheses and queries ({rounds_total} round(s) allowed)")
     raw = await _call_model(model, [
         {"role": "system", "content": orient_system},
         {"role": "user", "content": packed + "\n\nProduce the plan JSON."},
@@ -637,6 +644,7 @@ async def run_interpret_loop(
     plan_data = _parse_json_blob(raw)
     plan = _normalize_plan(plan_data)
     hypotheses = plan["hypotheses"]
+    _progress("orient", f"{len(hypotheses)} hypothesis(es), {len(plan['items'])} query item(s) planned")
     _persist_round(case_dir, "round-0-orient", {
         "round": 0, "kind": "orient", "hypotheses": hypotheses,
         "items": plan["items"], "raw_chars": len(raw),
@@ -689,6 +697,8 @@ async def run_interpret_loop(
             stop_reason = "no_more_queries"
             break
         entries: list[dict[str, Any]] = []
+        _progress(f"round {round_no}/{rounds_total}",
+                  f"running {len(current_items[:_MAX_PLAN_ITEMS])} evidence query(ies)")
         for item in current_items[:_MAX_PLAN_ITEMS]:
             tool_name, payload = _execute_payload(item)
             result: dict[str, Any]
@@ -718,6 +728,10 @@ async def run_interpret_loop(
             # records and not from the plan.
             _record_loop_query(case_dir, run_id, tool_name, payload, result, entry)
         rounds_run = round_no
+        _rows = sum(e["count"] for e in entries if isinstance(e.get("count"), int))
+        _errs = sum(1 for e in entries if e.get("error"))
+        _progress(f"round {round_no}/{rounds_total}",
+                  f"{len(entries) - _errs} ok, {_errs} error(s), {_rows} row(s); verifying")
         results_block = _render_results(entries)
         evidence_blocks.append(f"## Round {round_no} results\n{results_block}")
         _persist_round(case_dir, f"round-{round_no}-verify", {
@@ -834,7 +848,8 @@ async def run_interpret_loop(
         "'no compromise'.\n"
         "- Checked needles with 0 hits are negative evidence: name them in "
         "the relevant finding's observation.\n"
-        "- Each finding: title, entity {\"type\",\"value\"} (the one thing it is about, "
+        "- Each finding: title, severity (critical|high|medium|low|info, judged from "
+        "the evidence), entity {\"type\",\"value\"} (the one thing it is about, "
         "e.g. {\"type\":\"event_id\",\"value\":\"1004\"}), observation, interpretation (non-empty), "
         "evidence [{time,source,artifact,detail}], attack_ids (only when "
         "justified), confidence, confidence_justification, audit_ids from "
@@ -846,6 +861,7 @@ async def run_interpret_loop(
         (1, "round_results", evidence_block),
         (2, "verification_notes", notes_block),
     ]
+    _progress("reconcile", f"writing findings from {len(notes_all)} verification note(s)")
     packed = _packed("interpret-reconcile", reconcile_extra)
     # Keep the packing stats so the corrective retry's persisted context carries
     # the same completeness header as every other stage.
@@ -874,6 +890,11 @@ async def run_interpret_loop(
     if not candidates and _looks_like_findings_json(raw_findings):
         correct_used = True
         log.warning("Findings reply carried findings keys but parsed to 0 — one corrective retry")
+        # Keep the reply that failed to parse, so the cause can be read after the run; only the
+        # corrected reply used to be kept (2026-10-14).
+        _persist_round(case_dir, "findings-unparsed",
+                       {"raw": raw_findings, "chars": len(raw_findings or "")})
+        _progress("reconcile", "the findings reply did not parse; one corrective retry")
         try:
             persist_context(
                 case_dir, "interpret-findings-corrective", packed, packed_report,
@@ -903,7 +924,9 @@ async def run_interpret_loop(
     # One bounded extra pass for whatever the findings did not mention.
     extra_text = ""
     if unaddressed_final:
-        items_block = "\n".join(
+        _progress("reconcile",
+                  f"one extra pass for {len(unaddressed_final)} unaddressed digest item(s)")
+        items_block ="\n".join(
             f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed_final[:40]
         )
         extra_system = (
@@ -964,6 +987,8 @@ async def run_interpret_loop(
         # produced, so "not observed" is bounded by what actually ran.
         "family_ledger": _family_ledger_for_run(case_dir, run_id),
     })
+    _progress("done", f"{rounds_run}/{rounds_total} round(s), stop {stop_reason}, "
+                      f"{len(candidates)} finding candidate(s)")
 
     messages.append({
         "role": "assistant",

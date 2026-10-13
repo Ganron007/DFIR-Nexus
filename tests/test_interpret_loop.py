@@ -201,6 +201,33 @@ def test_findings_corrective_retry_recovers_a_malformed_reply(tmp_path):
     assert record["corrective_retry_used"] is True
     assert record["candidates_parsed"] == 3
     assert record["chars"] > 0
+    # The reply that failed to parse is kept, so the cause can be read after the run.
+    unparsed = json.loads(
+        (tmp_path / "analysis" / "interpret_rounds" / "findings-unparsed.json")
+        .read_text(encoding="utf-8")
+    )
+    assert unparsed["raw"] == malformed
+
+
+def test_the_findings_prompt_asks_for_severity(tmp_path):
+    """D47: Mode 1 DRAFTs had no severity because the findings prompt never asked for one."""
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    sent: list[str] = []
+
+    class _Recording(ScriptedModel):
+        async def ainvoke(self, messages):
+            sent.append("\n".join(str(m.get("content") or "") for m in messages))
+            return await super().ainvoke(messages)
+
+    asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST",
+        model=_Recording([_orientation(), _verify_settled(), _findings_all_addressed()]),
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    findings_call = next(s for s in sent if "write the final findings JSON array" in s)
+    assert "severity (critical|high|medium|low|info" in findings_call
 
 
 def test_findings_without_keys_is_not_retried(tmp_path):

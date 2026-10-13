@@ -213,6 +213,11 @@ def emit_stage(state: InvestigationState | dict, stage: str, status: str,
     ``host``, ``command``, ``duration_s``, ``output``, ``reason``,
     ``audit_id``) — scalar values only, capped, never nested.
     """
+    # Every stage also goes to the `nexus.progress` logger, which the CLI prints. A CLI run has
+    # no progress file, so a 40-minute Mode 1 run used to print nothing until it ended and
+    # read as stuck (2026-10-14).
+    logging.getLogger("nexus.progress").info(
+        "%s %s%s", stage, status, f": {str(detail)[:200]}" if detail else "")
     path_raw = ""
     if isinstance(state, dict):
         path_raw = str(state.get("progress_path") or "")
@@ -2106,6 +2111,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         def _reject(reason: str) -> str:
             errors.append(reason)
             rejected.append({"title": title, "reason": reason[:500]})
+            emit_stage(state, "stage_findings", "not staged", f"{title[:80]}: {reason[:160]}")
             return ""
 
         linked: set[str] | None = None
@@ -2134,6 +2140,9 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         if stage_case_id:
             # The run's own case: the tool stages there, never into the global active case.
             payload["case_id"] = stage_case_id
+        if state.get("run_id"):
+            # The DRAFT names the run that produced it, as Mode 2 and 3 DRAFTs do (WO-1C item 5).
+            payload["run_id"] = str(state.get("run_id"))
         try:
             result = _parse_tool_result(
                 await call_tool(finding_tool, payload, label="record_finding")
@@ -2143,7 +2152,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         fid = result.get("finding_id") or result.get("id")
         if fid:
             draft_ids.append(fid)
-            log.info("Finding staged: %s", fid)
+            emit_stage(state, "stage_findings", "staged", f"{fid}: {title[:120]}")
             return str(fid)
         if result.get("status") == "REJECTED":
             return _reject(str(result.get("error") or result.get("missing_audit_ids") or result))
@@ -2214,7 +2223,10 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
 
         case_id = str(state.get("case_id") or "")
         if case_id:
+            emit_stage(state, "draft_report", "running",
+                       "REPORT-DRAFT.md with the model's read of each finding cluster")
             preview = write_findings_preview(settings.cases_root / case_id)
+            emit_stage(state, "draft_report", "done", str(preview))
             log_msg.append(f"Wrote {preview}")
     except Exception as exc:  # noqa: BLE001
         log_msg.append(f"Draft preview skipped: {exc}")
@@ -2247,9 +2259,11 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             reconciliation = reconciliation_checklist(
                 json.loads(digest_path.read_text(encoding="utf-8")), staged
             )
+        emit_stage(state, "interpretation", "running", "the executive verdict")
         out = await write_interpretation_summary(
             case_dir, gaps=gaps, reconciliation=reconciliation, model=model
         )
+        emit_stage(state, "interpretation", "done", str(out or ""))
         if out:
             log_msg.append(
                 f"Wrote {out.name} (gaps={len(gaps)}, "

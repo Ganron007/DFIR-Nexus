@@ -87,6 +87,7 @@ def reap_stale_running_runs(cases_root: Path | None = None) -> list[str]:
     if not root.is_dir():
         return reaped
     for case_dir in sorted(root.glob("CASE-*")):
+        reaped.extend(f"{case_dir.name}/{rid}" for rid in reap_dead_runs(case_dir))
         runs_dir = case_dir / "analysis" / "pipeline_runs"
         if not runs_dir.is_dir():
             continue
@@ -146,6 +147,36 @@ def process_alive(pid: Any) -> bool:
     except OSError:
         return False
     return True
+
+
+def reap_dead_runs(case_dir: Path) -> list[str]:
+    """Mark a run whose manifest says 'running' and whose process has exited as interrupted.
+
+    A CLI run that is stopped (Ctrl+C, a closed terminal, a crash) leaves its manifest at
+    'running', and no server reaps it: the 2026-10-14 Mode 1 run read 'running' after its
+    process was gone. Only a manifest that names its process is judged; one with no pid is left
+    to the server's startup reaper.
+    """
+    reaped: list[str] = []
+    for manifest_path in sorted((Path(case_dir) / "runs").glob("*/manifest.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(manifest, dict) or manifest.get("status") != "running":
+            continue
+        if "pid" not in manifest or process_alive(manifest.get("pid")):
+            continue
+        manifest["status"] = "interrupted"
+        manifest["completed_at"] = datetime.now(UTC).isoformat()
+        manifest["error"] = (
+            f"its process (pid {manifest.get('pid')}) exited before the run finished")
+        try:
+            _atomic_json(manifest_path, manifest)
+        except OSError:
+            continue
+        reaped.append(str(manifest.get("run_id") or manifest_path.parent.name))
+    return reaped
 
 
 def live_analysis_runs(case_dir: Path) -> list[dict[str, str]]:

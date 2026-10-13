@@ -814,6 +814,17 @@ def pipeline(
             typer.echo(refusal, err=True)
             raise typer.Exit(1)
 
+    # The run's progress is printed as it happens: rounds, staging, the draft report. A CLI run
+    # has no progress file, and a 40-minute Mode 1 run printed nothing and read as stuck.
+    import logging
+
+    progress_log = logging.getLogger("nexus.progress")
+    if not progress_log.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
+        progress_log.addHandler(handler)
+        progress_log.setLevel(logging.INFO)
+        progress_log.propagate = False
     result = asyncio.run(run_pipeline(
         evidence_path=case,
         resume=resume,

@@ -62,6 +62,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         evidence: list[dict] | None = None,
         entity: dict | None = None,
         case_id: str = "",
+        run_id: str = "",
     ) -> dict:
         """Stage a finding as DRAFT for human review.
 
@@ -126,6 +127,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "origin": "llm",
             "path": "interpret",
         })
+        # The run that produced the DRAFT (WO-1C item 5). Mode 1 DRAFTs had none, so cross-mode
+        # lineage could not name their run.
+        if run_id:
+            finding_data["run_id"] = run_id
+            if isinstance(finding_data.get("provenance"), dict):
+                finding_data["provenance"] = {**finding_data["provenance"], "run_id": run_id}
 
         try:
             target = _target_case_dir(case_id)

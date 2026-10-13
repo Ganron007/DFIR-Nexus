@@ -389,7 +389,11 @@ def analyze_clusters(clusters: list[list[dict[str, Any]]],
                      case_dir: Path | None = None) -> dict[int, dict[str, Any]]:
     """Analyst read per cluster, keyed by cluster index."""
     out: dict[int, dict[str, Any]] = {}
+    progress = logging.getLogger("nexus.progress")
     for i, cluster in enumerate(clusters):
+        if model is not None:
+            progress.info("draft_report cluster %d/%d: %s", i + 1, len(clusters),
+                          str((cluster[0] or {}).get("title") or "")[:100] if cluster else "")
         out[i] = analyze_cluster(
             cluster, rows_for.get(i, []), model=model, steer=steer,
             case_dir=case_dir)

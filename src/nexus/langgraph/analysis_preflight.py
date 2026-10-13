@@ -28,9 +28,12 @@ def sift_blocks_analysis(case_dir: Path | str) -> str:
 def analysis_preflight(case_dir: Path | str, *, own_run_id: str = "") -> str:
     """Why an analysis run may not start on this case now, or "" when it may."""
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
+    from nexus.langgraph.pipeline_runs import reap_dead_runs
     from nexus.modes.multi_role import busy_message, busy_runs
 
     case_dir = Path(case_dir)
+    # A run left 'running' by a process that has exited is recorded as interrupted first.
+    reap_dead_runs(case_dir)
     gate = lane_gate_blocked(case_dir)
     if gate:
         return gate_message(gate)
