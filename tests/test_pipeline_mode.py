@@ -7,9 +7,7 @@ from pathlib import Path
 import pytest
 
 from nexus.langgraph.llm_pipeline import (
-    _fallback_candidates_from_state,
     _is_collection_stub,
-    _merge_n4_uncovered,
     build_graph,
     get_mcp_config,
     has_examiner_intake,
@@ -54,7 +52,6 @@ def test_make_initial_state_carries_mode():
     assert st4["case_id"] == "INC-TEST"
 
 
-
 def test_pipeline_runs_are_immutable_and_point_to_latest(tmp_path: Path):
     from nexus.langgraph.pipeline_runs import create_run, finalize_run, resolve_run
 
@@ -76,7 +73,6 @@ def test_pipeline_runs_are_immutable_and_point_to_latest(tmp_path: Path):
         create_run(case_dir, "tools", ["C:/evidence/pack"], run_id=first.run_id)
 
 
-
 def test_interpret_run_references_tools_parent(tmp_path: Path):
     from nexus.langgraph.pipeline_runs import create_run, finalize_run, load_manifest
 
@@ -93,7 +89,6 @@ def test_interpret_run_references_tools_parent(tmp_path: Path):
     manifest = load_manifest(interpret_run.path)
     assert manifest["parent_run_id"] == tools_run.run_id
     assert manifest["mode"] == "interpret"
-
 
 
 def test_run_to_finalize_prefers_the_pipelines_own_run(tmp_path: Path, monkeypatch):
@@ -331,51 +326,3 @@ def test_collection_stub_filter():
     })
 
 
-def test_merge_n4_adds_usb_when_llm_omitted_it():
-    llm = [{
-        "title": "sdelete wipe / secure-delete on host",
-        "observation": "pecmd hit sdelete.exe",
-    }]
-    n4 = [
-        {"title": "sdelete wipe / secure-delete on host", "observation": "dup"},
-        {"title": "USB / USBSTOR activity", "observation": "USBSTOR Disk&Ven"},
-    ]
-    merged = _merge_n4_uncovered(llm, n4)
-    titles = [c["title"] for c in merged]
-    assert titles.count("sdelete wipe / secure-delete on host") == 1
-    assert any("USB" in t for t in titles)
-
-
-def test_fallback_uses_n4_hits_not_parser_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from nexus.config import settings
-
-    case_id = "INC-TESTN4"
-    case = tmp_path / "cases" / case_id
-    pecmd = case / "extractions" / "pecmd"
-    pecmd.mkdir(parents=True)
-    (pecmd / "prefetch_Timeline.csv").write_text(
-        "RunTime,ExecutableName\n"
-        "2020-11-14 04:49:43,ACRORD32.EXE\n"
-        "2020-11-14 13:42:11,sdelete.exe\n",
-        encoding="utf-8",
-    )
-    (case / "CASE.yaml").write_text(
-        "intake:\n  playbooks: data_staging\n  host: rocba\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(settings, "cases_root", tmp_path / "cases")
-    ledger = [{
-        "status": "OK",
-        "tool": "windows/pecmd",
-        "audit_id": "win-e-20260101-001",
-        "purpose": "prefetch",
-        "output_saved_to": str(pecmd / "stdout.txt"),
-    }]
-    state = {"case_id": case_id, "tool_run_ledger": ledger}
-    cands = _fallback_candidates_from_state(state, ["win-e-20260101-001"], "rocba")
-    assert cands
-    blob = " ".join(f"{c['title']} {c['observation']}" for c in cands).lower()
-    assert "sdelete" in blob
-    assert "completed ok" not in blob
-    assert "acrord32" not in blob
-    assert not any(_is_collection_stub(c) for c in cands)

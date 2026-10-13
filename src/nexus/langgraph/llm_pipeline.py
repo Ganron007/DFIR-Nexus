@@ -2015,78 +2015,9 @@ def _is_collection_stub(candidate: dict) -> bool:
         return True
     if "/" in title and ": " in title:
         left = title.split(": ", 1)[0].strip()
-        if (
-            "/" in left
-            and " " not in left
-            and "sdelete" not in title.lower()
-            and ".pst" not in title.lower()
-        ):
+        if "/" in left and " " not in left:
             return True
     return False
-
-
-def _fallback_candidates_from_state(
-    state: InvestigationState,
-    trail: list[str],
-    host_default: str,
-) -> list[dict]:
-    """N4 hit clusters when LLM JSON is missing. Never invent parser-OK findings."""
-    del trail, host_default
-    case_id = str(state.get("case_id") or "").strip()
-    if not case_id:
-        return []
-    from nexus.config import settings
-    from nexus.langgraph.query_pack import n4_finding_candidates
-
-    return n4_finding_candidates(
-        settings.cases_root / case_id,
-        ledger=list(state.get("tool_run_ledger") or []),
-    )
-
-
-def _n4_claim_needles(text: str) -> set[str]:
-    t = (text or "").lower()
-    found: set[str] = set()
-    if "sdelete" in t:
-        found.add("sdelete")
-    if ".pst" in t or "pst " in t or "mailbox" in t:
-        found.add("pst")
-    if any(x in t for x in ("my drive", "googledrive", "drivefs", "google drive")):
-        found.add("drive")
-    if "usbstor" in t or " usb " in f" {t.replace('/', ' ')} " or t.startswith("usb "):
-        found.add("usb")
-    if "recycle" in t:
-        found.add("recycle")
-    if "mimikatz" in t:
-        found.add("mimikatz")
-    if "psexec" in t:
-        found.add("psexec")
-    if "wevtutil" in t or "1102" in t:
-        found.add("wevtutil")
-    if "dataoverwrite" in t or "overwrite" in t:
-        found.add("overwrite")
-    if "encodedcommand" in t:
-        found.add("encodedcommand")
-    if "lsass" in t:
-        found.add("lsass")
-    return found
-
-
-def _merge_n4_uncovered(llm: list[dict], n4: list[dict]) -> list[dict]:
-    """Keep LLM IR rows; add N4 clusters the LLM omitted (e.g. USB after a stub gap)."""
-    covered: set[str] = set()
-    for c in llm:
-        covered |= _n4_claim_needles(
-            f"{c.get('title', '')} {c.get('observation', '')}"
-        )
-    extra = []
-    for c in n4:
-        needles = _n4_claim_needles(str(c.get("title") or ""))
-        if not needles or needles & covered:
-            continue
-        extra.append(c)
-        covered |= needles
-    return list(llm) + extra
 
 
 async def stage_findings(state: InvestigationState, tools: dict, model=None) -> dict:
@@ -2125,14 +2056,15 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
     tool_trail = [a for a in trail if _is_tool_audit_id(a)]
     trail = tool_trail or trail
 
-    ctx = state.get("case_context") or {}
-    host_default = str(ctx.get("host") or "").strip()
+    # Only the interpret run's own candidates are staged (D130). Needle hits are digest items the
+    # loop must disposition; they used to be staged as findings when the model produced none, when
+    # every model candidate was rejected ("N4 hit salvage"), and beside the model's findings, chosen
+    # by a keyword list from earlier cases.
     candidates = [
         c for c in parse_hunt_candidates(state.get("messages", []))
         if not _is_collection_stub(c)
     ]
-    n4 = _fallback_candidates_from_state(state, trail, host_default)
-    candidates = n4 if not candidates else _merge_n4_uncovered(candidates, n4)
+    rejected: list[dict[str, str]] = []
 
     # EH-9: linkage scope — pad candidate audit_ids only with calls that
     # reference this finding's evidence families/files.
@@ -2167,8 +2099,15 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 files.append(loc.rsplit(":", 1)[0])
         return families, files
 
-    async def _stage_one(candidate: dict) -> None:
-        nonlocal draft_ids
+    async def _stage_one(candidate: dict) -> str:
+        """Stage one candidate; return its finding id, or "" with the reason recorded."""
+        title = str(candidate.get("title") or "")[:200]
+
+        def _reject(reason: str) -> str:
+            errors.append(reason)
+            rejected.append({"title": title, "reason": reason[:500]})
+            return ""
+
         linked: set[str] | None = None
         if stage_case_dir is not None:
             families, files = _scope_for(candidate)
@@ -2200,34 +2139,30 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 await call_tool(finding_tool, payload, label="record_finding")
             )
         except Exception as e:
-            errors.append(str(e))
-            return
+            return _reject(str(e))
         fid = result.get("finding_id") or result.get("id")
         if fid:
             draft_ids.append(fid)
             log.info("Finding staged: %s", fid)
-            return
+            return str(fid)
         if result.get("status") == "REJECTED":
-            errors.append(str(result.get("error") or result.get("missing_audit_ids") or result))
-        elif result.get("status") == "VALIDATION_FAILED":
-            errors.append(str(result.get("errors") or result))
-        elif result.get("error"):
-            errors.append(str(result["error"]))
-        else:
-            errors.append(f"unexpected record_finding result: {str(result)[:300]}")
+            return _reject(str(result.get("error") or result.get("missing_audit_ids") or result))
+        if result.get("status") == "VALIDATION_FAILED":
+            return _reject(str(result.get("errors") or result))
+        if result.get("error"):
+            return _reject(str(result["error"]))
+        return _reject(f"unexpected record_finding result: {str(result)[:300]}")
 
+    staged_candidates: list[dict] = []
     if candidates:
         for candidate in candidates:
-            await _stage_one(candidate)
+            if await _stage_one(candidate):
+                staged_candidates.append(candidate)
 
-        # Last resort: LLM candidates all failed staging — N4 hits, not parser-OK
-        if not draft_ids:
-            errors.append("LLM/parsed candidates failed staging — using N4 hit salvage")
-            for candidate in _fallback_candidates_from_state(state, trail, host_default):
-                await _stage_one(candidate)
-
+        # A timeline event belongs to a staged finding only; a rejected candidate's event is not
+        # evidence of anything.
         if timeline_tool:
-            for c in candidates:
+            for c in staged_candidates:
                 ts = c.get("event_timestamp", "")
                 if not ts:
                     continue
@@ -2247,17 +2182,32 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                         timeline_ids.append(result["event_id"])
                 except Exception as e:
                     errors.append(str(e))
-    else:
-        errors.append(
-            "No hunt candidates and no MCP audit_ids available for FD-001 staging"
-        )
 
     log_msg = [
-        f"Staged {len(draft_ids)} findings, {len(timeline_ids)} timeline events",
+        f"Staged {len(draft_ids)} of {len(candidates)} finding candidate(s), "
+        f"{len(timeline_ids)} timeline events",
         f"audit_trail_ids={len(trail)}",
     ]
-    if errors:
-        log_msg.append(f"Errors: {'; '.join(errors[:3])}")
+    if not candidates:
+        log_msg.append("The interpret run produced no finding candidates; nothing was staged")
+    for item in rejected:
+        log_msg.append(f"Not staged: {item['title'] or '(untitled)'}: {item['reason'][:300]}")
+    if errors and len(errors) > len(rejected):
+        log_msg.append(f"Errors: {'; '.join(errors[len(rejected):][:3])}")
+    # The run record says what was staged and what was refused, and why.
+    if stage_case_dir is not None:
+        try:
+            from nexus.langgraph.pipeline_runs import _atomic_json, resolve_run
+
+            _run = resolve_run(stage_case_dir, run_id=str(state.get("run_id") or ""))
+            _atomic_json(_run.analysis / "staging.json", {
+                "run_id": _run.run_id,
+                "candidates": len(candidates),
+                "staged": list(draft_ids),
+                "rejected": rejected,
+            })
+        except Exception as exc:  # noqa: BLE001 - the step log still carries the outcome
+            log_msg.append(f"staging record not written: {exc}")
     try:
         from nexus.config import settings
         from nexus.integration.dfir_report import write_findings_preview
