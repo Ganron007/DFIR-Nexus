@@ -323,6 +323,50 @@ def test_pipeline_status_reconciles_its_own_manifest(client):
     assert body["completed_at"] == "2026-09-16T04:35:00+00:00"
 
 
+def test_pipeline_status_of_a_live_run_comes_from_its_thread_not_the_manifest(client):
+    """While the run's worker thread is alive, its manifest may already say completed (the
+    tools report finalizes it inside the graph) while the thread is still closing the run and
+    has not moved the case to active. The status must stay "running" until the thread
+    publishes; it used to say "complete" early (tests/test_flow_e2e.py under load, 2026-10-14)."""
+    import json
+    import threading
+
+    import nexus.dashboard.app as dash
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={"name": "Live Run Case", "activate": True})
+    case_id = r.json()["case_id"]
+    case_dir = settings.cases_root / case_id
+    run_id = "RUN-20261014T000000000Z-tools-live0001"
+    run_dir = case_dir / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps({
+        "run_id": run_id, "case_id": case_id, "mode": "tools",
+        "status": "completed", "created_at": "2026-10-14T00:00:05+00:00",
+        "completed_at": "2026-10-14T00:05:00+00:00",
+    }))
+    (case_dir / "active_runs.json").write_text(json.dumps({"tools": run_id}))
+    release = threading.Event()
+    worker = threading.Thread(target=release.wait, daemon=True)
+    worker.start()
+    dash._pipeline_runs[run_id] = {
+        "run_id": run_id, "case_id": case_id, "mode": "tools",
+        "status": "running", "started_at": "2026-10-14T00:00:00+00:00",
+    }
+    dash._pipeline_threads[run_id] = worker
+    try:
+        live = client.get(f"/portal/api/pipeline/status?run_id={run_id}").json()
+        assert live["status"] == "running"
+        release.set()
+        worker.join(timeout=5)
+        ended = client.get(f"/portal/api/pipeline/status?run_id={run_id}").json()
+        assert ended["status"] == "complete"  # the thread is gone: the manifest speaks for it
+    finally:
+        release.set()
+        dash._pipeline_runs.pop(run_id, None)
+        dash._pipeline_threads.pop(run_id, None)
+
+
 def test_pipeline_run_accepts_examiner_intake(client, monkeypatch, tmp_path):
     """The N1 intake (question/window) must reach the pipeline's case_context —
     without it coverage/design degrade to TOOL-RUN only (no LLM interpret)."""

@@ -5308,19 +5308,24 @@ async def api_pipeline_run(request):
             node_error = str(result.get("error") or "").strip() if isinstance(result, dict) else ""
             if node_error:
                 raise RuntimeError(node_error[:400])
-            record["status"] = "complete"
-            record["completed_at"] = datetime.now(UTC).isoformat()
+            # The case moves first and the terminal status is published last: a poller that
+            # reads "complete" must find the case already active. Publishing first left a
+            # window in which "complete" was visible while the case still said "processing"
+            # (seen under load in tests/test_flow_e2e.py, 2026-10-14).
             _transition_case_status(case_id, "active", allowed_from={"processing"})
+            record["completed_at"] = datetime.now(UTC).isoformat()
+            record["status"] = "complete"
         except Exception as exc:
-            record["status"] = "error"
+            _transition_case_status(case_id, "intake", allowed_from={"processing"})
             record["error"] = str(exc)
             record["completed_at"] = datetime.now(UTC).isoformat()
-            _transition_case_status(case_id, "intake", allowed_from={"processing"})
+            record["status"] = "error"
         finally:
             _persist_pipeline_run(case_dir, record)
             _invalidate_briefing(_case_key(case_dir))
 
     thread = threading.Thread(target=_run_in_thread, daemon=True)
+    _pipeline_threads[run_id] = thread
     thread.start()
 
     return JSONResponse({
@@ -5335,6 +5340,10 @@ async def api_pipeline_run(request):
 
 
 _pipeline_runs: dict[str, dict[str, Any]] = {}
+#: The worker thread of each pipeline run this process started. While it is alive, the run's
+#: in-memory record is the authority on its status; the manifest is read only for a run whose
+#: thread is gone (a restart), never to report a live run's status ahead of its thread.
+_pipeline_threads: dict[str, threading.Thread] = {}
 
 
 def _parse_iso_ts(value: object):
@@ -5435,7 +5444,12 @@ async def api_pipeline_status(request):
     # Guard: only a manifest created at/after THIS record's start time may
     # speak for it — a previous run for the same mode must never mark a
     # live run complete (the "status lies complete" bug).
-    if record.get("status") == "running" and case_dir is not None:
+    worker = _pipeline_threads.get(run_id)
+    owned_by_live_thread = bool(worker and worker.is_alive())
+    # A live worker publishes its own terminal status after the case transition. Reading the
+    # manifest instead reported "complete" while the worker was still closing the run and the
+    # case still said "processing" (seen under load, tests/test_flow_e2e.py, 2026-10-14).
+    if record.get("status") == "running" and case_dir is not None and not owned_by_live_thread:
         try:
             from nexus.langgraph.pipeline_runs import resolve_run
 
