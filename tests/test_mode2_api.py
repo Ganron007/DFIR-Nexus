@@ -49,7 +49,7 @@ def test_mode2_run_start_status_steer_pause_resume(tmp_path):
 
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
          patch("nexus.dashboard.app._start_mode2_thread", side_effect=_fake_start), \
-         patch("nexus.dashboard.app._resolve_run_model", return_value=None):
+         patch("nexus.dashboard.app._resolve_run_model", return_value=(object(), "")):
         client = _client()
         start = client.post("/portal/api/mode2/run",
                             json={"question": "who did it", "run_id": run_id})
@@ -157,6 +157,7 @@ def test_mode2_run_generates_m2_run_ids(tmp_path):
     order = m3.WorkOrder(order_id="wo-1", role="evidence", task="t")
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
          patch("nexus.dashboard.app._start_mode2_thread", side_effect=_fake_start), \
+         patch("nexus.dashboard.app._resolve_run_model", return_value=(object(), "")), \
          patch("nexus.modes.multi_role.plan_work_orders", return_value=[order]):
         client = _client()
         planned = client.post("/portal/api/mode2/run/plan",
@@ -186,7 +187,7 @@ def test_mode1_case_can_start_mode2_or_mode3_run(tmp_path):
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
          patch("nexus.dashboard.app._start_mode2_thread"), \
          patch("nexus.dashboard.app._start_mode3_thread"), \
-         patch("nexus.dashboard.app._resolve_run_model", return_value=None):
+         patch("nexus.dashboard.app._resolve_run_model", return_value=(object(), "")):
         client = _client()
         mode2 = client.post("/portal/api/mode2/run", json={"question": "who"})
         mode3 = client.post("/portal/api/mode3/run", json={"question": "who"})

@@ -1603,6 +1603,14 @@ def run_mode3(
         record["stop_reason"] = "elasticsearch_required"
         _persist(case_dir, run_id, record)
         return record
+    if model is None and seat_fn is None:
+        # A Mode 3 run is an LLM run. With no model it used to spawn deterministic seats that
+        # investigated nothing and still ended completed / settled (D132).
+        record["status"] = "failed"
+        record["stop_reason"] = "no model configured"
+        record["error"] = record["stop_reason"]
+        _persist(case_dir, run_id, record)
+        return record
     # Persist before the graph runs so mid-run controls (pause/stop), status
     # polling and the SSE tail all see the record from superstep 0.
     _persist(case_dir, run_id, record)

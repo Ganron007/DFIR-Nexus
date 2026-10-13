@@ -27,12 +27,18 @@ def _case_dir(case_id: str) -> Path:
 
 
 def _resolve_model():
-    try:
-        from nexus.langgraph.llm_pipeline import get_model
+    """The configured model, or the command ends with the reason it could not be built.
 
+    Mode 2 is an LLM run. Running its roles with no model used to be called a
+    "deterministic fallback", and it produced a run that investigated nothing (D132).
+    """
+    from nexus.langgraph.llm_pipeline import get_model
+
+    try:
         return get_model()
-    except Exception:  # noqa: BLE001 — roles have deterministic fallbacks
-        return None
+    except Exception as exc:  # noqa: BLE001 - the reason is printed, never swallowed
+        typer.echo(f"No model: {exc}", err=True)
+        raise typer.Exit(1) from None
 
 
 def _question(case_dir: Path, explicit: str) -> str:
@@ -288,13 +294,14 @@ def resume(
     if status in ("stopped", "completed", "failed"):
         typer.echo(f"Run is {status}; start a new run.", err=True)
         raise typer.Exit(1)
+    model = None if no_run else _resolve_model()
     mark_paused(case_dir, run_id, False)
     typer.echo(f"Resumed {run_id}")
     if no_run:
         return
     state = run_mode2(
         case_dir, str(record.get("question") or ""),
-        model=_resolve_model(), run_id=run_id, on_event=_print_event, resume=True,
+        model=model, run_id=run_id, on_event=_print_event, resume=True,
         context_policy=str(record.get("context_policy") or "independent"),
     )
     typer.echo(f"status={state.get('status')} stop={state.get('stop_reason')}")

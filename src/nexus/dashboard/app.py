@@ -7319,7 +7319,9 @@ async def api_mode3_run(request):
     from nexus.analysis.context_policy import policy_from_body
 
     context_policy = policy_from_body(body)
-    model = await asyncio.to_thread(_resolve_run_model)
+    model, no_model = await asyncio.to_thread(_resolve_run_model)
+    if no_model:
+        return _no_model_response(no_model)
     try:
         _start_mode3_thread(case_dir, question, model, run_id, resume=False,
                             context_policy=context_policy)
@@ -7422,7 +7424,9 @@ async def api_mode3_run_resume(request):
             {"error": f"run is {status}; nothing to resume", "run_id": run_id},
             status_code=409,
         )
-    model = await asyncio.to_thread(_resolve_run_model)
+    model, no_model = await asyncio.to_thread(_resolve_run_model)
+    if no_model:
+        return _no_model_response(no_model)
     try:
         _start_mode3_thread(
             case_dir, str(record.get("question") or ""), model, run_id, resume=True,
@@ -7573,13 +7577,23 @@ async def api_mode3_run_stage(request):
     return JSONResponse(result)
 
 
-def _resolve_run_model() -> Any:
+def _resolve_run_model() -> tuple[Any, str]:
+    """``(model, "")``, or ``(None, reason)`` when the configured model cannot be built.
+
+    Modes 2 and 3 are LLM runs. Starting one with no model used to run "deterministic
+    fallback" seats that investigated nothing and still completed (D132); the route now
+    answers with the reason instead.
+    """
     try:
         from nexus.langgraph.llm_pipeline import get_model
 
-        return get_model()
-    except Exception:  # noqa: BLE001 — deterministic fallback roles still run
-        return None
+        return get_model(), ""
+    except Exception as exc:  # noqa: BLE001 - the reason goes back to the examiner
+        return None, str(exc) or type(exc).__name__
+
+
+def _no_model_response(reason: str) -> JSONResponse:
+    return JSONResponse({"error": f"No model: {reason}"}, status_code=503)
 
 
 async def api_mode2_run_plan(request):
@@ -7665,7 +7679,9 @@ async def api_mode2_run(request):
             question = ""
     run_id = str(body.get("run_id") or "").strip() or (
         f"M2-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
-    model = await asyncio.to_thread(_resolve_run_model)
+    model, no_model = await asyncio.to_thread(_resolve_run_model)
+    if no_model:
+        return _no_model_response(no_model)
     # WO-1C item 3: the context policy the operator picked, recorded on the run.
     from nexus.analysis.context_policy import policy_from_body
 
@@ -7913,8 +7929,10 @@ async def api_mode2_run_resume(request):
              "run_id": run_id},
             status_code=409,
         )
+    model, no_model = await asyncio.to_thread(_resolve_run_model)
+    if no_model:
+        return _no_model_response(no_model)
     await asyncio.to_thread(mark_paused, case_dir, run_id, False)
-    model = await asyncio.to_thread(_resolve_run_model)
     try:
         _start_mode2_thread(
             case_dir, str(record.get("question") or ""), model, run_id, resume=True,

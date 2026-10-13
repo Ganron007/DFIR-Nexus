@@ -417,8 +417,9 @@ def test_m3_run_plan_stages_nothing(client, c3):
     r = client.post("/portal/api/mode3/run", json={"question": "what ran?"},
                     headers=_h(client, c3))
     # 202 Accepted is the start contract: the supervisor runs in a background
-    # thread and the board is polled for progress.
-    assert r.status_code in (200, 202, 400, 409), r.text
+    # thread and the board is polled for progress. 503 is the answer when no model is
+    # configured (D132): the route no longer starts a model-less run.
+    assert r.status_code in (200, 202, 400, 409, 503), r.text
     if r.status_code in (200, 202):
         body = r.json()
         assert "run_id" in body, body

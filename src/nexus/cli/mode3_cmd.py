@@ -66,8 +66,9 @@ def run(
         raise typer.Exit(1)
     try:
         model = get_model()
-    except Exception:  # noqa: BLE001
-        model = None
+    except Exception as exc:  # noqa: BLE001 - the reason is printed, never swallowed (D132)
+        typer.echo(f"No model: {exc}", err=True)
+        raise typer.Exit(1) from None
     policy = normalize_policy(context_policy)
     record = run_mode3(case_dir, _question(case_dir, question), model=model,
                        context_policy=policy)
@@ -231,8 +232,9 @@ def resume(
 
     try:
         model = get_model()
-    except Exception:  # noqa: BLE001
-        model = None
+    except Exception as exc:  # noqa: BLE001 - the reason is printed, never swallowed (D132)
+        typer.echo(f"No model: {exc}", err=True)
+        raise typer.Exit(1) from None
     result = resume_mode3(case_dir, run_id, model=model,
                           context_policy=str(
                               record.get("context_policy") or "independent"))

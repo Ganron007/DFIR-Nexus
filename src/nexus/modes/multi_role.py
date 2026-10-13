@@ -1897,6 +1897,14 @@ def run_mode2(
         state["stop_reason"] = "elasticsearch_required"
         _persist_state(case_dir, run_id, state)
         return state
+    # A Mode 2 run is an LLM run: with no model, refuse before any work starts. It used to
+    # run every work order through the fallback and then report "model unavailable" (D132).
+    if model is None:
+        state["status"] = "failed"
+        state["stop_reason"] = "no model configured"
+        state["error"] = state["stop_reason"]
+        _persist_state(case_dir, run_id, state)
+        return state
 
     # WO-4 (D40): build the signal map before the graph runs, so the coverage
     # audit can answer for the needles this run's claims were drawn from
