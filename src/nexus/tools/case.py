@@ -440,10 +440,19 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return bundle
 
     @server.tool()
-    def import_case(bundle_json: str) -> dict:
-        """Import a case bundle (JSON string) — merges findings and timeline."""
+    def import_case(bundle_json: str, case_id: str = "") -> dict:
+        """Import a case bundle (JSON string) into the named case.
+
+        Every imported finding is staged again as a DRAFT through the validator any new
+        finding passes (FD-001..FD-007), and every timeline event as a DRAFT event. Approval
+        is never imported: only the examiner approves. The bundle used to be merged
+        verbatim into the active case, so a record carrying ``status: APPROVED`` became an
+        approved finding with no approval (third-eye R01, D139).
+        """
+        if not str(case_id or "").strip():
+            return {"error": "case_id is required: name the case this bundle is imported into"}
         try:
-            case_dir = manager.require_active_case()
+            case_dir = manager.resolve_case_dir(case_id.strip())
         except ValueError as e:
             return {"error": str(e)}
 
@@ -451,31 +460,59 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             bundle = json.loads(bundle_json)
         except json.JSONDecodeError as e:
             return {"error": f"Invalid JSON bundle: {e}"}
+        if not isinstance(bundle, dict):
+            return {"error": "Invalid bundle: expected a JSON object"}
 
         from nexus.case_manager import CaseManager
+
         cm = CaseManager()
-
-        imported_findings = bundle.get("findings", [])
-        imported_timeline = bundle.get("timeline", [])
-
-        existing_findings = cm._load_findings(case_dir)
-        existing_ids = {f.get("id") for f in existing_findings}
-        new_findings = [f for f in imported_findings if f.get("id") not in existing_ids]
-        if new_findings:
-            existing_findings.extend(new_findings)
-            cm._save_findings(case_dir, existing_findings)
-
-        existing_timeline = cm._load_timeline(case_dir)
-        existing_tids = {t.get("id") for t in existing_timeline}
-        new_events = [t for t in imported_timeline if t.get("id") not in existing_tids]
-        if new_events:
-            existing_timeline.extend(new_events)
-            cm._save_timeline(case_dir, existing_timeline)
+        # What the examiner's approval writes; an import never carries it in.
+        approval_keys = {
+            "id", "status", "approval_state", "approved_at", "approved_by", "rejected_at",
+            "rejected_by", "rejection_reason", "verification", "seal", "content_hash",
+            "examiner_notes", "examiner_modifications", "modified_at",
+        }
+        staged: list[str] = []
+        rejected: list[dict] = []
+        for item in bundle.get("findings", []) or []:
+            if not isinstance(item, dict):
+                continue
+            draft = {k: v for k, v in item.items() if k not in approval_keys}
+            # Where it came from, in the fields the stager keeps: the origin, and the id and
+            # status it had in the bundle (an imported APPROVED is recorded, never applied).
+            original = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+            draft["source"] = "import"
+            draft["provenance"] = {
+                **{k: v for k, v in original.items() if k in ("mode", "path", "run_id")},
+                "origin": "import",
+                "imported_id": item.get("id"),
+                "imported_status": item.get("status"),
+            }
+            outcome = cm.record_finding(draft, audit=None, case_dir=case_dir)
+            if outcome.get("status") == "STAGED" and outcome.get("finding_id"):
+                staged.append(str(outcome["finding_id"]))
+            else:
+                rejected.append({
+                    "id": item.get("id"),
+                    "errors": outcome.get("errors") or [str(outcome.get("error") or outcome)],
+                })
+        events: list[str] = []
+        for item in bundle.get("timeline", []) or []:
+            if not isinstance(item, dict):
+                continue
+            event = {k: v for k, v in item.items() if k not in approval_keys}
+            outcome = cm.record_timeline_event(event, case_dir=case_dir)
+            if outcome.get("event_id"):
+                events.append(str(outcome["event_id"]))
 
         result = {
             "status": "imported",
-            "findings_imported": len(new_findings),
-            "timeline_imported": len(new_events),
+            "case_id": case_dir.name,
+            "findings_imported": len(staged),
+            "findings_staged_as_draft": staged,
+            "findings_rejected": rejected,
+            "timeline_imported": len(events),
+            "note": "Imported records are DRAFT. Only the examiner approves (nexus approve).",
         }
         audit.log(tool="import_case", params={}, result_summary=result)
         return result
