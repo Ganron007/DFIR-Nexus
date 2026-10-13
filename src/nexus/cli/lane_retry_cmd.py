@@ -167,33 +167,37 @@ async def _run_retry(
 ) -> dict:
     """Load the MCP tools the way the pipeline does, then run the lane in the same run.
 
-    One event loop, so the MCP sessions stay open for the whole retry.
+    One session per MCP server stays open for the whole retry (D71): without it every job's
+    call opened its own session, and over stdio that started a new server for each job.
     """
+    import contextlib
+
     from nexus.langgraph.llm_pipeline import _load_mcp_tools, _parse_tool_result, get_mcp_config
     from nexus.langgraph.tool_lane import run_tool_lane
 
-    tools = await _load_mcp_tools(get_mcp_config())
-    if "run_windows_command" not in tools:
-        typer.echo(
-            "The Windows MCP server did not answer: set NEXUS_WINDOWS_MCP_URL and start "
-            "`nexus serve --http`. Nothing was re-run.",
-            err=True,
+    async with contextlib.AsyncExitStack() as sessions:
+        tools = await _load_mcp_tools(get_mcp_config(), sessions=sessions)
+        if "run_windows_command" not in tools:
+            typer.echo(
+                "The Windows MCP server did not answer: set NEXUS_WINDOWS_MCP_URL and start "
+                "`nexus serve --http`. Nothing was re-run.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        return await run_tool_lane(
+            tools=tools,
+            evidence_path=evidence_paths[0],
+            case_id=case_dir.name,
+            run_id=run_id,
+            case_context={},
+            parse_result=_parse_tool_result,
+            skip_rag=True,
+            pipeline_mode="tools",
+            evidence_paths=evidence_paths,
+            rerun_tools=rerun_tools or None,
+            carry_ok=True,
+            only_tools=only_tools or None,
         )
-        raise typer.Exit(1)
-    return await run_tool_lane(
-        tools=tools,
-        evidence_path=evidence_paths[0],
-        case_id=case_dir.name,
-        run_id=run_id,
-        case_context={},
-        parse_result=_parse_tool_result,
-        skip_rag=True,
-        pipeline_mode="tools",
-        evidence_paths=evidence_paths,
-        rerun_tools=rerun_tools or None,
-        carry_ok=True,
-        only_tools=only_tools or None,
-    )
 
 
 def _read_rows(path: Path) -> list[dict]:

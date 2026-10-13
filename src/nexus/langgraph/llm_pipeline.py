@@ -2623,14 +2623,24 @@ def build_graph(tools: dict, model, mode: str | None = None):
 # Main entry point
 # ---------------------------------------------------------------------------
 
-async def _load_mcp_tools(config: dict[str, dict]) -> dict[str, Any]:
+async def _load_mcp_tools(
+    config: dict[str, dict],
+    sessions: contextlib.AsyncExitStack | None = None,
+) -> dict[str, Any]:
     """Load MCP tools with Windows as case authority when dual-host.
 
     Shared names (case_init, record_finding, …) prefer ``nexus-windows``.
     SIFT ``case_init`` / ``case_activate`` are retained as ``_sift_case_*``
     so the pipeline can mirror the same case_id onto the tool host.
+
+    With ``sessions``, each server's tools are bound to one session that stays open until the
+    caller closes the stack, so a run makes every call over one connection. Without it, each tool
+    call opens its own session; over stdio that started a new DFIR-Nexus server for every call,
+    each reloading the RAG embedder (about 60 s), and a 36h Mode 1 run made 69 calls in 30
+    minutes (D71).
     """
     from langchain_mcp_adapters.client import MultiServerMCPClient
+    from langchain_mcp_adapters.tools import load_mcp_tools
 
     tools_by_name: dict[str, Any] = {}
     if not config:
@@ -2643,10 +2653,20 @@ async def _load_mcp_tools(config: dict[str, dict]) -> dict[str, Any]:
             # Handshake (initialize + tools/list) is bounded: an unresponsive
             # server must fail the load, not hang the pipeline before any
             # evidence is read. The run then reports a real reason.
-            tools_list = await asyncio.wait_for(
-                client.get_tools(),
-                timeout=call_timeout(None),
-            )
+            if sessions is not None:
+                session = await asyncio.wait_for(
+                    sessions.enter_async_context(client.session(server_name)),
+                    timeout=call_timeout(None),
+                )
+                tools_list = await asyncio.wait_for(
+                    load_mcp_tools(session, server_name=server_name),
+                    timeout=call_timeout(None),
+                )
+            else:
+                tools_list = await asyncio.wait_for(
+                    client.get_tools(),
+                    timeout=call_timeout(None),
+                )
         except TimeoutError:
             log.error(
                 "MCP tool load from %s timed out after %.0fs — server not answering",
@@ -2963,9 +2983,6 @@ async def run_pipeline(
     context_policy: str = "independent",
 ):
     """Run the DFIR-Nexus LangGraph investigation pipeline."""
-    from langgraph.checkpoint.memory import MemorySaver
-    from langgraph.types import Command
-
     from nexus.analysis.context_policy import normalize_policy
 
     pipeline_mode = resolve_pipeline_mode(mode)
@@ -2977,7 +2994,41 @@ async def run_pipeline(
     emit_stage(_progress, "pipeline", "running", f"mode={pipeline_mode}")
 
     config = get_mcp_config()
-    tools_by_name = await _load_mcp_tools(config)
+    async with contextlib.AsyncExitStack() as sessions:
+        tools_by_name = await _load_mcp_tools(config, sessions=sessions)
+        return await _run_pipeline_with_tools(
+            tools_by_name,
+            pipeline_mode=pipeline_mode,
+            policy=policy,
+            from_case=from_case,
+            evidence_path=evidence_path,
+            resume=resume,
+            thread_id=thread_id,
+            model_name=model_name,
+            case_context=case_context,
+            evidence_paths=evidence_paths,
+            progress_path=progress_path,
+        )
+
+
+async def _run_pipeline_with_tools(
+    tools_by_name: dict[str, Any],
+    *,
+    pipeline_mode: str,
+    policy: str,
+    from_case: str,
+    evidence_path: str,
+    resume: bool,
+    thread_id: str,
+    model_name: str,
+    case_context: dict[str, str] | None,
+    evidence_paths: list[str] | None,
+    progress_path: str,
+):
+    """The run itself, while ``run_pipeline`` holds the MCP sessions open (D71)."""
+    from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.types import Command
+
     log.info(
         "MCP tools loaded: %d (has run_command=%s run_windows_command=%s sift_mirror=%s)",
         len(tools_by_name),
