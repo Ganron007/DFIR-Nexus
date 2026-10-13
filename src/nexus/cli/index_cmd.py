@@ -172,3 +172,50 @@ def recompute_ecs(
         typer.echo(f"  ... {len(report['problems']) - 50} more problem(s)")
     if report["problems"]:
         raise typer.Exit(1)
+
+
+@app.command("reindex")
+def reindex(
+    case: str = typer.Option("", "--case", "-c", help="Case ID (required)"),
+    file: list[str] = typer.Option([], "--file", help="An indexed file, by its `file` value (repeatable)."),
+    apply: bool = typer.Option(False, "--apply", help="Replace the documents. Without it, report only."),
+) -> None:
+    """Replace the documents of named indexed files with what the current readers produce (D116, D118, D119).
+
+    Report only unless --apply is given. With --apply the named files' documents are deleted and written again, and the
+    index state records the new count. Exits 1 when the request is incomplete.
+    """
+    from nexus.config import settings
+    from nexus.langgraph.case_index import es_url
+    from nexus.langgraph.targeted_reindex import (
+        apply_targeted_reindex,
+        indexed_documents,
+        new_documents,
+    )
+
+    if not es_url():
+        typer.echo("NEXUS_ES_URL is not set; there is no index to re-index.", err=True)
+        raise typer.Exit(1)
+    case_id = case.strip()
+    if not case_id:
+        typer.echo("--case is required: name the case this command acts on.", err=True)
+        raise typer.Exit(1)
+    rels = {name.strip() for name in file if name.strip()}
+    if not rels:
+        typer.echo("--file is required (repeatable): name the indexed file(s) to replace.", err=True)
+        raise typer.Exit(1)
+    case_dir = settings.cases_root / case_id
+    if not case_dir.is_dir():
+        typer.echo(f"Case not found: {case_dir}", err=True)
+        raise typer.Exit(1)
+    old = indexed_documents(case_id, rels)
+    new = new_documents(case_dir, rels)
+    for rel in sorted(rels):
+        typer.echo(f"  {rel}: indexed {old.get(rel, 0)} -> readers produce {new.get(rel, 0)}")
+    if not apply:
+        typer.echo("Dry run: nothing written. Re-run with --apply to replace these documents.")
+        return
+    result = apply_targeted_reindex(case_dir, rels)
+    typer.echo(
+        f"Applied: {result['written']} document(s) written; the case index now holds {result['total_docs']}."
+    )

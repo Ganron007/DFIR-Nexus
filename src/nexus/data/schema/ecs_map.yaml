@@ -115,6 +115,9 @@ family_columns:
     __path_transform__: join
     ParentPath: ecs.file.path
     FileName: ecs.file.path
+    # D116 (2026-10-13): a USN row's FileName is its Name, set at index time only when its ParentPath resolved through the
+    # same run's MFT (nexus/langgraph/mft_join.py). A row whose parent did not resolve names no path, so its bare name is
+    # never mapped to ecs.file.path.
     FileSize: ecs.file.size
     Extension: ecs.file.extension
     Created0x10: ecs.file.created
@@ -213,6 +216,35 @@ family_columns:
     Level: ecs.rule.level
     EventID: ecs.event.code
     Timestamp: ecs.event.created
+  # D117 (2026-10-13): the network sources. The Zeek names are the literal `#fields` names of Zeek 9.0.0 TSV logs
+  # (checked on public sample captures); the Suricata names are eve.json's top-level keys and the flattened nested keys
+  # (alert.signature, dns.rrname); the flow names are the tshark projection's (ingest/network/*-flows.csv). The
+  # addresses are named here, so a destination does not depend on the ingest table alone.
+  zeek:
+    id.orig_h: ecs.source.ip
+    id.orig_p: ecs.source.port
+    id.resp_h: ecs.destination.ip
+    id.resp_p: ecs.destination.port
+    proto: ecs.network.transport
+    service: ecs.network.protocol
+    query: ecs.dns.question.name
+  suricata:
+    src_ip: ecs.source.ip
+    src_port: ecs.source.port
+    dest_ip: ecs.destination.ip
+    dest_port: ecs.destination.port
+    proto: ecs.network.transport
+    alert.signature: ecs.rule.name
+    # Suricata 8.0.7 writes DNS queries as a list (dns.queries[].rrname). Lists are not flattened, so the query name stays
+    # in the text only; no ECS name is mapped for it until that is decided (D117).
+  network:
+    src_ip: ecs.source.ip
+    src_port: ecs.source.port
+    dst_ip: ecs.destination.ip
+    dst_port: ecs.destination.port
+    protocol: ecs.network.transport
+  # D118 (2026-10-13): YARA matches are indexed as fields (PID, ProcessName, ...). Their ECS names are not mapped yet:
+  # the ES-Mapping population has no yara columns, and the map-source guard needs a real source for each name.
   # importer normalized slots (raw artifact records)
   ingest:
     process_name: ecs.process.name

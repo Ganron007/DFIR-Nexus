@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 from nexus.langgraph.ecs_normalize import normalize
 from nexus.langgraph.match_site import classify_matched_terms
+from nexus.langgraph.mft_join import resolve_usn_row
 from nexus.langgraph.path_sanitize import (
     machine_roots,
     sanitize_field_map,
@@ -413,6 +414,18 @@ def iter_indexable_rows(
     back to physical-line rows and the fallback (file, line, reason) is
     recorded in ``stats["csv_fallback"]``.
     """
+    # D118 (2026-10-13): a YARA report is one record per match block, not one per line.
+    if _yara_report(path):
+        yield from _yara_blocks(fh)
+        return
+    # D117 (2026-10-13): a Zeek TSV log is one record per data line; its `#` lines are the header block.
+    zeek = _zeek_header(path)
+    if zeek is not None:
+        for i, line in enumerate(fh, start=1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            yield i, line, _zeek_row_fields(line, zeek)
+        return
     is_csv = bool(header) and _is_delimited(path) and not _is_json_records(path)
     if is_csv:
         name = path.name.lower()
@@ -449,20 +462,150 @@ def iter_indexable_rows(
         if not line.strip():
             continue
         yield i, line, (
-            _record_fields(line) if json_records else _row_fields(line, header)
+            _record_fields(line, flatten=_is_suricata_eve(path)) if json_records
+            else _row_fields(line, header)
         )
 
 
+# D117 (2026-10-13): a Zeek TSV log names its columns in a `#fields` line; the `#` lines above it are the header block.
+# An unset cell is `-` and an empty one is `(empty)`: neither is a value, so neither is stored.
+_ZEEK_EMPTY = frozenset({"-", "(empty)", ""})
+
+
+def _zeek_header(path: Path) -> list[str] | None:
+    """The column names of a Zeek TSV log (its ``#fields`` line), or None when the file is not one."""
+    if not path.name.lower().endswith((".log", ".log.gz")):
+        return None
+    try:
+        with _open_text_auto(path) as fh:
+            for n, line in enumerate(fh):
+                if n >= 40:
+                    break
+                if line.startswith("#fields"):
+                    return line.rstrip("\r\n").split("\t")[1:]
+                if not line.startswith("#"):
+                    return None
+    except OSError:
+        return None
+    return None
+
+
+def _zeek_row_fields(line: str, header: list[str]) -> dict[str, str]:
+    """One Zeek TSV record as fields. Unset and empty cells are not stored."""
+    out: dict[str, str] = {}
+    # A row with more cells than the header keeps the header's columns; a short row keeps the cells it has.
+    for name, value in zip(header, line.rstrip("\r\n").split("\t"), strict=False):
+        if value not in _ZEEK_EMPTY:
+            out[name] = value
+    return out
+
+
+# D118 (2026-10-13): a MemProcFS YARA report writes each match as a block. `Match Index:` opens the block, `Label: value`
+# lines carry the rule and its process context, and `Matches:` opens the string addresses and a hexdump. A block is one
+# record: its fields are its labels with their spaces removed, and its text is the whole block.
+_YARA_START = "Match Index:"
+
+
+def _yara_report(path: Path) -> bool:
+    """True when the file is a MemProcFS YARA report: its first non-blank line opens a match block."""
+    try:
+        with _open_text_auto(path) as fh:
+            for n, line in enumerate(fh):
+                if n >= 20:
+                    break
+                if line.strip():
+                    return line.lstrip().startswith(_YARA_START)
+    except OSError:
+        return False
+    return False
+
+
+def _yara_block_fields(lines: list[str]) -> dict[str, str]:
+    """The header labels of one match block: its ``Label: value`` lines before ``Matches:``, labels without spaces."""
+    out: dict[str, str] = {}
+    for line in lines:
+        text = line.rstrip("\r\n")
+        if text.startswith("Matches:"):
+            break
+        label, sep, value = text.partition(":")
+        name = "".join(label.split())
+        if sep and name and not name.startswith("-") and value.strip():
+            out[name] = value.strip()
+    return out
+
+
+def _yara_blocks(fh) -> Iterator[tuple[int, str, dict[str, str]]]:
+    """``(starting line, block text, fields)`` for each match block of an open YARA report."""
+    block: list[str] = []
+    start = 0
+    for i, line in enumerate(fh, start=1):
+        if line.startswith(_YARA_START):
+            if "".join(block).strip():
+                yield start, "".join(block), _yara_block_fields(block)
+            block, start = [], i
+        block.append(line)
+    if "".join(block).strip():
+        yield start, "".join(block), _yara_block_fields(block)
+
+
+# D119 (2026-10-13): Volatility writes its output as JSON lines in a `.txt` file. The name says text; the content says
+# records. A `.txt` file is read as records when each of its first non-blank lines is one JSON object.
+def _json_lines_text(path: Path) -> bool:
+    """True when a `.txt` file's first non-blank lines are each one JSON object."""
+    seen = 0
+    try:
+        with _open_text_auto(path) as fh:
+            for n, line in enumerate(fh):
+                if n >= 40:
+                    break
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    return False
+                if not isinstance(obj, dict):
+                    return False
+                seen += 1
+                if seen >= 3:
+                    break
+    except OSError:
+        return False
+    return seen > 0
+
+
+def _is_suricata_eve(path: Path) -> bool:
+    """True for Suricata's eve.json, whose nested keys are flattened into dotted field names (D117)."""
+    return path.name.lower().startswith("eve.json")
+
+
+def _collect_scalars(obj: dict, prefix: str, out: dict[str, str], flatten: bool) -> None:
+    """The scalar values of one JSON object. With ``flatten`` a nested object contributes its scalars under dotted names."""
+    for name, value in obj.items():
+        key = f"{prefix}{name}"
+        if str(name).startswith("_"):
+            continue
+        if isinstance(value, dict):
+            if flatten:
+                _collect_scalars(value, f"{key}.", out, flatten)
+            continue
+        if isinstance(value, list) or value in (None, ""):
+            continue
+        out[key] = str(value)
+
+
 def _is_json_records(path: Path) -> bool:
-    """True for JSON/JSONL/NDJSON artifacts (transparent ``.gz``)."""
+    """True for JSON/JSONL/NDJSON artifacts (transparent ``.gz``), and for a ``.txt`` whose lines are JSON objects (D119)."""
     name = path.name.lower()
     if name.endswith(".gz"):
         name = name[:-3]
-    return name.endswith(_JSON_RECORD_SUFFIXES)
+    if name.endswith(_JSON_RECORD_SUFFIXES):
+        return True
+    return name.endswith(".txt") and _json_lines_text(path)
 
 
-def _record_fields(line: str) -> dict[str, str]:
-    """Top-level scalar fields of one JSON record line ({} when it is not a dict).
+def _record_fields(line: str, flatten: bool = False) -> dict[str, str]:
+    """Scalar fields of one JSON record line ({} when it is not a dict). ``flatten`` (D117) keeps nested scalars as dotted names.
 
     Mirrors ``_row_fields`` for NDJSON artifacts, so ``fields.*`` and the
     host/user/event extraction work for JSON exactly as they do for CSV.
@@ -477,12 +620,7 @@ def _record_fields(line: str) -> dict[str, str]:
     if not isinstance(obj, dict):
         return {}
     out: dict[str, str] = {}
-    for name, value in obj.items():
-        if str(name).startswith("_") or isinstance(value, (dict, list)):
-            continue
-        if value in (None, ""):
-            continue
-        out[str(name)] = str(value)
+    _collect_scalars(obj, "", out, flatten)
     return out
 
 
@@ -721,6 +859,8 @@ def iter_index_doc_batches(
                             {"file": _index_rel(path, root), "cap": _MAX_DOCS_PER_FILE,
                              "rows_kept": data_rows - 1})
                         break
+                    # D116 (2026-10-13): a USN row's parent directory comes from the MFT of the same run.
+                    row_fields = resolve_usn_row(path, row_fields)
                     if _add(path, root, fam, i, line, row_fields):
                         family_counts[fam] = family_counts.get(fam, 0) + 1
                     if len(out) >= batch:

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.discipline import entity_key
-from nexus.langgraph.event_categories import OTHER, row_category
+from nexus.langgraph.event_categories import OTHER, present, row_category
 
 #: The ECS leaves a search hit carries into its evidence row, as dotted paths.
 ECS_SUBJECT_PATHS = (
@@ -37,11 +37,6 @@ ECS_SUBJECT_PATHS = (
     "file.path",
     "registry.path",
 )
-
-#: What the logs write for "nothing here". Observed in the case index (2026-10-12): `-\-` is
-#: an empty subject account, `%%1833` is an unresolved message code, `S-1-0-0` is the null SID.
-_PLACEHOLDERS = frozenset({"", "-", "-\\-", "n/a", "(null)", "s-1-0-0"})
-_MESSAGE_CODE = re.compile(r"%%\d+")
 
 #: The subject field, its row key, and the kind of entity it names.
 FIELD_ROW_KEY = {
@@ -128,14 +123,6 @@ GROUP_OF_CATEGORY = {
     "authentication": "account",
     "iam": "account",
 }
-
-
-def present(value: Any) -> str:
-    """The value as text, or ``""`` when it is a placeholder the logs write for 'nothing here'."""
-    text = str(value if value is not None else "").strip()
-    if text.lower() in _PLACEHOLDERS or _MESSAGE_CODE.fullmatch(text):
-        return ""
-    return text
 
 
 def subject_fields(ecs: Any) -> dict[str, str]:

@@ -1,29 +1,40 @@
 # D112 (2026-10-13): the category of an evidence row that the pinned table (event_categories.yaml) does not name.
 #
-# A row is classified only when it names the subject its category needs: a file path for a file category, a
-# registry path for a registry category, the program for a process category. Those columns are mapped in
-# ecs_map.yaml (family_columns) and subject.FAMILY_SUBJECT_COLUMNS. A family whose rows name no such subject
-# stays `other`: its rows are unclassified and are not compared across modes. They are not given the host as
-# their subject, because a host subject would match every claim about that host.
+# A rule classifies a row only when the row names the subject its category needs: a file path for a file
+# category, a registry path for a registry category, the program for a process category, the destination
+# address for a network connection (D117, 2026-10-13). `requires` lists those subjects by the row keys that
+# subject.py reads. A row that names none of them stays `other`: it is not given the host as its subject, because
+# a host subject would match every claim about that host. The columns are mapped in ecs_map.yaml (family_columns)
+# and subject.FAMILY_SUBJECT_COLUMNS.
 #
-# A rule names a family and, optionally, a glob on the row's file (case-insensitive; `*` crosses folders). A
-# rule with a glob is tried before the family's own rule. Every category must be a key of
-# subject.GROUP_OF_CATEGORY (tests/test_family_categories.py checks this).
+# A rule names a family and, optionally, a glob on the row's file (case-insensitive; `*` crosses folders). A rule
+# with a glob is tried before the family's own rule. Every category must be a key of subject.GROUP_OF_CATEGORY
+# (tests/test_family_categories.py checks this).
 version: 1
 rules:
-  # a file path the row names (ecs.file.path)
-  - {family: mftecmd, glob: "mftecmd/*", category: file_event}
-  - {family: lecmd, category: file_event}
-  - {family: jlecmd, category: file_event}
+  # a file path the row names (ecs.file.path). A USN row has one only when its parent resolved through the MFT of
+  # the same run (D116, nexus/langgraph/mft_join.py); the rest stay other.
+  - {family: mftecmd, glob: "mftecmd-usn/*", category: file_event, requires: [file_path]}
+  - {family: mftecmd, glob: "mftecmd/*", category: file_event, requires: [file_path]}
+  - {family: lecmd, category: file_event, requires: [file_path]}
+  - {family: jlecmd, category: file_event, requires: [file_path]}
   # the shellbag rows only: the messages file in the same family names no path
-  - {family: sbecmd, glob: "*shellbags*", category: file_event}
-  - {family: rbcmd, category: file_delete}
+  - {family: sbecmd, glob: "*shellbags*", category: file_event, requires: [file_path]}
+  - {family: rbcmd, category: file_delete, requires: [file_path]}
   # a registry key the row names (ecs.registry.path, or the RECmd batch key)
-  - {family: recmd, category: registry_event}
+  - {family: recmd, category: registry_event, requires: [registry_path]}
   # the program the row names (ecs.process.executable, or subject.FAMILY_SUBJECT_COLUMNS)
-  - {family: pecmd, category: process_creation}
-  - {family: prefetch, category: process_creation}
-  - {family: appcompat, category: process_creation}
-  - {family: wxtcmd, glob: "*_Activity.csv", category: process_creation}
-  - {family: srumecmd, glob: "*AppResourceUseInfo*", category: process_creation}
-  - {family: srumecmd, glob: "*NetworkUsages*", category: network_connection}
+  - {family: pecmd, category: process_creation, requires: [process]}
+  - {family: prefetch, category: process_creation, requires: [process]}
+  - {family: appcompat, category: process_creation, requires: [process]}
+  - {family: wxtcmd, glob: "*_activity.csv", category: process_creation, requires: [process]}
+  - {family: srumecmd, glob: "*appresourceuseinfo*", category: process_creation, requires: [process]}
+  # network connections. A connection row names the destination it reached (ecs.destination.ip). SRUM network usage
+  # names the program that used the network, not a destination, so it is classified by its program.
+  - {family: srumecmd, glob: "*networkusages*", category: network_connection, requires: [process]}
+  - {family: zeek, glob: "*/conn.log", category: network_connection, requires: [destination_ip]}
+  - {family: suricata, glob: "*eve.json*", category: network_connection, requires: [destination_ip]}
+  - {family: network, glob: "*flows*", category: network_connection, requires: [destination_ip]}
+  # Volatility netscan rows carry ForeignAddr, which the ECS map reads as the destination. Other plugins' rows carry
+  # no such field and stay other.
+  - {family: vol, category: network_connection, requires: [destination_ip]}

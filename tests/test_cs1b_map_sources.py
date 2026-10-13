@@ -17,6 +17,41 @@ sys.path.insert(0, str(REPO / "src"))
 BUILD = REPO / "scripts" / "build_field_registry.py"
 
 
+def _network_fixture_columns() -> dict[str, set[str]]:
+    """Zeek, Suricata and flow columns from the committed public-sample outputs (D117, 2026-10-13).
+
+    The ES-Mapping population holds the importer's normalized names for these families, not the raw output's. The raw
+    names are checked against the real outputs in tests/fixtures/d117 (Zeek 9.0.0, Suricata 8.0.7, tshark), the same kind
+    of real source as the EVTX fixture below.
+    """
+    import json
+
+    fx = REPO / "tests/fixtures/d117"
+    out: dict[str, set[str]] = {"zeek": set(), "suricata": set(), "network": set()}
+    for name in ("zeek/http-bro-org/conn.log", "zeek/dns53/dns.log"):
+        for line in (fx / name).read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("#fields"):
+                out["zeek"].update(line.split("\t")[1:])
+                break
+
+    def _flat(obj: dict, prefix: str = "") -> set[str]:
+        keys: set[str] = set()
+        for key, value in obj.items():
+            name = f"{prefix}{key}"
+            if isinstance(value, dict):
+                keys |= _flat(value, name + ".")
+            else:
+                keys.add(name)
+        return keys
+
+    for name in ("suricata/conn-size/eve.json", "suricata/dns53/eve.json"):
+        for line in (fx / name).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                out["suricata"] |= _flat(json.loads(line))
+    out["network"].update((fx / "network/conn-size/capture-flows.csv").read_text(encoding="utf-8").splitlines()[0].split(","))
+    return out
+
+
 def _catalog_families() -> dict[str, set[str]]:
     """Families -> columns, from the build catalog AND the real-run population.
 
@@ -39,6 +74,8 @@ def _catalog_families() -> dict[str, set[str]]:
         for fam, body in (data.get("families") or {}).items():
             cols = set((body.get("columns") or {}).keys())
             out.setdefault(fam, set()).update(cols)
+    for fam, cols in _network_fixture_columns().items():
+        out.setdefault(fam, set()).update(cols)
     return out
 
 
