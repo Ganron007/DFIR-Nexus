@@ -87,6 +87,45 @@ def test_a_rejected_candidate_is_reported_not_replaced(case):
     assert any(line.startswith("Not staged: " + LLM["title"]) for line in out["step_log"])
 
 
+def test_severity_written_by_the_model_reaches_the_draft(case):
+    """D47 (2026-10-14 live run): the model wrote a severity on 9 of 9 findings and none
+    reached the DRAFTs, because the parser's normalised candidate had no severity key."""
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    record = _Tool({"finding_id": "F-SEV"})
+    asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg({**LLM, "severity": "high"})]),
+                               {"record_finding": record}))
+    assert record.payloads[0]["severity"] == "HIGH"
+
+
+def test_a_candidate_that_cites_nothing_is_not_padded_into_a_finding(case):
+    """2026-10-14 live run: two candidates with no audit_ids were staged with ten each,
+    padded from the trail. A candidate the model did not ground stays uncited."""
+    from nexus.langgraph.llm_pipeline import _finding_tool_payload
+
+    uncited = {k: v for k, v in LLM.items() if k != "audit_ids"}
+    trail = ["nexus-t-20261014-001", "nexus-t-20261014-002"]
+    assert _finding_tool_payload(uncited, trail, linked_ids=set(trail))["audit_ids"] == []
+    cited = _finding_tool_payload(LLM, trail, linked_ids=set(trail))["audit_ids"]
+    assert cited[0] == LLM["audit_ids"][0] and set(trail) <= set(cited)
+
+
+def test_a_coverage_item_is_recorded_not_dropped(case):
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    stub = {"title": "Malicious IOC contact not established", "observation": "no rows",
+            "interpretation": "coverage gap: no network flows in scope", "audit_ids": []}
+    record = _Tool({"finding_id": "F-X"})
+    asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg(LLM, stub)]),
+                               {"record_finding": record}))
+    assert [p["title"] for p in record.payloads] == [LLM["title"]]
+    staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
+    assert [r["title"] for r in staging["rejected"]] == [stub["title"]]
+    assert "not a finding" in staging["rejected"][0]["reason"]
+
+
 def test_only_the_models_findings_are_staged(case):
     from nexus.langgraph.llm_pipeline import stage_findings
 

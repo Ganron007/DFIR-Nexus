@@ -1941,7 +1941,11 @@ def _finding_tool_payload(
     existent-but-unrelated audits and pass FD-001 mechanically.
     """
     aids = [str(a) for a in (candidate.get("audit_ids") or []) if a]
-    for aid in trail:
+    # Padding adds related calls to a finding the model grounded itself; it never grounds one.
+    # A candidate that cites no call stays uncited, so FD-001 refuses it. It used to be padded
+    # to ten calls from the trail, and two such findings were staged on 2026-10-14 with
+    # ten citations the model never made.
+    for aid in trail if aids else []:
         if linked_ids is not None and aid not in linked_ids:
             continue
         if aid not in aids:
@@ -2069,11 +2073,16 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
     # loop must disposition; they used to be staged as findings when the model produced none, when
     # every model candidate was rejected ("N4 hit salvage"), and beside the model's findings, chosen
     # by a keyword list from earlier cases.
-    candidates = [
-        c for c in parse_hunt_candidates(state.get("messages", []))
-        if not _is_collection_stub(c)
+    parsed = parse_hunt_candidates(state.get("messages", []))
+    candidates = [c for c in parsed if not _is_collection_stub(c)]
+    # A coverage or disposition item is not staged as a finding, and it is recorded as such: the
+    # filter used to drop it with no trace (2026-10-14: "Malicious IOC contact ... not
+    # established" vanished because its text said "coverage gap:").
+    rejected: list[dict[str, str]] = [
+        {"title": str(c.get("title") or "")[:200],
+         "reason": "a coverage or disposition item (absence, gap or collection note), not a finding"}
+        for c in parsed if _is_collection_stub(c)
     ]
-    rejected: list[dict[str, str]] = []
 
     # EH-9: linkage scope — pad candidate audit_ids only with calls that
     # reference this finding's evidence families/files.

@@ -118,6 +118,10 @@ def normalize_candidate(data: dict) -> dict:
         "observation": str(data.get("observation", data.get("description", "")))[:8000],
         "interpretation": interpretation[:8000],
         "confidence": str(data.get("confidence", "MEDIUM")).upper(),
+        # The model's severity reaches staging. The normalised shape had no severity key, so
+        # every Mode 1 DRAFT staged with an empty one although the model wrote it (D47; seen
+        # 2026-10-14: 9 of 9 findings carried a severity, 0 reached the DRAFTs).
+        "severity": str(data.get("severity") or "").strip().upper()[:16],
         "confidence_justification": str(
             data.get("confidence_justification")
             or "Grounded in MCP tool audit_ids from this investigation."
