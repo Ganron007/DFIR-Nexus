@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.model_json import loads_model_json
 from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
@@ -192,13 +193,13 @@ def _parse_json_blob(text: str) -> Any:
         return None
     text = text.strip()
     try:
-        return json.loads(text)
+        return loads_model_json(text)
     except (json.JSONDecodeError, ValueError):
         pass
     for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.DOTALL):
         block = match.group(1).strip()
         try:
-            return json.loads(block)
+            return loads_model_json(block)
         except (json.JSONDecodeError, ValueError):
             continue
     start = min(
@@ -211,7 +212,7 @@ def _parse_json_blob(text: str) -> Any:
     if end <= start:
         return None
     try:
-        return json.loads(text[start:end + 1])
+        return loads_model_json(text[start:end + 1])
     except (json.JSONDecodeError, ValueError):
         return None
 

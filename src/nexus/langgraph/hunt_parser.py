@@ -16,6 +16,8 @@ import json as _json
 import re as _re
 from typing import Any
 
+from nexus.langgraph.model_json import loads_model_json
+
 _FENCE_RE = _re.compile(r'```(?:json)?\s*\n?(.*?)```', _re.DOTALL)
 
 
@@ -32,7 +34,7 @@ def _recover_json_blob(content: str) -> Any:
         blobs.append(content[start_o : end_o + 1])
     for blob in blobs:
         try:
-            return _json.loads(blob)
+            return loads_model_json(blob)
         except (_json.JSONDecodeError, ValueError, TypeError):
             continue
     return None
@@ -172,7 +174,7 @@ def parse_hunt_candidates(messages: list, *, scan_last: int = 20) -> list[dict]:
 
         # (a) whole-content JSON — object or array of findings
         try:
-            data = _json.loads(content)
+            data = loads_model_json(content)
         except (_json.JSONDecodeError, ValueError, TypeError):
             data = None
         if isinstance(data, list):
@@ -194,7 +196,7 @@ def parse_hunt_candidates(messages: list, *, scan_last: int = 20) -> list[dict]:
             if not block:
                 continue
             try:
-                parsed = _json.loads(block)
+                parsed = loads_model_json(block)
             except (_json.JSONDecodeError, ValueError):
                 continue
             if isinstance(parsed, dict) and _looks_like_finding(parsed, require_observation=False):

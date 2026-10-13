@@ -24,6 +24,7 @@ from typing import Annotated, Any, TypedDict
 from uuid import uuid4
 
 from nexus.langgraph.case_index import elasticsearch_ready
+from nexus.langgraph.model_json import loads_model_json
 from nexus.langgraph.prompt_budget import budget_chars, case_window
 from nexus.langgraph.subject import attach_subjects
 from nexus.llm.egress import egress_bound
@@ -748,7 +749,7 @@ def _supervisor_with_model(
     if start == -1 or end <= start:
         return []
     try:
-        parsed = json.loads(raw[start:end + 1])
+        parsed = loads_model_json(raw[start:end + 1])
     except json.JSONDecodeError:
         return []
     if not isinstance(parsed, dict):
@@ -784,7 +785,7 @@ def _parse_claims(text: str) -> list[dict[str, Any]]:
     if start == -1 or end <= start:
         return []
     try:
-        parsed = json.loads(text[start:end + 1])
+        parsed = loads_model_json(text[start:end + 1])
     except json.JSONDecodeError:
         return []
     return _claims_from_object(parsed)
@@ -801,7 +802,7 @@ def _parse_seat_fields(text: str) -> dict[str, Any]:
     if start == -1 or end <= start:
         return {}
     try:
-        parsed = json.loads(text[start:end + 1])
+        parsed = loads_model_json(text[start:end + 1])
     except json.JSONDecodeError:
         return {}
     if not isinstance(parsed, dict):

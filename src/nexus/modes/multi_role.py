@@ -39,6 +39,7 @@ from uuid import uuid4
 from nexus.audit import AuditWriter
 from nexus.langgraph.case_index import elasticsearch_ready
 from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
+from nexus.langgraph.model_json import loads_model_json
 from nexus.langgraph.prompt_budget import budget_chars, case_window
 from nexus.llm.egress import egress_bound
 
@@ -1038,7 +1039,7 @@ def _parse_json_object(text: str) -> dict[str, Any]:
         candidates.insert(0, raw[start:end + 1])
     for candidate in candidates:
         try:
-            parsed = json.loads(candidate)
+            parsed = loads_model_json(candidate)
         except (json.JSONDecodeError, TypeError):
             continue
         if isinstance(parsed, dict):

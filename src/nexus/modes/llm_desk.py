@@ -22,6 +22,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.model_json import loads_model_json
+
 log = logging.getLogger(__name__)
 
 _NL_TO_NEEDLES_SYSTEM = """\
@@ -476,13 +478,13 @@ def _parse_json_response(text: str) -> dict | None:
     text = text.strip()
     if text.startswith("{") and text.endswith("}"):
         try:
-            return json.loads(text)
+            return loads_model_json(text)
         except json.JSONDecodeError:
             pass
     m = re.search(r"\{[^{}]*\}", text, re.DOTALL)
     if m:
         try:
-            return json.loads(m.group(0))
+            return loads_model_json(m.group(0))
         except json.JSONDecodeError:
             pass
     return None

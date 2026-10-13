@@ -32,6 +32,7 @@ from uuid import uuid4
 from nexus.audit import AuditWriter
 from nexus.langgraph import backbone as backbone_module
 from nexus.langgraph.backbone import bind_case_args, tool_contracts_block
+from nexus.langgraph.model_json import loads_model_json
 from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ def _parse_loop_json(text: str) -> dict[str, Any] | None:
         candidates.append(re.sub(r",\s*([}\]])", r"\1", candidate))
     for candidate in candidates:
         try:
-            parsed = json.loads(candidate)
+            parsed = loads_model_json(candidate)
         except (json.JSONDecodeError, TypeError):
             continue
         if isinstance(parsed, dict):
@@ -196,7 +197,7 @@ def _normalize_tool_calls(parsed: dict[str, Any]) -> list[dict[str, Any]]:
             # Models sometimes send args as a JSON string; parse it instead of
             # silently running the tool with no arguments.
             try:
-                args = json.loads(args) if args.strip() else {}
+                args = loads_model_json(args) if args.strip() else {}
             except (json.JSONDecodeError, TypeError):
                 args = {"__invalid_json__": args[:200]}
         if not isinstance(args, dict):
