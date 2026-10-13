@@ -94,8 +94,27 @@ def test_a_run_with_all_three_roles_reports_no_gap():
     assert missing == []
 
 
-def test_record_carries_roles_used_and_gaps():
-    src = _src()
-    # the join return must include both so the record can persist them
-    assert '"gaps": gaps, "roles_used": roles_used' in src
-    json.dumps({"gaps": ["x"], "roles_used": ["evidence"]})
+def test_record_carries_roles_used_and_gaps(tmp_path):
+    """The record itself, from a real graph run. This test used to grep the source for the
+    join's return text, which passed while LangGraph dropped those keys before the record
+    (D129)."""
+    import yaml
+
+    from nexus.modes.multi_agent import run_mode3
+
+    case = tmp_path / "CASE-ROLES01"
+    (case / "analysis").mkdir(parents=True)
+    (case / "CASE.yaml").write_text(
+        yaml.safe_dump({"case_id": case.name, "status": "created"}), encoding="utf-8")
+
+    def seat_fn(spawn, _board, step):
+        return {"entry_id": f"be-{step}-{spawn.get('family')}",
+                "agent_id": f"evidence:{spawn.get('family') or 'x'}:{step}",
+                "role": "evidence", "family": spawn.get("family") or "", "superstep": step,
+                "claims": [], "open_questions": [], "finish_reason": "final",
+                "evidence_read": True, "evidence_attempted": True}
+
+    rec = run_mode3(case, "q", seat_fn=seat_fn, es_ok=True, families=[("evtxecmd", 3)])
+    assert rec["roles_used"] == ["evidence"]
+    assert any("never contributed" in g for g in rec["gaps"])
+    json.dumps(rec, default=str)

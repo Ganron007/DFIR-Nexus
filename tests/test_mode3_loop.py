@@ -374,6 +374,39 @@ def test_every_seat_kind_receives_its_task(tmp_path, monkeypatch):
         assert ("lead_disposition" in first) == bool(spawn.get("lead")), kind
 
 
+def test_run_record_keeps_settle_blockers_and_role_gaps(tmp_path):
+    """D129: what join finds at settlement reaches the run record.
+
+    The case's digest inventory names two populated families and no query ran against either,
+    so the real family ledger names both as unexamined. Join used to write them onto its input
+    state, which LangGraph discards, and the record's gaps were then overwritten.
+    """
+    from nexus.modes.multi_agent import run_mode3
+
+    case = _case(tmp_path)
+    (case / "analysis" / "case_digest.json").write_text(
+        json.dumps({"inventory": {"evtxecmd": 10, "vol": 5}}), encoding="utf-8"
+    )
+
+    def seat_fn(spawn, _board, step):
+        return {
+            "entry_id": f"be-{step}-{spawn.get('family')}",
+            "agent_id": f"evidence:{spawn.get('family') or 'x'}:{step}",
+            "role": "evidence", "family": spawn.get("family") or "", "superstep": step,
+            "claims": [], "open_questions": [], "finish_reason": "final",
+            "evidence_read": True, "evidence_attempted": True,
+        }
+
+    rec = run_mode3(case, "Compromise suspected.", seat_fn=seat_fn, es_ok=True,
+                    families=[("evtxecmd", 10), ("vol", 5)])
+    assert rec["status"] == "completed", rec.get("stop_reason")
+    assert set(rec["settle_blockers"]) == {"evtxecmd", "vol"}
+    gaps = rec["gaps"]
+    assert "unexamined artifact family (run-level): vol" in gaps
+    assert "unexamined artifact family (run-level): evtxecmd" in gaps
+    assert any("never contributed" in g for g in gaps)
+
+
 def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     """Full graph with a scripted model and no seat_fn (items 4, 5, 7)."""
     from nexus.modes.multi_agent import run_mode3

@@ -1121,6 +1121,14 @@ class Mode3State(TypedDict, total=False):
     # consumed pivot or an answered question is not re-queued next superstep.
     consumed_pivots: list[dict[str, Any]]
     answered_questions: list[str]
+    # What join and synthesize report to the run record (D129, D138). LangGraph drops any key
+    # a node returns that is not declared here.
+    gaps: list[str]
+    roles_used: list[str]
+    settle_blockers: list[str]
+    family_ledger: dict[str, Any]
+    candidates: list[dict[str, Any]]
+    candidate_gaps: list[str]
 
 
 class _LockedSink:
@@ -1893,7 +1901,13 @@ def run_mode3(
         # indexed, populated artifact family this run never successfully
         # queried is an unexamined artifact — record it as a gap on the record
         # rather than letting the run read as a full examination.
+        # What join learns goes back to the graph in its return value, under keys Mode3State
+        # declares. LangGraph keeps neither undeclared keys nor changes made to the input
+        # state, so the blockers and gaps written onto `state` never reached the run record
+        # (D129).
         settle_blockers: list[str] = []
+        family_ledger: dict[str, Any] = {}
+        run_gaps = list(state.get("gaps") or [])
         if status == "settled":
             with contextlib.suppress(Exception):
                 from nexus.analysis.family_ledger import (
@@ -1905,15 +1919,12 @@ def run_mode3(
 
                 settle_blockers = list(_blockers(
                     build_family_ledger(case_dir, run_id=run_id)))
-                state["settle_blockers"] = settle_blockers
-                state["family_ledger"] = _run_family_ledger(case_dir, run_id)
+                family_ledger = _run_family_ledger(case_dir, run_id)
             if settle_blockers:
-                gaps = list(state.get("gaps") or [])
-                gaps.extend(
-                    f"unexamined artifact family (run-level): {b}"
-                    for b in settle_blockers
-                )
-                state["gaps"] = gaps
+                for b in settle_blockers:
+                    note = f"unexamined artifact family (run-level): {b}"
+                    if note not in run_gaps:
+                        run_gaps.append(note)
                 sink.emit(new_event(
                     run_id, "join.settle_blocked", actor="join",
                     detail=f"{len(settle_blockers)} unexamined artifact family(ies)",
@@ -1925,22 +1936,25 @@ def run_mode3(
         roles_used = sorted({
             str((e or {}).get("role") or "") for e in board if (e or {}).get("role")
         })
+        settled_keys: dict[str, Any] = {
+            "gaps": run_gaps, "roles_used": roles_used,
+            "settle_blockers": settle_blockers, "family_ledger": family_ledger,
+        } if status == "settled" else {}
         if status == "settled" and len(set(roles_used) & set(_SEATS)) < len(_SEATS):
             missing = sorted(set(_SEATS) - set(roles_used))
-            gaps = list(state.get("gaps") or [])
             note = (
                 f"settled after {step_no} superstep(s) with no {', '.join(missing)} "
                 f"seat - those roles never contributed"
             )
-            if note not in gaps:
-                gaps.append(note)
+            if note not in run_gaps:
+                run_gaps.append(note)
             sink.emit(new_event(
                 run_id, "join.role_gap", actor="join", detail=note,
                 data={"roles_used": roles_used, "missing": missing,
                       "superstep": step_no},
             ))
             return {"disputes": disputes, "quiet": quiet, "last_fp": fp,
-                    "status": status, "gaps": gaps, "roles_used": roles_used}
+                    "status": status, **settled_keys}
         sink.emit(new_event(
             run_id, "join.decision", actor="join",
             detail=status,
@@ -1983,6 +1997,7 @@ def run_mode3(
         return {
             "disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status,
             "consumed_pivots": consumed, "answered_questions": answered,
+            **settled_keys,
         }
 
     def after_join(state: Mode3State) -> str:
@@ -1992,15 +2007,17 @@ def run_mode3(
         return "supervisor"
 
     def synthesize(state: Mode3State) -> dict[str, Any]:
+        # The one place candidates are built, with the case, so each carries the subject its
+        # cited rows give (D138). The record used to rebuild them without the case and lose it.
         disputes = find_disputes(list(state.get("board") or []))
-        candidates, _gaps = settled_candidates(
+        candidates, candidate_gaps = settled_candidates(
             list(state.get("board") or []), list(disputes), case_dir=case_dir,
         )
         sink.emit(new_event(
             run_id, "synthesis.candidates", actor="synthesis",
             detail=f"{len(candidates)} candidate(s)",
         ))
-        return {}
+        return {"candidates": candidates, "candidate_gaps": candidate_gaps}
 
     from langgraph.graph import END, START, StateGraph
 
@@ -2184,6 +2201,7 @@ def run_mode3(
         # WO-1C item 7 (KR4): the run's own family coverage and any unexamined
         # indexed family, from execution records only.
         "settle_blockers": list(final.get("settle_blockers") or []),
+        "roles_used": list(final.get("roles_used") or []),
         "family_ledger": _run_family_ledger(case_dir, run_id),
         # The counters the run actually reached (item 7b).
         "budgets": {
@@ -2202,12 +2220,24 @@ def run_mode3(
             "redispatch_used": int(final.get("redispatch_used") or 0),
             "steering_seen": int(final.get("steering_seen") or 0),
         }
-    # Synthesis return was empty so candidates are derived here from the board.
-    candidates, gaps = settled_candidates(
-        list(record.get("board") or []), list(record.get("disputes") or []),
-    )
+    # The candidates synthesize built with the case (D138). A graph that ended before
+    # synthesize has none, and they are built here the same way.
+    if "candidates" in final:
+        candidates = list(final.get("candidates") or [])
+        candidate_gaps = list(final.get("candidate_gaps") or [])
+    else:
+        candidates, candidate_gaps = settled_candidates(
+            list(record.get("board") or []), list(record.get("disputes") or []),
+            case_dir=case_dir,
+        )
     record["candidates"] = candidates
-    record["gaps"] = gaps
+    # The run's own gaps (unexamined families, roles that never contributed) and the
+    # candidates' gaps are both kept; the second used to overwrite the first (D129).
+    merged_gaps: list[str] = []
+    for gap in [*(final.get("gaps") or []), *candidate_gaps]:
+        if gap and gap not in merged_gaps:
+            merged_gaps.append(str(gap))
+    record["gaps"] = merged_gaps
     record["narrative"] = (
         f"{len(candidates)} settled claim(s); "
         f"{len(record.get('disputes') or [])} unresolved dispute(s)."
