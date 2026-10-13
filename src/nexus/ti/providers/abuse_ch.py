@@ -157,17 +157,42 @@ async def query_urlhaus(value: str, *, mock: bool, api_key: str | None) -> TIRes
     )
 
 
+def _yaraify_rules(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """YARA matches in a documented ``lookup_hash`` reply.
+
+    ``data`` is an object: ``data.tasks[]`` holds one entry per submission, its YARA matches on the
+    file in ``static_results[]`` and on unpacked files in ``unpack_results[].unpacked_yara_matches[]``.
+    A reply whose ``query_status`` is not ``ok`` names no matches (the hash is not known).
+    """
+    if str(raw.get("query_status") or "") != "ok":
+        return []
+    data = raw.get("data")
+    if not isinstance(data, dict):
+        return []
+    matches: list[dict[str, Any]] = []
+    for task in data.get("tasks") or []:
+        if not isinstance(task, dict):
+            continue
+        matches.extend(m for m in task.get("static_results") or [] if isinstance(m, dict))
+        for unpacked in task.get("unpack_results") or []:
+            if isinstance(unpacked, dict):
+                matches.extend(
+                    m for m in unpacked.get("unpacked_yara_matches") or [] if isinstance(m, dict))
+    return matches
+
+
 async def query_yaraify(value: str, *, mock: bool, api_key: str | None) -> TIResult:
     if mock:
         raw = mock_data.mock_yaraify(value)
     else:
+        # https://yaraify.abuse.ch/api/ (checked 2026-10-14): query "lookup_hash" with the hash
+        # in "search_term". The old body ("lookup", "hash") matched no documented query.
         raw = await _post_json(
             ABUSE_CH_YARAIFY_URL,
-            {"query": "lookup", "hash": value},
+            {"query": "lookup_hash", "search_term": value},
             api_key,
         )
-    rows = raw.get("data") or []
-    rules = rows[0].get("yara_rules", []) if rows else []
+    rules = _yaraify_rules(raw)
     return _abuse_result(
         "yaraify",
         "hash",

@@ -18,7 +18,9 @@ ENV_CROWDSTRIKE_CLIENT_SECRET = "NEXUS_TI_CROWDSTRIKE_CLIENT_SECRET"
 ABUSE_CH_THREATFOX_URL = "https://threatfox-api.abuse.ch/api/v1/"
 ABUSE_CH_MALWARE_BAZAAR_URL = "https://mb-api.abuse.ch/api/v1/"
 ABUSE_CH_URLHAUS_URL = "https://urlhaus-api.abuse.ch/v1/"
-ABUSE_CH_YARAIFY_URL = "https://yaraify.abuse.ch/api/v1/"
+# The API host, per https://yaraify.abuse.ch/api/ (checked 2026-10-14); yaraify.abuse.ch/api/v1/
+# answered 404 for every lookup.
+ABUSE_CH_YARAIFY_URL = "https://yaraify-api.abuse.ch/api/v1/"
 OTX_API_BASE = "https://otx.alienvault.com/api/v1"
 CROWDSTRIKE_API_BASE = "https://api.crowdstrike.com"
 

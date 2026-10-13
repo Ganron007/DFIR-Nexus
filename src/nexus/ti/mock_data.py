@@ -48,14 +48,16 @@ def mock_urlhaus(value: str) -> dict[str, Any]:
 
 
 def mock_yaraify(value: str) -> dict[str, Any]:
+    """A ``lookup_hash`` reply in the documented shape (https://yaraify.abuse.ch/api/)."""
     return {
         "query_status": "ok",
-        "data": [
-            {
-                "sha256_hash": value if len(value) == 64 else _MOCK_HASH,
-                "yara_rules": [{"rule_name": "win_emotet_dropper", "author": "nexus-mock"}],
-            }
-        ],
+        "data": {
+            "metadata": {"sha256_hash": value if len(value) == 64 else _MOCK_HASH},
+            "tasks": [{
+                "static_results": [{"rule_name": "win_emotet_dropper", "author": "nexus-mock"}],
+                "unpack_results": [],
+            }],
+        },
     }
 
 

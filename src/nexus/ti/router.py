@@ -187,11 +187,13 @@ class TIRouter:
             if provider == "crowdstrike":
                 return await optional.query_crowdstrike(value, mock=mock, ioc_type=it)
         except Exception as exc:
-            log.exception("TI provider %s failed", provider)
             error_msg = str(exc)
             for env_name, env_val in os.environ.items():
                 if env_val and len(env_val) >= 8 and env_name.startswith("NEXUS_"):
                     error_msg = error_msg.replace(env_val, "***REDACTED***")
+            # One line with the reason: the result below carries the failure. A full traceback per
+            # failed lookup buried a Mode 1 run's console (2026-10-14).
+            log.warning("TI provider %s failed: %s", provider, error_msg[:200])
             return TIResult(
                 provider=provider,
                 ioc_type=it,

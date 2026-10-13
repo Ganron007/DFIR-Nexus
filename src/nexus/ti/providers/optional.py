@@ -117,6 +117,13 @@ async def query_shodan(ip: str, *, mock: bool) -> TIResult:
                 resp.raise_for_status()
                 raw = resp.json()
             except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    # The host lookup has no record for this address: a result, not a failure.
+                    return _result(
+                        "shodan", "ip", ip,
+                        summary="Shodan: no information for this IP",
+                        raw={"status": 404},
+                    )
                 raise httpx.HTTPStatusError(
                     message=f"Shodan returned HTTP {exc.response.status_code}",
                     request=exc.request,
