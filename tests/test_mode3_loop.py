@@ -315,6 +315,65 @@ def test_seat_with_model_keeps_questions_disposition_and_verdicts(tmp_path, monk
     assert classes.get("process=beacon.exe") == "confirmed"
 
 
+class _RecordingSeatModel:
+    """Answers every seat with an empty claim list and records what it was sent."""
+
+    model_name = "recording-seat"
+    provider = "test"
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    def invoke(self, messages):
+        self.sent.append("\n".join(str(m.get("content") or "") for m in messages))
+        return _Content(json.dumps({"claims": [], "open_questions": []}))
+
+
+def test_every_seat_kind_receives_its_task(tmp_path, monkeypatch):
+    """D128: each seat kind's model input carries the objective, role, family, board and schema.
+
+    The lead clause was a conditional expression inside a `+` chain, so every seat without a lead
+    was sent only the closing sentence. This drives the real seat and the real context loop.
+    """
+    from nexus.modes.multi_agent import _seat_with_model
+
+    monkeypatch.setenv("NEXUS_MODE3_ROUNDS", "1")
+    monkeypatch.setenv("NEXUS_MODE3_CALLS", "2")
+    monkeypatch.setenv("NEXUS_MODE3_SECONDS", "60")
+    case = _case(tmp_path)
+
+    class _Sink:
+        def emit(self, event):
+            return None
+
+    objective = "Compromise suspected (seat-kind test)"
+    board = "BOARD-MARKER-D128"
+    kinds = {
+        "lead": {"role": "evidence", "family": "hayabusa", "why": "crit lead", "lead": "Defender Alert"},
+        "correlation": {"role": "correlation", "family": "", "why": "cross-family"},
+        "pattern": {"role": "pattern", "family": "", "why": "framework check"},
+        "memory domain": {"role": "evidence", "family": "vol", "why": "domain seat: memory"},
+        "pivot": {"role": "evidence", "family": "", "why": "pivot on a new entity",
+                  "pivot_entity": {"entity_type": "process", "entity_value": "probe.exe"}},
+        "dispute": {"role": "evidence", "family": "evtxecmd", "why": "dispute probe.exe presence"},
+    }
+    for kind, spawn in kinds.items():
+        model = _RecordingSeatModel()
+        _seat_with_model(
+            {**spawn, "question": objective}, case_dir=case, model=model, run_id="M3-D128",
+            sink=_Sink(), board_digest=board, superstep=1,
+        )
+        assert model.sent, kind
+        first = model.sent[0]
+        assert objective in first, kind
+        assert board in first, kind
+        assert f"You are the {spawn['role']} seat" in first, kind
+        assert '"claims"' in first, kind
+        assert f"Family: {spawn['family'] or '(cross-family)'}" in first, kind
+        # The lead clause belongs to lead seats only.
+        assert ("lead_disposition" in first) == bool(spawn.get("lead")), kind
+
+
 def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     """Full graph with a scripted model and no seat_fn (items 4, 5, 7)."""
     from nexus.modes.multi_agent import run_mode3

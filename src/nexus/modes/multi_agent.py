@@ -930,26 +930,32 @@ def _seat_with_model(
             "Do not attribute an actor."
         )
     else:
-        question = (
-            f"You are the {role_name} seat. Examiner objective: {objective}\n"
-            f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n"
-            f"{skill_block}\n"
-            f"Board so far:\n{board_digest}\n\n"
-            + _investigative_extras(case_dir)
-            + 'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
+        # Built as a list of parts, joined once. The prompt used to be one `+` chain with the
+        # lead clause as `+ (clause) if lead else "" + tail`; a conditional expression binds
+        # weaker than `+`, so every seat without a lead received only the tail sentence: no
+        # objective, family, board or claims schema (D128, from f09d9d4).
+        parts = [
+            f"You are the {role_name} seat. Examiner objective: {objective}\n",
+            f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n",
+            f"{skill_block}\n",
+            f"Board so far:\n{board_digest}\n\n",
+            _investigative_extras(case_dir),
+            'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
             '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
             '"value":"...","other_entity_type":"...","other_entity_value":"...",'
             '"audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
-            '"confidence_justification":"..."}],"open_questions":["..."]}. '
+            '"confidence_justification":"..."}],"open_questions":["..."]}. ',
             'A time_order claim sets value to "before" or "after" (the entity happened before or after the '
-            'other_entity) and names that other entity, which the cited rows must contain. '
-            + (
+            'other_entity) and names that other entity, which the cited rows must contain. ',
+        ]
+        if spawn.get("lead"):
+            parts.append(
                 'When investigating a lead, also return '
                 '"lead_disposition":{"lead":"<subject>","status":"'
                 'supported|refuted|benign|insufficient","basis":"one clause"}. '
-            ) if spawn.get("lead") else ""
-            + "Every claim needs an audit_id from a tool call. Do not attribute an actor."
-        )
+            )
+        parts.append("Every claim needs an audit_id from a tool call. Do not attribute an actor.")
+        question = "".join(parts)
     rounds = _env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80)
     calls = _env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200)
     seconds = float(_env_int("NEXUS_MODE3_SECONDS", 1800, low=30, high=7200))
