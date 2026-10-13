@@ -5,7 +5,8 @@ Policy (never guess silently):
 - naive timestamps are treated as **UTC by policy** and flagged `tz_assumed`;
 - syslog lacks a year: year comes from the case window (or current year) and is
   flagged `year_assumed`;
-- unparseable stays empty — never epoch-0, never a local-time guess.
+- unparseable stays empty — never epoch-0, never a local-time guess;
+- a number is a time only as the whole value of a time column, never inside free text (D120).
 
 Every returned time carries its origin (`event` | `synthesized`) and precision
 so queries, digests and reports can be exact about what the time means.
@@ -15,12 +16,15 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 
-# Parsed-column names that carry an event time, most specific first.
+# Parsed-column names that carry an event time, most specific first. "value" is not one (D120): a numeric Value
+# cell is a code, e.g. NTSTATUS 0xC0000225 = 3221226021, and read as an epoch it dated eventlog rows to 2072.
 TIME_COLUMNS = (
     "timecreated", "timestamp", "eventtime", "event_time", "time", "ts",
     "lastrun", "lastruntime", "lastvisittime", "starttime", "endtime",
-    "updatetimestamp", "created0x10", "created0x30", "birthdroid",
-    "firstseen", "lastseen", "datetime", "date", "value",
+    # "lastwrite" is a registry key's write time (MemProcFS registry JSON). Named, so a date elsewhere in the row
+    # cannot stand in for it (D120, 2026-10-13).
+    "updatetimestamp", "lastwrite", "created0x10", "created0x30", "birthdroid",
+    "firstseen", "lastseen", "datetime", "date",
 )
 
 _ISO_RE = re.compile(
@@ -39,8 +43,15 @@ _SYSLOG_RE = re.compile(
     r"(?P<d>\d{1,2})\s+(?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})\b",
     re.IGNORECASE,
 )
-_EPOCH_RE = re.compile(r"(?<![\d.])(\d{13}|\d{10})(?!\d)(?:\.\d+)?")
-_FILETIME_RE = re.compile(r"(?<!\d)(1\d{16,17})(?!\d)")
+# D120 (2026-10-13): a number is a time only as the whole value of a time column. Inside free text a 10-digit field is
+# a handle, a pointer or an error code: 2033287795 read as 2034-06-07 in a Volatility handle table, 2838623409 as 2059
+# in a registry JSON line. Epoch seconds before 2001-09-09 have nine digits, so the cell form accepts nine.
+_CELL_EPOCH_RE = re.compile(r"(\d{13}|\d{9,10})(?:\.\d+)?")
+_CELL_FILETIME_RE = re.compile(r"1\d{16,17}")
+
+#: A reader sets this field on a row that has no event time of its own: a YARA match, a registry value row. Its dates
+#: stay searchable as fields, but none is read as the time the row happened (D120, 2026-10-13).
+NO_EVENT_TIME_FIELD = "ts_none"
 
 _MONTHS = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -113,11 +124,42 @@ def _parse_us(m: re.Match[str]) -> datetime | None:
         )
     except ValueError:
         return None
-    return dt if _plausible(dt) else None
+    # Policy: a naive time is UTC, flagged by the caller. Left naive, astimezone() would read it as the machine's zone.
+    return dt.replace(tzinfo=UTC) if _plausible(dt) else None
 
 
 def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
-    """Parse one timestamp string/number → dict or None (never a guess)."""
+    """Parse one whole value (a column cell or a typed filter) → dict or None (never a guess).
+
+    A value that is only a number is a time: epoch seconds (9, 10 or 13 digits) or a FILETIME. Anything else is read
+    as text (:func:`parse_text_time`). Numbers inside text are never times (D120).
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    m = _CELL_EPOCH_RE.fullmatch(text)
+    if m:
+        dt = _from_epoch(int(m.group(1)))
+        if dt is None:
+            return None
+        return {
+            "dt": dt, "raw": text,
+            "precision": "ms" if len(m.group(1)) == 13 else "s",
+            "tz_assumed": False, "year_assumed": False,
+        }
+    if _CELL_FILETIME_RE.fullmatch(text):
+        dt = _from_filetime(int(text))
+        if dt is None:
+            return None
+        return {
+            "dt": dt, "raw": text, "precision": "ns",
+            "tz_assumed": False, "year_assumed": False,
+        }
+    return parse_text_time(text, year_hint=year_hint)
+
+
+def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
+    """The first ISO, US or syslog time in free text. A bare number is never a time here (D120)."""
     text = str(raw or "").strip()
     if not text:
         return None
@@ -146,6 +188,7 @@ def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
             dt = datetime(
                 year, _MONTHS[m.group("mon").lower()], int(m.group("d")),
                 int(m.group("H")), int(m.group("M")), int(m.group("S")),
+                tzinfo=UTC,
             )
         except ValueError:
             dt = None
@@ -153,23 +196,6 @@ def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
             return {
                 "dt": dt, "raw": text, "precision": "s",
                 "tz_assumed": True, "year_assumed": True,
-            }
-    m = _FILETIME_RE.search(text)
-    if m:
-        dt = _from_filetime(int(m.group(1)))
-        if dt is not None:
-            return {
-                "dt": dt, "raw": text, "precision": "ns",
-                "tz_assumed": False, "year_assumed": False,
-            }
-    m = _EPOCH_RE.search(text)
-    if m:
-        dt = _from_epoch(int(m.group(1)))
-        if dt is not None:
-            return {
-                "dt": dt, "raw": text,
-                "precision": "ms" if len(m.group(1)) == 13 else "s",
-                "tz_assumed": False, "year_assumed": False,
             }
     return None
 
@@ -198,7 +224,9 @@ def extract_event_ts(
     *,
     year_hint: int | None = None,
 ) -> dict | None:
-    """Best event time for a row: parsed columns first, then the raw text."""
+    """Best event time for a row: a time column's whole value first, then the row's free text (D120)."""
+    if fields and str(fields.get(NO_EVENT_TIME_FIELD) or "").lower() in {"true", "1", "yes"}:
+        return None
     if fields:
         low_map = {str(k).strip().lower(): v for k, v in fields.items()}
         for col in TIME_COLUMNS:
@@ -208,4 +236,4 @@ def extract_event_ts(
             got = parse_time_value(str(raw), year_hint=year_hint)
             if got:
                 return got
-    return parse_time_value(text or "", year_hint=year_hint)
+    return parse_text_time(text or "", year_hint=year_hint)

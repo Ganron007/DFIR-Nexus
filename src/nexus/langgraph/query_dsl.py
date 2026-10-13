@@ -476,11 +476,11 @@ def _term_in(term: str, line_lower: str) -> bool:
 
 
 def _row_dt(row_ts: str, line_lower: str) -> datetime | None:
-    from nexus.langgraph.timestamps import parse_time_value
+    from nexus.langgraph.timestamps import parse_text_time, parse_time_value
 
     got = parse_time_value(row_ts or "") if row_ts else None
     if got is None:
-        got = parse_time_value(line_lower or "")
+        got = parse_text_time(line_lower or "")
     return got["dt"] if got else None
 
 

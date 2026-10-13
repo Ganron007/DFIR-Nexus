@@ -54,10 +54,9 @@ def plan_network_triage(
 ) -> list:
     """SIFT-host jobs for captures visible under ``remote_root`` (EH-14b).
 
-    **SIFT default toolset only** — nothing is installed or copied onto the
-    SIFT host. ``nfdump`` ships with SIFT and runs for NetFlow; Zeek/Suricata do
-    not, so they are opt-in (``NEXUS_SIFT_ZEEK=1`` / ``NEXUS_SIFT_SURICATA=1``)
-    and otherwise produce one honest SKIP row (never a guaranteed FAIL).
+    Zeek and Suricata are installed on the SIFT host (2026-10-13) and run only when opted in
+    (``NEXUS_SIFT_ZEEK=1`` / ``NEXUS_SIFT_SURICATA=1``); otherwise they produce one honest SKIP row
+    (never a guaranteed FAIL). ``nfdump`` ships with SIFT and runs for NetFlow.
     Captures outside the SIFT root get a SKIP row. Never silence.
     """
     from nexus.langgraph.tool_lane import ToolJob
@@ -111,6 +110,7 @@ def plan_network_triage(
                       "--set", "outputs.1.eve-log.enabled=yes"],
                 purpose=f"Suricata eve.json alerts/flows ({Path(p).name})",
                 timeout=1800,
+                prep_dirs=[f"{out_dir}/suricata"],
             ))
     if pcap_under_root and not zeek_on:
         jobs.append(ToolJob(
@@ -118,8 +118,7 @@ def plan_network_triage(
             purpose="Zeek app-layer logs",
             status="SKIP",
             reason=(
-                "not in the SIFT default toolset (nothing is installed or copied "
-                "onto SIFT); set NEXUS_SIFT_ZEEK=1 only if one is maintained there"
+                "installed on SIFT; runs only when NEXUS_SIFT_ZEEK=1 is set (opt-in)"
             ),
         ))
     if pcap_under_root and not suricata_on:
@@ -128,8 +127,7 @@ def plan_network_triage(
             purpose="Suricata eve.json alerts/flows",
             status="SKIP",
             reason=(
-                "not in the SIFT default toolset (nothing is installed or copied "
-                "onto SIFT); set NEXUS_SIFT_SURICATA=1 only if one is maintained there"
+                "installed on SIFT; runs only when NEXUS_SIFT_SURICATA=1 is set (opt-in)"
             ),
         ))
     for p in nfcapd_paths:

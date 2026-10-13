@@ -41,7 +41,7 @@ from nexus.langgraph.query_pack import (
     iter_extraction_files,
     needle_in_text,
 )
-from nexus.langgraph.timestamps import extract_event_ts
+from nexus.langgraph.timestamps import NO_EVENT_TIME_FIELD, extract_event_ts
 
 _LARGE_NEEDLES = (
     "sdelete", ".pst", ".ost", "drivefs", "googledrive", "my drive",
@@ -110,7 +110,9 @@ def _wildcard_mapping() -> dict[str, Any]:
 # ignore_above, so a long value cannot reject its document.
 # v13 (2026-10-11): the wildcard subfields carry no ignore_above, so a substring search reaches a
 # row of any length (see WILDCARD_IGNORE_ABOVE). An index built before it must be rebuilt.
-INDEX_SCHEMA_VERSION = 13
+# v14 (2026-10-13, D120): an event time is a time column's whole value, or a time read from the row's text; a bare
+# number inside text is never a time. An index built before it carries fabricated times and must be rebuilt.
+INDEX_SCHEMA_VERSION = 14
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -449,11 +451,11 @@ def iter_indexable_rows(
             if cells is None:  # WO-22 fallback row: no reliable columns
                 if not raw.strip():
                     continue
-                yield start, raw, _row_fields(raw, header)
+                yield start, raw, _no_time_if_yara_csv(path, _row_fields(raw, header))
                 continue
             if not any(str(c).strip() for c in cells):
                 continue
-            yield start, raw, _fields_from_values(header, cells)
+            yield start, raw, _no_time_if_yara_csv(path, _fields_from_values(header, cells))
         return
     json_records = _is_json_records(path)
     for i, line in enumerate(fh, start=1):
@@ -461,10 +463,22 @@ def iter_indexable_rows(
             continue
         if not line.strip():
             continue
-        yield i, line, (
-            _record_fields(line, flatten=_is_suricata_eve(path)) if json_records
-            else _row_fields(line, header)
-        )
+        row = _record_fields(line, flatten=_is_suricata_eve(path)) if json_records else _row_fields(line, header)
+        if json_records and _is_registry_value(row):
+            row[NO_EVENT_TIME_FIELD] = "true"
+        yield i, line, row
+
+
+def _no_time_if_yara_csv(path: Path, fields: dict[str, str]) -> dict[str, str]:
+    """A YARA CSV row names no match time: its dates are the rule's and the process's (D120, 2026-10-13)."""
+    if path.name.lower() == "yara.csv":
+        fields[NO_EVENT_TIME_FIELD] = "true"
+    return fields
+
+
+def _is_registry_value(fields: dict[str, str]) -> bool:
+    """A MemProcFS registry value row has no write time of its own. Only a key carries one (``lastwrite``) (D120)."""
+    return fields.get("class") == "REG" and fields.get("type") == "value"
 
 
 # D117 (2026-10-13): a Zeek TSV log names its columns in a `#fields` line; the `#` lines above it are the header block.
@@ -531,6 +545,9 @@ def _yara_block_fields(lines: list[str]) -> dict[str, str]:
         name = "".join(label.split())
         if sep and name and not name.startswith("-") and value.strip():
             out[name] = value.strip()
+    # The rule's dates (Creation_date, Last_modified) and the process's start time are not the time of the match: a
+    # YARA report names no match time, so the block has no event time (D120, 2026-10-13).
+    out[NO_EVENT_TIME_FIELD] = "true"
     return out
 
 

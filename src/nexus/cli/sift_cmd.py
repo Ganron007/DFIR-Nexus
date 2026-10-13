@@ -165,6 +165,42 @@ def push_code(src_dir: Path, ssh_base: list[str]) -> bool:
     return proc.returncode == 0 and b"SYNC-OK" in proc.stdout
 
 
+#: The systemd unit that runs the SIFT MCP at boot (boot persistence, 2026-10-13). setup restarts it through systemd
+#: when it is installed and sudo does not prompt on the host.
+MCP_UNIT = "dfir-nexus-mcp.service"
+
+
+def mcp_start_command(unit_managed: bool) -> str:
+    """The shell command that (re)starts the SIFT MCP on :4508.
+
+    Whatever holds the port is stopped first: a server an earlier setup started detached, or the unit's own process.
+    When the unit is installed the server starts through systemd, so it comes back after a reboot and systemd
+    restarts it on failure. Elsewhere it is started detached, as before.
+    """
+    stop_holder = (
+        # Kill ONLY the process listening on 4508. Never `pkill -f 'nexus serve --http'`: the launching shell's
+        # command line contains that very string, so pkill kills the script before it can start the server
+        # (observed 2026-10-03 - the old server exited and the new one never launched).
+        "PID=$(ss -ltnp 2>/dev/null | grep ':4508' | grep -oP 'pid=\\K[0-9]+' | head -1); "
+        "[ -n \"$PID\" ] && { kill \"$PID\" 2>/dev/null; sleep 2; }; "
+    )
+    if unit_managed:
+        return (
+            "cd ~/DFIR-Nexus && "
+            + stop_holder
+            + f"sudo -n systemctl restart {MCP_UNIT}; "
+            "sleep 12; ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-FAILED"
+        )
+    return (
+        "cd ~/DFIR-Nexus && "
+        "set -a; . ~/.nexus/sift-mcp.env; set +a; "
+        + stop_holder
+        + "setsid nohup .venv/bin/python -m nexus serve --http --host 0.0.0.0 "
+        "--port 4508 < /dev/null > /tmp/nexus-mcp.log 2>&1 & "
+        "sleep 12; ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-FAILED"
+    )
+
+
 @app.command("setup")
 def setup(
     case: str = typer.Option("", "--case", help="Case id or directory to lay out on the SIFT host"),
@@ -331,6 +367,12 @@ def setup(
     )
     token = (token or "").strip().splitlines()[0].strip() if (token or "").strip() else ""
 
+    rc, unit = _ssh(
+        f"systemctl is-enabled {MCP_UNIT} >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1 "
+        "&& echo UNIT-MANAGED || echo UNIT-NONE"
+    )
+    unit_managed = "UNIT-MANAGED" in unit
+
     # A running server keeps the code and the token it imported at start: new code (code_synced) needs a restart too.
     if "MCP-UP" in listening and not token_added and not code_synced:
         typer.echo("  MCP: listening on :4508 (bearer token already in place)")
@@ -339,26 +381,12 @@ def setup(
             typer.echo("  MCP: restarting so the new code and bearer token take effect...")
         else:
             typer.echo("  MCP: not running — starting it...")
-        start = (
-            "cd ~/DFIR-Nexus && "
-            "set -a; . ~/.nexus/sift-mcp.env; set +a; "
-            # Kill ONLY the process listening on 4508. Never `pkill -f
-            # 'nexus serve --http'`: the launching shell's command line contains
-            # that very string, so pkill kills the script before it can start
-            # the server (observed 2026-10-03 - the old server exited and the
-            # new one never launched).
-            "PID=$(ss -ltnp 2>/dev/null | grep ':4508' | grep -oP 'pid=\\K[0-9]+' | head -1); "
-            "[ -n \"$PID\" ] && { kill \"$PID\" 2>/dev/null; sleep 2; }; "
-            "setsid nohup .venv/bin/python -m nexus serve --http --host 0.0.0.0 "
-            "--port 4508 < /dev/null > /tmp/nexus-mcp.log 2>&1 & "
-            "sleep 12; ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-FAILED"
+        rc, out = _ssh(mcp_start_command(unit_managed), timeout=150)
+        failure = (
+            f"FAILED — see: journalctl -u {MCP_UNIT}" if unit_managed
+            else "FAILED — see /tmp/nexus-mcp.log"
         )
-        rc, out = _ssh(start, timeout=150)
-        typer.echo(
-            "  MCP: "
-            + ("listening on :4508 (bearer auth on)" if "MCP-UP" in out
-               else "FAILED — see /tmp/nexus-mcp.log")
-        )
+        typer.echo("  MCP: " + ("listening on :4508 (bearer auth on)" if "MCP-UP" in out else failure))
 
     typer.echo("")
     typer.echo("Examiner .env block (or export for the serve session):")

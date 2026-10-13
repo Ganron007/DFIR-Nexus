@@ -60,6 +60,9 @@ class ToolJob:
     # the explicit, optional lane selector - a root path or environment
     # default alone never triggers a refusal.
     critical: bool = False
+    # SIFT only: folders the job writes into, created with mkdir -p before the run. Suricata refuses a -l folder that
+    # does not exist (2026-10-13). A prep step is not a job, so it has no output file for the empty-output guard.
+    prep_dirs: list[str] = field(default_factory=list)
     # WO-A4: which build of which tool produced this row (binary sha256 +
     # version + version_source). Carried through so the ledger - the surface an
     # exhibit is built from - can say what ran, not just OK/FAIL.
@@ -3502,6 +3505,28 @@ def plan_sift_triage(
     return jobs
 
 
+async def _create_sift_output_dirs(job: ToolJob, sift_tool: Any, parse_result: Callable[[Any], dict]) -> str:
+    """Create the folders a SIFT job writes into, before the job runs. "" when all exist, else why not.
+
+    A tool that writes into a folder (Suricata's -l) refuses one that is missing, and the lane created nothing on
+    SIFT itself (2026-10-13). The step is not a job: it has no output for the empty-output guard to check.
+    """
+    for folder in job.prep_dirs:
+        try:
+            made = parse_result(await call_tool(
+                sift_tool,
+                {"command": f"mkdir -p {shlex.quote(folder)}",
+                 "purpose": f"create the output folder for {job.tool}", "timeout": 60},
+                timeout=60,
+                label=f"run_command(mkdir {job.tool})",
+            ))
+        except Exception as exc:  # noqa: BLE001
+            return f"could not create {folder} on SIFT: {exc}"
+        if made.get("success") is False:
+            return f"could not create {folder} on SIFT: {made.get('error') or 'no reply'}"
+    return ""
+
+
 def sift_unavailable_outcome(job: ToolJob) -> tuple[str, str]:
     """(status, reason) when the SIFT MCP is not available.
 
@@ -4066,6 +4091,11 @@ async def run_tool_lane(
                 _finish(status, job.reason, reason=job.reason)
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
+            prep_failure = await _create_sift_output_dirs(job, sift_tool, parse_result)
+            if prep_failure:
+                job.reason = prep_failure
+                _finish("FAIL", job.reason[:300], reason=job.reason)
+                return
             try:
                 raw = await call_tool(
                     sift_tool,

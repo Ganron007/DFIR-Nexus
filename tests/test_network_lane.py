@@ -107,11 +107,11 @@ def test_plan_network_triage_default_toolset_and_honest_skip(tmp_path, monkeypat
     jobs = plan_network_triage(
         [str(inside), str(outside)], [], str(root), has_sift_mcp=True,
     )
-    # SIFT default toolset: zeek/suricata are not installed there — SKIP, no FAIL.
+    # Zeek and Suricata are installed on SIFT but opt-in: without the flag they SKIP, never FAIL.
     zeek = next(j for j in jobs if j.tool == "zeek")
     suricata = next(j for j in jobs if j.tool == "suricata")
-    assert zeek.status == "SKIP" and "default toolset" in zeek.reason
-    assert suricata.status == "SKIP" and "default toolset" in suricata.reason
+    assert zeek.status == "SKIP" and "NEXUS_SIFT_ZEEK=1" in zeek.reason
+    assert suricata.status == "SKIP" and "NEXUS_SIFT_SURICATA=1" in suricata.reason
     skips = [j for j in jobs if j.status == "SKIP"]
     assert len(skips) == 3  # outside-root + zeek + suricata
     assert any("SIFT evidence root" in j.reason for j in skips)
@@ -149,6 +149,55 @@ def test_sift_jobs_for_lane_includes_network(tmp_path, monkeypatch):
         network_inputs={"pcap": [str(pcap)], "nfcapd": []},
     )
     assert any(j.tool == "suricata" and j.status == "PENDING" for j in jobs)
+
+
+def test_sift_suricata_job_declares_the_folder_it_writes_into(tmp_path, monkeypatch):
+    # Suricata refuses a -l folder that does not exist, so the job names it and the lane creates it on SIFT (2026-10-13).
+    from nexus.langgraph.tool_lane import sift_jobs_for_lane
+
+    monkeypatch.setenv("NEXUS_SIFT_SURICATA", "1")
+    root = tmp_path / "sift-root"
+    root.mkdir()
+    pcap = root / "cap.pcap"
+    pcap.write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 40)
+    jobs = sift_jobs_for_lane(
+        str(root), has_sift_mcp=True,
+        network_inputs={"pcap": [str(pcap)], "nfcapd": []},
+    )
+    suricata = next(j for j in jobs if j.tool == "suricata" and j.status == "PENDING")
+    out = suricata.argv[suricata.argv.index("-l") + 1]
+    assert suricata.prep_dirs == [out]
+    assert out.replace("\\", "/").endswith("/nexus-network/cap/suricata")
+
+
+def test_the_sift_output_folder_is_created_first_and_a_refusal_stops_the_job(tmp_path):
+    import asyncio
+    import json
+
+    from nexus.langgraph.tool_lane import ToolJob, _create_sift_output_dirs
+
+    sent: list[dict] = []
+    replies: list[dict] = []
+
+    class RecordingSift:
+        async def ainvoke(self, args):
+            sent.append(args)
+            return json.dumps(replies.pop(0))
+
+    folder = "/home/sansforensics/cases/CASE-X/extractions/nexus-network/cap/suricata"
+    job = ToolJob(host="sift", tool="suricata", argv=["suricata"], purpose="x", prep_dirs=[folder])
+    replies.append({"success": True, "output": ""})
+    assert asyncio.run(_create_sift_output_dirs(job, RecordingSift(), json.loads)) == ""
+    assert sent[-1]["command"] == f"mkdir -p {folder}"
+
+    replies.append({"success": False, "error": "permission denied"})
+    reason = asyncio.run(_create_sift_output_dirs(job, RecordingSift(), json.loads))
+    assert reason.startswith(f"could not create {folder} on SIFT") and "permission denied" in reason
+
+    plain = ToolJob(host="sift", tool="zeek", argv=["zeek"], purpose="x")
+    before = len(sent)
+    assert asyncio.run(_create_sift_output_dirs(plain, RecordingSift(), json.loads)) == ""
+    assert len(sent) == before  # a job that declares no folder sends nothing extra
 
 
 def test_flow_projection_writes_sessions(tmp_path, monkeypatch):
