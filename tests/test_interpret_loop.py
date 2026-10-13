@@ -282,6 +282,27 @@ def test_loop_runs_multiple_rounds(tmp_path):
     assert (rounds_dir / "round-2-verify.json").is_file()
 
 
+def test_a_loop_cut_off_by_its_rounds_says_so(tmp_path):
+    """D134: every round ran and the model still planned queries, so the loop was cut off.
+
+    The summary used to say "planned" here, which reads as if the loop ended by design.
+    """
+    model = ScriptedModel([
+        _orientation(), _verify_more(), _verify_more(), _findings_all_addressed(),
+    ])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "2"}},
+        digest=_digest(), digest_md="# Digest",
+        sections=[], execute=FakeExecutor(),
+    ))
+    assert result["rounds_run"] == 2
+    assert result["stop_reason"] == "rounds_exhausted"
+    summary = json.loads(
+        (tmp_path / "analysis" / "interpret_rounds" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["stop_reason"] == "rounds_exhausted"
+
+
 def test_loop_reconciliation_extra_pass(tmp_path):
     incomplete = json.dumps([
         {"title": "Mimikatz detected on ws01", "observation": "credential dumping",

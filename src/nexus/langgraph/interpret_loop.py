@@ -800,8 +800,8 @@ async def run_interpret_loop(
         if not next_plan["items"]:
             # The model is done planning but crit/high leads are still open.
             # Plan the evidence for them explicitly rather than letting the
-            # loop die with them unverified.
-            stop_reason = "settled"
+            # loop die with them unverified. Nothing has settled yet, so the
+            # stop reason is left to the round that ends the loop (D134).
             current_items = _replan_for_leads(undispositioned)
             _persist_round(case_dir, f"round-{round_no}-lead-replan", {
                 "round": round_no, "kind": "lead_replan",
@@ -810,6 +810,11 @@ async def run_interpret_loop(
             })
             continue
         current_items = next_plan["items"]
+    else:
+        # Every round ran and queries were still planned: the loop was cut off, not settled.
+        # The summary used to keep "planned" (or a stale "settled") here (D134).
+        if current_items:
+            stop_reason = "rounds_exhausted"
 
     evidence_block = "\n\n".join(evidence_blocks) or "(no rows returned)"
     notes_block = "\n".join(
