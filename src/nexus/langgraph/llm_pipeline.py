@@ -343,62 +343,6 @@ def _registry_context_block(state: InvestigationState | dict, cap: int = 900) ->
         return ""
 
 
-_INTERPRETATION_RULES = (
-    "Interpretation rules (product contract):\n"
-    "1) Evidence before narrative — every claim cites QUERY PACK hits plus audit_ids "
-    "from the tool-lane ledger. Do not cite extraction stdout/stderr paths as facts.\n"
-    "2) RAG MUST be loaded (forensic_rag_status ready) before you interpret. "
-    "Call forensic_rag_search only for artifact families listed in the QUERY PACK "
-    "hit families (how to read Prefetch vs JumpList vs Recycle vs SRUM vs Hayabusa). "
-    "Do not search unrelated detection topics. Facts come from QUERY PACK hits, "
-    "not CSV heads and not RAG.\n"
-    "3) Dual hypothesis: insider-misuse AND external compromise. Map ITM "
-    "(itm_stage + itm_objects) only when facts support authorized-user abuse. "
-    "Map MITRE attack_ids only when facts support intrusion. A finding may "
-    "use one lens, both, or neither (benign). Do not force every row onto ITM.\n"
-    "4) If optional case context is present, use it only as a hypothesis — if tool "
-    "outputs contradict it, say so explicitly.\n"
-    "5) Separate observation (what the tool showed) from interpretation (what it means). "
-    "Confidence MUST be one of HIGH, MEDIUM, LOW, SPECULATIVE (never N/A).\n"
-    "6) MITRE IDs only when justified by the observation; omit rather than guess.\n"
-    "7) Ordinary/authorized activity may appear in host artifacts — do not escalate "
-    "to compromise or insider-misuse without corroborating evidence, but still "
-    "record the artifact.\n"
-    "8) FIRST answer each N1 examiner question as Supported or INSUFFICIENT citing "
-    "hit rows (host artifacts: execution, persistence, log wipe, remote exec, "
-    "credential access). Do not require mimikatz/beacon names. "
-    "THEN emit a small set of findings that are analytic claims "
-    "(e.g. log tampering, unexpected execution, persistence, IR collection), "
-    "each with multiple evidence rows. Do not emit one finding per parser family. "
-    "9) Velociraptor, F-Response, Kansa, and anti-malware alerts in the pack are "
-    "the collection story unless a hit shows attacker-controlled use. Do not "
-    "call them C2.\n"
-    "10) Finish with a ```json fenced array of findings: title, evidence "
-    "[{time, source, artifact, detail}], observation (one sentence), "
-    "interpretation, confidence, confidence_justification, host, attack_ids, "
-    "itm_stage, itm_objects, audit_ids, artifacts (paths/audit_ids). "
-    "Skip a claim when it has no hits. Do not pad with Acrobat/Office from file heads."
-)
-
-_COVERAGE_MODE_RULES = (
-    "PIPELINE MODE: coverage (debug).\n"
-    "Condition you MUST treat as true: every applicable host-triage tool was already "
-    "force-executed against available evidence before this step. You do NOT select "
-    "triage tools. The ledger is the inventory of what ran (OK/FAIL/SKIP).\n"
-    "You MUST read the QUERY PACK hits provided in the human message "
-    "(filtered rows, not CSV heads). Findings must cite CONCRETE facts from those hits "
-    "(usernames, process names, paths, timestamps, event IDs, URLs). "
-    "FORBIDDEN: high severity on routine Office/Acrobat unless wipe, staging, "
-    "USB, PST/cloud copy, log tampering, unexpected execution, persistence, "
-    "or remote exec appears in the hits. "
-    "Empty hits + OK ledger = INSUFFICIENT EVIDENCE for that question, "
-    "not a coverage gap.\n"
-    "FAIL/SKIP are coverage gaps only — do not invent compromise from a FAIL. "
-    "Severity: low for routine artifacts; medium/high only when hit facts "
-    "support insider-misuse, data staging, or external compromise "
-    "(malware/C2/persistence/anomalous privilege) under the examiner hypothesis."
-)
-
 _DESIGN_MODE_RULES = (
     "PIPELINE MODE: design (mandatory lane already ran, then ReAct extras).\n"
     "The host-triage parsers for artifacts PRESENT on this evidence already ran. "
@@ -1690,18 +1634,13 @@ def make_interpret_executor(case_dir: Path | None, tools: dict):
 
 
 async def interpret(state: InvestigationState, tools: dict, model) -> dict:
-    """Coverage/interpret: LLM + RAG + TI on N4 query-pack hits."""
-    try:
-        from langgraph.prebuilt import create_react_agent
-    except ImportError:
-        return {"error": "langgraph not installed — run: pip install dfir-nexus[pipeline]"}
+    """Coverage/interpret: the bounded interpret loop over the case digest and N4 hits.
 
-    interpret_tools = []
-    for name in INTERPRET_TOOL_NAMES:
-        t = tools.get(name)
-        if t:
-            interpret_tools.append(t)
-
+    The loop is the only interpreter. A second, unbounded ReAct agent used to run when the
+    loop raised or returned no findings, recorded only in a log line (D131): it overrode a
+    legitimate "nothing found" and hid loop failures. A loop that finds nothing now ends
+    the node with that result, and a loop that fails, fails the node with its reason.
+    """
     ledger = state.get("tool_run_ledger") or []
     ledger_summary = []
     for row in ledger:
@@ -1712,7 +1651,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             "purpose": str(row.get("purpose") or "")[:80],
         })
     ledger_json = json.dumps(ledger_summary, indent=2)[:4000]
-    ctx_block = _format_case_context(state.get("case_context") or {})
     rag_prior = "\n".join(state.get("rag_notes") or [])[:1500]
 
     query_pack = ""
@@ -1722,6 +1660,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     playbook_block = ""
     digest_md = ""
     digest: dict[str, Any] = {}
+    digest_error = ""
     if case_id:
         from nexus.config import settings
         analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
@@ -1739,7 +1678,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             digest = build_case_digest(settings.cases_root / case_id)
             write_case_digest(settings.cases_root / case_id, digest)
             digest_md = render_digest_markdown(digest)
-        except Exception as exc:  # noqa: BLE001 — digest is best-effort context
+        except Exception as exc:  # noqa: BLE001 - reported below if the loop cannot run
+            digest_error = f"{type(exc).__name__}: {exc}"
             log.warning("case digest build failed: %s", exc)
         # B5: ONE wide case scan, shared by the TI sweep and the entity
         # census (each used to run its own match-all fetch back-to-back).
@@ -1796,18 +1736,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         except Exception as exc:  # noqa: BLE001 — playbooks best-effort
             log.warning("playbook context build failed: %s", exc)
 
-    from nexus.langgraph.itm import itm_prompt_block
-
-    # Operator context rule: budget = window × fill (default 1M × 0.7), no
-    # artificial small caps. Packed from the digest outward; every pack is
-    # persisted to analysis/llm_context/ so the examiner can audit it.
-    from nexus.langgraph.prompt_budget import (
-        log_usage,
-        pack_sections,
-        persist_context,
-        retry_budget_chars,
-    )
-
     ledger_block = f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```"
     sections = [
         (0, "case_digest", digest_md),
@@ -1825,10 +1753,9 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
 
         case_dir_for_ctx = settings.cases_root / case_id
 
-    # ── GATE-B primary path: the bounded interpret round loop ───────────
+    # ── The bounded interpret round loop (the only interpreter) ─────────
     # Orient → Verify ×N → Reconcile, with artifacts under
-    # analysis/interpret_rounds/. The ReAct single pass below stays as the
-    # degraded/fallback path.
+    # analysis/interpret_rounds/.
     # EH-13: Mode 2/3 promise ES-backed evidence. If the backend fell back
     # to the CSV pack (ES lost mid-run, index gone), STOP here — a silent CSV
     # interpretation is a different analysis with different coverage.
@@ -1862,178 +1789,75 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             "step_log": [f"interpret refused (no ES): {fallback}"],
         }
 
-    if case_dir_for_ctx is not None and digest:
-        try:
-            from nexus.langgraph.interpret_loop import run_interpret_loop
+    def _fail(reason: str) -> dict:
+        emit_stage(state, "interpret", "error", reason)
+        log.error("Interpret failed: %s", reason)
+        if case_dir_for_ctx is not None:
+            try:
+                from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
 
-            # P2: scan coverage is part of the run record — files scanned vs
-            # eligible and needles queried vs requested (never silently dropped).
-            _stats = (digest.get("scan_stats") or {}) if isinstance(digest, dict) else {}
-            if _stats.get("files_total"):
-                _cov = (
-                    f"scan coverage: files {_stats.get('files_scanned', 0)}/{_stats.get('files_total', 0)}"
-                    f", needles {_stats.get('terms_queried', 0)}/{_stats.get('terms_requested', 0)}"
+                finalize_run(
+                    resolve_run(case_dir_for_ctx, run_id=str(state.get("run_id") or "")),
+                    "failed", f"interpret: {reason}",
                 )
-                if _stats.get("fallback_reason"):
-                    _cov += f" — fallback: {_stats['fallback_reason']}"
-                emit_stage(state, "interpret", "coverage", _cov)
+            except Exception:  # noqa: BLE001 - status bookkeeping must not mask the failure
+                pass
+        return {"error": f"interpret: {reason}", "step_log": [f"interpret failed: {reason}"]}
 
-            loop_result = await run_interpret_loop(
-                case_dir=case_dir_for_ctx,
-                case_id=case_id,
-                model=model,
-                state=state,
-                digest=digest,
-                digest_md=digest_md,
-                sections=sections,
-                execute=make_interpret_executor(case_dir_for_ctx, tools),
-                # WO-1C item 2: the interpret loop is an analysis run with its
-                # own id, like Modes 2 and 3, so its queries, round artifacts
-                # and family ledger are attributed to it.
-                run_id=str(state.get("run_id") or ""),
-                # WO-1C item 3: the run's context policy, decided before the
-                # run and recorded on it (independent by default).
-                context_policy=str(state.get("context_policy") or "independent"),
-            )
-            log.info(
-                "Interpret loop: %d/%d rounds (%s), %d findings, %d unaddressed",
-                loop_result.get("rounds_run"), loop_result.get("rounds_requested"),
-                loop_result.get("stop_reason"), loop_result.get("findings_emitted"),
-                len(loop_result.get("unaddressed") or []),
-            )
-            if loop_result.get("findings_emitted"):
-                return {
-                    "step_log": [
-                        f"interpret loop: {loop_result.get('rounds_run')} round(s), "
-                        f"{loop_result.get('findings_emitted')} finding candidate(s)"
-                    ],
-                    "messages": loop_result.get("messages") or [],
-                }
-            log.warning("Interpret loop emitted no findings — single-pass fallback")
-        except Exception as exc:  # noqa: BLE001 — fallback keeps the lane alive
-            log.warning("Interpret loop failed (%s) — single-pass fallback", exc)
+    if case_dir_for_ctx is None:
+        return _fail("no case_id on the run")
+    if not digest:
+        return _fail("the case digest could not be built"
+                     + (f" ({digest_error})" if digest_error else ""))
 
-    agent = create_react_agent(
-        model,
-        interpret_tools,
-        prompt=(
-            "You are a DFIR analyst writing evidence-backed findings.\n"
-            f"Case: {state['case_id']}.\n"
-            f"{_COVERAGE_MODE_RULES}\n"
-            f"{ctx_block}\n"
-            f"{itm_prompt_block(question=str((state.get('case_context') or {}).get('question') or ''), families=sorted((digest.get('inventory') or {}).keys()))}\n"
-            f"{_registry_context_block(state)}\n"
-            f"{_INTERPRETATION_RULES}\n"
-            "FIRST call forensic_rag_status (must be ready). "
-            "THEN forensic_rag_search once per QUERY PACK hit family "
-            "(methodology for those artifacts only). "
-            "Use es_fields/es_search/es_aggregate/es_sample (pass the "
-            "case_id) to pull rows beyond the digest when a claim needs "
-            "evidence — the same case-gated index the examiner uses. "
-            "THEN emit findings JSON, reconciling EVERY digest item. "
-            "Use ti_lookup/ti_fanout for every IOC in the THREAT INTEL block "
-            "and for hashes/IPs/domains you see in QUERY PACK hits — say what "
-            "each verdict means for the case. "
-            "Cover EVERY item of interest: every family with hits, every "
-            "entity (hosts, users, processes, paths, IOCs) — for items with no "
-            "signal, state that explicitly instead of omitting them. "
-            "Never phrase an absent evidence class as 'no compromise'. "
-            "Do NOT re-run host triage tools. Do NOT treat CSV heads as facts."
-        ),
-    )
+    from nexus.langgraph.interpret_loop import run_interpret_loop
 
-    # Operator context rule: budget = window × fill (default 1M × 0.7), no
-    # artificial small caps. Packed from the digest outward; every pack is
-    # persisted to analysis/llm_context/ so the examiner can audit it.
-
-    ledger_block = f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```"
-    sections = [
-        (0, "case_digest", digest_md),
-        (1, "n4_query_pack", query_pack),
-        (2, "entity_inventory", inv_md),
-        (3, "threat_intel_context", ti_block),
-        (4, "playbook_guidance", playbook_block),
-        (5, "run_ledger", ledger_block),
-        (6, "prior_rag_notes", rag_prior),
-    ]
-    packed, pack_report = pack_sections(sections)
-    pack_excerpt = (
-        f"Interpret coverage results for case {state['case_id']}.\n"
-        "PACKED CASE CONTEXT follows (sections in priority order). The CASE "
-        "DIGEST is the deterministic coverage of this case — reconcile EVERY "
-        "item in it against the QUERY PACK and your own queries, and emit one "
-        "finding or explicit disposition per item:\n\n" + packed + "\n\n"
-        "Emit a ```json array of findings. Each finding MUST have:\n"
-        "- title naming the analytic claim (not 'Successful Tool')\n"
-        "- evidence: array of {time, source, artifact, detail} "
-        "(one row per timestamped hit; never a prose dump)\n"
-        "- observation: one-sentence summary only (the table is evidence)\n"
-        "- interpretation (non-empty) under the examiner hypothesis "
-        "(insider-misuse AND/OR external compromise — evidence chooses)\n"
-        "- itm_stage + itm_objects only when insider-misuse is justified; "
-        "otherwise leave them empty\n"
-        "- attack_ids (MITRE) only when intrusion facts justify them\n"
-        "- confidence + confidence_justification\n"
-        "- audit_ids from the OK ledger rows that support the claim\n"
-        "RECONCILIATION (hard rule): every ALERT SURFACE entry, every signal-"
-        "map needle with hits, and every high-count entity must be covered by "
-        "a finding, or explicitly assessed benign with a reason, or recorded "
-        "as a coverage gap — silence is a failure. Items checked with 0 hits "
-        "are negative evidence: cite them as checked-and-absent, never omit.\n"
-        "SCOPE (hard rule): artifact classes listed as NOT in evidence are "
-        "out of scope — never phrase their absence as 'no compromise'.\n"
-        "Raw detail: use es_sample(family, field/value, n) to pull "
-        "representative rows, or es_search/es_aggregate for exact pulls.\n"
-        "Cover families that appear in QUERY PACK hits. "
-        "Do not invent a coverage gap when the ledger is OK.\n"
-    )
-
-    case_dir_for_ctx: Path | None = None
-    if case_id:
-        from nexus.config import settings
-
-        case_dir_for_ctx = settings.cases_root / case_id
-    if case_dir_for_ctx is not None:
-        persist_context(
-            case_dir_for_ctx, "mode2-interpret", packed, pack_report,
-            meta={"case_id": case_id, "run_id": state.get("run_id", "")},
+    # P2: scan coverage is part of the run record - files scanned vs eligible and
+    # needles queried vs requested (never silently dropped).
+    _stats = (digest.get("scan_stats") or {}) if isinstance(digest, dict) else {}
+    if _stats.get("files_total"):
+        _cov = (
+            f"scan coverage: files {_stats.get('files_scanned', 0)}/{_stats.get('files_total', 0)}"
+            f", needles {_stats.get('terms_queried', 0)}/{_stats.get('terms_requested', 0)}"
         )
-    log_usage("mode2-interpret", pack_report)
+        if _stats.get("fallback_reason"):
+            _cov += f" - fallback: {_stats['fallback_reason']}"
+        emit_stage(state, "interpret", "coverage", _cov)
 
     try:
-        try:
-            result = await agent.ainvoke(
-                {"messages": [{"role": "human", "content": pack_excerpt}]},
-                config={"recursion_limit": 40},  # type: ignore[arg-type]
-            )
-        except Exception as exc:  # noqa: BLE001 — one downgrade retry on context overflow
-            msg = str(exc).lower()
-            if not any(k in msg for k in ("context", "token", "length", "too long")):
-                raise
-            log.warning("Interpret context rejected (%s) — retrying at 0.5× budget", exc)
-            packed2, report2 = pack_sections(
-                sections, chars=retry_budget_chars(pack_report["budget_chars"])
-            )
-            if case_dir_for_ctx is not None:
-                persist_context(
-                    case_dir_for_ctx, "mode2-interpret-retry", packed2, report2,
-                    meta={"case_id": case_id, "run_id": state.get("run_id", "")},
-                )
-            log_usage("mode2-interpret-retry", report2)
-            content2 = pack_excerpt.replace(packed, packed2)
-            result = await agent.ainvoke(
-                {"messages": [{"role": "human", "content": content2}]},
-                config={"recursion_limit": 40},  # type: ignore[arg-type]
-            )
-        msg_count = len(result.get("messages", []))
-        log.info("Interpret agent completed: %d messages", msg_count)
-    except Exception as e:
-        log.error("Interpret agent failed: %s", e)
-        return {"step_log": [f"Interpret agent error: {e}"]}
+        loop_result = await run_interpret_loop(
+            case_dir=case_dir_for_ctx,
+            case_id=case_id,
+            model=model,
+            state=state,
+            digest=digest,
+            digest_md=digest_md,
+            sections=sections,
+            execute=make_interpret_executor(case_dir_for_ctx, tools),
+            # WO-1C item 2: the interpret loop is an analysis run with its own id, like
+            # Modes 2 and 3, so its queries, round artifacts and family ledger are
+            # attributed to it.
+            run_id=str(state.get("run_id") or ""),
+            # WO-1C item 3: the run's context policy, decided before the run and
+            # recorded on it (independent by default).
+            context_policy=str(state.get("context_policy") or "independent"),
+        )
+    except Exception as exc:  # noqa: BLE001 - the failure is the node's result
+        return _fail(f"the interpret loop failed: {type(exc).__name__}: {exc}")
 
+    log.info(
+        "Interpret loop: %d/%d rounds (%s), %d findings, %d unaddressed",
+        loop_result.get("rounds_run"), loop_result.get("rounds_requested"),
+        loop_result.get("stop_reason"), loop_result.get("findings_emitted"),
+        len(loop_result.get("unaddressed") or []),
+    )
     return {
-        "step_log": ["coverage mode: interpretation completed"],
-        "messages": result.get("messages", []),
+        "step_log": [
+            f"interpret loop: {loop_result.get('rounds_run')} round(s), stop "
+            f"{loop_result.get('stop_reason')}, "
+            f"{loop_result.get('findings_emitted')} finding candidate(s)"
+        ],
+        "messages": loop_result.get("messages") or [],
     }
 
 # Audit IDs: "{mcp_name}-{examiner}-{YYYYMMDD}-{seq}" (mcp_name may contain _)
