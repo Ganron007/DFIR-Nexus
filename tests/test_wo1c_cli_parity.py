@@ -176,6 +176,9 @@ def test_mode2_run_accepts_context_flag(monkeypatch: pytest.MonkeyPatch, tmp_pat
                         lambda c: None)
     monkeypatch.setattr("nexus.case.sift_preflight.sift_preflight_message",
                         lambda c: "")
+    # The CLI builds the model before it starts a run (D132); a stand-in keeps this test on
+    # its subject, the --context flag.
+    monkeypatch.setattr("nexus.langgraph.llm_pipeline.get_model", lambda *a, **k: object())
 
     def _fake_run(case, question, **kwargs):
         seen.update(kwargs)
@@ -204,6 +207,9 @@ def test_mode3_run_accepts_context_flag(monkeypatch: pytest.MonkeyPatch, tmp_pat
                         lambda c: None)
     monkeypatch.setattr("nexus.case.sift_preflight.sift_preflight_message",
                         lambda c: "")
+    # The CLI builds the model before it starts a run (D132); a stand-in keeps this test on
+    # its subject, the --context flag.
+    monkeypatch.setattr("nexus.langgraph.llm_pipeline.get_model", lambda *a, **k: object())
 
     def _fake_run(case, question, **kwargs):
         seen.update(kwargs)

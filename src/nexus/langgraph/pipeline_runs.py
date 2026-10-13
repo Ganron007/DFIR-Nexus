@@ -108,6 +108,80 @@ def reap_stale_running_runs(cases_root: Path | None = None) -> list[str]:
     return reaped
 
 
+def process_alive(pid: Any) -> bool:
+    """True while the process ``pid`` is running on this machine; False when it has exited.
+
+    Used for run manifests written by a CLI process: no server reaps them, so a crash would
+    otherwise leave a run 'running' for ever. ``os.kill(pid, 0)`` is a probe on POSIX only (on
+    Windows it would send CTRL_C_EVENT), so Windows asks the kernel for the exit code instead.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def live_analysis_runs(case_dir: Path) -> list[dict[str, str]]:
+    """Mode 1 analysis runs (interpret, coverage, design) still running on this case.
+
+    Two records name them: the run manifest every pipeline run writes, and the portal's own
+    ``analysis/pipeline_runs/M1-*.json``. A manifest that names its process counts only while
+    that process lives.
+    """
+    case_dir = Path(case_dir)
+    out: list[dict[str, str]] = []
+    for manifest_path in sorted((case_dir / "runs").glob("*/manifest.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(manifest, dict) or manifest.get("status") != "running":
+            continue
+        if str(manifest.get("mode") or "") not in ("interpret", "coverage", "design"):
+            continue
+        if "pid" in manifest and not process_alive(manifest.get("pid")):
+            continue
+        out.append({"run_id": str(manifest.get("run_id") or manifest_path.parent.name),
+                    "status": "running", "source": "pipeline_run"})
+    portal_dir = case_dir / "analysis" / "pipeline_runs"
+    for rec_path in sorted(portal_dir.glob("M1-*.json")) if portal_dir.is_dir() else []:
+        try:
+            record = json.loads(rec_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("status") == "running":
+            out.append({"run_id": str(record.get("run_id") or rec_path.stem),
+                        "status": "running", "source": "pipeline_runs"})
+    return out
+
+
 def _new_run_id(mode: str) -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     return f"RUN-{stamp}-{mode}-{uuid4().hex[:8]}"
@@ -182,6 +256,9 @@ def create_run(
         "previous_active_run_id": previous_active,
         "layers": layers,
         "model": configured_model(),
+        # The process that runs it, so a busy check can tell a live run from one a crashed
+        # process left 'running' (D133). The CLI has no reaper for its runs.
+        "pid": os.getpid(),
     })
     pointers[mode] = rid
     pointers[pointer_key] = rid

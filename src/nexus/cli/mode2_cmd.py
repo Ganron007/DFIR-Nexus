@@ -116,26 +116,15 @@ def run(
 ):
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
     from nexus.analysis.context_policy import normalize_policy
-    from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
-    from nexus.modes.multi_role import busy_message, busy_runs, run_mode2
+    from nexus.langgraph.analysis_preflight import analysis_preflight
+    from nexus.modes.multi_role import run_mode2
 
     case_dir = _case_dir(case)
-    gated = lane_gate_blocked(case_dir)
-    if gated:
-        typer.echo(gate_message(gated))
-        raise typer.Exit(1)
-    # 36f: the CLI is a second writer surface, so it takes the same busy guard
-    # the portal takes. Without it a second `nexus mode2 run` starts while the
-    # first is still investigating and both interleave into findings.json.
-    busy = busy_runs(case_dir)
-    if busy:
-        typer.echo(busy_message(busy), err=True)
-        raise typer.Exit(1)
-    from nexus.case.sift_preflight import sift_preflight_message
-
-    sift_msg = sift_preflight_message(case_dir)
-    if sift_msg:
-        typer.echo(sift_msg)
+    # The one analysis preflight (D133): lane gate, one analysis run per case, SIFT only
+    # while the lane waits on it. The same function answers for the portal and Mode 1/3.
+    refusal = analysis_preflight(case_dir, own_run_id=run_id.strip())
+    if refusal:
+        typer.echo(refusal, err=True)
         raise typer.Exit(1)
     run_id = run_id.strip()
     policy = normalize_policy(context_policy)
@@ -294,6 +283,13 @@ def resume(
     if status in ("stopped", "completed", "failed"):
         typer.echo(f"Run is {status}; start a new run.", err=True)
         raise typer.Exit(1)
+    if not no_run:
+        from nexus.langgraph.analysis_preflight import analysis_preflight
+
+        refusal = analysis_preflight(case_dir, own_run_id=run_id)
+        if refusal:
+            typer.echo(refusal, err=True)
+            raise typer.Exit(1)
     model = None if no_run else _resolve_model()
     mark_paused(case_dir, run_id, False)
     typer.echo(f"Resumed {run_id}")

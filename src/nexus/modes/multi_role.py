@@ -1780,6 +1780,13 @@ def busy_runs(case_dir: Path | str, own_run_id: str = "") -> list[dict[str, str]
             if own_run_id and rid == own_run_id:
                 continue
             running.append({"run_id": rid, "status": "running", "source": sub})
+    # Mode 1 too (D133). This list is the CLIs' only busy check, and it read Modes 2 and 3
+    # alone, so `nexus interpret` and a Mode 2 run could stage into one findings.json together.
+    from nexus.langgraph.pipeline_runs import live_analysis_runs
+
+    for entry in live_analysis_runs(case_dir):
+        if not (own_run_id and entry["run_id"] == own_run_id):
+            running.append(entry)
     return running
 
 

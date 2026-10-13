@@ -277,19 +277,8 @@ def _busy_run_error(case_dir: Path, own_run_id: str = ""):
     for entry in busy_runs(case_dir, own_run_id=own_run_id):
         _note(entry["run_id"], entry["source"])
 
-    # Mode 1 — the interpret / coverage / design pipeline run.
-    runs_dir = case_dir / "analysis" / "pipeline_runs"
-    if runs_dir.is_dir():
-        for rec in sorted(runs_dir.glob("M1-*.json")):
-            try:
-                loaded = json.loads(rec.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if isinstance(loaded, dict) and loaded.get("status") == "running":
-                rid = str(loaded.get("run_id") or rec.stem)
-                if own_run_id and rid == own_run_id:
-                    continue
-                _note(rid, "pipeline_runs")
+    # Mode 1's interpret / coverage / design runs are in busy_runs above (D133): the CLI
+    # reads the same list, so the two surfaces answer alike.
 
     # Mode 1 — the needle full-run record. A "running" record whose worker
     # thread is dead is a tombstone (server restart / worker crash), so it
@@ -333,9 +322,11 @@ def _lane_gate_error(case_dir: Path):
 
     gate = lane_gate_blocked(case_dir)
     if not gate:
-        from nexus.case.sift_preflight import sift_preflight_message
+        # SIFT is optional: an analysis run waits for it only while the lane has work
+        # waiting on SIFT (D141). One rule for the portal and the CLIs.
+        from nexus.langgraph.analysis_preflight import sift_blocks_analysis
 
-        sift_msg = sift_preflight_message(case_dir)
+        sift_msg = sift_blocks_analysis(case_dir)
         if sift_msg:
             return JSONResponse(
                 {"error": "sift_required_unreachable", "message": sift_msg},

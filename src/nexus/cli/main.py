@@ -763,7 +763,7 @@ def pipeline(
     """
     import asyncio
     try:
-        from nexus.langgraph.llm_pipeline import run_pipeline
+        from nexus.langgraph.llm_pipeline import resolve_pipeline_mode, run_pipeline
     except ImportError:
         typer.echo("Pipeline dependencies not installed.", err=True)
         typer.echo("Run: pip install dfir-nexus[pipeline]", err=True)
@@ -802,6 +802,17 @@ def pipeline(
     elif resolved_mode in {"interpret", "from_case", "from-case"} and not cid:
         typer.echo("interpret mode needs --from-case <case_id>", err=True)
         raise typer.Exit(1)
+    if cid and resolve_pipeline_mode(resolved_mode) != "tools":
+        # An analysis run on an existing case takes the same preflight as Modes 2 and 3 and
+        # the portal: lane gate, one analysis run per case, SIFT only while the lane waits on
+        # it (D133). `nexus interpret` used to start with none of them.
+        from nexus.config import settings
+        from nexus.langgraph.analysis_preflight import analysis_preflight
+
+        refusal = analysis_preflight(settings.cases_root / cid)
+        if refusal:
+            typer.echo(refusal, err=True)
+            raise typer.Exit(1)
 
     result = asyncio.run(run_pipeline(
         evidence_path=case,

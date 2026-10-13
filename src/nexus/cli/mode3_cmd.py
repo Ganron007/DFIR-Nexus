@@ -43,26 +43,15 @@ def run(
 ):
     """Start a concurrent multi-agent run and wait for it to finish."""
     from nexus.analysis.context_policy import normalize_policy
-    from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
+    from nexus.langgraph.analysis_preflight import analysis_preflight
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.modes.multi_agent import run_mode3
-    from nexus.modes.multi_role import busy_message, busy_runs
 
     case_dir = _case_dir(case)
-    gated = lane_gate_blocked(case_dir)
-    if gated:
-        typer.echo(gate_message(gated))
-        raise typer.Exit(1)
-    # 36f: one analysis run per case, CLI included — see mode2_cmd.run.
-    busy = busy_runs(case_dir)
-    if busy:
-        typer.echo(busy_message(busy), err=True)
-        raise typer.Exit(1)
-    from nexus.case.sift_preflight import sift_preflight_message
-
-    sift_msg = sift_preflight_message(case_dir)
-    if sift_msg:
-        typer.echo(sift_msg)
+    # The one analysis preflight (D133); see mode2_cmd.run.
+    refusal = analysis_preflight(case_dir)
+    if refusal:
+        typer.echo(refusal, err=True)
         raise typer.Exit(1)
     try:
         model = get_model()
@@ -224,6 +213,13 @@ def resume(
     if status != "paused":
         typer.echo(f"Run is {status}; nothing to resume.", err=True)
         raise typer.Exit(1)
+    if not no_run:
+        from nexus.langgraph.analysis_preflight import analysis_preflight
+
+        refusal = analysis_preflight(case_dir, own_run_id=run_id)
+        if refusal:
+            typer.echo(refusal, err=True)
+            raise typer.Exit(1)
     mark_paused(case_dir, run_id, False)
     typer.echo(f"resuming {run_id}")
     if no_run:
