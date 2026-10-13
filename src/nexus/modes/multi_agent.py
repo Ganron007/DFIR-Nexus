@@ -333,6 +333,21 @@ def _claim_key(claim: dict[str, Any]) -> tuple[str, str, str] | None:
     return (etype, evalue, kind)
 
 
+def _verification_ref(claim: dict[str, Any]) -> str:
+    """What a verifier verdict names this claim by: the subject its rows give, else its label.
+
+    The join key is the row-derived subject (operator decision 2026-10-12), and a claim whose
+    rows name no subject has none, so the verifier never saw it while it still became a
+    candidate (D154; for example a claim on Amcache, WER or MemProcFS rows, D93). The model's
+    entity label stands in for verification only, as it already does for a candidate's title
+    when the rows name no subject. Disputes stay keyed on row subjects alone.
+    """
+    key = _claim_key(claim)
+    if key:
+        return key[1]
+    return _norm_key(claim.get("entity_value"))
+
+
 def _audit_ids(claim: dict[str, Any]) -> list[str]:
     raw = claim.get("audit_ids") or claim.get("audit_id") or []
     if isinstance(raw, str):
@@ -457,16 +472,17 @@ def settled_candidates(
                 gaps.append(reason)
                 continue
             key = _claim_key(claim)
+            ref = _verification_ref(claim)
             # WO-R1F-M3 item 2: a verifier-refuted claim is excluded and
             # recorded as negative space (the refutation is the result, not
             # an open finding).
-            if key and key[1] in refuted:
+            if ref and ref in refuted:
                 if case_dir is not None:
                     with contextlib.suppress(Exception):
                         from nexus.analysis.negative_space import record
                         record(
                             case_dir, "refuted",
-                            f"{key[1]} "
+                            f"{ref} "
                             f"{claim.get('claim_kind') or '?'}",
                             "the verifier refuted this claim; "
                             "it was excluded from staging",
@@ -495,7 +511,7 @@ def settled_candidates(
             entity = str(claim.get("entity_value") or "")
             # WO-R1F-M3 item 2: carry the verifier's confirmed basis onto the
             # candidate so the examiner can see the corroboration.
-            verifier_basis = confirmed.get(key[1]) if key else None
+            verifier_basis = confirmed.get(ref) if ref else None
             if verifier_basis:
                 justification = f"{justification}\nVerifier: {verifier_basis}"
             from nexus.analysis.titles import claim_title
@@ -1472,10 +1488,8 @@ def _unverified_claims(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for entry in board:
         for claim in entry.get("claims") or []:
-            key = _claim_key(claim)
-            if not key:
-                continue
-            if key[1] in judged:
+            ref = _verification_ref(claim)
+            if not ref or ref in judged:
                 continue
             out.append(claim)
     return out
@@ -1496,8 +1510,12 @@ def _verifier_spawn(
     subjects = []
     for claim in claims[:12]:
         key = _claim_key(claim)
-        if key:
-            subjects.append(f"{key[0]}={key[1]}")
+        ref = _verification_ref(claim)
+        if not ref:
+            continue
+        # Named the way the verdict will name it back: the row subject, else the label (D154).
+        etype = key[0] if key else (_norm_key(claim.get("entity_type")) or "entity")
+        subjects.append(f"{etype}={ref}")
     return {
         "role": "verifier",
         "family": "",

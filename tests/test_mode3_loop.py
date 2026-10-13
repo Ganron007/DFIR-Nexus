@@ -407,6 +407,40 @@ def test_run_record_keeps_settle_blockers_and_role_gaps(tmp_path):
     assert any("never contributed" in g for g in gaps)
 
 
+def test_a_claim_whose_rows_name_no_subject_is_still_verified(tmp_path):
+    """D154: since the join keys on row-derived subjects (2026-10-12), a claim whose cited
+    rows name no subject had no key, so the verifier never saw it, yet it still became a
+    candidate. It is now verified under its label, and a refutation excludes it."""
+    from nexus.modes.multi_agent import run_mode3
+
+    case = _case(tmp_path)
+    no_subject = cite_rows(case, [{"loc": "amcache.csv:3", "detail": "an entry with no subject column"}])
+    seen_roles: list[str] = []
+
+    def seat(spawn, _board, step):
+        role = spawn["role"]
+        seen_roles.append(role)
+        entry = {"entry_id": f"be-{step}-{role}-{len(seen_roles)}", "agent_id": f"{role}:x:{step}",
+                 "role": role, "family": spawn.get("family") or "", "superstep": step,
+                 "claims": [], "open_questions": [], "finish_reason": "final",
+                 "evidence_read": True, "evidence_attempted": True}
+        if role == "verifier":
+            assert "file=dropper.dll" in str(spawn.get("question") or "")
+            entry["verdicts"] = [{"subject": "file=dropper.dll", "class": "refuted",
+                                  "basis": "no such file", "audit_ids": [no_subject]}]
+        elif step == 1 and len(seen_roles) == 1:
+            entry["claims"] = [{"entity_type": "file", "entity_value": "dropper.dll",
+                                "claim_kind": "presence", "polarity": "affirm",
+                                "value": "dropper.dll present", "audit_ids": [no_subject],
+                                "confidence": "LOW", "confidence_justification": "one row"}]
+            entry["open_questions"] = ["Which process loaded dropper.dll?"]
+        return entry
+
+    record = run_mode3(case, "q", seat_fn=seat, es_ok=True, families=[("amcache", 3)])
+    assert "verifier" in seen_roles
+    assert all("dropper.dll" not in str(c.get("title") or "") for c in record["candidates"])
+
+
 def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     """Full graph with a scripted model and no seat_fn (items 4, 5, 7)."""
     from nexus.modes.multi_agent import run_mode3
