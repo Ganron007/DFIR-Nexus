@@ -571,7 +571,7 @@ async def run_interpret_loop(
         "is NOT in evidence) and the N4 QUERY PACK of indexed rows.\n"
         "Return ONLY JSON:\n"
         '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
-        '"queries":[{"es":{"query":{"bool":{...}}},"why":"..."}],'
+        '"queries":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."}],'
         '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
         '"samples":[{"family":"","field":"","value":"","n":8,"why":""}],'
         '"tools":[{"tool":"run_record|forensic_rag_search",'
@@ -643,12 +643,37 @@ async def run_interpret_loop(
     ])
     plan_data = _parse_json_blob(raw)
     plan = _normalize_plan(plan_data)
+    orient_retry = False
+    if raw.strip() and not plan["hypotheses"] and not plan["items"]:
+        # A reply that says something but yields no plan is a format failure, not "nothing to
+        # investigate": the 2026-10-14 run got 10,011 characters back, read 0 hypotheses and 0
+        # queries, skipped every round and wrote findings from nothing. Keep the reply, ask once
+        # for well-formed JSON, and fail the run with the reason if the second reply is no better.
+        orient_retry = True
+        _persist_round(case_dir, "round-0-orient-unparsed", {"raw": raw, "chars": len(raw)})
+        _progress("orient", f"the plan reply ({len(raw)} chars) did not parse; one corrective retry")
+        raw = await _call_model(model, [
+            {"role": "system", "content": orient_system},
+            {"role": "user", "content": (
+                packed + "\n\nYour previous reply could not be read as the plan JSON. Return ONLY "
+                "one JSON object with the keys hypotheses, queries, aggregates, samples and tools. "
+                "Every value must be valid JSON: no comments, no trailing commas and no '...' "
+                "placeholders.")},
+        ])
+        plan_data = _parse_json_blob(raw)
+        plan = _normalize_plan(plan_data)
     hypotheses = plan["hypotheses"]
     _progress("orient", f"{len(hypotheses)} hypothesis(es), {len(plan['items'])} query item(s) planned")
     _persist_round(case_dir, "round-0-orient", {
         "round": 0, "kind": "orient", "hypotheses": hypotheses,
-        "items": plan["items"], "raw_chars": len(raw),
+        "items": plan["items"], "raw_chars": len(raw), "raw": raw,
+        "corrective_retry_used": orient_retry,
     })
+    if not hypotheses and not plan["items"]:
+        raise RuntimeError(
+            f"the orient reply could not be read as a plan ({len(raw)} chars"
+            + (", after one corrective retry" if orient_retry else "")
+            + "); see analysis/interpret_rounds/round-0-orient.json")
 
     def _execute_payload(item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         kind = item["kind"]
@@ -745,7 +770,7 @@ async def run_interpret_loop(
             "Return ONLY JSON:\n"
             '{"notes":[{"hypothesis":"H1","status":"confirmed|refuted|unknown|partial",'
             '"evidence":"one sentence naming the rows (family/host/ts/needle)","family":"..."}],'
-            '"next":[{"es":{"query":{...}},"why":"..."},'
+            '"next":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."},'
             '{"tool":"run_record|forensic_rag_search","args":{},"why":"..."}]}\n'
             "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
@@ -764,6 +789,30 @@ async def run_interpret_loop(
             {"role": "user", "content": packed + "\n\nProduce the notes JSON."},
         ])
         data = _parse_json_blob(raw)
+        verify_retry = False
+        if raw.strip() and not (isinstance(data, dict) and ("notes" in data or "next" in data)):
+            # Same failure as the orient reply: unreadable notes used to read as "nothing more to
+            # query", so the loop settled on a round it never verified.
+            verify_retry = True
+            _progress(f"round {round_no}/{rounds_total}",
+                      "the verification reply did not parse; one corrective retry")
+            raw = await _call_model(model, [
+                {"role": "system", "content": verify_system},
+                {"role": "user", "content": (
+                    packed + "\n\nYour previous reply could not be read as the notes JSON. "
+                    "Return ONLY one JSON object with the keys notes and next. Every value must "
+                    "be valid JSON: no comments, no trailing commas and no '...' placeholders.")},
+            ])
+            data = _parse_json_blob(raw)
+        if raw.strip() and not (isinstance(data, dict) and ("notes" in data or "next" in data)):
+            _persist_round(case_dir, f"round-{round_no}-notes", {
+                "round": round_no, "kind": "notes", "notes": [], "next": [],
+                "raw": raw, "corrective_retry_used": verify_retry, "unparsed": True,
+            })
+            stop_reason = "verify_reply_unparsed"
+            _progress(f"round {round_no}/{rounds_total}",
+                      "the verification reply could not be read; the loop stops here")
+            break
         notes = _notes_from(data)
         notes_all.extend(notes)
         next_list = _as_list(data.get("next")) if isinstance(data, dict) else []
@@ -795,7 +844,7 @@ async def run_interpret_loop(
         })
         _persist_round(case_dir, f"round-{round_no}-notes", {
             "round": round_no, "kind": "notes", "notes": notes,
-            "next": next_plan["items"],
+            "next": next_plan["items"], "raw": raw, "corrective_retry_used": verify_retry,
         })
         # WO-R2F item 7 (D47): a round may stop `settled` only when every
         # crit/high lead has a disposition that cites its own rows — the same

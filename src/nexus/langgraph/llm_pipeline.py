@@ -1669,6 +1669,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     if case_id:
         from nexus.config import settings
         analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
+        emit_stage(state, "interpret", "setup", "N4 query pack")
         query_pack = _n5_query_payload(settings.cases_root / case_id, ledger, analysis_dir)
         # Case Digest — deterministic "everything" (signal map incl. 0-hit
         # needles, alerts, entities + spans, ledger, timeline, scope rules,
@@ -1680,6 +1681,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 write_case_digest,
             )
 
+            emit_stage(state, "interpret", "setup", "case digest (signal map, alerts, leads)")
             digest = build_case_digest(settings.cases_root / case_id)
             write_case_digest(settings.cases_root / case_id, digest)
             digest_md = render_digest_markdown(digest)
@@ -1703,6 +1705,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         try:
             from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
 
+            emit_stage(state, "interpret", "setup", "threat-intel context")
             ti_ctx = build_case_ti_context(case_id, max_iocs=6, hits=share_hits)
             write_ti_context(settings.cases_root / case_id, ti_ctx)
             ti_block = str(ti_ctx.get("markdown") or "")
@@ -1718,6 +1721,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 write_entity_inventory,
             )
 
+            emit_stage(state, "interpret", "setup", "entity inventory")
             inv = build_entity_inventory(case_id, cap=40, hits=share_hits)
             write_entity_inventory(settings.cases_root / case_id, inv)
             inv_md = render_inventory_markdown(inv)

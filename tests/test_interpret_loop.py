@@ -209,6 +209,63 @@ def test_findings_corrective_retry_recovers_a_malformed_reply(tmp_path):
     assert unparsed["raw"] == malformed
 
 
+_BROKEN = 'Here is my plan {"hypotheses": [{"id": "H1", "statement": "x"}], "queries": [{"es": {"query": {...}}}]}'
+
+
+def test_an_unreadable_plan_gets_one_retry_and_is_kept(tmp_path):
+    """2026-10-14 live run: the orient reply (10,011 chars) read as 0 hypotheses and 0 queries,
+    the loop skipped every round and wrote findings from nothing. A reply that yields no plan is
+    kept and retried once."""
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    model = ScriptedModel([_BROKEN, _orientation(), _verify_settled(), _findings_all_addressed()])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    assert result["rounds_run"] == 1 and result["hypotheses"]
+    rounds = tmp_path / "analysis" / "interpret_rounds"
+    assert json.loads((rounds / "round-0-orient-unparsed.json").read_text(encoding="utf-8"))["raw"] == _BROKEN
+    orient = json.loads((rounds / "round-0-orient.json").read_text(encoding="utf-8"))
+    assert orient["corrective_retry_used"] is True and orient["raw"]
+
+
+def test_a_plan_that_stays_unreadable_fails_the_loop(tmp_path):
+    import pytest
+
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    with pytest.raises(RuntimeError, match="could not be read as a plan"):
+        asyncio.run(run_interpret_loop(
+            case_dir=tmp_path, case_id="CASE-TEST", model=ScriptedModel([_BROKEN, _BROKEN]),
+            state={"case_context": {"interpret_rounds": "2"}},
+            digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+        ))
+
+
+def test_an_unreadable_verification_stops_the_loop_with_its_reason(tmp_path):
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST",
+        model=ScriptedModel([_orientation(), "not json", "still not json", _findings_all_addressed()]),
+        state={"case_context": {"interpret_rounds": "3"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    assert result["stop_reason"] == "verify_reply_unparsed"
+    notes = json.loads((tmp_path / "analysis" / "interpret_rounds" / "round-1-notes.json")
+                       .read_text(encoding="utf-8"))
+    assert notes["unparsed"] is True and notes["raw"] == "still not json"
+
+
+def test_the_prompts_show_only_valid_json_examples():
+    """A '{...}' placeholder in an example invites the model to copy invalid JSON."""
+    src = (Path(__file__).resolve().parents[1] / "src" / "nexus" / "langgraph"
+           / "interpret_loop.py").read_text(encoding="utf-8")
+    assert "{...}" not in src
+
+
 def test_the_findings_prompt_asks_for_severity(tmp_path):
     """D47: Mode 1 DRAFTs had no severity because the findings prompt never asked for one."""
     from nexus.langgraph.interpret_loop import run_interpret_loop
