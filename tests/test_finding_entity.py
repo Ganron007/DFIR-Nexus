@@ -38,7 +38,7 @@ def test_the_record_payload_no_longer_takes_the_models_entity():
         "title": "SPP event 1004 present", "observation": "rows returned",
         "interpretation": "recorded", "entity": ENTITY,
     })
-    payload = _finding_tool_payload(candidate, trail=[])
+    payload = _finding_tool_payload(candidate)
     assert "entity" not in payload
 
 

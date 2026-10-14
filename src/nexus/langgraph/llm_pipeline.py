@@ -1897,62 +1897,23 @@ def _audit_ids_from_messages(messages: list[Any]) -> list[str]:
     return found
 
 
-def _audit_ids_from_case_log(case_id: str) -> list[str]:
-    """Fallback: read case audit/*.jsonl for tool audit_ids."""
-    if not case_id:
-        return []
-    from nexus.config import settings
-
-    audit_dir = settings.cases_root / case_id / "audit"
-    if not audit_dir.is_dir():
-        return []
-    ids: list[str] = []
-    for path in sorted(audit_dir.glob("*.jsonl")):
-        try:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                aid = row.get("audit_id")
-                if aid and aid not in ids:
-                    ids.append(str(aid))
-        except OSError:
-            continue
-    return ids
-
-
 def _is_tool_audit_id(aid: str) -> bool:
     """True for MCP tool audit IDs (exclude bare sha256 / short tokens)."""
     return bool(aid and _AUDIT_ID_RE.fullmatch(aid))
 
 
-def _finding_tool_payload(
-    candidate: dict, trail: list[str], linked_ids: set[str] | None = None
-) -> dict:
+def _finding_tool_payload(candidate: dict) -> dict:
     """Map a hunt/interpret candidate to ``record_finding`` MCP kwargs.
 
     Avoids passing raw ``type`` / unknown keys that FastMCP may reject silently.
-    Candidate audit_ids are kept verbatim; the trail may only PAD with
-    ``linked_ids`` — audit ids whose calls actually reference this finding's
-    evidence (EH-9). Without that link the padding would let a finding cite
-    existent-but-unrelated audits and pass FD-001 mechanically.
+    The finding cites the calls the model cited, and only those. Staging used to pad the list to
+    ten with "linked" calls: the first calls in the case log touching the same artifact families,
+    the same eight or nine on every DRAFT (2026-10-14: a 0-row CobaltStrike query and an MFT
+    ``wacsvc`` query on a credential-theft finding). The padding made the FD-006/007 audit-count cap
+    unreachable, and since a finding's evidence and entity come from its cited calls, two different
+    claims became one DRAFT.
     """
-    aids = [str(a) for a in (candidate.get("audit_ids") or []) if a]
-    # Padding adds related calls to a finding the model grounded itself; it never grounds one.
-    # A candidate that cites no call stays uncited, so FD-001 refuses it. It used to be padded
-    # to ten calls from the trail, and two such findings were staged on 2026-10-14 with
-    # ten citations the model never made.
-    for aid in trail if aids else []:
-        if linked_ids is not None and aid not in linked_ids:
-            continue
-        if aid not in aids:
-            aids.append(aid)
-        if len(aids) >= 10:
-            break
-    aids = aids[:10]
+    aids = [str(a) for a in (candidate.get("audit_ids") or []) if a][:10]
     arts = [
         a for a in (candidate.get("artifacts") or [])
         if isinstance(a, dict) and a.get("audit_id")
@@ -2048,26 +2009,9 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         return {"error": "record_finding tool not available"}
 
     draft_ids = []
+    linked_drafts: list[dict[str, str]] = []
     timeline_ids = []
     errors = []
-
-    trail = list(state.get("evidence_audit_ids") or [])
-    for row in state.get("tool_run_ledger") or []:
-        # Prefer OK tool audits for FD-001; FAIL rows may lack a verified bridge entry
-        if row.get("status") != "OK":
-            continue
-        aid = row.get("audit_id")
-        if aid and aid not in trail:
-            trail.append(str(aid))
-    for aid in _audit_ids_from_messages(state.get("messages", [])):
-        if aid not in trail:
-            trail.append(aid)
-    for aid in _audit_ids_from_case_log(state.get("case_id", "")):
-        if aid not in trail:
-            trail.append(aid)
-    # Prefer structured tool-run IDs over bare evidence hashes for FD-001
-    tool_trail = [a for a in trail if _is_tool_audit_id(a)]
-    trail = tool_trail or trail
 
     # Only the interpret run's own candidates are staged (D130). Needle hits are digest items the
     # loop must disposition; they used to be staged as findings when the model produced none, when
@@ -2084,38 +2028,12 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         for c in parsed if _is_collection_stub(c)
     ]
 
-    # EH-9: linkage scope — pad candidate audit_ids only with calls that
-    # reference this finding's evidence families/files.
     stage_case_id = str(state.get("case_id") or "")
     stage_case_dir: Path | None = None
     if stage_case_id:
         from nexus.config import settings as _stage_settings
 
         stage_case_dir = _stage_settings.cases_root / stage_case_id
-
-    def _scope_for(candidate: dict) -> tuple[set[str], list[str]]:
-        families: set[str] = set()
-        files: list[str] = []
-        for row in candidate.get("evidence") or []:
-            if not isinstance(row, dict):
-                continue
-            src = str(row.get("source") or "").strip()
-            if "/" in src:
-                fam, _, fname = src.partition("/")
-                if fam.strip():
-                    families.add(fam.strip().lower())
-                if fname.strip():
-                    files.append(fname.strip())
-            elif src:
-                families.add(src.lower())
-            for key in ("artifact", "file"):
-                value = str(row.get(key) or "").strip()
-                if value:
-                    files.append(value)
-            loc = str(row.get("loc") or "").strip()
-            if ":" in loc:
-                files.append(loc.rsplit(":", 1)[0])
-        return families, files
 
     async def _stage_one(candidate: dict) -> str:
         """Stage one candidate; return its finding id, or "" with the reason recorded."""
@@ -2127,21 +2045,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             emit_stage(state, "stage_findings", "not staged", f"{title[:80]}: {reason[:160]}")
             return ""
 
-        linked: set[str] | None = None
-        if stage_case_dir is not None:
-            families, files = _scope_for(candidate)
-            if families or files:
-                try:
-                    from nexus.langgraph.audit_linkage import linked_audit_ids
-
-                    linked = set(linked_audit_ids(stage_case_dir, families, files, limit=12))
-                except Exception as exc:  # noqa: BLE001 — linkage best-effort
-                    log.debug("audit linkage unavailable: %s", exc)
-                    linked = set()
-            else:
-                # no scope to link against → never pad blindly
-                linked = set()
-        payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
+        payload = _finding_tool_payload(candidate)
         if stage_case_dir is not None:
             from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
 
@@ -2163,6 +2067,12 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         except Exception as e:
             return _reject(str(e))
         fid = result.get("finding_id") or result.get("id")
+        if fid and result.get("duplicate"):
+            # The same claim on the same rows as an existing DRAFT: record_finding linked this run to
+            # it. It is not a new finding, and the log said "staged" for it.
+            linked_drafts.append({"title": title, "finding_id": str(fid)})
+            emit_stage(state, "stage_findings", "linked", f"{fid} (existing DRAFT, same rows): {title[:100]}")
+            return str(fid)
         if fid:
             draft_ids.append(fid)
             emit_stage(state, "stage_findings", "staged", f"{fid}: {title[:120]}")
@@ -2208,10 +2118,11 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
     log_msg = [
         f"Staged {len(draft_ids)} of {len(candidates)} finding candidate(s), "
         f"{len(timeline_ids)} timeline events",
-        f"audit_trail_ids={len(trail)}",
     ]
     if not candidates:
         log_msg.append("The interpret run produced no finding candidates; nothing was staged")
+    for item in linked_drafts:
+        log_msg.append(f"Linked to existing DRAFT {item['finding_id']}: {item['title']}")
     for item in rejected:
         log_msg.append(f"Not staged: {item['title'] or '(untitled)'}: {item['reason'][:300]}")
     if errors and len(errors) > len(rejected):
@@ -2226,6 +2137,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 "run_id": _run.run_id,
                 "candidates": len(candidates),
                 "staged": list(draft_ids),
+                "linked": linked_drafts,
                 "rejected": rejected,
             })
         except Exception as exc:  # noqa: BLE001 - the step log still carries the outcome

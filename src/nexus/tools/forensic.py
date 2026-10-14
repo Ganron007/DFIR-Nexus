@@ -162,9 +162,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"error": str(e)}
 
         if result.get("status") in ("STAGED", "VALIDATION_FAILED"):
+            # The row names its case, so it is written to that case's log, not the one an env
+            # variable or the active pointer names.
             audit.log(tool="record_finding",
                       params={"title": title, "confidence": confidence,
-                              "severity": finding_data.get("severity", "")},
+                              "severity": finding_data.get("severity", ""),
+                              "case_id": target.name if target is not None else ""},
                       result_summary=result)
 
         return result

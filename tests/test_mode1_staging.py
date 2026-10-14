@@ -99,16 +99,81 @@ def test_severity_written_by_the_model_reaches_the_draft(case):
     assert record.payloads[0]["severity"] == "HIGH"
 
 
-def test_a_candidate_that_cites_nothing_is_not_padded_into_a_finding(case):
-    """2026-10-14 live run: two candidates with no audit_ids were staged with ten each,
-    padded from the trail. A candidate the model did not ground stays uncited."""
-    from nexus.langgraph.llm_pipeline import _finding_tool_payload
+class _RealRecord:
+    """The real MCP ``record_finding`` tool, called the way staging calls it."""
 
-    uncited = {k: v for k, v in LLM.items() if k != "audit_ids"}
-    trail = ["nexus-t-20261014-001", "nexus-t-20261014-002"]
-    assert _finding_tool_payload(uncited, trail, linked_ids=set(trail))["audit_ids"] == []
-    cited = _finding_tool_payload(LLM, trail, linked_ids=set(trail))["audit_ids"]
-    assert cited[0] == LLM["audit_ids"][0] and set(trail) <= set(cited)
+    name = "record_finding"
+
+    def __init__(self, case_dir: Path):
+        from mcp.server.fastmcp import FastMCP
+
+        from nexus.audit import AuditWriter
+        from nexus.tools import forensic
+
+        server = FastMCP("m1-staging")
+        forensic.register_tools(server, AuditWriter("nexus", audit_dir=case_dir / "audit"))
+        self.fn = server._tool_manager._tools["record_finding"].fn
+
+    async def ainvoke(self, payload):
+        return self.fn(**payload)
+
+
+def _search(case_dir: Path, rows: list[dict], query: dict) -> str:
+    from nexus.audit import AuditWriter
+
+    aid = AuditWriter("nexus", audit_dir=case_dir / "audit").log(
+        tool="es_search", params={"case_id": case_dir.name, "query": query},
+        result_summary={"evidence_rows": rows})
+    assert aid
+    return aid
+
+
+def test_two_claims_on_their_own_rows_are_two_drafts_citing_only_their_own_calls(case):
+    """2026-10-14 live run: staging padded every cited candidate with the same "linked" calls,
+    and a DRAFT's evidence and entity come from its cited calls. A claim about unattributed
+    hashes got the Defender-tamper DRAFT's calls, rows and entity, and was merged into it."""
+    from nexus.case_manager import CaseManager
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    earlier = _search(case_dir, [{"loc": "hayabusa/evtx-timeline.csv:5", "host": "ws01",
+                                  "detail": "RuleTitle: Powershell Detect Virtualization Environment"}],
+                      {"term": {"family": "hayabusa"}})
+    tamper = _search(case_dir, [{"loc": "hayabusa/evtx-timeline.csv:10", "host": "ws01",
+                                 "detail": "RuleTitle: Tamper Windows Defender - ScriptBlockLogging"}],
+                     {"match": {"text": "DisableRealTimeMonitoring"}})
+    hashes = _search(case_dir, [{"loc": "hayabusa/evtx-timeline.csv:20", "host": "ws01",
+                                 "detail": "RuleTitle: Suspicious Hashes MD5=9e107d9d372bb6826bd81d3542a419d6"}],
+                     {"match": {"text": "MD5"}})
+    source = [{"source": "hayabusa/evtx-timeline.csv"}]
+    a = {**LLM, "title": "Defender tamper", "audit_ids": [tamper], "evidence": source}
+    b = {**LLM, "title": "Unattributed MD5 hashes", "audit_ids": [hashes], "evidence": source}
+    asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg(a, b)]),
+                               {"record_finding": _RealRecord(case_dir)}))
+
+    drafts = {f["title"]: f for f in CaseManager()._load_findings(case_dir)}
+    assert set(drafts) == {"Defender tamper", "Unattributed MD5 hashes"}
+    assert drafts["Defender tamper"]["audit_ids"] == [tamper]
+    assert drafts["Unattributed MD5 hashes"]["audit_ids"] == [hashes]
+    assert earlier not in drafts["Defender tamper"]["audit_ids"]
+    assert [e["loc"] for e in drafts["Unattributed MD5 hashes"]["evidence"]] == [
+        "hayabusa/evtx-timeline.csv:20"]
+
+
+def test_the_same_claim_on_the_same_rows_is_reported_as_linked_not_staged(case):
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    tamper = _search(case_dir, [{"loc": "hayabusa/evtx-timeline.csv:10", "host": "ws01",
+                                 "detail": "RuleTitle: Tamper Windows Defender"}],
+                     {"match": {"text": "DisableRealTimeMonitoring"}})
+    claim = {**LLM, "title": "Defender tamper", "audit_ids": [tamper]}
+    out = asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg(claim, claim)]),
+                                     {"record_finding": _RealRecord(case_dir)}))
+    staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
+    assert len(staging["staged"]) == 1
+    assert staging["linked"] == [{"title": "Defender tamper", "finding_id": staging["staged"][0]}]
+    assert any(line.startswith("Linked to existing DRAFT") for line in out["step_log"])
 
 
 def test_a_coverage_item_is_recorded_not_dropped(case):
@@ -137,4 +202,5 @@ def test_only_the_models_findings_are_staged(case):
     assert [p["title"] for p in record.payloads] == [LLM["title"]]
     assert len(timeline.payloads) == 1
     staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
-    assert staging == {"run_id": run.run_id, "candidates": 1, "staged": ["F-2"], "rejected": []}
+    assert staging == {"run_id": run.run_id, "candidates": 1, "staged": ["F-2"], "linked": [],
+                       "rejected": []}

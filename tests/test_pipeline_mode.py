@@ -242,7 +242,6 @@ def test_finding_payload_keeps_itm():
             "itm_objects": ["Removable Media"],
             "audit_ids": ["abc"],
         },
-        [],
     )
     assert payload["itm_stage"] == "Means"
     assert payload["itm_objects"] == ["Removable Media"]

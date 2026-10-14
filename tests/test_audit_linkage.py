@@ -119,25 +119,16 @@ def test_n4_finding_candidates_have_no_unrelated_audit_padding(tmp_path, monkeyp
     assert candidates2[0]["audit_ids"] == ["ingest_auto-tester-20260919-003"]
 
 
-def test_finding_payload_pads_only_linked_ids():
+def test_finding_payload_cites_only_the_models_calls():
     from nexus.langgraph.llm_pipeline import _finding_tool_payload
 
-    # The candidate cites its own call; padding may add only the linked one (a candidate that
-    # cites nothing is never padded: tests/test_mode1_staging.py).
+    # 2026-10-14: "linked" padding put the same 8-9 calls on every Mode 1 DRAFT. A finding cites
+    # what the model cited (tests/test_mode1_staging.py drives the real staging path).
     own = "hayabusa-tester-20260919-001"
     payload = _finding_tool_payload(
-        {"title": "x", "observation": "y", "interpretation": "z", "audit_ids": [own]},
-        ["hayabusa-tester-20260919-007", "evtxecmd-tester-20260919-008"],
-        linked_ids={"hayabusa-tester-20260919-007"},
-    )
-    assert payload["audit_ids"] == [own, "hayabusa-tester-20260919-007"]
-    # empty linkage → no padding at all
-    payload2 = _finding_tool_payload(
-        {"title": "x", "observation": "y", "interpretation": "z", "audit_ids": [own]},
-        ["evtxecmd-tester-20260919-008"],
-        linked_ids=set(),
-    )
-    assert payload2["audit_ids"] == [own]
+        {"title": "x", "observation": "y", "interpretation": "z", "audit_ids": [own]})
+    assert payload["audit_ids"] == [own]
+    assert [a["audit_id"] for a in payload["artifacts"]] == [own]
 
 
 def test_score_provenance_downgrades_unlinked_ids(tmp_path):

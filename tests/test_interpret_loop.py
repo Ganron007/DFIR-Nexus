@@ -564,13 +564,11 @@ def test_finding_tool_payload_carries_severity():
         "confidence_justification": "two artifacts",
         "audit_ids": ["n4_query-test-20260918-001"],
         "severity": "critical",
-    }, trail=[], linked_ids=set())
+    })
     assert payload["severity"] == "CRITICAL"
     # An absent or bogus severity stays absent rather than inventing one.
-    assert _finding_tool_payload({"title": "x"}, [], set())["severity"] == ""
-    assert _finding_tool_payload(
-        {"title": "x", "severity": "bogus"}, [], set()
-    )["severity"] == ""
+    assert _finding_tool_payload({"title": "x"})["severity"] == ""
+    assert _finding_tool_payload({"title": "x", "severity": "bogus"})["severity"] == ""
 
 
 def test_record_finding_mcp_tool_accepts_severity(tmp_path, monkeypatch):
