@@ -95,21 +95,37 @@ async def query_threatfox(
         hits = []
     if not isinstance(hits, list):
         hits = []
-    first = hits[0] if hits and isinstance(hits[0], dict) else {}
-    mal = bool(hits)
-    summary = f"ThreatFox: {len(hits)} hit(s)" if hits else "ThreatFox: no hits"
-    if first:
+    hits = [h for h in hits if isinstance(h, dict)]
+    # search_ioc is a substring search: "github.com" returns 11 URLs hosted on GitHub and no IOC
+    # that is github.com, and every one of them used to make the domain MALICIOUS (D200). Only an
+    # IOC that IS the value is a verdict; the rest are context.
+    exact = [h for h in hits if _same_ioc(str(h.get("ioc") or ""), value)]
+    first = exact[0] if exact else {}
+    if exact:
         summary = f"ThreatFox: {first.get('threat_type', 'unknown')} / {first.get('malware', 'n/a')}"
+    elif hits:
+        summary = (f"ThreatFox: no IOC is this value; {len(hits)} IOC(s) contain it "
+                   f"(e.g. {str(hits[0].get('ioc_type') or 'ioc')} {str(hits[0].get('ioc') or '')})")
+    else:
+        summary = "ThreatFox: no hits"
     return _abuse_result(
         "threatfox",
         tf_type,
         value,
         raw,
-        malicious=mal if hits else None,
-        confidence=0.75 if hits else 0.0,
+        malicious=True if exact else None,
+        confidence=0.75 if exact else 0.0,
         summary=summary,
         tags=[str(first.get("malware"))] if first.get("malware") else [],
     )
+
+
+def _same_ioc(ioc: str, value: str) -> bool:
+    """True when a ThreatFox IOC is the queried value: equal, or the address of an ``ip:port`` IOC."""
+    ioc, value = ioc.strip().lower(), value.strip().lower()
+    if not ioc or not value:
+        return False
+    return ioc == value or (ioc.rsplit(":", 1)[0] == value and ioc.count(":") == 1)
 
 
 async def query_malware_bazaar(value: str, *, mock: bool, api_key: str | None) -> TIResult:

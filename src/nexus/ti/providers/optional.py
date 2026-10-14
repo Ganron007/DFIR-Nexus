@@ -83,15 +83,36 @@ async def query_otx(value: str, *, mock: bool, ioc_type: str = "domain") -> TIRe
             resp.raise_for_status()
             raw = resp.json()
     pulse = int(raw.get("pulse_info", {}).get("count", 0) or 0)
+    allowed = otx_allowlisted(raw)
+    # A pulse is a collection someone shared that mentions the value; OTX issues no verdict (D201).
+    # poshcode.org was MALICIOUS on 7 pulses, all automated feeds ("VirusTotal report for
+    # msoidcliL.dll") naming it as a related domain. OTX's own allowlist (``validation``) and
+    # accepted false positives do say something, and say it is not malicious.
+    if allowed:
+        summary = f"OTX: allowlisted ({allowed}); {pulse} pulse(s)"
+    elif pulse:
+        summary = f"OTX: {pulse} pulse(s) mention it (context, not a verdict)"
+    else:
+        summary = "OTX: 0 pulse(s)"
     return _result(
         "otx",
         it.value,
         value,
-        summary=f"OTX: {pulse} pulse(s)",
+        summary=summary,
         raw=raw,
-        malicious=pulse > 0 if pulse else None,
-        confidence=0.7 if pulse else 0.2,
+        malicious=False if allowed else None,
+        confidence=0.7 if allowed else (0.3 if pulse else 0.2),
     )
+
+
+def otx_allowlisted(raw: dict) -> str:
+    """The sources that allowlist a value in an OTX ``general`` answer, or '' when none do."""
+    names = [str(v.get("name") or v.get("source") or "") for v in raw.get("validation") or []
+             if isinstance(v, dict)]
+    if any(str(f.get("assessment") or "").lower() == "accepted"
+           for f in raw.get("false_positive") or [] if isinstance(f, dict)):
+        names.append("accepted false positive")
+    return ", ".join(dict.fromkeys(n for n in names if n))
 
 
 async def query_shodan(ip: str, *, mock: bool) -> TIResult:
