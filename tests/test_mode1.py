@@ -162,6 +162,31 @@ class TestPromoteHitsToDraft:
         assert rows[0]["provenance"]["path"] == "full_run"
         assert rows[0]["verifier"]["verdict"] == "INFERRED"
 
+    def test_a_promotion_cites_its_own_rows_not_calls_linked_by_family(self, tmp_path: Path):
+        """D177: a promotion cited up to eight calls linked only by family or file path, none of
+        which returned the promoted rows. It cites the audit entry that records them."""
+        from nexus.audit import AuditWriter
+        from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+        from nexus.modes.llm_desk import save_draft_finding
+
+        case = tmp_path / "CASE-PROMO"
+        (case / "audit").mkdir(parents=True)
+        (case / "CASE.yaml").write_text("name: promo\nstatus: active\n", encoding="utf-8")
+        lane = AuditWriter("nexus", audit_dir=case / "audit").log(
+            tool="run_windows_command",
+            params={"case_id": case.name, "family": "hayabusa",
+                    "command": "hayabusa csv-timeline -o extractions/hayabusa/timeline.csv"},
+            result_summary={"exit_code": 0}, source="lane")
+        hits = [{"family": "hayabusa", "file": "extractions/hayabusa/timeline.csv", "line": "42",
+                 "text": "2026-08-10T15:00:00Z,WS01,sdelete.exe,DELETE", "terms": "sdelete"}]
+        draft = promote_hits_to_draft(case, hits=hits, title="sdelete on WS01", examiner="t")
+
+        assert lane not in draft["audit_ids"]
+        assert len(draft["audit_ids"]) == 1
+        assert evidence_rows_for_audit_ids(case, draft["audit_ids"]) == draft["evidence"]
+        draft = _heuristic_scribe(draft, hits, case_dir=case)
+        assert save_draft_finding(case, draft).get("status") == "STAGED"
+
     def test_empty_hits(self, tmp_path: Path):
         draft = promote_hits_to_draft(
             tmp_path,

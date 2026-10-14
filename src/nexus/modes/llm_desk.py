@@ -766,31 +766,14 @@ def promote_hits_to_draft(
     # The draft is timed by the last hit, as the row loop always left it.
     hit_time = hit_time_of(hits[-1]) if hits else ""
 
-    # EH-9: resolve audit_ids by LINKAGE — only calls whose ledger/audit-log
-    # tokens reference these hit families/files. No unrelated fallback: a draft
-    # with no linked audit id will (correctly) fail FD-001 at staging.
-    audit_ids: list[str] = []
-    try:
-        from nexus.langgraph.audit_linkage import linked_audit_ids
-
-        families = {h.get("family", "") for h in hits if h.get("family")}
-        audit_ids = linked_audit_ids(
-            case_dir,
-            families,
-            files=[h.get("file") for h in hits if h.get("file")],
-        )
-        if not audit_ids:
-            # FD-001 fallback: this promotion IS the system action that
-            # observed these rows. Auditing it with the row identities keeps
-            # every promote path (full run, Explore/bookmarks, Mode 1 propose)
-            # provable - before this, any case without tool-lane audits staged
-            # zero drafts and the Approve page stayed empty (live bug 2026-09-20).
-            audit_ids = _audit_promotion(
-                case_dir, hits, title, examiner,
-                examiner_selected=examiner_selected,
-            )
-    except Exception as exc:
-        log.warning("Could not resolve linked audit_ids: %s", exc)
+    # The promotion is the system action that observed these rows: its audit entry records them,
+    # and the DRAFT cites it (D177). It used to cite up to eight calls linked only by family or
+    # file path, none of which returned these rows; the promotion entry was the fallback. A draft
+    # whose promotion could not be audited cites nothing and fails FD-001 at staging.
+    audit_ids = _audit_promotion(
+        case_dir, hits, title, examiner,
+        examiner_selected=examiner_selected, evidence_rows=evidence_rows,
+    )
 
     subject = derive_subject(evidence_rows)
     draft = {
@@ -815,8 +798,13 @@ def promote_hits_to_draft(
 
 
 def _audit_promotion(case_dir: Path, hits: list[dict[str, Any]], title: str,
-                     examiner: str = "", examiner_selected: bool = True) -> list[str]:
-    """Case audit entry for a promotion: which rows were staged (FD-001)."""
+                     examiner: str = "", examiner_selected: bool = True,
+                     evidence_rows: list[dict[str, Any]] | None = None) -> list[str]:
+    """Case audit entry for a promotion: which rows were staged (FD-001).
+
+    It stores the evidence rows too, so the DRAFT's evidence is read back from its citation as
+    every other path's is (D70).
+    """
     try:
         from nexus.audit import AuditWriter
 
@@ -833,7 +821,8 @@ def _audit_promotion(case_dir: Path, hits: list[dict[str, Any]], title: str,
             tool="promote_hits",
             params={"case_id": case_dir.name, "title": title[:160], "rows": rows},
             result_summary={"hits": len(hits),
-                            "examiner_selected": examiner_selected},
+                            "examiner_selected": examiner_selected,
+                            "evidence_rows": list(evidence_rows or [])},
             source="portal",
             extra={"case_id": case_dir.name, "examiner": examiner},
         )
