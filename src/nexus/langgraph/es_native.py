@@ -976,6 +976,13 @@ def es_sample(
         if parsed_key:
             should.insert(1, {"term": {parsed_key: value}})
         filt.append({"bool": {"should": should, "minimum_should_match": 1}})
+    sample_notes: list[str] = []
+    if value and not field:
+        # A value with no field is searched in the row text. It used to be dropped, and the
+        # "sample" was arbitrary rows of the whole index (2026-10-14, Mode 1 run 4: matched
+        # 7,236,364 for "Antivirus - Exploitation Framework Signature").
+        filt.append({"match_phrase": {"text": value}})
+        sample_notes.append("no field given: the value was searched in the row text")
     query: dict[str, Any] = {"bool": {"filter": filt}} if filt else {"match_all": {}}
 
     fetch = min(2000, max(400, count * 40))
@@ -1001,6 +1008,7 @@ def es_sample(
         "window_truncated": matched_total > len(hits),
         "window_rows": len(hits),
         "hits": picked,
+        **({"normalized": sample_notes} if sample_notes else {}),
         "note": (
             "sample rows are context — findings still cite the audit trail "
             "(FD-001); use es_search search_after for complete enumeration"

@@ -283,3 +283,21 @@ def test_an_unknown_field_is_refused_with_the_fields_this_index_has_by_that_name
     assert "details (unknown_field; this index has" in out["error"] and "fields.Details" in out["error"]
     assert '"match_phrase":{"text":' in out["error"]
     assert out["failed_terms"][0]["did_you_mean"]
+
+
+def test_a_sample_value_with_no_field_is_searched_in_the_row_text(monkeypatch):
+    """2026-10-14, Mode 1 run 4: sample_rows(value=<detection name>) with no field ignored the value
+    and returned arbitrary rows of the whole index."""
+    from nexus.langgraph import es_native
+
+    seen: dict = {}
+
+    def fake_search(case_id, query, **kwargs):
+        seen["query"] = query
+        return {"hits": [], "total": 0}
+
+    monkeypatch.setattr(es_native, "es_search", fake_search)
+    out = es_native.es_sample("CASE-X", value="Antivirus - Hacktool Signature", n=8)
+    assert seen["query"] == {"bool": {"filter": [
+        {"match_phrase": {"text": "Antivirus - Hacktool Signature"}}]}}
+    assert out["normalized"] == ["no field given: the value was searched in the row text"]
