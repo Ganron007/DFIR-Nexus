@@ -627,3 +627,32 @@ def test_a_follow_up_that_only_adds_calls_and_notes_converges(tmp_path):
 
     assert state["followup_rounds"] == 1
     assert state["stop_reason"] == "converged_no_new_evidence"
+
+
+def test_a_follow_up_that_re_cites_a_claim_without_moving_its_verdict_converges(tmp_path):
+    """2026-10-14, Mode 2 run 4: each follow-up re-cited the same 'inferred' claims with new audit
+    ids, the verifier ruled them 'inferred' again, and the run went on round after round."""
+    case = _case(tmp_path)
+    rounds = {"n": 0}
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        if order.role == "verifier":
+            parsed = {"verdicts": [{"title": c["title"], "class": "inferred", "basis": "AMSI only",
+                                    "audit_ids": c["audit_ids"]} for c in context["candidates"]]}
+        elif order.role == "synthesis":
+            parsed = {"narrative": "n", "findings": [], "gaps": [], "coverage": {}}
+        else:
+            rounds["n"] += 1
+            parsed = {"notes": [], "coverage": {}, "candidate_findings": [{
+                "title": "Kekeo detection is AMSI-only", "observation": "o", "interpretation": "i",
+                "confidence": "LOW", "audit_ids": [f"q-{rounds['n']}"]}]}
+        return m3.AgentResult(order_id=order.order_id, role=order.role, status="ok",
+                              reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1")
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
+             order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
+
+    assert state["followup_rounds"] == 1
+    assert state["stop_reason"] == "converged_no_new_evidence"
