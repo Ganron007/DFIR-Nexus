@@ -2075,9 +2075,28 @@ def run_mode2(
             rows.extend(parsed.get("findings") or [])
         return rows
 
+    def _candidate_key(candidate: dict[str, Any]) -> str:
+        title = str(candidate.get("title") or "").strip().lower()
+        return json.dumps([title, sorted(_candidate_audit_ids(candidate))])
+
     def verify_node(_state: dict[str, Any]) -> dict[str, Any]:
-        candidates = _candidate_pool()
+        # Only what has not been verified yet: a candidate already verified with the same
+        # citations keeps its verdict (verdicts merge by title). The whole pool used to be
+        # re-verified after every follow-up round, ~10 minutes each, on unchanged candidates
+        # (2026-10-14, Mode 2 run 3). A candidate a follow-up re-cites is verified again.
+        verified = set(state.get("verified_candidates") or [])
+        fresh: dict[str, dict[str, Any]] = {}
+        for candidate in _candidate_pool():
+            key = _candidate_key(candidate)
+            if key not in verified:
+                fresh.setdefault(key, candidate)
+        candidates = list(fresh.values())
         if not candidates:
+            if verified:
+                sink.emit(new_event(
+                    run_id, "verify.skipped", actor="verifier",
+                    detail="no new or re-cited candidate since the last verification",
+                ))
             state["status"] = "verified"
             _persist_state(case_dir, run_id, state)
             return state
@@ -2094,6 +2113,9 @@ def run_mode2(
             context={"candidates": candidates},
         )
         state.setdefault("results", []).append(result.to_dict())
+        if result.status == "ok":
+            # Recorded only once the pass ran, so a failed pass is retried, not skipped.
+            state["verified_candidates"] = sorted(verified | set(fresh))
         parsed = result.parsed or {}
         merged = {
             str(v.get("title") or "").strip().lower(): v

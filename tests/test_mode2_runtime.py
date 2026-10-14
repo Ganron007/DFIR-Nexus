@@ -560,3 +560,38 @@ def test_stage_takes_evidence_from_the_cited_rows_not_the_model_text(tmp_path):
     rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
     staged = [f for f in rows if f.get("run_id") == "M2-rows"]
     assert staged[0]["evidence"] == [stored_row]
+
+
+def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path):
+    """2026-10-14, Mode 2 run 3: after each follow-up round the verifier re-verified the whole
+    candidate pool, unchanged candidates included (~10 minutes a pass, up to 8 rounds)."""
+    case = _case(tmp_path)
+    verifier_tasks: list[str] = []
+    first = {"title": "Suspicious logon", "observation": "o", "interpretation": "i",
+             "confidence": "LOW", "audit_ids": ["a-1"]}
+    second = {"title": "Service installed", "observation": "o", "interpretation": "i",
+              "confidence": "LOW", "audit_ids": ["a-2"]}
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        if order.role == "verifier":
+            verifier_tasks.append(order.task)
+            parsed = {"verdicts": [{"title": c["title"], "class": "inferred", "basis": "one family",
+                                    "audit_ids": c["audit_ids"]} for c in context["candidates"]]}
+        elif order.role == "synthesis":
+            parsed = {"narrative": "n", "findings": [], "gaps": [], "coverage": {}}
+        elif order.role == "correlation":
+            parsed = {"notes": [], "candidate_findings": [second], "coverage": {}}
+        else:
+            parsed = {"notes": [], "candidate_findings": [first], "coverage": {}}
+        return m3.AgentResult(order_id=order.order_id, role=order.role, status="ok",
+                              reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1")
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
+             order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
+
+    assert len(verifier_tasks) >= 2
+    assert "Suspicious logon" in verifier_tasks[0]
+    assert "Service installed" in verifier_tasks[1] and "Suspicious logon" not in verifier_tasks[1]
+    assert {v["title"] for v in state["verdicts"]} == {"Suspicious logon", "Service installed"}
