@@ -216,7 +216,8 @@ class ZeekImporter(Importer):
             timestamp=ts,
             ts_synthesized=ts_synthesized,
             severity=severity,
-            host=path.stem.split(".")[0] if "." in path.stem else None,
+            # A sensor log names its log type and rotation ("conn.2023-01-01"), not a machine (D197).
+            host=None,
             source_ip=record.get("id.orig_h") or record.get("src_ip"),
             source_port=self._safe_int(record.get("id.orig_p") or record.get("src_port")),
             dest_ip=record.get("id.resp_h") or record.get("dst_ip"),

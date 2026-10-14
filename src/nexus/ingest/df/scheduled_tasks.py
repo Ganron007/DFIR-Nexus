@@ -299,7 +299,9 @@ class ScheduledTasksImporter(Importer):
             timestamp=ts,
             ts_synthesized=ts_synthesized,
             severity=severity,
-            host=path.parent.parent.name if path.parent.parent else None,
+            # A task file does not say which machine it is on. Its grandparent folder made 218
+            # rows of CASE-C5B04D31 "hosts" named Windows, System32 and Microsoft (D197).
+            host=None,
             command_line=cmd_str,
             description=desc,
             raw=record,

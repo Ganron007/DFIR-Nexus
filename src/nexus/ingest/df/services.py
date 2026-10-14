@@ -231,7 +231,7 @@ class WindowsServicesImporter(Importer):
             timestamp=mtime,
             ts_synthesized=True,
             severity=severity,
-            host=Path(source_path).stem if Path(source_path).exists() else None,
+            host=None,  # the source file's name (the SYSTEM hive) is not a machine (D197)
             process_name=image_path.split("\\")[-1] if image_path else name,
             file_path=image_path or None,
             action=action,

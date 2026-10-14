@@ -48,6 +48,8 @@ def test_parse_run_and_winlogon_keys(tmp_path):
     assert dflt["severity"] == "informational"
     shell = next(a for a in arts if a["registry_value"] == "Shell")
     assert shell["technique_ids"] == ["T1547.004"]
+    # D197: the export's file name ("run") is not a machine.
+    assert {a["host"] for a in arts} == {None}
 
 
 def test_utf16_reg_export(tmp_path):
@@ -74,6 +76,7 @@ def test_sam_names_key_extracted(tmp_path):
     arts = [a.to_dict() for a in WindowsRegistryImporter().parse(p)]
     assert len(arts) == 1
     assert arts[0]["description"] == "SAM local account: fredr"
+    assert arts[0]["host"] is None  # D197: "sam" is the file, not a machine
     assert arts[0]["technique_ids"] == ["T1087.001"]
 
 

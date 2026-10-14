@@ -249,7 +249,8 @@ class WindowsRegistryImporter(Importer):
                 tz=UTC,
             ),
             severity=severity,
-            host=Path(source_path).stem,
+            # The hive's file name (SYSTEM, SOFTWARE, NTUSER) is not a machine (D197).
+            host=None,
             registry_key=key,
             registry_value=value_name,
             description=f"{info['name']}: {value_name}={value}",
@@ -274,7 +275,7 @@ class WindowsRegistryImporter(Importer):
                 Path(hive).stat().st_mtime if Path(hive).exists() else 0, tz=UTC
             ),
             severity=Severity.INFORMATIONAL,
-            host=Path(hive).stem,
+            host=None,  # the hive's file name (SAM) is not a machine (D197)
             registry_key=key_path,
             registry_value=name,
             description=f"SAM local account: {name}",

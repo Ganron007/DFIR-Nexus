@@ -43,6 +43,8 @@ def test_onedrive_task_carries_hostname_and_sid_anchors():
     assert art.command_line.endswith("OneDriveStandaloneUpdater.exe")
     # This task has no RegistrationInfo/Date -> mtime fallback, flagged.
     assert art.ts_synthesized is True
+    # D197: the folder above the task ("system32-tasks") is not a machine.
+    assert art.host is None
 
 
 def test_registration_date_becomes_the_timestamp():
