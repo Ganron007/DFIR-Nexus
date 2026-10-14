@@ -1723,7 +1723,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             try:
                 from nexus.modes.llm_guided import _playbook_context_for_families
 
-                playbook_block = _playbook_context_for_families(set(families))[:3000]
+                playbook_block = _playbook_context_for_families(set(families), budget=3000)
             except Exception as exc:  # noqa: BLE001
                 log.debug("playbook context unavailable: %s", exc)
         except Exception as exc:  # noqa: BLE001 — playbooks best-effort

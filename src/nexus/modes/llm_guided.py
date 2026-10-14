@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,6 @@ _MAX_HIT_TEXT_ENRICHED = 500
 _MAX_TOP_HITS_PER_FAMILY = 3
 _MAX_RAG_DOCS_PER_FAMILY = 3
 _MAX_RAG_TEXT_PER_DOC = 400
-_MAX_PLAYBOOK_CONTEXT_CHARS = 1200
 
 _PROPOSE_SYSTEM = (
     "You are a DFIR investigative partner. You are given N4 hit rows from "
@@ -152,89 +152,88 @@ def _rag_methodology_for_proposal(families: set[str]) -> tuple[str, list[dict[st
         return "", []
 
 
-def _playbook_context_for_families(families: set[str]) -> str:
-    """WP 2.11: Load playbook caveats and Identify steps for artifact families.
+def _playbook_match(pb: dict, families: set[str]) -> int:
+    """How strongly a playbook applies to the families: 2 declared or a query term, 1 named, 0 not.
 
-    Maps artifact families to relevant playbooks and extracts caveats +
-    Identify phase steps as context for the LLM proposal.
+    A family named inside another word is not a mention: "wer" in "PowerShell" and "web" in
+    "webshell" matched before, so a Windows case got the Linux and webshell playbooks (D172).
+    """
+    declared = {str(f).lower() for f in (pb.get("families") or []) if f}
+    terms = {str(t).lower() for t in (pb.get("query_terms") or []) if t}
+    if families & (declared | terms):
+        return 2
+    text = f"{pb.get('name', '')} {pb.get('description', '')}".lower()
+    if any(re.search(rf"\b{re.escape(fam)}\b", text) for fam in families):
+        return 1
+    return 0
+
+
+def _playbook_block(pb: dict, slug: str) -> str:
+    """One playbook's caveats, first-phase (and Identify) steps and triggers, every item whole."""
+    block = f"\n--- Playbook: {pb.get('name', slug)} ---\n"
+    caveats = pb.get("caveats") or []
+    if isinstance(caveats, list) and caveats:
+        block += "Caveats:\n" + "".join(f"  - {c}\n" for c in caveats)
+    phases = pb.get("phases") or []
+    if isinstance(phases, list) and phases and isinstance(phases[0], dict):
+        # Playbooks name their first phase differently ("Identify", "Locate Artifacts",
+        # "Collect", "Detection" ...); its steps are what to look for.
+        steps = phases[0].get("steps") or []
+        if isinstance(steps, list) and steps:
+            block += f"{phases[0].get('phase', 'first phase')} steps:\n"
+            block += "".join(f"  - {s}\n" for s in steps)
+        for phase in phases[1:]:
+            if isinstance(phase, dict) and phase.get("phase") == "Identify":
+                id_steps = phase.get("steps") or []
+                if isinstance(id_steps, list) and id_steps:
+                    block += "Identify steps:\n" + "".join(f"  - {s}\n" for s in id_steps)
+                break
+    triggers = pb.get("triggers") or []
+    if isinstance(triggers, list) and triggers:
+        block += "Triggers:\n" + "".join(f"  - {t}\n" for t in triggers)
+    return block
+
+
+def _playbook_context_for_families(families: set[str], budget: int | None = None) -> str:
+    """WP 2.11: playbook caveats and first steps for the case's artifact families.
+
+    Whole items only (KA3, D172): every caveat, step and trigger is given whole, and a playbook
+    is given whole or not at all. With a ``budget`` (characters), playbooks are taken strongest
+    match first until it is spent, and the ones left out are named, so the model knows more
+    methodology exists. The guidance used to be cut at 200 characters an item, 1,200 a playbook
+    and 3,000 in all, mid-item.
     """
     if not families:
         return ""
     try:
         from nexus.knowledge.loader import get_playbook, list_playbook_slugs
 
-        # Build a family → playbook mapping by scanning playbook query_terms
-        # and matching against our hit families
-        slugs = list_playbook_slugs()
         family_lower = {f.lower() for f in families}
-        blocks: list[str] = []
-        seen_slugs: set[str] = set()
-
-        for slug in slugs:
+        matched: list[tuple[int, str, dict]] = []
+        for slug in list_playbook_slugs():
             pb = get_playbook(slug)
             if not isinstance(pb, dict):
                 continue
-            # Check if any query_term matches a hit family
-            terms = pb.get("query_terms") or []
-            if not isinstance(terms, list):
+            strength = _playbook_match(pb, family_lower)
+            if strength:
+                matched.append((-strength, slug, pb))
+        matched.sort(key=lambda m: (m[0], m[1]))
+        blocks: list[str] = []
+        left_out: list[str] = []
+        used = 0
+        for _strength, slug, pb in matched:
+            block = _playbook_block(pb, slug)
+            # The first playbook is given whole even past the budget: a whole item, never a cut.
+            if budget is not None and blocks and used + len(block) > budget:
+                left_out.append(str(pb.get("name", slug)))
                 continue
-            term_lower = {str(t).lower() for t in terms}
-            # Also check the playbook name/description for family mentions
-            pb_text = (
-                str(pb.get("name", "")) + " " + str(pb.get("description", ""))
-            ).lower()
-            matches = False
-            for fam in family_lower:
-                if fam in term_lower or fam in pb_text:
-                    matches = True
-                    break
-            if not matches:
-                continue
-            if slug in seen_slugs:
-                continue
-            seen_slugs.add(slug)
-
-            block = f"\n--- Playbook: {pb.get('name', slug)} ---\n"
-            # Caveats — corroboration constraints
-            caveats = pb.get("caveats") or []
-            if isinstance(caveats, list) and caveats:
-                block += "Caveats:\n"
-                for c in caveats[:5]:
-                    block += f"  - {str(c)[:200]}\n"
-            # First phase steps — what to look for (identification/locating).
-            # Playbooks use different names for the first phase: "Identify",
-            # "Locate Artifacts", "Collect", "Detection", "Acquire", etc.
-            # We extract the FIRST phase's steps as the methodology context.
-            phases = pb.get("phases") or []
-            if isinstance(phases, list) and phases:
-                first_phase = phases[0]
-                if isinstance(first_phase, dict):
-                    steps = first_phase.get("steps") or []
-                    if isinstance(steps, list) and steps:
-                        phase_name = first_phase.get("phase", "first phase")
-                        block += f"{phase_name} steps:\n"
-                        for s in steps[:5]:
-                            block += f"  - {str(s)[:200]}\n"
-                    # Also check for an "Identify" phase if it's not the first
-                    for phase in phases[1:]:
-                        if isinstance(phase, dict) and phase.get("phase") == "Identify":
-                            id_steps = phase.get("steps") or []
-                            if isinstance(id_steps, list) and id_steps:
-                                block += "Identify steps:\n"
-                                for s in id_steps[:5]:
-                                    block += f"  - {str(s)[:200]}\n"
-                            break
-            # Triggers — what indicators to look for
-            triggers = pb.get("triggers") or []
-            if isinstance(triggers, list) and triggers:
-                block += "Triggers:\n"
-                for t in triggers[:3]:
-                    block += f"  - {str(t)[:200]}\n"
-
-            block_text = block[:_MAX_PLAYBOOK_CONTEXT_CHARS]
-            blocks.append(block_text)
-
-        return "\n".join(blocks).strip()
+            blocks.append(block)
+            used += len(block)
+        text = "\n".join(blocks).strip()
+        if left_out:
+            text += ("\n\nMore playbooks apply to these families (not shown): "
+                     + ", ".join(left_out) + ".")
+        return text
     except Exception as exc:
         log.warning("Playbook context lookup failed: %s", exc)
         return ""

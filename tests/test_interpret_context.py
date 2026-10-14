@@ -35,3 +35,30 @@ def test_playbook_context_returns_guidance_for_families():
     # but it must never raise or return non-text.
     if text:
         assert "Playbook" in text or "Caveats" in text
+
+
+def test_playbooks_are_given_whole_and_the_rest_are_named():
+    """D172: the guidance was cut at 200 characters an item, 1,200 a playbook and 3,000 in all,
+    mid-item (KA3: whole items or "more available")."""
+    from nexus.knowledge.loader import get_playbook
+    from nexus.modes.llm_guided import _playbook_context_for_families
+
+    families = {"evtxecmd", "volatility", "setupapi", "yara", "mftecmd", "hayabusa"}
+    whole = _playbook_context_for_families(families)
+    budgeted = _playbook_context_for_families(families, budget=3000)
+    shown = [line for line in budgeted.splitlines() if line.startswith("--- Playbook:")]
+    assert shown and whole.count("--- Playbook:") > len(shown)
+    assert "More playbooks apply to these families (not shown):" in budgeted
+    for caveat in get_playbook("memory_forensics").get("caveats") or []:
+        assert f"  - {caveat}\n" in whole, "a caveat is given whole"
+
+
+def test_a_family_inside_another_word_does_not_select_a_playbook():
+    """D172: "wer" (Windows Error Reporting) matched "PowerShell", "web" matched "webshell"."""
+    from nexus.modes.llm_guided import _playbook_match
+
+    pb = {"name": "PowerShell Anomaly", "description": "Encoded PowerShell and webshell drops",
+          "query_terms": ["encodedcommand"]}
+    assert _playbook_match(pb, {"wer", "web"}) == 0
+    assert _playbook_match(pb, {"encodedcommand"}) == 2
+    assert _playbook_match({"name": "x", "families": ["prefetch"]}, {"prefetch"}) == 2
