@@ -2172,14 +2172,15 @@ def run_mode2(
     def assess_node(_state: dict[str, Any]) -> dict[str, Any]:
         verdicts = state.get("verdicts") or []
         classes = {str(v.get("class") or "").lower() for v in verdicts}
-        notes = candidates = calls = 0
-        for result in state.get("results", []):
-            parsed = result.get("parsed") or {}
-            notes += len(parsed.get("notes") or [])
-            candidates += len(parsed.get("candidate_findings") or [])
-            candidates += len(parsed.get("findings") or [])
-            calls += len(result.get("tool_calls") or [])
-        signature = [notes, candidates, calls, len(verdicts)]
+        # Evidence, not activity: the candidates (title + citations) and the verdicts (title +
+        # class). Counting notes and tool calls made every round look new, since every worker
+        # calls tools, so a run never converged before its round limit; Mode 2 run 3 started
+        # round 4 after a round that changed nothing (2026-10-14).
+        signature = [
+            sorted({_candidate_key(c) for c in _candidate_pool()}),
+            sorted(json.dumps([str(v.get("title") or "").strip().lower(),
+                               str(v.get("class") or "").strip().lower()]) for v in verdicts),
+        ]
         previous = state.get("evidence_signature")
         if previous is not None and signature == previous:
             state["converged_no_new_evidence"] = True

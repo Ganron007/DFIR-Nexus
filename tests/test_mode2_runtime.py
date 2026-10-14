@@ -595,3 +595,35 @@ def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path):
     assert "Suspicious logon" in verifier_tasks[0]
     assert "Service installed" in verifier_tasks[1] and "Suspicious logon" not in verifier_tasks[1]
     assert {v["title"] for v in state["verdicts"]} == {"Suspicious logon", "Service installed"}
+
+
+def test_a_follow_up_that_only_adds_calls_and_notes_converges(tmp_path):
+    """2026-10-14, Mode 2 run 3: the convergence signature counted notes and tool calls, which
+    every round adds, so the run went on to round 4 after a round that changed nothing."""
+    case = _case(tmp_path)
+    claim = {"title": "Suspicious logon", "observation": "o", "interpretation": "i",
+             "confidence": "LOW", "audit_ids": ["a-1"]}
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        if order.role == "verifier":
+            parsed = {"verdicts": [{"title": "Suspicious logon", "class": "inferred",
+                                    "basis": "one family", "audit_ids": ["a-1"]}]}
+        elif order.role == "synthesis":
+            parsed = {"narrative": "n", "findings": [], "gaps": [], "coverage": {}}
+        elif order.role == "correlation":
+            parsed = {"notes": [{"statement": "looked again", "audit_ids": ["a-1"]}],
+                      "candidate_findings": [], "coverage": {}}
+        else:
+            parsed = {"notes": [], "candidate_findings": [claim], "coverage": {}}
+        result = m3.AgentResult(order_id=order.order_id, role=order.role, status="ok",
+                                reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1")
+        result.tool_calls = [{"tool": "es_search", "audit_id": f"q-{order.order_id}"}]
+        return result
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
+             order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
+
+    assert state["followup_rounds"] == 1
+    assert state["stop_reason"] == "converged_no_new_evidence"
