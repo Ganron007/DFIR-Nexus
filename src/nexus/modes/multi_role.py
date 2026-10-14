@@ -480,11 +480,15 @@ ROLES: dict[str, AgentRole] = {
             '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
             '"audit_ids":["..."]}],"entities":["..."],'
             '"candidate_findings":[{"title":"...","observation":"...",'
-            '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+            '"interpretation":"...","benign_alternative":"...","refutation":"...",'
+            '"confidence":"LOW|MEDIUM|HIGH",'
             '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
             '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
             '"not_checked":["..."]},"next_questions":["..."]}. '
-            "Do not invent evidence; a zero-hit search is not negative evidence "
+            "A candidate is one claim about the evidence. The benign alternative "
+            "you weighed and what would refute the claim go in that candidate's "
+            "benign_alternative and refutation fields, never as candidates of their "
+            "own. Do not invent evidence; a zero-hit search is not negative evidence "
             "until run_record shows the parser ran."
         ),
     ),
@@ -543,7 +547,9 @@ ROLES: dict[str, AgentRole] = {
             "\"confidence_justification\":\"...\",\"audit_ids\":[\"...\"],"
             "\"attack_ids\":[\"...\"],\"itm_stage\":\"...\","
             "\"itm_objects\":\"...\"}],\"gaps\":[\"...\"],"
-            "\"coverage\":{...}}. Never approve anything."
+            "\"coverage\":{...}}. A finding is a claim about the evidence: a benign "
+            "alternative or a refutation test belongs in its interpretation, never "
+            "in a finding of its own. Never approve anything."
         ),
     ),
     "reporter": AgentRole(
@@ -859,6 +865,13 @@ def stage_run_candidates(
         observation = str(
             candidate.get("observation") or candidate.get("note") or "").strip()
         interpretation = str(candidate.get("interpretation") or "").strip()
+        # The alternative the worker weighed and its refutation test reach the examiner with the
+        # claim they belong to.
+        for label, key in (("Benign alternative weighed", "benign_alternative"),
+                           ("What would refute it", "refutation")):
+            text = str(candidate.get(key) or "").strip()
+            if interpretation and text:
+                interpretation += f"\n\n{label}: {text}"
         if not observation or not interpretation:
             skipped.append({
                 "title": title,
@@ -1576,10 +1589,15 @@ def plan_work_orders(
             benign_alternative=str(item.get("benign_alternative") or ""),
             refutation=str(item.get("refutation") or ""),
             priority_tools=("es_mappings", "es_search", "es_aggregate", "run_record"),
+            # One candidate per claim: the alternative and the refutation test are fields of it.
+            # Asked for without a place to put them, they came back as candidates of their own
+            # (Mode 2 run 5, 2026-10-14: 8 of 12 candidates were "Benign alternative ..." and
+            # "What would refute ..." items).
             acceptance=(
-                "state whether the hypothesis held, name the benign alternative "
-                "that fits equally well, and cite the audit_ids of what would "
-                "refute it"
+                "state whether the hypothesis held as one candidate finding; in that "
+                "candidate, fill benign_alternative (the benign explanation that fits "
+                "equally well) and refutation (what would refute it, with the audit_ids "
+                "of the rows that test it)"
             ),
             skill_refs=_retrieve_skill_refs(skill_families, keywords, limit=8),
         ))

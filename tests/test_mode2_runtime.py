@@ -656,3 +656,35 @@ def test_a_follow_up_that_re_cites_a_claim_without_moving_its_verdict_converges(
 
     assert state["followup_rounds"] == 1
     assert state["stop_reason"] == "converged_no_new_evidence"
+
+
+def test_a_candidates_alternative_and_refutation_reach_the_draft_with_it(tmp_path):
+    """Mode 2 run 5 (2026-10-14): 8 of 12 candidates were 'Benign alternative ...' and 'What would
+    refute ...' items, because the work order asked for both with nowhere to put them. They are
+    now fields of the claim they belong to, and staging carries them into its interpretation."""
+    from _audit_rows import cite_rows
+
+    case = _case(tmp_path)
+    aid = cite_rows(case, [{"loc": "hayabusa/evtx-timeline.csv:58385", "host": "rd01",
+                            "detail": "RuleTitle: Antivirus - Exploitation Framework Signature"}])
+    m3._persist_state(case, "M2-alt", {
+        "run_id": "M2-alt", "case_id": case.name, "question": "q", "status": "completed",
+        "orders": [], "order_index": 0, "results": [], "verdicts": [], "gaps": [],
+        "candidates": [{
+            "title": "CobaltStrike detection is a true positive", "observation": "10 x 1116",
+            "interpretation": "beacon on rd01", "confidence": "LOW", "audit_ids": [aid],
+            "benign_alternative": "authorized adversary simulation",
+            "refutation": "an engagement record covering 2023-01-24"}],
+    })
+    result = m3.stage_run_candidates(case, "M2-alt")
+    assert result["staged_count"] == 1
+    draft = next(f for f in json.loads((case / "findings.json").read_text(encoding="utf-8"))
+                 if f.get("run_id") == "M2-alt")
+    assert "Benign alternative weighed: authorized adversary simulation" in draft["interpretation"]
+    assert "What would refute it: an engagement record covering 2023-01-24" in draft["interpretation"]
+
+
+def test_the_worker_contract_puts_the_alternative_and_refutation_inside_the_candidate():
+    contract = m3.ROLES["evidence"].system_prompt
+    assert '"benign_alternative":"...","refutation":"..."' in contract
+    assert "never as candidates of their own" in contract
