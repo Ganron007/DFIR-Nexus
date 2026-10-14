@@ -40,12 +40,14 @@ async def write_interpretation_summary(
     gaps: list[dict[str, str]] | None = None,
     reconciliation: dict[str, Any] | None = None,
     model: Any = None,
+    run_id: str = "",
 ) -> Path | None:
     """Write analysis/interpretation.md: verdict + coverage + gaps + TI.
 
     ``reconciliation`` (deterministic) lists digest items no finding mentions —
     the verdict MUST address them; they are also written into the file so the
     examiner can see exactly what the LLM had to answer for.
+    ``run_id`` names the run whose own findings the verdict covers (D169).
     """
     case_dir = Path(case_dir)
     analysis = case_dir / "analysis"
@@ -71,8 +73,10 @@ async def write_interpretation_summary(
             inv_count = 0
 
     lines = [
-        "# Mode 2 interpretation (LLM-assisted)",
+        # Mode 1 is the LLM mode (canonical names, WIRING-PLAN §0); "Mode 2" was its old number.
+        "# Mode 1 interpretation (LLM-assisted)",
         "",
+        *([f"- Run: `{run_id}` (this run's own findings only)"] if run_id else []),
         f"- Findings staged (DRAFT): **{len(findings)}**",
         f"- Entity inventory items: **{inv_count}** — unaddressed by findings: **{len(gaps)}**",
     ]

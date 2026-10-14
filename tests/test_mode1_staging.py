@@ -204,3 +204,28 @@ def test_only_the_models_findings_are_staged(case):
     staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
     assert staging == {"run_id": run.run_id, "candidates": 1, "staged": ["F-2"], "linked": [],
                        "rejected": []}
+
+
+def test_the_runs_draft_report_and_verdict_cover_its_own_findings_only(case):
+    """D169 (2026-10-14): an independent Mode 1 run's verdict listed 23 findings from four runs,
+    and its draft report re-read every DRAFT in the case."""
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    other = {"id": "F-other-001", "title": "Another run's DRAFT", "status": "DRAFT",
+             "run_id": "RUN-other", "severity": "high", "confidence": "LOW"}
+    (case_dir / "findings.json").write_text(json.dumps([other]), encoding="utf-8")
+    tamper = _search(case_dir, [{"loc": "hayabusa/evtx-timeline.csv:10", "host": "ws01",
+                                 "detail": "RuleTitle: Tamper Windows Defender"}],
+                     {"match": {"text": "DisableRealTimeMonitoring"}})
+    claim = {**LLM, "title": "Defender tamper", "audit_ids": [tamper]}
+    asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg(claim)]),
+                               {"record_finding": _RealRecord(case_dir)}))
+
+    draft = (run.path / "reports" / "REPORT-DRAFT.md").read_text(encoding="utf-8")
+    assert "Defender tamper" in draft and "Another run's DRAFT" not in draft
+    assert not (case_dir / "reports" / "REPORT-DRAFT.md").exists()
+    verdict = (case_dir / "analysis" / "interpretation.md").read_text(encoding="utf-8")
+    assert verdict.startswith("# Mode 1 interpretation")
+    assert f"- Run: `{run.run_id}`" in verdict and "Findings staged (DRAFT): **1**" in verdict
+    assert "Another run's DRAFT" not in verdict

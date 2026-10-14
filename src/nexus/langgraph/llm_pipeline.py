@@ -2127,12 +2127,18 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         log_msg.append(f"Not staged: {item['title'] or '(untitled)'}: {item['reason'][:300]}")
     if errors and len(errors) > len(rejected):
         log_msg.append(f"Errors: {'; '.join(errors[len(rejected):][:3])}")
+    # This run's own findings: the draft report and the verdict cover them, not every DRAFT in
+    # the case. Both used to read findings.json whole, so an independent run's verdict listed
+    # 23 findings from four runs (2026-10-14, D169).
+    run_finding_ids = {str(f) for f in draft_ids} | {item["finding_id"] for item in linked_drafts}
+    run_reports: Path | None = None
     # The run record says what was staged and what was refused, and why.
     if stage_case_dir is not None:
         try:
             from nexus.langgraph.pipeline_runs import _atomic_json, resolve_run
 
             _run = resolve_run(stage_case_dir, run_id=str(state.get("run_id") or ""))
+            run_reports = _run.path / "reports"
             _atomic_json(_run.analysis / "staging.json", {
                 "run_id": _run.run_id,
                 "candidates": len(candidates),
@@ -2147,10 +2153,14 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         from nexus.integration.dfir_report import write_findings_preview
 
         case_id = str(state.get("case_id") or "")
-        if case_id:
+        if case_id and not run_finding_ids:
+            emit_stage(state, "draft_report", "skipped", "this run staged no finding")
+        elif case_id:
             emit_stage(state, "draft_report", "running",
-                       "REPORT-DRAFT.md with the model's read of each finding cluster")
-            preview = write_findings_preview(settings.cases_root / case_id)
+                       f"REPORT-DRAFT.md for this run's {len(run_finding_ids)} finding(s)")
+            preview = write_findings_preview(
+                settings.cases_root / case_id, finding_ids=run_finding_ids,
+                out=(run_reports / "REPORT-DRAFT.md") if run_reports is not None else None)
             emit_stage(state, "draft_report", "done", str(preview))
             log_msg.append(f"Wrote {preview}")
     except Exception as exc:  # noqa: BLE001
@@ -2171,7 +2181,8 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         if findings_path.is_file():
             loaded = json.loads(findings_path.read_text(encoding="utf-8"))
             if isinstance(loaded, list):
-                staged = [f for f in loaded if isinstance(f, dict)]
+                staged = [f for f in loaded
+                          if isinstance(f, dict) and str(f.get("id")) in run_finding_ids]
         inv_path = case_dir / "analysis" / "entity_inventory.json"
         if inv_path.is_file():
             inv = json.loads(inv_path.read_text(encoding="utf-8"))
@@ -2186,7 +2197,8 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             )
         emit_stage(state, "interpretation", "running", "the executive verdict")
         out = await write_interpretation_summary(
-            case_dir, gaps=gaps, reconciliation=reconciliation, model=model
+            case_dir, findings=staged, gaps=gaps, reconciliation=reconciliation, model=model,
+            run_id=str(state.get("run_id") or ""),
         )
         emit_stage(state, "interpretation", "done", str(out or ""))
         if out:
