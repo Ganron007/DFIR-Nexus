@@ -574,9 +574,10 @@ async def run_interpret_loop(
     # ── Round 0 — Orient ────────────────────────────────────────────────
     orient_system = (
         "You are the lead DFIR analyst orienting an evidence interpretation. "
-        "You have the deterministic CASE DIGEST (everything the case holds, "
-        "including 0-hit needles as negative evidence and the scope of what "
-        "is NOT in evidence) and the N4 QUERY PACK of indexed rows.\n"
+        "You have the deterministic CASE DIGEST (everything the case holds: the "
+        "top leads, each with the [audit_id ...] of the call that holds its rows, "
+        "the signal map including 0-hit needles as negative evidence, and the "
+        "scope of what is NOT in evidence). Your queries fetch the rows.\n"
         "Return ONLY JSON:\n"
         '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
         '"queries":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."}],'
@@ -586,7 +587,7 @@ async def run_interpret_loop(
         '"args":{},"why":"..."}]}\n'
         "RULES:\n"
         "- Max 6 query/aggregate/sample items total; only families and fields "
-        "that actually exist in the digest/query pack.\n"
+        "that actually exist in the digest and the field sheet.\n"
         "- ES query JSON only: bool/term/terms/range/match/match_phrase/"
         "multi_match/wildcard/exists/prefix/match_all. Time filters are "
         '{"range":{"ts":{"gte":...,"lte":...}}} (ts is canonical UTC; '

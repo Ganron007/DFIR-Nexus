@@ -279,7 +279,7 @@ entity inventory + TI sweep  (analysis/case_digest.{json,md})
     |
     v
 INTERPRET LOOP (bounded, audited; analysis/interpret_rounds/*.json):
-  Round 0 ORIENT   — digest + query pack -> hypotheses + evidence plan
+  Round 0 ORIENT   — digest (its top leads cite their rows) -> hypotheses + evidence plan
                      (queries/aggregations/samples, each with a why)
   Rounds 1..N      — code executes the plan through the same audited MCP
      VERIFY          tools; the LLM reads the REAL rows and marks each

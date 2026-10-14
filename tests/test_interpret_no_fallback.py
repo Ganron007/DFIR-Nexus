@@ -89,3 +89,23 @@ def test_no_digest_fails_with_the_reason(interp, monkeypatch):
     out = asyncio.run(llm_pipeline.interpret(dict(state), {}, object()))
     assert "case digest could not be built" in out["error"]
     assert "index unreadable" in out["error"]
+
+
+def test_the_loop_is_not_handed_the_n4_query_pack(interp, monkeypatch):
+    """D168 (operator, 2026-10-14): the keyword-needle query pack was 58% of orient's prompt (run 4:
+    47 uncitable `info` rows). The digest's cited leads replace it; the loop queries the index."""
+    llm_pipeline, _case_dir, run, state = interp
+    import nexus.langgraph.interpret_loop as interpret_loop
+
+    seen: dict = {}
+
+    async def _capture(**kw):
+        seen["sections"] = [name for _pri, name, _text in kw.get("sections") or []]
+        return {"findings_emitted": 0, "rounds_run": 1, "rounds_requested": 3,
+                "stop_reason": "settled", "unaddressed": [], "messages": []}
+
+    monkeypatch.setattr(interpret_loop, "run_interpret_loop", _capture)
+    asyncio.run(llm_pipeline.interpret(dict(state, run_dir=str(run.path)), {}, object()))
+    assert "case_digest" in seen["sections"]
+    assert "n4_query_pack" not in seen["sections"]
+    assert not (run.analysis / "query_pack.md").exists()

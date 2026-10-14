@@ -4,13 +4,14 @@ Connects to the DFIR-Nexus MCP server (via stdio or HTTP), drives a
 StateGraph investigation flow. Three switchable modes (no hybrid graph):
 
   tools            — mandatory parser lane only; **no RAG, no LLM**; TOOL-RUN.md
-  coverage (debug) — same mandatory lane; RAG+LLM interpret ledger + N4 query pack
+  coverage (debug) — same mandatory lane; RAG+LLM interpret ledger + case digest
   design           — RAG load, mandatory lane, then ReAct may **add** extras
   interpret        — reuse an existing tool-run case (``--from-case``)
 
   REPORT.md (coverage/design/interpret) is a **deterministic template** from
   APPROVED findings — the LLM fills observation/interpretation, not the file
-  structure. N5 reads ``analysis/query_pack.md`` (filtered hits), not CSV heads.
+  structure. N5 reads the case digest (its top leads cite the calls that hold their rows)
+  and queries the index itself; ``analysis/query_pack.md`` is the examiner's needle file.
   See Docs/cases/TOOL-EVIDENCE-MAP.md.
 
 Switch:
@@ -1145,11 +1146,11 @@ async def ensure_rag_ready(state: InvestigationState, tools: dict) -> dict:
 
 
 async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
-    """Reuse a completed tool-run case (ledger + query pack) for interpretation."""
+    """Reuse a completed tool-run case (its ledger) for interpretation."""
     import json
 
     from nexus.config import settings
-    from nexus.langgraph.query_pack import load_case_intake, write_query_pack
+    from nexus.langgraph.query_pack import load_case_intake
     from nexus.langgraph.snippets import write_snippets
 
     case_id = (state.get("case_id") or "").strip()
@@ -1186,7 +1187,6 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         parent_run_id=tools_run.run_id,
     )
     write_snippets(tools_run.path, ledger)
-    write_query_pack(case_dir, ledger, output_dir=interpret_run.analysis)
     intake = load_case_intake(case_dir)
     ctx = dict(state.get("case_context") or {})
     for key, val in intake.items():
@@ -1559,26 +1559,6 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
     }
 
 
-def _n5_query_payload(case_dir, ledger: list, output_dir: Path | None = None) -> str:
-    """N5 reads the query pack; CSV heads are examiner appendix only."""
-    from pathlib import Path
-
-    from nexus.langgraph.query_pack import write_query_pack
-
-    case_dir = Path(case_dir)
-    analysis_dir = Path(output_dir) if output_dir else case_dir / "analysis"
-    qp = analysis_dir / "query_pack.md"
-    try:
-        write_query_pack(case_dir, ledger, output_dir=analysis_dir)
-    except Exception as exc:  # noqa: BLE001
-        return f"(query pack build failed: {exc})"
-    if qp.is_file():
-        # No artificial cap here — the prompt_budget allocator decides how much
-        # of this the model receives (operator rule: budget = window × fill).
-        return qp.read_text(encoding="utf-8", errors="replace")
-    return "(query pack missing)"
-
-
 # Mode 2 interpret toolset — RAG + evidence (own ES queries) + TI.
 # All read-only; the evidence/knowledge tools are the same case-gated MCP
 # tools the examiner sees (n4_* require the active case's case_id).
@@ -1658,7 +1638,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     ledger_json = json.dumps(ledger_summary, indent=2)[:4000]
     rag_prior = "\n".join(state.get("rag_notes") or [])[:1500]
 
-    query_pack = ""
     case_id = state.get("case_id") or ""
     ti_block = ""
     inv_md = ""
@@ -1668,9 +1647,10 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     digest_error = ""
     if case_id:
         from nexus.config import settings
-        analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
-        emit_stage(state, "interpret", "setup", "N4 query pack")
-        query_pack = _n5_query_payload(settings.cases_root / case_id, ledger, analysis_dir)
+        # No N4 query pack (D168, operator 2026-10-14): ~50 keyword-needle rows that could not be
+        # cited filled 58% of orient's prompt (run 4: all `info` level, from lsass / encodedcommand
+        # / termsrv). The digest's top leads carry the detections with their citations, and the
+        # loop queries the index itself. query_pack.md stays the examiner's needle file.
         # Case Digest — deterministic "everything" (signal map incl. 0-hit
         # needles, alerts, entities + spans, ledger, timeline, scope rules,
         # TI). The LLM reconciles EVERY item; raw detail via n4_sample.
@@ -1748,7 +1728,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     ledger_block = f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```"
     sections = [
         (0, "case_digest", digest_md),
-        (1, "n4_query_pack", query_pack),
         (2, "entity_inventory", inv_md),
         (3, "threat_intel_context", ti_block),
         (4, "playbook_guidance", playbook_block),
@@ -2127,18 +2106,16 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         log_msg.append(f"Not staged: {item['title'] or '(untitled)'}: {item['reason'][:300]}")
     if errors and len(errors) > len(rejected):
         log_msg.append(f"Errors: {'; '.join(errors[len(rejected):][:3])}")
-    # This run's own findings: the draft report and the verdict cover them, not every DRAFT in
-    # the case. Both used to read findings.json whole, so an independent run's verdict listed
-    # 23 findings from four runs (2026-10-14, D169).
+    # This run's own findings: the verdict covers them, not every DRAFT in the case. It used to
+    # read findings.json whole, so an independent run's verdict listed 23 findings from four
+    # runs (2026-10-14, D169).
     run_finding_ids = {str(f) for f in draft_ids} | {item["finding_id"] for item in linked_drafts}
-    run_reports: Path | None = None
     # The run record says what was staged and what was refused, and why.
     if stage_case_dir is not None:
         try:
             from nexus.langgraph.pipeline_runs import _atomic_json, resolve_run
 
             _run = resolve_run(stage_case_dir, run_id=str(state.get("run_id") or ""))
-            run_reports = _run.path / "reports"
             _atomic_json(_run.analysis / "staging.json", {
                 "run_id": _run.run_id,
                 "candidates": len(candidates),
@@ -2148,25 +2125,12 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             })
         except Exception as exc:  # noqa: BLE001 - the step log still carries the outcome
             log_msg.append(f"staging record not written: {exc}")
-    try:
-        from nexus.config import settings
-        from nexus.integration.dfir_report import write_findings_preview
+    # No model-written draft report here (D169, operator 2026-10-14). The designed flow ends a run
+    # at DRAFTs + interpretation.md; the report is written from APPROVED findings, and the
+    # examiner's preview of DRAFTs is `nexus report generate`. The draft report was half of every
+    # Mode 1 run (21 of 42 minutes on 2026-10-14).
 
-        case_id = str(state.get("case_id") or "")
-        if case_id and not run_finding_ids:
-            emit_stage(state, "draft_report", "skipped", "this run staged no finding")
-        elif case_id:
-            emit_stage(state, "draft_report", "running",
-                       f"REPORT-DRAFT.md for this run's {len(run_finding_ids)} finding(s)")
-            preview = write_findings_preview(
-                settings.cases_root / case_id, finding_ids=run_finding_ids,
-                out=(run_reports / "REPORT-DRAFT.md") if run_reports is not None else None)
-            emit_stage(state, "draft_report", "done", str(preview))
-            log_msg.append(f"Wrote {preview}")
-    except Exception as exc:  # noqa: BLE001
-        log_msg.append(f"Draft preview skipped: {exc}")
-
-    # Mode 2 verdict: coverage gaps vs the entity inventory + digest
+    # Mode 1 verdict: coverage gaps vs the entity inventory + digest
     # reconciliation + interpretation.md (deterministic skeleton + optional
     # LLM executive verdict).
     try:
@@ -2337,12 +2301,7 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             case_dir=case_dir,
         )
         # Append analysis pointers for examiners
-        qp = pipeline_run.analysis / "query_pack.md"
         extra = []
-        if qp.is_file():
-            extra.append(
-                "N4 query pack (LLM facts) is `analysis/query_pack.md`."
-            )
         if (case_dir / "analysis" / "chronology.md").is_file():
             extra.append("N7 chronology is `analysis/chronology.md`.")
         if (case_dir / "analysis" / "detections" / "README.md").is_file():
