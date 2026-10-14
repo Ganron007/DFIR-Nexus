@@ -16,12 +16,14 @@ with the case. Nothing is added to `src/nexus`.
 
 Usage::
 
-    python devtools/trace_prompts.py --case CASE-D6B93BF1 --mode 1
-    python devtools/trace_prompts.py --case CASE-D6B93BF1 --mode 2
-    python devtools/trace_prompts.py --case CASE-D6B93BF1 --mode 3
+    python devtools/trace_prompts.py --case CASE-C5B04D31 --mode 1 -- --context independent
+    python devtools/trace_prompts.py --case CASE-C5B04D31 --mode 2 -- --context independent
+    python devtools/trace_prompts.py --case CASE-C5B04D31 --mode 3 -- --context informed
 
-Mode 1 = the interpret pipeline; 2 = `mode2 run`; 3 = `mode3 run`. The neutral
-question matches the K-run default so the trace is comparable with a scored run.
+Mode 1 = `nexus interpret`; 2 = `nexus mode2 run`; 3 = `nexus mode3 run`. Arguments after
+``--`` go to that command unchanged. The run's question is the examiner's intake: the tracer
+adds none (it used to pass a fixed question, which the intake rule forbids), unless
+``--question`` is given.
 """
 
 from __future__ import annotations
@@ -33,8 +35,6 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-_DEFAULT_QUESTION = "Investigate this host for compromise"
 
 _lock = threading.Lock()
 
@@ -144,21 +144,20 @@ def install(case_dir: Path) -> _Tracer:
     return tracer
 
 
-def _cli_for(mode: str, case_id: str, question: str) -> list[str]:
-    if mode == "1":
-        return ["pipeline", "--mode", "interpret", "--from-case", case_id]
-    if mode == "2":
-        return ["mode2", "run", "--case", case_id, "--question", question]
-    if mode == "3":
-        return ["mode3", "run", "--case", case_id, "--question", question]
-    raise SystemExit(f"mode must be 1, 2 or 3 (got {mode!r})")
+def _cli_for(mode: str, case_id: str, question: str, extra: list[str]) -> list[str]:
+    commands = {"1": ["interpret"], "2": ["mode2", "run"], "3": ["mode3", "run"]}
+    if mode not in commands:
+        raise SystemExit(f"mode must be 1, 2 or 3 (got {mode!r})")
+    asked = ["--question", question] if question and mode != "1" else []
+    return [*commands[mode], "--case", case_id, *asked, *extra]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KA1 prompt tracer (design-time)")
     parser.add_argument("--case", required=True, help="Case id to trace")
     parser.add_argument("--mode", required=True, choices=["1", "2", "3"])
-    parser.add_argument("--question", default=_DEFAULT_QUESTION)
+    parser.add_argument("--question", default="")
+    parser.add_argument("extra", nargs="*", help="arguments after -- for the mode command")
     args = parser.parse_args(argv)
 
     from nexus.config import settings
@@ -172,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from nexus.cli.main import app
 
-    sys.argv = ["nexus", *_cli_for(args.mode, args.case, args.question)]
+    sys.argv = ["nexus", *_cli_for(args.mode, args.case, args.question, args.extra)]
     try:
         app()
     finally:
