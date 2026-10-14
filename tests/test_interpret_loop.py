@@ -749,3 +749,36 @@ def test_rounds_endpoint_empty_when_no_loop_ran(tmp_path):
         resp = client.get("/portal/api/case/rounds")
     assert resp.status_code == 200
     assert resp.json() == {"summary": None, "rounds": []}
+
+
+def test_orient_follows_the_procedures_for_what_the_leads_show(tmp_path):
+    """2026-10-14: skills were chosen from the parsers that ran and the question alone, so
+    CASE-C5B04D31's credential-theft and Defender-tamper leads got browser and phishing procedures.
+    The top leads' techniques now rank the skills."""
+    model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
+    digest = {**_digest(), "top_leads": [
+        {"subject": "Mimikatz sekurlsa", "level": "crit", "attack_ids": ["T1003.001"],
+         "audit_ids": []}]}
+    asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1", "question": "Compromise suspected."}},
+        digest=digest, digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    orient_system = model.calls[0][0]["content"]
+    assert "- lsass_credential_access " in orient_system
+
+
+def test_verify_plans_its_queries_with_the_field_sheet_and_query_protocol(tmp_path):
+    """Verify writes the next round's ES queries. Only orient had the protocol, and the next
+    rounds came back with 471,013 and 351,982 rows (2026-10-14)."""
+    from nexus.langgraph.query_normalize import query_protocol_block
+
+    model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
+    asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    verify_system = model.calls[1][0]["content"]
+    assert "hypotheses against the ACTUAL rows" in verify_system
+    assert query_protocol_block() in verify_system

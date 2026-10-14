@@ -618,10 +618,22 @@ async def run_interpret_loop(
             families = _present_families(case_dir)
         except Exception:  # noqa: BLE001
             families = []
+        # The procedures for what the evidence shows, not only for which parsers ran: the top
+        # leads' techniques rank the skills first (Mode 3's lead seats already do this). Keyed on
+        # families and the question alone, CASE-C5B04D31's credential-theft and Defender-tamper
+        # leads got browser and phishing procedures (2026-10-14).
+        techniques: list[str] = []
+        for lead in digest.get("top_leads") or []:
+            if not isinstance(lead, dict):
+                continue
+            for tid in lead.get("attack_ids") or []:
+                if tid not in techniques:
+                    techniques.append(str(tid))
         refs = _retrieve_skill_refs(
             families or None,
             [w for w in str(intake.get("question") or "").split() if len(w) > 3][:12],
             limit=8,
+            techniques=techniques[:12] or None,
         )
         if refs:
             block = _skill_procedure_block(WorkOrder(
@@ -631,9 +643,11 @@ async def run_interpret_loop(
                 skill_block = "\n" + block + "\n"
     except Exception:  # noqa: BLE001
         skill_block = ""
-    orient_system = (
-        orient_system + field_sheet + skill_block + "\n" + query_protocol_block()
-    )
+    # Every stage that writes ES queries gets the case's columns and the query protocol. Verify
+    # plans the next round's queries too; it had neither, and its rounds came back with hundreds
+    # of thousands of rows (2026-10-14: 471,013 and 351,982).
+    query_guidance = field_sheet + "\n" + query_protocol_block()
+    orient_system = orient_system + skill_block + query_guidance
     packed = _packed("interpret-orient", [
         (1, "examiner_intake", intake_block),
     ])
@@ -776,6 +790,7 @@ async def run_interpret_loop(
             "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
             "If everything is settled, next = []. No prose outside the JSON."
+            + query_guidance
         )
         hyps_block = "\n".join(
             f"- {h['id']}: {h['statement']}" for h in hypotheses
