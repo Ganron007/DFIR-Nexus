@@ -1964,8 +1964,12 @@ def run_mode2(
     # ── Director node ──────────────────────────────────────────────────
     def director_node(_state: dict[str, Any]) -> dict[str, Any]:
         # 4j.16 — read examiner decisions fresh so a resumed run also picks up
-        # findings approved/rejected since the last turn.
-        state["examiner_feedback"] = examiner_feedback(case_dir)
+        # findings approved/rejected since the last turn. Prior findings are context an
+        # `informed` run asks for (WO-1C item 3); an `independent` run sees the evidence, the
+        # leads and its own results only. It used to get every DRAFT of the case's other runs
+        # as a work order (2026-10-14, CASE-C5B04D31).
+        state["examiner_feedback"] = (
+            examiner_feedback(case_dir) if state.get("context_policy") == "informed" else {})
         if not state["orders"]:
             orders = plan_work_orders(
                 case_dir, question, run_id=run_id, sink=sink,

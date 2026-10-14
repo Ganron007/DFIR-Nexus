@@ -674,8 +674,14 @@ def _supervisor_with_model(
     board_digest: str,
     steering: str,
     max_agents: int,
+    prior_context: str = "",
 ) -> list[dict[str, Any]]:
-    """MA4.2 — the model chooses the team; [] on any doubt (caller falls back)."""
+    """MA4.2 — the model chooses the team; [] on any doubt (caller falls back).
+
+    ``prior_context`` is what an ``informed`` run adds (WO-1C item 3): the case's prior report and
+    DRAFTs, labelled as not evidence. Mode 3 recorded the policy and never applied it, so an
+    informed run planned exactly as an independent one.
+    """
     from nexus.langgraph.context_loop import _call_model
 
     # WO-K5: the supervisor gets the same leads the director used, and the
@@ -737,6 +743,7 @@ def _supervisor_with_model(
                 f"Objective: {question}\n\nIndexed families (artifact value "
                 f"order):\n{family_lines}\n\nLeads raised so far:\n{lead_lines}\n\n"
                 + (f"Examiner steering:\n{steering}\n\n" if steering else "")
+                + (f"{prior_context}\n\n" if prior_context else "")
                 + "Board so far:\n"
                 + ((board_digest or "(empty)")[:limit])
             ),
@@ -1804,6 +1811,8 @@ def run_mode3(
             focus = f"{question}\nExaminer steer: {fresh_steer}" if fresh_steer else question
             spawns: list[dict[str, Any]] = []
             if model is not None:
+                from nexus.analysis.context_policy import context_sections
+
                 spawns = _supervisor_with_model(
                     model,
                     case_dir=case_dir,
@@ -1814,6 +1823,9 @@ def run_mode3(
                         f"- {str(line.get('text') or '')}" for line in steering[-3:]
                     ),
                     max_agents=max_agents,
+                    prior_context="\n\n".join(
+                        text for _pri, _name, text
+                        in context_sections(case_dir, str(record.get("context_policy") or ""))),
                 )
             supervisor_mode = "model" if spawns else "deterministic"
             if not spawns:

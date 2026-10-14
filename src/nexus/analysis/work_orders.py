@@ -190,9 +190,15 @@ def orders_from_leads(
             leads = []
 
     known_families = {str(f) for f in (families or [])}
+    # The lead builder's own order: rule-engine detections first, then score (WO-R1F item 1: a
+    # crit/high detection is never outranked by a heuristic lead). Sorting by score alone tied a
+    # "seen once" rarity lead (1.0) with a critical detection (1.0) and broke the tie by the kind's
+    # name, so CASE-C5B04D31's Mode 2 spent four of six orders on rarity leads and none on the
+    # Cobalt Strike, password-dumper or Mimikatz detections (2026-10-14).
     ordered_leads = sorted(
         (_lead_dict(lead) for lead in leads or []),
-        key=lambda d: (-float(d.get("score") or 0.0), str(d.get("kind") or "")),
+        key=lambda d: (0 if str(d.get("kind") or "") == "rule_engine" else 1,
+                       -float(d.get("score") or 0.0), str(d.get("kind") or "")),
     )
 
     orders: list[dict[str, Any]] = []
