@@ -563,6 +563,16 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
             value = value.get("path") or value.get("file") or ""
         return str(value or "")[:300]
 
+    # A ledger id that the case's log gives to another call cannot be cited (D178): Mode 2
+    # workers cited such ids from this list instead of their own queries (2026-10-14), and
+    # staging refuses them. They are withheld here, where the model reads them.
+    not_citable: set[str] = set()
+    with contextlib.suppress(Exception):
+        from nexus.analysis.integrity import ambiguous_audit_ids
+
+        not_citable = set(ambiguous_audit_ids(
+            case_dir, [str(r.get("audit_id") or "") for r in rows if r.get("audit_id")]))
+
     entries: list[dict[str, Any]] = []
     counts = {"OK": 0, "SKIP": 0, "FAIL": 0}
     for row in rows:
@@ -571,7 +581,8 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
             counts[status] += 1
         if len(entries) >= 300:
             continue
-        entries.append({
+        audit_id = str(row.get("audit_id") or "")[:80]
+        entry = {
             "tool": str(row.get("tool") or "")[:80],
             "status": status,
             "reason": str(row.get("reason") or "")[:200],
@@ -579,8 +590,12 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
             "command": _command_of(row),
             "output": _output_of(row),
             "duration_s": row.get("duration_s"),
-            "audit_id": str(row.get("audit_id") or "")[:80],
-        })
+            "audit_id": "" if audit_id in not_citable else audit_id,
+        }
+        if audit_id in not_citable:
+            entry["audit_id_note"] = ("not citable: this run's id also names another call in the "
+                                      "case log; cite the query that returned the rows")
+        entries.append(entry)
 
     aid = audit.log(
         tool="run_record",

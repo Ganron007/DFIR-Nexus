@@ -117,3 +117,29 @@ def test_one_citation_that_returned_rows_or_a_tool_run_grounds_the_finding(tmp_p
     assert enforce_submission_integrity(
         _finding("nexus-x-20261014-211", "nexus-x-20261014-220"), case)["ok"] is True
     assert enforce_submission_integrity(_finding("nexus-x-20261014-230"), case)["ok"] is True
+
+
+def test_run_record_withholds_ledger_ids_that_name_another_call():
+    """2026-10-14, Mode 2 run 2: a worker cited two lane-ledger ids from run_record instead of its
+    own twenty queries; both name another call in CASE-C5B04D31's log (D178) and staging refuses
+    them. The tool the model reads them from withholds them."""
+    import yaml
+
+    from nexus.config import settings
+    from nexus.tools.evidence_index import do_run_record
+
+    case = settings.cases_root / "CASE-RUNREC"
+    (case / "audit").mkdir(parents=True)
+    (case / "runs" / "RUN-1" / "extractions").mkdir(parents=True)
+    (case / "CASE.yaml").write_text(yaml.safe_dump({"case_id": case.name, "status": "open"}),
+                                    encoding="utf-8")
+    _ledger(case, [{"tool": "hayabusa", "status": "OK", "audit_id": "nexus-x-20261011-378"},
+                   {"tool": "mftecmd", "status": "OK", "audit_id": "nexus-x-20261014-002"}])
+    _log(case, "es_search", "nexus-x-20261011-378")
+    _log(case, "run_windows_command", "nexus-x-20261014-002")
+    out = do_run_record(case_id=case.name, case_dir=case)
+    by_tool = {e["tool"]: e for e in out["entries"]}
+    assert by_tool["hayabusa"]["audit_id"] == ""
+    assert "not citable" in by_tool["hayabusa"]["audit_id_note"]
+    assert by_tool["mftecmd"]["audit_id"] == "nexus-x-20261014-002"
+    assert "audit_id_note" not in by_tool["mftecmd"]
