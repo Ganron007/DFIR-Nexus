@@ -249,16 +249,23 @@ def _es_call(
         }
     aid = None
     if audit is not None:
+        # D70: the rows this call returned, in the shape a DRAFT's evidence takes,
+        # so a candidate that cites this entry carries the same evidence as Mode 1.
+        summary: dict[str, Any] = {"total": result.get("total"),
+                                   "returned": result.get("returned"),
+                                   "families": len(result.get("families") or {}),
+                                   "evidence_rows": evidence_rows_for_hits(result.get("hits") or [])}
+        # A refused query and an honest empty result must not look alike in the trail: the
+        # refusal used to be dropped here, so a query on a field the case does not have was
+        # recorded as "total 0" (2026-10-14, Mode 1 run 4).
+        for key in ("error", "degraded", "failed_terms", "failed_terms_optional", "normalized"):
+            if result.get(key):
+                summary[key] = result[key]
         aid = audit.log(
             tool=label,
             params={"case_id": Path(case_dir).name,
                     **{k: v for k, v in kwargs.items() if k in audit_keys}},
-            # D70: the rows this call returned, in the shape a DRAFT's evidence takes,
-            # so a candidate that cites this entry carries the same evidence as Mode 1.
-            result_summary={"total": result.get("total"),
-                            "returned": result.get("returned"),
-                            "families": len(result.get("families") or {}),
-                            "evidence_rows": evidence_rows_for_hits(result.get("hits") or [])},
+            result_summary=summary,
             elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
             extra={"canonical_tool": name} if label != name else None,
         )
