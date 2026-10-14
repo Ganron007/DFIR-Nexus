@@ -805,3 +805,25 @@ def test_a_reason_written_inside_the_arguments_is_moved_to_the_call(tmp_path, mo
     assert "moved why from the arguments" in second_prompt
     third_prompt = model.prompts[2][-1]["content"]
     assert "unsupported argument(s) bogus" in third_prompt
+
+
+def test_the_model_is_shown_the_audit_id_of_each_call_it_ran(tmp_path, monkeypatch):
+    """2026-10-14, Mode 2 run 2: workers cited lane-ledger ids, never their own twenty queries,
+    because an observation was rendered without its call's audit id."""
+    from nexus.langgraph.context_loop import run_context_loop
+
+    case = _case(tmp_path)
+    calls: list[dict[str, Any]] = []
+    _fake_backbone(monkeypatch, calls)
+    model = _ScriptedModel([
+        {"tool_calls": [{"tool": "es_search", "args": {"query": {"match_all": {}}, "size": 5},
+                         "why": "find rows"}]},
+        {"answer": "done", "citations": []},
+    ])
+    result = run_context_loop(
+        case_dir=case, case_id="CASE-LOOP", question="q", model=model,
+        audit=AuditWriter("nexus", audit_dir=case / "audit"),
+    )
+    aid = result["tool_calls"][0]["audit_id"]
+    assert aid
+    assert f"- es_search [audit_id {aid}]: " in model.prompts[1][-1]["content"]

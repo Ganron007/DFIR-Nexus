@@ -537,7 +537,10 @@ def _observations_block(
     if not observations:
         return "(no tool calls yet)"
     return "\n".join(
-        f"- {o['tool']}: "
+        # The call's own audit id, so the model can cite what it ran. It was never shown: Mode 2's
+        # workers saw only the ledger's and the leads' ids and cited those instead of their own
+        # twenty queries (2026-10-14, Mode 2 run 2).
+        f"- {o['tool']}" + (f" [audit_id {o['audit_id']}]" if o.get("audit_id") else "") + ": "
         # What the loop changed in the call is said beside its result (never silently).
         + (f"[{o['normalized']}] " if o.get("normalized") else "")
         + json.dumps(o.get("summary") or {}, default=str)[:per_obs_cap]
