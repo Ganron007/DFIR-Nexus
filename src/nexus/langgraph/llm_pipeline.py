@@ -165,6 +165,9 @@ class InvestigationState(TypedDict):
     # run and recorded on the run record, so a report can always say which
     # policy produced it.
     context_policy: str
+    # D193: the interpret loop's answers for digest items it makes no claim about. Declared, so
+    # LangGraph carries them from the interpret node to staging and the verdict.
+    dispositions: list[dict[str, Any]]
     # Live stage feed (JSONL the dashboard reads while the run is in flight)
     progress_path: str
 
@@ -202,6 +205,7 @@ def make_initial_state(
         "run_dir": "",
         "parent_run_id": "",
         "context_policy": "independent",
+        "dispositions": [],
         "progress_path": str(progress_path or ""),
     }
 
@@ -1846,6 +1850,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             f"{loop_result.get('findings_emitted')} finding candidate(s)"
         ],
         "messages": loop_result.get("messages") or [],
+        "dispositions": list(loop_result.get("dispositions") or []),
     }
 
 # Audit IDs: "{mcp_name}-{examiner}-{YYYYMMDD}-{seq}" (mcp_name may contain _)
@@ -2006,6 +2011,9 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
          "reason": "a coverage or disposition item (absence, gap or collection note), not a finding"}
         for c in parsed if _is_collection_stub(c)
     ]
+    # The loop's dispositions (D193) answer for digest items without being claims: recorded with
+    # the run and given to the verdict, never staged.
+    dispositions = [d for d in state.get("dispositions") or [] if isinstance(d, dict)]
 
     stage_case_id = str(state.get("case_id") or "")
     stage_case_dir: Path | None = None
@@ -2122,6 +2130,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 "staged": list(draft_ids),
                 "linked": linked_drafts,
                 "rejected": rejected,
+                "dispositions": dispositions,
             })
         except Exception as exc:  # noqa: BLE001 - the step log still carries the outcome
             log_msg.append(f"staging record not written: {exc}")
@@ -2157,12 +2166,12 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             from nexus.langgraph.case_digest import reconciliation_checklist
 
             reconciliation = reconciliation_checklist(
-                json.loads(digest_path.read_text(encoding="utf-8")), staged
+                json.loads(digest_path.read_text(encoding="utf-8")), staged, dispositions
             )
         emit_stage(state, "interpretation", "running", "the executive verdict")
         out = await write_interpretation_summary(
             case_dir, findings=staged, gaps=gaps, reconciliation=reconciliation, model=model,
-            run_id=str(state.get("run_id") or ""),
+            run_id=str(state.get("run_id") or ""), dispositions=dispositions,
         )
         emit_stage(state, "interpretation", "done", str(out or ""))
         if out:

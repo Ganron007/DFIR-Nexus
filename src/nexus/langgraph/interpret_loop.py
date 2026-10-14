@@ -10,10 +10,11 @@ The same controller will back Mode 3 (4j.14–4j.19):
   audited MCP tools the examiner uses; the LLM reads the *actual rows* and
   marks each hypothesis confirmed / refuted / unknown, optionally planning
   the next round. Early stop when nothing is left to verify.
-- **Final — Reconcile:** the LLM emits the findings JSON with a hard rule:
-  every digest item (alerts ≥ high, high-count needles, entities, gaps) gets
-  a disposition. The deterministic reconciliation checklist then verifies
-  this; one bounded extra pass addresses anything still unmentioned.
+- **Final — Reconcile:** the LLM emits ``{"findings", "dispositions"}`` with a
+  hard rule: every digest item (alerts ≥ high, high-count needles) is covered
+  by a finding or has a disposition, which is never staged (D193). The
+  deterministic reconciliation checklist then verifies this; one bounded
+  extra pass addresses anything still unanswered.
 
 Artifacts (auditable, replayable): ``analysis/interpret_rounds/round-N.json``
 + ``summary.json``; every packed prompt persists via ``prompt_budget``.
@@ -230,6 +231,47 @@ def _as_list(value: Any) -> list[Any]:
     if isinstance(value, dict):
         return list(value.values())
     return []
+
+
+#: What a disposition can say about a digest item it does not make a claim about (D193).
+DISPOSITION_STATUSES = ("benign", "coverage_gap", "not_examined", "refuted")
+
+
+def _disposition(item: Any) -> dict[str, Any] | None:
+    """One disposition of a reconcile reply, or None when it names no item."""
+    if not isinstance(item, dict):
+        return None
+    subject = " ".join(str(item.get("item") or "").split())
+    if not subject:
+        return None
+    status = "_".join(str(item.get("status") or "").strip().lower().replace("-", " ").split())
+    audit_ids = item.get("audit_ids") or []
+    if isinstance(audit_ids, str):
+        audit_ids = [audit_ids]
+    return {"item": subject, "status": status, "reason": " ".join(str(item.get("reason") or "").split()),
+            "audit_ids": [str(a) for a in audit_ids if a]}
+
+
+def _split_reconcile_reply(text: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The findings and the dispositions of a reconcile reply (D193).
+
+    The reply is ``{"findings": [...], "dispositions": [...]}``; a bare array is findings only. A
+    disposition answers for a digest item without being a claim, and is never staged. Run 5 on
+    2026-10-14 had no place for one, so "zero-hit needles" and "entity census" became findings.
+    """
+    data = _parse_json_blob(text)
+    if isinstance(data, dict) and ("findings" in data or "dispositions" in data):
+        dispositions = [_disposition(d) for d in _as_list(data.get("dispositions"))]
+        return ([f for f in _as_list(data.get("findings")) if isinstance(f, dict)],
+                [d for d in dispositions if d])
+    if isinstance(data, list):
+        return [f for f in data if isinstance(f, dict)], []
+    return [], []
+
+
+def _findings_message(findings: list[dict[str, Any]]) -> str:
+    """The findings alone, as the assistant message staging parses (fenced, so a title suffices)."""
+    return "```json\n" + json.dumps(findings, ensure_ascii=False, indent=1) + "\n```"
 
 
 def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
@@ -911,23 +953,30 @@ async def run_interpret_loop(
     # ── Final round — Reconcile + findings JSON ─────────────────────────
     findings_system = (
         "You are the lead DFIR analyst. Evidence gathering is complete; write "
-        "the final findings JSON array using ONLY the digest facts and the "
+        "the final findings JSON using ONLY the digest facts and the "
         "rows/notes below.\n"
+        "Return ONE JSON object: {\"findings\": [...], \"dispositions\": [...]}.\n"
         "HARD RULES:\n"
-        "- Every DIGEST RECONCILIATION item must be dispositioned: covered by "
-        "a finding, or explicitly assessed benign with a reason, or an "
-        "explicit coverage-gap item. Silence is a failure.\n"
+        "- findings hold claims the rows support, and nothing else.\n"
+        "- dispositions answer for each DIGEST RECONCILIATION item that no finding covers: "
+        "{\"item\": the item as listed, \"status\": "
+        + "|".join(DISPOSITION_STATUSES)
+        + ", \"reason\": why, from the rows and notes, \"audit_ids\": the markers it rests "
+        "on, or []}. Negative evidence, a census, a scope note and a threat-intel verdict that "
+        "no row supports are dispositions, never findings.\n"
+        "- Every DIGEST RECONCILIATION item is covered by a finding or has a disposition. "
+        "Silence is a failure.\n"
         "- Absent evidence classes are SCOPE - never phrase them as "
         "'no compromise'.\n"
         "- Checked needles with 0 hits are negative evidence: name them in "
-        "the relevant finding's observation.\n"
+        "the relevant finding's observation, or in a disposition.\n"
         "- Each finding: title, severity (critical|high|medium|low|info, judged from "
         "the evidence), entity {\"type\",\"value\"} (the one thing it is about, "
         "e.g. {\"type\":\"event_id\",\"value\":\"1004\"}), observation, interpretation (non-empty), "
         "evidence [{time,source,artifact,detail}], attack_ids (only when "
         "justified), confidence, confidence_justification, audit_ids from "
         "the [audit_id ...] markers shown above.\n"
-        "Return ONLY a JSON array. No prose."
+        "Return ONLY the JSON object. No prose."
     )
     reconcile_extra = [
         (0, "hypotheses", "\n".join(f"- {h['id']}: {h['statement']}" for h in hypotheses)),
@@ -943,16 +992,17 @@ async def run_interpret_loop(
     )
     raw_findings = await _call_model(model, [
         {"role": "system", "content": findings_system},
-        {"role": "user", "content": packed + "\n\nEmit the findings JSON array."},
+        {"role": "user", "content": packed + "\n\nEmit the JSON object."},
     ])
 
     from nexus.langgraph.case_digest import reconciliation_checklist
     from nexus.langgraph.hunt_parser import parse_hunt_candidates
 
-    def _candidates(text: str) -> list[dict[str, Any]]:
-        return parse_hunt_candidates([{"role": "assistant", "content": text}])
+    def _candidates(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return parse_hunt_candidates([{"role": "assistant", "content": _findings_message(findings)}])
 
-    candidates = _candidates(raw_findings)
+    found, dispositions = _split_reconcile_reply(raw_findings)
+    candidates = _candidates(found)
     # A reply that parses to zero candidates but LOOKS like findings JSON (it
     # carries the keys) is a formatting failure, not "no findings" - and it
     # discards everything this loop verified. One corrective retry, bounded to
@@ -981,21 +1031,24 @@ async def run_interpret_loop(
                     "content": (
                         packed
                         + "\n\nYour previous reply could not be parsed as findings. "
-                        "Return ONLY a well-formed JSON array. No prose, no fence, "
-                        "no trailing commas. If nothing is supportable, return []."
+                        "Return ONLY a well-formed JSON object {\"findings\": [...], "
+                        "\"dispositions\": [...]}. No prose, no fence, no trailing commas. "
+                        "If no claim is supportable, findings is []."
                     ),
                 },
             ])
-            candidates = _candidates(corrected)
-            if candidates:
+            corrected_found, corrected_dispositions = _split_reconcile_reply(corrected)
+            if _candidates(corrected_found):
                 raw_findings = corrected
+                found, dispositions = corrected_found, corrected_dispositions
+                candidates = _candidates(found)
         except Exception as exc:  # noqa: BLE001 — the retry is best-effort
             log.warning("findings corrective retry failed: %s", exc)
 
-    checklist = reconciliation_checklist(digest, candidates)
+    checklist = reconciliation_checklist(digest, candidates, dispositions)
     unaddressed_final = checklist.get("unaddressed") or []
 
-    # One bounded extra pass for whatever the findings did not mention.
+    # One bounded extra pass for whatever neither a finding nor a disposition answered.
     extra_text = ""
     if unaddressed_final:
         _progress("reconcile",
@@ -1005,9 +1058,11 @@ async def run_interpret_loop(
         )
         extra_system = (
             "These digest items were not addressed by the findings so far. "
-            "Emit ONLY additional findings (JSON array) that disposition each "
-            "item: a real finding, 'Assessed benign: <item>' with the reason, "
-            "or an explicit coverage gap. Use the digest/evidence above."
+            "Return ONE JSON object {\"findings\": [...], \"dispositions\": [...]}: a "
+            "disposition for each item (status "
+            + "|".join(DISPOSITION_STATUSES)
+            + ", with the reason and the audit_ids it rests on), and a finding only when the "
+            "rows support a claim the findings so far do not make. Use the digest/evidence above."
         )
         extra_sections = reconcile_extra + [(0, "unaddressed_items", items_block)]
         packed_extra, report_extra = pack_sections(
@@ -1021,10 +1076,13 @@ async def run_interpret_loop(
             log_usage("interpret-reconcile-extra", report_extra)
             extra_text = await _call_model(model, [
                 {"role": "system", "content": extra_system},
-                {"role": "user", "content": packed_extra + "\n\nEmit the additional findings JSON array."},
+                {"role": "user", "content": packed_extra + "\n\nEmit the JSON object."},
             ])
-            candidates = candidates + _candidates(extra_text)
-            checklist = reconciliation_checklist(digest, candidates)
+            extra_found, extra_dispositions = _split_reconcile_reply(extra_text)
+            found = found + extra_found
+            dispositions = dispositions + extra_dispositions
+            candidates = _candidates(found)
+            checklist = reconciliation_checklist(digest, candidates, dispositions)
             unaddressed_final = checklist.get("unaddressed") or []
         except Exception as exc:  # noqa: BLE001 — extra pass is best-effort
             log.warning("reconcile extra pass failed: %s", exc)
@@ -1041,6 +1099,7 @@ async def run_interpret_loop(
         "candidates_parsed": len(candidates),
         "corrective_retry_used": correct_used,
         "reconciliation_addressed": len(checklist.get("addressed") or []),
+        "extra_raw": extra_text,
     })
     from nexus.langgraph.pipeline_runs import configured_model
 
@@ -1054,8 +1113,10 @@ async def run_interpret_loop(
         "hypotheses": hypotheses,
         "notes": notes_all,
         "findings_emitted": len(candidates),
+        "dispositions": dispositions,
         "reconciliation": {
             "addressed": len(checklist.get("addressed") or []),
+            "dispositioned": len(checklist.get("dispositioned") or []),
             "unaddressed": unaddressed_final,
         },
         # WO-1C item 7: the family coverage ledger this run's own queries
@@ -1073,9 +1134,8 @@ async def run_interpret_loop(
             f"Evidence gathered:\n{evidence_block}"
         ),
     })
-    messages.append({"role": "assistant", "content": raw_findings})
-    if extra_text:
-        messages.append({"role": "assistant", "content": extra_text})
+    # The findings alone: a disposition is never a candidate for staging (D193).
+    messages.append({"role": "assistant", "content": _findings_message(found)})
 
     return {
         "run_id": run_id,
@@ -1086,6 +1146,7 @@ async def run_interpret_loop(
         "hypotheses": hypotheses,
         "notes": notes_all,
         "findings_emitted": len(candidates),
+        "dispositions": dispositions,
         "unaddressed": unaddressed_final,
         # WO-1C item 3: the policy that produced this loop, so the run record
         # and the report can always say how much prior context it saw.

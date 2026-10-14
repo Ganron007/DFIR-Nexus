@@ -67,6 +67,20 @@ def test_cited_audit_entries_return_their_stored_rows_in_citation_order(tmp_path
     assert rows == [r2, r1], "citation order, each row once, ids without rows add nothing"
 
 
+def test_every_cited_call_is_represented_when_the_first_fills_the_cap(tmp_path):
+    """D194: a 63-row call cited first used to fill all 12 rows, so the other citations vanished."""
+    big = [{"source": "hayabusa/t.csv", "loc": f"t.csv:{n}", "detail": f"row {n}"} for n in range(1, 64)]
+    other = [{"source": "evtxecmd/e.csv", "loc": f"e.csv:{n}", "detail": f"event {n}"} for n in (5, 6)]
+    _write_audit(tmp_path, [
+        {"audit_id": "BIG", "tool": "es_search", "result_summary": {"evidence_rows": big}},
+        {"audit_id": "OTHER", "tool": "es_search", "result_summary": {"evidence_rows": other}},
+    ])
+    rows = evidence_rows_for_audit_ids(tmp_path, ["BIG", "OTHER", "BIG"])
+    assert len(rows) == EVIDENCE_ROW_CAP
+    assert [r["loc"] for r in rows[:4]] == ["t.csv:1", "e.csv:5", "t.csv:2", "e.csv:6"]
+    assert evidence_rows_for_audit_ids(tmp_path, ["BIG"]) != rows
+
+
 def test_no_cited_rows_means_no_evidence(tmp_path):
     assert evidence_rows_for_audit_ids(tmp_path, ["A"]) == []
     _write_audit(tmp_path, [{"audit_id": "A", "tool": "es_search", "result_summary": {}}])

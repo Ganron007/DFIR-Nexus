@@ -283,7 +283,7 @@ def test_the_findings_prompt_asks_for_severity(tmp_path):
         state={"case_context": {"interpret_rounds": "1"}},
         digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
     ))
-    findings_call = next(s for s in sent if "write the final findings JSON array" in s)
+    findings_call = next(s for s in sent if "write the final findings JSON" in s)
     assert "severity (critical|high|medium|low|info" in findings_call
 
 
@@ -414,7 +414,9 @@ def test_loop_reconciliation_extra_pass(tmp_path):
     assert len(model.calls) == 4                       # orient + verify + reconcile + extra
     assert result["findings_emitted"] == 3
     assert result["unaddressed"] == []
-    assert len(result["messages"]) >= 3                # evidence + findings + extra
+    # One findings message holds both passes (D193: never the raw replies, which carry dispositions).
+    from nexus.langgraph.hunt_parser import parse_hunt_candidates
+    assert len(parse_hunt_candidates(result["messages"])) == 3
     assert (tmp_path / "analysis" / "llm_context").is_dir()
 
 
@@ -797,3 +799,71 @@ def test_the_persisted_orient_record_holds_the_system_message_too(tmp_path):
     text = record.read_text(encoding="utf-8")
     assert text.count("## SYSTEM MESSAGE") == 1 and "## USER MESSAGE" in text
     assert model.calls[0][0]["content"] in text
+
+
+def _claim(title: str, observation: str) -> dict:
+    return {"title": title, "observation": observation, "interpretation": "supported by rows",
+            "confidence": "MEDIUM", "confidence_justification": "rows",
+            "audit_ids": ["n4_query-test-20260918-001"]}
+
+
+def test_dispositions_are_kept_apart_from_findings(tmp_path):
+    """D193 (2026-10-14 run 5): the reconcile contract asked for every digest item as a finding,
+    so "zero-hit needles" and an entity census were staged as DRAFTs. A disposition now has its
+    own place in the reply and never reaches staging."""
+    from nexus.langgraph.hunt_parser import parse_hunt_candidates
+
+    reply = json.dumps({
+        "findings": [_claim("Mimikatz detected on ws01", "credential dumping"),
+                     _claim("psexec lateral movement", "psexec 9 hits")],
+        "dispositions": [{"item": "[CRITICAL] Ransomware note (ws01)", "status": "Benign",
+                          "reason": "a lab note file", "audit_ids": ["n4_query-test-20260918-001"]}],
+    })
+    model = ScriptedModel([_orientation(), _verify_settled(), reply])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    assert result["findings_emitted"] == 2
+    assert result["unaddressed"] == []
+    assert result["dispositions"] == [{"item": "[CRITICAL] Ransomware note (ws01)", "status": "benign",
+                                       "reason": "a lab note file",
+                                       "audit_ids": ["n4_query-test-20260918-001"]}]
+    staged = [c["title"] for c in parse_hunt_candidates(result["messages"])]
+    assert staged == ["Mimikatz detected on ws01", "psexec lateral movement"]
+    summary = json.loads((tmp_path / "analysis" / "interpret_rounds" / "summary.json")
+                         .read_text(encoding="utf-8"))
+    assert summary["reconciliation"]["dispositioned"] == 1
+    assert summary["dispositions"] == result["dispositions"]
+    reconcile_system = model.calls[2][0]["content"]
+    assert '"dispositions"' in reconcile_system and "never findings" in reconcile_system
+
+
+def test_the_extra_pass_answers_with_dispositions_not_findings(tmp_path):
+    first = json.dumps({"findings": [_claim("Mimikatz detected on ws01", "credential dumping")],
+                        "dispositions": []})
+    extra = json.dumps({"findings": [], "dispositions": [
+        {"item": "[CRITICAL] Ransomware note (ws01)", "status": "benign", "reason": "lab file"},
+        {"item": "psexec (9 hits)", "status": "coverage_gap", "reason": "no 7045 rows in scope"},
+    ]})
+    model = ScriptedModel([_orientation(), _verify_settled(), first, extra])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    assert result["findings_emitted"] == 1
+    assert result["unaddressed"] == []
+    assert [d["status"] for d in result["dispositions"]] == ["benign", "coverage_gap"]
+    assert "a disposition for each item" in model.calls[3][0]["content"]
+
+
+def test_a_bare_findings_array_is_still_read_as_findings(tmp_path):
+    model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    assert result["findings_emitted"] == 3 and result["dispositions"] == []

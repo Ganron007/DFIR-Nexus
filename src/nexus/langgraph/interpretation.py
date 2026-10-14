@@ -41,6 +41,7 @@ async def write_interpretation_summary(
     reconciliation: dict[str, Any] | None = None,
     model: Any = None,
     run_id: str = "",
+    dispositions: list[dict[str, Any]] | None = None,
 ) -> Path | None:
     """Write analysis/interpretation.md: verdict + coverage + gaps + TI.
 
@@ -48,6 +49,8 @@ async def write_interpretation_summary(
     the verdict MUST address them; they are also written into the file so the
     examiner can see exactly what the LLM had to answer for.
     ``run_id`` names the run whose own findings the verdict covers (D169).
+    ``dispositions`` are the interpret loop's answers for digest items it makes no
+    claim about (D193): written into the file and given to the verdict.
     """
     case_dir = Path(case_dir)
     analysis = case_dir / "analysis"
@@ -55,6 +58,7 @@ async def write_interpretation_summary(
     findings = findings if findings is not None else _load_findings(case_dir)
     gaps = gaps or []
     reconciliation = reconciliation or {}
+    dispositions = [d for d in dispositions or [] if isinstance(d, dict)]
 
     ti_path = analysis / "ti_context.md"
     ti_md = ti_path.read_text(encoding="utf-8", errors="replace").strip() if ti_path.is_file() else ""
@@ -97,7 +101,8 @@ async def write_interpretation_summary(
     if reconciliation:
         lines.append(
             f"- Digest reconciliation: **{len(reconciliation.get('addressed') or [])} "
-            f"addressed / {len(unaddressed)} unaddressed** "
+            f"addressed / {len(reconciliation.get('dispositioned') or [])} dispositioned / "
+            f"{len(unaddressed)} unaddressed** "
             f"(alerts {reconciliation.get('alerts_total', 0)}, "
             f"needles with hits {reconciliation.get('needles_with_hits', 0)})"
         )
@@ -107,6 +112,9 @@ async def write_interpretation_summary(
             + "; ".join(scan_reasons or ["cap reached"])
             + ") — counts and reconciliation are LOWER BOUNDS."
         )
+    # The verdict goes right after the header bullets, however many there are; a fixed index put
+    # it between them (2026-10-14).
+    verdict_at = len(lines)
     if findings:
         lines.append("")
         lines.append("## Findings")
@@ -118,6 +126,17 @@ async def write_interpretation_summary(
                 f"| {idx} | {_md_cell(f.get('severity') or 'n/a', 16)} "
                 f"| {_md_cell(f.get('confidence') or 'n/a', 16)} "
                 f"| {_md_cell(f.get('title'), 160)} |"
+            )
+    if dispositions:
+        lines.append("")
+        lines.append("## Dispositions — digest items answered without a claim (never staged)")
+        lines.append("")
+        lines.append("| Item | Status | Reason | Cites |")
+        lines.append("|------|--------|--------|-------|")
+        for d in dispositions:
+            lines.append(
+                f"| {_md_cell(d.get('item'), 160)} | {_md_cell(d.get('status'), 20)} "
+                f"| {_md_cell(d.get('reason'), 2000)} | {_md_cell(', '.join(d.get('audit_ids') or []), 200)} |"
             )
     if unaddressed:
         lines.append("")
@@ -161,6 +180,9 @@ async def write_interpretation_summary(
         reconcile_lines = "\n".join(
             f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed[:40]
         )[:reconcile_cap]
+        disposition_lines = "\n".join(
+            f"- {d.get('item')}: {d.get('status')} - {d.get('reason')}" for d in dispositions
+        )
         verdict_system = (
             "You are the lead DFIR analyst. Write the case verdict as "
             "COMPACT MARKDOWN (this renders in the examiner's briefing "
@@ -189,6 +211,8 @@ async def write_interpretation_summary(
             f"Coverage gaps: {gaps_line}\n\n"
             f"Digest reconciliation (unaddressed items):\n"
             f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
+            f"Dispositions the analysis already gave (use them; do not re-judge without rows):\n"
+            f"{disposition_lines or '(none)'}\n\n"
             + (
                 "SCAN COVERAGE WARNING: the briefing scan was truncated ("
                 + "; ".join(scan_reasons or ["cap reached"])
@@ -223,7 +247,7 @@ async def write_interpretation_summary(
                     budget=LoopBudget(rounds=2, seconds=120.0, calls=4),
                     audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
                 )
-                verdict = str(loop.get("reply") or "").strip()[:2000]
+                verdict = str(loop.get("reply") or "").strip()
         except Exception as exc:  # noqa: BLE001 — verdict is best-effort
             log.debug("Verdict context loop failed: %s", exc)
         if not verdict:
@@ -232,14 +256,13 @@ async def write_interpretation_summary(
                     {"role": "system", "content": verdict_system},
                     {"role": "user", "content": verdict_user},
                 ])
-                verdict = str(getattr(response, "content", str(response))).strip()[:2000]
+                verdict = str(getattr(response, "content", str(response))).strip()
             except Exception as exc:  # noqa: BLE001 — verdict is best-effort
                 log.warning("Verdict LLM pass failed: %s", exc)
 
+    # Whole: the verdict used to be cut at 2,000 characters, mid-row of its disposition table.
     if verdict:
-        lines.insert(4, "")
-        lines.insert(5, "## Executive verdict")
-        lines.insert(6, verdict)
+        lines[verdict_at:verdict_at] = ["", "## Executive verdict", verdict]
 
     path = analysis / "interpretation.md"
     try:

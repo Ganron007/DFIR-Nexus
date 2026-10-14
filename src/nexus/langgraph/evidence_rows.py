@@ -105,19 +105,29 @@ def stored_rows_by_audit_id(case_dir: Path, audit_ids: list[str]) -> dict[str, l
 
 
 def unique_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict[str, Any]]:
-    """The stored rows of the given ids in citation order, duplicates dropped, capped at EVIDENCE_ROW_CAP."""
+    """The stored rows of the given ids, duplicates dropped, capped at EVIDENCE_ROW_CAP.
+
+    Taken in turn from each cited id, in citation order (D194). Taking the first id's rows first
+    let one call fill the cap: on 2026-10-14 a call returned 63 rows, so every claim that cited it
+    first got the same 12 rows, the same subject, and was linked to another claim's DRAFT.
+    """
+    queues = [[r for r in stored.get(aid, []) if isinstance(r, dict)]
+              for aid in dict.fromkeys(audit_ids)]
     out: list[dict[str, Any]] = []
     seen: set[tuple[Any, Any, Any]] = set()
-    for aid in audit_ids:
-        for row in stored.get(aid, []):
-            if not isinstance(row, dict):
+    depth = 0
+    while len(out) < EVIDENCE_ROW_CAP and any(depth < len(q) for q in queues):
+        for queue in queues:
+            if depth >= len(queue) or len(out) >= EVIDENCE_ROW_CAP:
                 continue
+            row = queue[depth]
             key = (row.get("source"), row.get("loc"), row.get("detail"))
             if key in seen:
                 continue
             seen.add(key)
             out.append(row)
-    return out[:EVIDENCE_ROW_CAP]
+        depth += 1
+    return out
 
 
 def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:

@@ -460,13 +460,19 @@ def write_case_digest(case_dir: Path, digest: dict[str, Any]) -> dict[str, str]:
 
 
 def reconciliation_checklist(digest: dict[str, Any],
-                             findings: list[dict[str, Any]]) -> dict[str, Any]:
-    """Deterministic addressed/unaddressed check of the digest vs findings.
+                             findings: list[dict[str, Any]],
+                             dispositions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Deterministic addressed/dispositioned/unaddressed check of the digest.
 
     Every alert ≥ high and every high-count needle must be mentioned by at
-    least one staged finding; anything not mentioned is an explicit gap the
-    verdict must address (never silently omitted).
+    least one finding (addressed) or answered by a disposition that names it
+    (dispositioned, D193); anything else is an explicit gap the verdict must
+    address (never silently omitted).
     """
+    answered = " ".join(
+        f"{d.get('item') or ''} {d.get('reason') or ''}"
+        for d in dispositions or [] if isinstance(d, dict)
+    ).lower()
     parts: list[str] = []
     for f in findings or []:
         if not isinstance(f, dict):
@@ -485,7 +491,17 @@ def reconciliation_checklist(digest: dict[str, Any],
 
     unaddressed: list[dict[str, str]] = []
     addressed: list[dict[str, str]] = []
+    dispositioned: list[dict[str, str]] = []
     seen: set[str] = set()
+
+    def _place(key: str, item: dict[str, str]) -> None:
+        if key in blob:
+            addressed.append(item)
+        elif key in answered:
+            dispositioned.append(item)
+        else:
+            unaddressed.append(item)
+
     for alert in (digest.get("alerts") or [])[:60]:
         title = str(alert.get("title") or "").strip()
         key = title[:48].lower()
@@ -496,7 +512,7 @@ def reconciliation_checklist(digest: dict[str, Any],
             "kind": "alert",
             "value": f"[{str(alert.get('level', '')).upper()}] {title} ({alert.get('host', '')})",
         }
-        (addressed if key in blob else unaddressed).append(item)
+        _place(key, item)
 
     high_needles = [r for r in (digest.get("signal_map") or {}).get("with_hits", []) if r.get("hits", 0) >= 3]
     for row in high_needles[:40]:
@@ -505,10 +521,11 @@ def reconciliation_checklist(digest: dict[str, Any],
             continue
         seen.add(needle)
         item = {"kind": "needle", "value": f"{row.get('needle')} ({row.get('hits')} hits)"}
-        (addressed if needle in blob else unaddressed).append(item)
+        _place(needle, item)
 
     return {
         "addressed": addressed,
+        "dispositioned": dispositioned,
         "unaddressed": unaddressed[:40],
         "alerts_total": len(digest.get("alerts") or []),
         "needles_with_hits": len((digest.get("signal_map") or {}).get("with_hits") or []),

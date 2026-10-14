@@ -154,6 +154,35 @@ def test_two_claims_on_their_own_rows_are_two_drafts_citing_only_their_own_calls
         "hayabusa/evtx-timeline.csv:20"]
 
 
+def test_two_claims_that_cite_the_same_large_call_first_are_two_drafts(case):
+    """D194 (2026-10-14 run 5): a 63-row call cited first filled every claim's 12 rows, so a second
+    claim got the first one's subject and evidence and was linked to its DRAFT."""
+    from nexus.case_manager import CaseManager
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    encoded = _search(case_dir, [{"loc": f"hayabusa/evtx-timeline.csv:{n}", "host": "ws01",
+                                  "detail": f"RuleTitle: Potentially Malicious PwSh row {n}"}
+                                 for n in range(1, 30)],
+                      {"match": {"text": "encodedcommand"}})
+    dumper = _search(case_dir, [{"loc": "hayabusa/evtx-timeline.csv:900", "host": "ws01",
+                                 "detail": "RuleTitle: Antivirus - Password Dumper Signature"}],
+                     {"match_phrase": {"text": "Password Dumper"}})
+    sdelete = _search(case_dir, [{"loc": "recmd/reg.csv:44", "host": "ws01",
+                                  "detail": "HKU\\.DEFAULT\\Software\\Sysinternals\\SDelete"}],
+                      {"match": {"text": "sdelete"}})
+    a = {**LLM, "title": "Credential dumping signature", "audit_ids": [encoded, dumper]}
+    b = {**LLM, "title": "Secure deletion tool configured", "audit_ids": [encoded, sdelete]}
+    asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg(a, b)]),
+                               {"record_finding": _RealRecord(case_dir)}))
+
+    drafts = {f["title"]: f for f in CaseManager()._load_findings(case_dir)}
+    assert set(drafts) == {"Credential dumping signature", "Secure deletion tool configured"}
+    locs = {t: {e["loc"] for e in d["evidence"]} for t, d in drafts.items()}
+    assert "hayabusa/evtx-timeline.csv:900" in locs["Credential dumping signature"]
+    assert "recmd/reg.csv:44" in locs["Secure deletion tool configured"]
+
+
 def test_the_same_claim_on_the_same_rows_is_reported_as_linked_not_staged(case):
     from nexus.langgraph.llm_pipeline import stage_findings
 
@@ -197,7 +226,48 @@ def test_only_the_models_findings_are_staged(case):
     assert len(timeline.payloads) == 1
     staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
     assert staging == {"run_id": run.run_id, "candidates": 1, "staged": ["F-2"], "linked": [],
-                       "rejected": []}
+                       "rejected": [], "dispositions": []}
+
+
+class _VerdictModel:
+    """A model whose only job here is the verdict: one long reply, so a cut would show."""
+
+    def __init__(self, text: str):
+        self.text = text
+
+    async def ainvoke(self, messages, **_kw):
+        from types import SimpleNamespace
+        return SimpleNamespace(content=self.text)
+
+    def invoke(self, messages, **_kw):
+        from types import SimpleNamespace
+        return SimpleNamespace(content=self.text, tool_calls=[])
+
+    def bind_tools(self, *_a, **_kw):
+        return self
+
+
+def test_dispositions_are_recorded_and_shown_but_never_staged(case):
+    """D193: the loop's dispositions reach the run record and the verdict, not record_finding."""
+    from nexus.langgraph.llm_pipeline import stage_findings
+
+    case_dir, run = case
+    record = _Tool({"finding_id": "F-3"})
+    disposition = {"item": "certutil (0 hits)", "status": "not_examined",
+                   "reason": "needle checked, no rows", "audit_ids": []}
+    state = {**_state(case_dir, run.run_id, [_msg(LLM)]), "dispositions": [disposition]}
+    verdict = "Verdict paragraph. " + "| row | covered | basis |\n" * 200 + "LAST-ROW-MARKER"
+    asyncio.run(stage_findings(state, {"record_finding": record}, model=_VerdictModel(verdict)))
+
+    assert [p["title"] for p in record.payloads] == [LLM["title"]]
+    staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
+    assert staging["dispositions"] == [disposition]
+    text = (case_dir / "analysis" / "interpretation.md").read_text(encoding="utf-8")
+    assert "## Dispositions" in text and "certutil (0 hits)" in text and "not_examined" in text
+    # Whole and in place: after the header bullets, before the findings table.
+    assert "LAST-ROW-MARKER" in text
+    assert text.index("## Executive verdict") > text.index("- Findings staged (DRAFT)")
+    assert text.index("## Executive verdict") < text.index("## Dispositions")
 
 
 def test_the_run_writes_no_draft_report_and_its_verdict_covers_its_own_findings(case):
