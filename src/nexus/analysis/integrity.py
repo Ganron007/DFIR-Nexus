@@ -287,6 +287,65 @@ def load_known_audit_ids(case_dir) -> set[str]:
     return ids
 
 
+#: Audit tools that record a command execution: the call a tool-lane ledger row's audit id names.
+_EXECUTION_TOOL_PREFIXES = ("run_", "remote_")
+
+
+def _ledger_audit_ids(case) -> set[str]:
+    ids: set[str] = set()
+    for pattern in ("extractions/_tool_lane_ledger.json", "runs/*/extractions/_tool_lane_ledger.json",
+                    "runs/*/ledger/_tool_lane_ledger.json"):
+        for path in case.glob(pattern):
+            try:
+                rows = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for row in rows if isinstance(rows, list) else []:
+                if isinstance(row, dict) and row.get("audit_id"):
+                    ids.add(str(row["audit_id"]))
+    return ids
+
+
+def ambiguous_audit_ids(case_dir, cited: list[str]) -> dict[str, list[str]]:
+    """Cited ids this case's records give to more than one call, with the calls each one names.
+
+    Two writers once numbered ids each on their own (D155, D178): one id names an ``es_search`` and
+    a ``record_finding`` in the case log, or a tool-lane run in a ledger and an ``ingest_auto`` in
+    the log. Such a citation identifies no single call, and the rows staging reads for it may be the
+    other call's. A ledger id agrees with a log entry only when that entry is a command execution.
+    """
+    from pathlib import Path
+
+    wanted = {str(a) for a in cited if a}
+    case = Path(case_dir)
+    if not wanted or not (case / "audit").is_dir():
+        return {}
+    tools: dict[str, set[str]] = {}
+    for jsonl in (case / "audit").glob("*.jsonl"):
+        try:
+            with jsonl.open(encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if not any(a in line for a in wanted):
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    aid = str(entry.get("audit_id") or "")
+                    if aid in wanted:
+                        tools.setdefault(aid, set()).add(str(entry.get("tool") or "?"))
+        except OSError:
+            continue
+    ledger = _ledger_audit_ids(case)
+    out: dict[str, list[str]] = {}
+    for aid, names in tools.items():
+        if aid in ledger and any(not n.startswith(_EXECUTION_TOOL_PREFIXES) for n in names):
+            out[aid] = ["a tool-lane run (ledger)", *sorted(names)]
+        elif len(names) > 1:
+            out[aid] = sorted(names)
+    return out
+
+
 _NARRATIVE_FIELDS = ("title", "description", "interpretation", "rationale",
                      "claim", "impact", "observation")
 
@@ -416,6 +475,16 @@ def enforce_submission_integrity(
             f"case's audit log: {listed}{more}. A finding may not reference a tool call that "
             f"never happened (WP 10.4)."
         )
+    else:
+        ambiguous = ambiguous_audit_ids(case_dir, citations["verified"])
+        citations["ambiguous"] = sorted(ambiguous)
+        if ambiguous:
+            listed = "; ".join(f"{aid} ({', '.join(calls)})" for aid, calls in sorted(ambiguous.items())[:5])
+            errors.append(
+                f"citation integrity: {len(ambiguous)} cited audit_id(s) name more than one call in "
+                f"this case's records: {listed}. A citation must identify one call; cite the query "
+                f"that returned the rows (D155, D178)."
+            )
 
     for item in timestamps["nullified"]:
         warnings.append(
