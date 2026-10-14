@@ -90,35 +90,6 @@ def test_linkage_cache_invalidates_on_mtime(tmp_path):
     assert set(linkage_map(case)) == {"hayabusa-tester-20260919-005", "ingest_auto-tester-20260919-006"}
 
 
-def test_n4_finding_candidates_have_no_unrelated_audit_padding(tmp_path, monkeypatch):
-    """The salvage path used to attach the first OK audit id of ANY tool when
-    no family match existed. It must now produce no audit_ids at all."""
-    from nexus.langgraph import query_pack
-    from nexus.langgraph.query_pack import n4_finding_candidates
-
-    case = _case(tmp_path)
-    _ledger(case, [
-        {"tool": "evtxecmd", "status": "OK", "audit_id": "evtxecmd-tester-20260919-002"},
-    ])
-    hit = {
-        "family": "suricata", "file": "suricata/eve.json", "line": "2",
-        "text": "sdelete.exe observed", "terms": "sdelete", "terms_list": ["sdelete"],
-    }
-    monkeypatch.setattr(query_pack, "n4_hits", lambda *a, **k: ([hit], "csv"))
-    monkeypatch.setattr(query_pack, "load_case_intake", lambda d: {})
-    monkeypatch.setattr(query_pack, "collect_query_terms", lambda i: ["x"])
-    monkeypatch.setattr(query_pack, "collect_playbook_query_terms", lambda i: ["x"])
-    candidates = n4_finding_candidates(case)
-    assert candidates
-    assert candidates[0]["audit_ids"] == []
-
-    # once the ingest run is audited, the same hit links
-    _audit_entry(case, tool="ingest_auto", audit_id="ingest_auto-tester-20260919-003",
-                 result_summary={"source": "suricata"})
-    candidates2 = n4_finding_candidates(case)
-    assert candidates2[0]["audit_ids"] == ["ingest_auto-tester-20260919-003"]
-
-
 def test_finding_payload_cites_only_the_models_calls():
     from nexus.langgraph.llm_pipeline import _finding_tool_payload
 

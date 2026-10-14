@@ -2,9 +2,8 @@
 
 The staging step used to stage N4 needle clusters when the model produced no candidate, when
 every model candidate was rejected ("N4 hit salvage"), and beside the model's findings, chosen
-by a keyword list from earlier cases (sdelete, pst, Google Drive, usb...). These drive the real
-`stage_findings`; `n4_finding_candidates` is made to return a cluster so that any salvage would
-show.
+by a keyword list from earlier cases (sdelete, pst, Google Drive, usb...). That generator
+(`n4_finding_candidates`) has since been removed; these drive the real `stage_findings`.
 """
 from __future__ import annotations
 
@@ -15,9 +14,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-CLUSTER = {"title": "Signal: usbstor - 3 hit(s) across registry",
-           "observation": "usbstor matched 3 rows", "interpretation": "needle cluster",
-           "confidence": "LOW", "audit_ids": ["nexus-test-20261013-001"]}
 LLM = {"title": "Encoded PowerShell launched by a service",
        "observation": "4104 script block decodes to a downloader",
        "interpretation": "execution of a staged payload", "confidence": "MEDIUM",
@@ -37,12 +33,10 @@ class _Tool:
 
 
 @pytest.fixture()
-def case(monkeypatch):
-    import nexus.langgraph.query_pack as query_pack
+def case():
     from nexus.config import settings
     from nexus.langgraph.pipeline_runs import create_run
 
-    monkeypatch.setattr(query_pack, "n4_finding_candidates", lambda *_a, **_k: [dict(CLUSTER)])
     case_dir = settings.cases_root / "CASE-M1STAGE"
     (case_dir / "analysis").mkdir(parents=True)
     (case_dir / "audit").mkdir()

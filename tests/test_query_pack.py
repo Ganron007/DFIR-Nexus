@@ -7,7 +7,6 @@ from pathlib import Path
 from nexus.langgraph.query_pack import (
     build_query_pack_markdown,
     collect_query_terms,
-    n4_finding_candidates,
     parse_intake_window,
     parse_window,
     scan_extractions,
@@ -229,63 +228,6 @@ def test_write_snippets_also_writes_query_pack(tmp_path: Path):
     assert "sdelete" in qp.lower()
 
 
-def test_n4_finding_candidates_quote_sdelete_not_acrobat(tmp_path: Path):
-    ext = tmp_path / "extractions" / "pecmd"
-    ext.mkdir(parents=True)
-    (ext / "prefetch_Timeline.csv").write_text(
-        "RunTime,ExecutableName\n"
-        "2020-11-14 04:49:43,ACRORD32.EXE\n"
-        "2020-11-14 13:42:11,sdelete.exe\n",
-        encoding="utf-8",
-    )
-    recmd = tmp_path / "extractions" / "recmd"
-    recmd.mkdir(parents=True)
-    (recmd / "UserAssist__NTUSER.DAT.csv").write_text(
-        "name,path\n"
-        "docs,G:\\My Drive\\SRL-EMAIL-EXPORT.pst\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "CASE.yaml").write_text(
-        "intake:\n  playbooks: data_staging\n  host: rocba\n",
-        encoding="utf-8",
-    )
-    ledger = [
-        {
-            "status": "OK",
-            "tool": "windows/pecmd",
-            "audit_id": "win-e-20260101-001",
-            "purpose": "prefetch",
-        },
-        {
-            "status": "OK",
-            "tool": "windows/recmd",
-            "audit_id": "win-e-20260101-002",
-            "purpose": "registry",
-        },
-    ]
-    cands = n4_finding_candidates(tmp_path, ledger=ledger)
-    assert cands
-    blob = " ".join(f"{c['title']} {c['observation']}" for c in cands).lower()
-    assert "sdelete" in blob
-    assert "completed ok" not in blob
-    assert "acrord32" not in blob
-    assert "pst" in blob
-    assert any(c.get("audit_ids") for c in cands)
-
-
-def test_n4_finding_candidates_empty_without_hits(tmp_path: Path):
-    (tmp_path / "extractions" / "pecmd").mkdir(parents=True)
-    (tmp_path / "extractions" / "pecmd" / "prefetch_Timeline.csv").write_text(
-        "RunTime,ExecutableName\n2020-11-14 04:49:43,ACRORD32.EXE\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "CASE.yaml").write_text(
-        "intake:\n  playbooks: data_staging\n",
-        encoding="utf-8",
-    )
-    assert n4_finding_candidates(tmp_path, ledger=[]) == []
-
-
 def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     from nexus.langgraph.query_pack import run_ad_hoc_query
 
@@ -359,9 +301,6 @@ def test_n4_scans_hayabusa_named_file(tmp_path: Path):
     assert "wevtutil" in hits
     assert "hayabusa" in md.lower()
     assert hits.index("wevtutil") < hits.index("rundll32")
-    cands = n4_finding_candidates(tmp_path, ledger=[])
-    blob = " ".join(f"{c['title']} {c['observation']}" for c in cands).lower()
-    assert "wevtutil" in blob or "1102" in blob
 
 
 def test_numeric_needles_are_not_substrings():
@@ -410,10 +349,6 @@ def test_n4_skips_artifacts_jsonl_and_hash_1102(tmp_path: Path):
     assert "artifacts.jsonl" not in files
     assert "errdev" not in texts
     assert "eventid 1102" in texts or "wevtutil" in texts
-    cands = n4_finding_candidates(tmp_path, ledger=[])
-    blob = " ".join(f"{c['title']} {c['observation']}" for c in cands).lower()
-    assert "sdelete" not in blob
-    assert "wevtutil" in blob or "1102" in blob
 
 
 def test_parse_needles_splits_commas_not_spaces():
