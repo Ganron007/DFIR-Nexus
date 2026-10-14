@@ -348,6 +348,44 @@ def ambiguous_audit_ids(case_dir, cited: list[str]) -> dict[str, list[str]]:
     return out
 
 
+def empty_citations(case_dir, cited: list[str]) -> list[str]:
+    """Cited ids whose calls returned no rows: a search recorded with ``total`` 0 or an error.
+
+    A call that records no count (a tool run, a lead) is not empty: it is grounded otherwise.
+    """
+    from pathlib import Path
+
+    wanted = {str(a) for a in cited if a}
+    if not wanted or case_dir is None or not (Path(case_dir) / "audit").is_dir():
+        return []
+    empty: set[str] = set()
+    grounded: set[str] = set()
+    for jsonl in (Path(case_dir) / "audit").glob("*.jsonl"):
+        try:
+            with jsonl.open(encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if not any(a in line for a in wanted):
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    aid = str(entry.get("audit_id") or "")
+                    if aid not in wanted:
+                        continue
+                    summary = entry.get("result_summary") or {}
+                    if not isinstance(summary, dict) or summary.get("evidence_rows"):
+                        grounded.add(aid)
+                    elif summary.get("error") or summary.get("degraded") or (
+                            "total" in summary and not summary.get("total")):
+                        empty.add(aid)
+                    else:
+                        grounded.add(aid)
+        except OSError:
+            continue
+    return sorted(empty - grounded)
+
+
 _NARRATIVE_FIELDS = ("title", "description", "interpretation", "rationale",
                      "claim", "impact", "observation")
 
@@ -487,6 +525,17 @@ def enforce_submission_integrity(
                 f"this case's records: {listed}. A citation must identify one call; cite the query "
                 f"that returned the rows (D155, D178)."
             )
+        else:
+            # A finding stands on rows. One whose every citation found nothing was staged on
+            # 2026-10-14 (F-gate-bot-024: two refused queries, total 0), with the model's own
+            # wording as its only evidence.
+            empty = empty_citations(case_dir, citations["verified"])
+            citations["empty"] = empty
+            if citations["verified"] and len(empty) == len(citations["verified"]):
+                errors.append(
+                    "FD-001: every cited call returned no rows (" + ", ".join(empty[:5])
+                    + "). A finding must cite the call that returned what it describes."
+                )
 
     for item in timestamps["nullified"]:
         warnings.append(

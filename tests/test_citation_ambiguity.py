@@ -65,3 +65,55 @@ def test_a_citation_that_names_one_call_still_passes(tmp_path):
     out = enforce_submission_integrity(_finding("nexus-x-20261014-002", "nexus-x-20261014-003"), case)
     assert out["ok"] is True, out["errors"]
     assert out["citations"]["ambiguous"] == []
+
+
+def test_a_refused_query_is_recorded_as_refused_not_as_an_empty_result(monkeypatch):
+    """2026-10-14, Mode 1 run 4: the loop saw "query references fields that cannot match", and
+    the audit row said total 0 and nothing else."""
+    import yaml
+
+    from nexus.config import settings
+    from nexus.langgraph import backbone, es_native
+
+    case = settings.cases_root / "CASE-REFUSED"
+    (case / "audit").mkdir(parents=True)
+    (case / "CASE.yaml").write_text(yaml.safe_dump({"case_id": case.name, "status": "open"}),
+                                    encoding="utf-8")
+    monkeypatch.setattr(es_native, "es_search", lambda case_id, query, **kw: {
+        "case_id": case_id, "error": "query references fields that cannot match: details",
+        "degraded": True, "failed_terms": [{"field": "details", "reason": "unknown_field"}],
+        "total": 0, "returned": 0, "hits": []})
+    out = backbone.backbone_call("es_search", audit=AuditWriter("nexus", audit_dir=case / "audit"),
+                                 case_dir=case, query={"term": {"details": "x"}})
+    aid = out["provenance"]["audit_id"]
+    row = next(json.loads(line) for line in (case / "audit" / "nexus.jsonl").read_text(
+        encoding="utf-8").splitlines() if json.loads(line)["audit_id"] == aid)
+    assert row["result_summary"]["degraded"] is True
+    assert "cannot match" in row["result_summary"]["error"]
+
+
+def _search_row(case: Path, audit_id: str, **summary) -> None:
+    AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search", params={"case_id": case.name}, result_summary=summary, audit_id=audit_id)
+
+
+def test_a_finding_whose_every_citation_found_nothing_is_refused(tmp_path):
+    """F-gate-bot-024 (2026-10-14) was staged on two refused queries, total 0: its only evidence
+    was the model's own wording."""
+    case = _case(tmp_path)
+    _search_row(case, "nexus-x-20261014-211", total=0, returned=0, evidence_rows=[])
+    _search_row(case, "nexus-x-20261014-217", total=0, error="cannot match: details", degraded=True)
+    out = enforce_submission_integrity(_finding("nexus-x-20261014-211", "nexus-x-20261014-217"), case)
+    assert out["ok"] is False
+    assert "every cited call returned no rows" in out["errors"][0]
+
+
+def test_one_citation_that_returned_rows_or_a_tool_run_grounds_the_finding(tmp_path):
+    case = _case(tmp_path)
+    _search_row(case, "nexus-x-20261014-211", total=0, returned=0, evidence_rows=[])
+    _search_row(case, "nexus-x-20261014-220", total=3, returned=3,
+                evidence_rows=[{"source": "hayabusa/x.csv", "detail": "row", "loc": "x.csv:2"}])
+    _log(case, "run_windows_command", "nexus-x-20261014-230")
+    assert enforce_submission_integrity(
+        _finding("nexus-x-20261014-211", "nexus-x-20261014-220"), case)["ok"] is True
+    assert enforce_submission_integrity(_finding("nexus-x-20261014-230"), case)["ok"] is True
