@@ -184,7 +184,7 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "signal_map": _signal_map(case_dir, brief),
         "scan_stats": brief.get("scan_stats") or {},
         "alerts": brief.get("alerts") or [],
-        "top_leads": _top_leads(case_dir),
+        "top_leads": top_leads(case_dir),
         "entities": brief.get("entities") or {},
         "entity_spans": _entity_spans(case_dir),
         "timeline": _timeline(case_dir),
@@ -205,7 +205,7 @@ def lead_citation(lead: dict[str, Any]) -> str:
     return f" [audit_id {ids[0]}]" if ids else ""
 
 
-def _top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
+def top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
     """The case's top leads, for every mode to see the same signals.
 
     WO-R1F item 1: "Every mode gets the same top leads." Mode 2's director and

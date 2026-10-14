@@ -108,11 +108,11 @@ def test_a_mode1_finding_citing_a_lead_stands_on_that_leads_rows():
 
 
 def test_the_digest_shows_each_lead_with_its_citation(tmp_path):
-    from nexus.langgraph.case_digest import _top_leads, render_digest_markdown
+    from nexus.langgraph.case_digest import render_digest_markdown, top_leads
 
     case = _case(tmp_path)
     build_leads(case, probe=_NoIndex(), known_fields=set())
-    top = _top_leads(case)
+    top = top_leads(case)
     assert top and all(lead["audit_ids"] for lead in top)
     text = render_digest_markdown({"case_id": case.name, "top_leads": top})
     cleared = next(lead for lead in top if lead["subject"] == "Log Cleared")

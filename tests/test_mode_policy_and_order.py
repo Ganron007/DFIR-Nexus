@@ -95,3 +95,28 @@ def test_an_informed_mode3_run_plans_with_the_prior_analysis(tmp_path):
 
 def test_an_independent_mode3_run_does_not(tmp_path):
     assert "Another run's DRAFT" not in _supervisor_prompt(_case(tmp_path), "independent")
+
+
+def test_mode2_workers_are_handed_the_cases_top_leads(tmp_path):
+    """The worker summary read `top_leads` from the briefing, which has none: every Mode 2 worker
+    got the alert surface and no TOP LEADS block (traced on CASE-C5B04D31, 2026-10-14)."""
+    case = _case(tmp_path)
+    lead = {"kind": "rule_engine", "subject": "Antivirus - Password Dumper Signature",
+            "family": "hayabusa", "detail": "crit detection", "score": 1.0, "rows": [],
+            "audit_ids": ["nexus-t-20261014-007"], "extra": {"level": "crit", "crit_high": True}}
+    (case / "analysis" / "leads.jsonl").write_text(json.dumps(lead) + "\n", encoding="utf-8")
+
+    def work(order, **kwargs):
+        m2.request_stop(kwargs["case_dir"], kwargs["run_id"])
+        return m2.AgentResult(order_id=order.order_id, role=order.role, status="ok",
+                              parsed={"notes": [], "candidate_findings": [], "coverage": {}})
+
+    with patch.object(m2, "run_work_order", side_effect=work), \
+         patch.object(m2, "plan_work_orders", return_value=[
+             m2.WorkOrder(order_id="wo-1", role="evidence", task="t1", family="hayabusa")]), \
+         patch("nexus.langgraph.briefing.case_briefing", return_value={"alerts": []}):
+        state = m2.run_mode2(case, "what happened", model=object(), es_ok=True)
+    summary = state["digest_summary"]
+    assert "TOP LEADS (1):" in summary
+    assert "- [CRIT] Antivirus - Password Dumper Signature" in summary
+    assert "[audit_id nexus-t-20261014-007]" in summary

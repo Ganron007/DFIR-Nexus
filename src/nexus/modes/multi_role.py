@@ -1940,8 +1940,12 @@ def run_mode2(
     # never reached a Mode 2 seat while they did reach Mode 1.
     try:
         from nexus.langgraph.briefing import case_briefing
+        from nexus.langgraph.case_digest import top_leads
 
         brief = case_briefing(case_dir)
+        # The top leads live in the case digest, not the briefing: summarising the briefing alone
+        # gave every Mode 2 worker the alert surface and no TOP LEADS block (traced 2026-10-14).
+        brief = {**brief, "top_leads": brief.get("top_leads") or top_leads(case_dir)}
         state["digest_summary"] = _digest_summary(brief)
         sink.emit(new_event(
             run_id, "briefing.ready", actor="system",
