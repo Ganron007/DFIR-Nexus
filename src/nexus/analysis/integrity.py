@@ -317,8 +317,10 @@ def ambiguous_audit_ids(case_dir, cited: list[str]) -> dict[str, list[str]]:
     from pathlib import Path
 
     wanted = {str(a) for a in cited if a}
+    if not wanted or case_dir is None:
+        return {}
     case = Path(case_dir)
-    if not wanted or not (case / "audit").is_dir():
+    if not (case / "audit").is_dir():
         return {}
     tools: dict[str, set[str]] = {}
     for jsonl in (case / "audit").glob("*.jsonl"):
