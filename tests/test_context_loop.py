@@ -827,3 +827,27 @@ def test_the_model_is_shown_the_audit_id_of_each_call_it_ran(tmp_path, monkeypat
     aid = result["tool_calls"][0]["audit_id"]
     assert aid
     assert f"- es_search [audit_id {aid}]: " in model.prompts[1][-1]["content"]
+
+
+def test_a_round_sends_the_system_text_once_and_the_task_before_the_observations(tmp_path, monkeypatch):
+    """2026-10-14 trace: every round's user message repeated the whole system message (4.5 KB) and
+    put the task behind the growing observations. Nothing is dropped: the system text stays in
+    the system message, the task and observations are still sent, and the record holds both."""
+    from nexus.langgraph.context_loop import run_context_loop
+
+    case = _case(tmp_path)
+    calls: list[dict[str, Any]] = []
+    _fake_backbone(monkeypatch, calls)
+    model = _ScriptedModel([
+        {"tool_calls": [{"tool": "es_search", "args": {"query": {"match_all": {}}, "size": 5},
+                         "why": "find rows"}]},
+        {"answer": "done", "citations": []},
+    ])
+    run_context_loop(case_dir=case, case_id="CASE-LOOP", question="WORK ORDER wo-1: find X",
+                     model=model, audit=AuditWriter("nexus", audit_dir=case / "audit"))
+    system, user = model.prompts[1][0]["content"], model.prompts[1][-1]["content"]
+    assert "ACTIVE CASE: CASE-LOOP" in system and "ACTIVE CASE: CASE-LOOP" not in user
+    assert user.index("WORK ORDER wo-1") < user.index("- es_search [audit_id ")
+    record = sorted((case / "analysis" / "llm_context").glob("*context-loop*round-2*"))[-1]
+    text = record.read_text(encoding="utf-8")
+    assert "## SYSTEM MESSAGE" in text and "ACTIVE CASE: CASE-LOOP" in text and "WORK ORDER wo-1" in text

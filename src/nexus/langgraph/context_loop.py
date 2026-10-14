@@ -795,16 +795,25 @@ def run_context_loop(
             persist_context,
         )
 
+        # What does not change between rounds comes first and once: the system message holds the
+        # role, the allowlist and the tool contracts; the user message opens with the protocol and
+        # the task (work order, procedures, field sheet), then the observations that grow each
+        # round, then the round's nudge. The system text used to be repeated at the top of every
+        # user message (4.5 KB per call, 2026-10-14 trace), and the task sat behind the growing
+        # observations, so no two rounds shared more than the system message as a prefix.
         sections = [
-            (0, "orientation", base_system + protocol + _round_nudge(round_no)),
-            (1, "observations", _observations_block(observations)),
-            (2, "question", question),
+            (0, "protocol", protocol.strip()),
+            (1, "question", question),
+            (2, "observations", _observations_block(observations)),
             (3, "prior_conversation", history_block),
+            (4, "round", _round_nudge(round_no).strip()),
         ]
         window = case_window(case_dir)
         packed, report = pack_sections(sections, window=window)
+        # The record holds both messages the model received (D174: it held the user message only).
         persist_context(
-            case_dir, f"context-loop-{task}-round-{round_no}", packed, report,
+            case_dir, f"context-loop-{task}-round-{round_no}",
+            "## SYSTEM MESSAGE\n\n" + base_system + "\n\n## USER MESSAGE\n\n" + packed, report,
             meta={"case_id": case_id, "turn_id": turn_id, "question": question[:160]},
         )
         log_usage(f"context-loop-{task}", report)

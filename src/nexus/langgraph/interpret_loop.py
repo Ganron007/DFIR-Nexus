@@ -187,6 +187,11 @@ def _replan_for_leads(leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return items
 
 
+def _model_record(system: str, user: str) -> str:
+    """Both messages a model call receives, for the persisted context record (D174)."""
+    return f"## SYSTEM MESSAGE\n\n{system}\n\n## USER MESSAGE\n\n{user}" if system else user
+
+
 def _parse_json_blob(text: str) -> Any:
     """Tolerant JSON extraction: whole content, fenced blocks, or first blob."""
     if not text:
@@ -541,14 +546,16 @@ async def run_interpret_loop(
     policy = normalize_policy(context_policy or state.get("context_policy"))
     sections = [*sections, *context_sections(case_dir, policy)]
 
-    def _packed(tag: str, extra: list[tuple[int, str, str]]) -> str:
+    def _packed(tag: str, extra: list[tuple[int, str, str]], system: str = "") -> str:
         base = [*extra, *sections]
         # `sections` from the caller may already start with the digest; never
         # pack it twice (double content + double budget accounting).
         if not any(name == "case_digest" for _pri, name, _text in base):
             base = [(0, "case_digest", digest_md), *base]
         packed, report = pack_sections(base, window=ctx_window)
-        persist_context(case_dir, tag, packed, report,
+        # The record holds both messages the model receives (D174: the system message, with the
+        # skills, field sheet and query protocol, was missing from it).
+        persist_context(case_dir, tag, _model_record(system, packed), report,
                         meta={"case_id": case_id, "run_id": state.get("run_id", "")})
         log_usage(tag, report)
         return packed
@@ -650,7 +657,7 @@ async def run_interpret_loop(
     orient_system = orient_system + skill_block + query_guidance
     packed = _packed("interpret-orient", [
         (1, "examiner_intake", intake_block),
-    ])
+    ], system=orient_system)
     _progress("orient", f"planning hypotheses and queries ({rounds_total} round(s) allowed)")
     raw = await _call_model(model, [
         {"role": "system", "content": orient_system},
@@ -799,7 +806,7 @@ async def run_interpret_loop(
             (0, "hypotheses", hyps_block),
             (1, "round_results", results_block),
         ]
-        packed = _packed(f"interpret-verify-{round_no}", plus_sections)
+        packed = _packed(f"interpret-verify-{round_no}", plus_sections, system=verify_system)
         raw = await _call_model(model, [
             {"role": "system", "content": verify_system},
             {"role": "user", "content": packed + "\n\nProduce the notes JSON."},
@@ -927,7 +934,7 @@ async def run_interpret_loop(
         (2, "verification_notes", notes_block),
     ]
     _progress("reconcile", f"writing findings from {len(notes_all)} verification note(s)")
-    packed = _packed("interpret-reconcile", reconcile_extra)
+    packed = _packed("interpret-reconcile", reconcile_extra, system=findings_system)
     # Keep the packing stats so the corrective retry's persisted context carries
     # the same completeness header as every other stage.
     _, packed_report = pack_sections(
@@ -962,7 +969,8 @@ async def run_interpret_loop(
         _progress("reconcile", "the findings reply did not parse; one corrective retry")
         try:
             persist_context(
-                case_dir, "interpret-findings-corrective", packed, packed_report,
+                case_dir, "interpret-findings-corrective",
+                _model_record(findings_system, packed), packed_report,
                 meta={"case_id": case_id},
             )
             corrected = await _call_model(model, [
@@ -1006,7 +1014,8 @@ async def run_interpret_loop(
             window=ctx_window,
         )
         try:
-            persist_context(case_dir, "interpret-reconcile-extra", packed_extra,
+            persist_context(case_dir, "interpret-reconcile-extra",
+                            _model_record(extra_system, packed_extra),
                             report_extra, meta={"case_id": case_id})
             log_usage("interpret-reconcile-extra", report_extra)
             extra_text = await _call_model(model, [

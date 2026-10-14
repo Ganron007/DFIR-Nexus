@@ -782,3 +782,18 @@ def test_verify_plans_its_queries_with_the_field_sheet_and_query_protocol(tmp_pa
     verify_system = model.calls[1][0]["content"]
     assert "hypotheses against the ACTUAL rows" in verify_system
     assert query_protocol_block() in verify_system
+
+
+def test_the_persisted_orient_record_holds_the_system_message_too(tmp_path):
+    """D174: the persisted Mode 1 context held the user message only, so the skills, field sheet
+    and query protocol the model was given were missing from the record."""
+    model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
+    asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    record = sorted((tmp_path / "analysis" / "llm_context").glob("*interpret-orient*"))[-1]
+    text = record.read_text(encoding="utf-8")
+    assert text.count("## SYSTEM MESSAGE") == 1 and "## USER MESSAGE" in text
+    assert model.calls[0][0]["content"] in text
