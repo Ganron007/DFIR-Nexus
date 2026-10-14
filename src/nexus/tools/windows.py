@@ -795,6 +795,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"success": False, "error": "Windows tools unavailable on this platform",
                     "platform": sys.platform}
 
+        # Every audit row below names the call's case, so it is written to that case's log
+        # (`audit._named_case`). Without it the rows went wherever the active pointer pointed, and
+        # CASE-C5B04D31's lane ledgers cite 229 ids its own log gives to other calls (D178).
         start = time.monotonic()
         if isinstance(command, str):
             command_text = command
@@ -813,7 +816,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if Path(binary).stem.lower() in denied:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": f"Binary denied: {binary}"},
             )
             return {"success": False, "error": f"Binary denied: {binary}", "audit_id": audit_id}
@@ -822,7 +825,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if binary_key not in _WIN_CATALOG:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": f"Tool not in allowlist: {binary}"},
             )
             return {"success": False, "error": f"Tool not in allowlist: {binary}", "audit_id": audit_id}
@@ -831,7 +834,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if refusal:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": refusal},
             )
             return {"success": False, "error": refusal, "audit_id": audit_id}
@@ -842,7 +845,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         else:
             audit_id = audit.log(
                 tool="run_windows_command",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": f"Tool not found: {binary}"},
             )
             return {
@@ -863,7 +866,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             if not perl:
                 audit_id = audit.log(
                     tool="run_windows_command",
-                    params={"command": command_text[:500], "purpose": purpose[:200]},
+                    params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                     result_summary={"error": "perl required to run mactime.pl"},
                 )
                 return {
@@ -881,7 +884,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             if not py:
                 audit_id = audit.log(
                     tool="run_windows_command",
-                    params={"command": command_text[:500], "purpose": purpose[:200]},
+                    params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                     result_summary={"error": "python required to run catalog .py tools"},
                 )
                 return {
@@ -937,7 +940,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             elapsed = (time.monotonic() - start) * 1000
             audit_id = audit.log(
                 tool="run_windows_command",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": f"Tool not found: {binary}"},
                 elapsed_ms=elapsed,
                 input_files=list(input_hashes) or None,
@@ -948,7 +951,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             elapsed = (time.monotonic() - start) * 1000
             audit_id = audit.log(
                 tool="run_windows_command",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": f"Permission denied: {binary}"},
                 elapsed_ms=elapsed,
                 input_files=list(input_hashes) or None,
@@ -959,7 +962,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             elapsed = (time.monotonic() - start) * 1000
             audit_id = audit.log(
                 tool="run_windows_command",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": f"Command timed out after {timeout}s", "exit_code": -9},
                 elapsed_ms=elapsed,
                 input_files=list(input_hashes) or None,
@@ -971,7 +974,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             elapsed = (time.monotonic() - start) * 1000
             audit_id = audit.log(
                 tool="run_windows_command",
-                params={"command": command_text[:500], "purpose": purpose[:200]},
+                params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
                 result_summary={"error": str(exc), "winerror": getattr(exc, "winerror", None)},
                 elapsed_ms=elapsed,
             )
@@ -1050,7 +1053,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         audit_id = audit.log(
             tool="run_windows_command",
-            params={"command": command_text[:500], "purpose": purpose[:200]},
+            params={"command": command_text[:500], "purpose": purpose[:200], "case_id": case_id},
             result_summary=result_summary,
             elapsed_ms=elapsed,
             input_files=list(input_hashes) or None,
