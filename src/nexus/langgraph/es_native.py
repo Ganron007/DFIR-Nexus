@@ -318,6 +318,26 @@ def _collect_failed(
         _collect_failed(value, types, context, fatal, optional, seen)
 
 
+def similar_fields(field: str, types: dict[str, str], *, limit: int = 4) -> list[str]:
+    """Fields this index has under the same name as ``field``, ignoring case and separators.
+
+    Matched on the full name, then on its last segment; fields in the same namespace come first.
+    These are offered, never substituted: ``ecs.event_data.rule_name`` matches the Sysmon
+    ``ecs.winlog.event_data.RuleName``, which is not the detection name the model meant.
+    """
+    def squash(text: str) -> str:
+        return "".join(ch for ch in text.lower() if ch.isalnum())
+
+    real = [f for f in types if not f.endswith((".kw", ".wc"))]
+    whole = squash(field)
+    last = squash(field.rsplit(".", 1)[-1])
+    exact = [f for f in real if squash(f) == whole]
+    by_name = [f for f in real if f not in exact and squash(f.rsplit(".", 1)[-1]) == last]
+    head = field.split(".", 1)[0]
+    by_name.sort(key=lambda f: (f.split(".", 1)[0] != head, len(f), f))
+    return [*exact, *by_name][:limit]
+
+
 def _should_required(bool_body: dict[str, Any]) -> bool:
     """True when a bool matches only if one of its ``should`` clauses does.
 
@@ -684,11 +704,23 @@ def es_search(
     fatal, optional_failed = failed_field_refs_detail(case_id, query)
     if fatal:
         # P1: a query that cannot match must never read as "0 hits on real
-        # evidence" — return an explicit degraded hard-signal instead.
+        # evidence" — return an explicit degraded hard-signal instead. An unknown
+        # field carries the fields this index has under the same name, so the next
+        # call can be right (2026-10-14: two of Mode 1's three rounds were spent on
+        # `details` and `ecs.event_data.command_line`).
+        for ref in fatal:
+            if ref.get("reason") == "unknown_field":
+                ref["did_you_mean"] = similar_fields(ref["field"], types)
         return {
             "case_id": case_id,
             "error": "query references fields that cannot match: "
-                     + ", ".join(f"{f['field']} ({f['reason']})" for f in fatal[:5]),
+                     + ", ".join(
+                         f"{f['field']} ({f['reason']}"
+                         + (f"; this index has {', '.join(f['did_you_mean'])}" if f.get("did_you_mean")
+                            else "") + ")"
+                         for f in fatal[:5])
+                     + ". To find a phrase in any column, search the row text: "
+                     '{"match_phrase":{"text":"<phrase>"}}.',
             "degraded": True,
             "failed_terms": fatal,
             "total": 0,

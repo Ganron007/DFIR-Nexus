@@ -259,3 +259,27 @@ def test_a_bool_whose_every_should_clause_cannot_match_is_fatal(monkeypatch):
                       "should": [{"match": {"ecs.event_data.rule_name": "x"}}]}}
     assert [f["field"] for f in es_native.failed_field_refs_detail("CASE-X", asked)[0]] == [
         "ecs.event_data.rule_name"]
+
+
+def test_an_unknown_field_is_refused_with_the_fields_this_index_has_by_that_name(monkeypatch):
+    """2026-10-14, Mode 1 run 4: two of three rounds were spent on `details` and
+    `ecs.event_data.command_line`. The refusal names the real fields (offered, never substituted)
+    and the row-text search."""
+    from nexus.langgraph import es_native
+
+    types = {"ecs.winlog.event_data.CommandLine": "text", "ecs.winlog.event_data.CommandLine.wc": "wildcard",
+             "ecs.process.command_line": "text", "fields.Details": "text",
+             "ecs.winlog.event_data.Details": "text", "text": "text", "host": "keyword"}
+    assert es_native.similar_fields("ecs.event_data.command_line", types)[:2] == [
+        "ecs.process.command_line", "ecs.winlog.event_data.CommandLine"]
+    assert set(es_native.similar_fields("details", types)) == {
+        "fields.Details", "ecs.winlog.event_data.Details"}
+    assert es_native.similar_fields("nothing_like_it", types) == []
+
+    monkeypatch.setattr(es_native, "_field_types", lambda case_id: types)
+    monkeypatch.setattr(es_native, "_mapping_field_types", lambda case_id: types)
+    out = es_native.es_search("CASE-X", {"bool": {"must": [{"wildcard": {"details": {"value": "*x*"}}}]}})
+    assert out["degraded"] is True
+    assert "details (unknown_field; this index has" in out["error"] and "fields.Details" in out["error"]
+    assert '"match_phrase":{"text":' in out["error"]
+    assert out["failed_terms"][0]["did_you_mean"]
