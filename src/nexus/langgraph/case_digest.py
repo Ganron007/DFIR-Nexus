@@ -195,6 +195,16 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
     }
 
 
+def lead_citation(lead: dict[str, Any]) -> str:
+    """`` [audit_id X]`` for a lead whose rows an audited call holds, '' for a lead with none.
+
+    The same marker the loop puts on its own query results, so a model cites a lead the way it
+    cites a query (``analysis/leads.py`` `_cite_leads`).
+    """
+    ids = [str(a) for a in (lead.get("audit_ids") or []) if a]
+    return f" [audit_id {ids[0]}]" if ids else ""
+
+
 def _top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
     """The case's top leads, for every mode to see the same signals.
 
@@ -223,6 +233,10 @@ def _top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
                 "level": str((lead.get("extra") or {}).get("level") or ""),
                 "engine": str((lead.get("extra") or {}).get("engine") or ""),
                 "crit_high": bool((lead.get("extra") or {}).get("crit_high")),
+                # The call that holds this lead's rows: a finding drawn from the lead cites it.
+                "audit_ids": [str(a) for a in (lead.get("audit_ids") or []) if a],
+                "attack_ids": [str(t) for t in ((lead.get("extra") or {}).get("attack_ids")
+                                                or (lead.get("extra") or {}).get("techniques") or []) if t],
             })
             if len(out) >= limit:
                 break
@@ -382,7 +396,8 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
         for lead in top_leads[:40]:
             lvl = str(lead.get("level") or "").upper()
             tag = f"[{lvl}] " if lvl else ""
-            lines.append(f"- {tag}{lead.get('subject', '')}: {lead.get('detail', '')}")
+            lines.append(f"- {tag}{lead.get('subject', '')}: {lead.get('detail', '')}"
+                         + lead_citation(lead))
     entities = digest.get("entities") or {}
     spans = digest.get("entity_spans") or {}
     if entities:

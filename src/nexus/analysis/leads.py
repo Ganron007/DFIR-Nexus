@@ -26,10 +26,11 @@ no leads rather than a failed run.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,10 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 LEADS_FILENAME = "leads.jsonl"
+#: lead key -> the audit id whose entry stored that lead's rows (see `_cite_leads`).
+LEAD_AUDITS_FILENAME = "lead_audits.json"
+#: Sample rows an executed behavioural analytic keeps, so its lead can be cited.
+ANALYTIC_SAMPLE_ROWS = 5
 
 #: Concepts to test for rarity, each with the field names that may carry it.
 #: The registry names the same idea differently per family (`ImageFileName` on a
@@ -503,7 +508,7 @@ def behavioural_analytics_leads(
         if not name or not isinstance(clause, dict) or not clause:
             continue
         try:
-            count = _analytic_match_count(case_dir, clause, probe=probe)
+            count, samples = _analytic_matches(case_dir, clause, probe=probe)
         except Exception as exc:  # noqa: BLE001 — one analytic must not lose the rest
             log.debug("analytic %s failed: %s", name, exc)
             continue
@@ -518,8 +523,9 @@ def behavioural_analytics_leads(
                 f"behavioural analytic matched {count} row(s): "
                 f"{str(analytic.get('rationale') or '')[:160]}"
             ),
-            rows=({"analytic": str(analytic.get("id") or name), "count": count,
-                   "techniques": techniques},),
+            # The rows the analytic matched, so a finding citing this lead is grounded in them.
+            # The lead used to carry only {analytic, count}: nothing a finding could stand on.
+            rows=tuple(samples),
             audit_ids=(),
             # Above a heuristic lead, below a crit/high detection.
             score=0.95,
@@ -533,33 +539,40 @@ def behavioural_analytics_leads(
     return out
 
 
-def _analytic_match_count(
+def _hit_rows(hits: list[Any]) -> list[dict[str, Any]]:
+    from nexus.langgraph.evidence_rows import evidence_rows_for_hits
+
+    return evidence_rows_for_hits([h for h in hits if isinstance(h, dict)])
+
+
+def _analytic_matches(
     case_dir: Path | str,
     clause: dict[str, Any],
     *,
     probe: Any = None,
-) -> int:
-    """How many indexed rows an analytic's clause matches.
+) -> tuple[int, list[dict[str, Any]]]:
+    """How many indexed rows an analytic's clause matches, and the first few as evidence rows.
 
     Prefers the case's ES index (exact total, no scan); falls back to counting
     over the parsed rows the case already holds when ES is not available, so an
-    unindexed case still gets analytics rather than silence.
+    unindexed case still gets analytics rather than silence (a count with no rows).
     """
     if probe is not None:
         if hasattr(probe, "count_analytic"):
-            return int(probe.count_analytic(clause) or 0)
+            return int(probe.count_analytic(clause) or 0), []
         if hasattr(probe, "analytic_hits"):
-            return len(probe.analytic_hits(clause) or [])
+            hits = list(probe.analytic_hits(clause) or [])
+            return len(hits), _hit_rows(hits[:ANALYTIC_SAMPLE_ROWS])
     case_id = Path(case_dir).name
     try:
         from nexus.langgraph.es_native import es_search
 
-        result = es_search(case_id, clause, size=1)
+        result = es_search(case_id, clause, size=ANALYTIC_SAMPLE_ROWS)
         if result.get("degraded"):
-            return 0
-        return int(result.get("total") or 0)
+            return 0, []
+        return int(result.get("total") or 0), _hit_rows(result.get("hits") or [])
     except Exception:  # noqa: BLE001 — ES down: count over the case's own rows
-        return _count_analytic_csv(Path(case_dir), clause)
+        return _count_analytic_csv(Path(case_dir), clause), []
 
 
 def _count_analytic_csv(case_dir: Path, clause: dict[str, Any]) -> int:
@@ -593,6 +606,120 @@ def _count_analytic_csv(case_dir: Path, clause: dict[str, Any]) -> int:
         except OSError:
             continue
     return total
+
+
+def _index_file(path: Any) -> str:
+    """A tool-output path as the index names it: the part under ``extractions/`` (``hayabusa/x.csv``)."""
+    parts = [p for p in str(path or "").replace("\\", "/").split("/") if p]
+    if "extractions" in parts:
+        rest = parts[len(parts) - parts[::-1].index("extractions"):]
+        if rest:
+            return "/".join(rest)
+    return parts[-1] if parts else ""
+
+
+def _lead_evidence_rows(lead: Lead) -> list[dict[str, Any]]:
+    """A lead's own rows in the evidence-row shape staging reads (``langgraph/evidence_rows.py``).
+
+    A row that is already an evidence row (an executed analytic's hits) is kept. A rule-engine sample
+    gets the index's own ``source`` and ``loc`` for its file and line, so the same row cited through a
+    lead or through a query is one row.
+    """
+    out: list[dict[str, Any]] = []
+    for row in lead.rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("source") and row.get("detail"):
+            out.append(dict(row))
+            continue
+        rel = _index_file(row.get("file"))
+        line = str(row.get("line") or "").strip()
+        named = [
+            f"RuleTitle: {row['rule_title']}" if row.get("rule_title") else "",
+            f"Level: {row['level']}" if row.get("level") else "",
+            f"Details: {row['details']}" if row.get("details") else "",
+        ]
+        detail = " · ".join(p for p in named if p) or " · ".join(
+            f"{k}: {v}" for k, v in row.items()
+            if k not in ("file", "line", "doc_id") and v not in (None, "", [], {}))
+        if not detail:
+            continue
+        evidence: dict[str, Any] = {
+            "time": str(row.get("timestamp") or row.get("time") or ""),
+            "source": f"{lead.family or 'other'}/{rel}" if rel else str(lead.family or "lead"),
+            "artifact": rel,
+            "detail": detail,
+        }
+        if rel and line:
+            evidence["loc"] = f"{rel}:{line}"
+        for key, value in (("host", row.get("computer") or row.get("host")),
+                           ("event_id", row.get("event_id")), ("doc_id", row.get("doc_id"))):
+            if str(value or "").strip():
+                evidence[key] = str(value).strip()
+        out.append(evidence)
+    return out
+
+
+def _lead_key(lead: Lead, rows: list[dict[str, Any]]) -> str:
+    ids = sorted(str(r.get("doc_id") or r.get("loc") or r.get("detail") or "") for r in rows)
+    blob = json.dumps([lead.kind, lead.family, lead.subject, ids], sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
+
+
+def _cite_leads(case_dir: Path, leads: list[Lead]) -> list[Lead]:
+    """Give every lead with rows an audit id whose entry stored exactly those rows.
+
+    Leads reached every mode as context nothing could cite: rule-engine and analytic leads were built
+    with no audit id, and the probe that audits aggregations was never handed a writer
+    (CASE-C5B04D31, 2026-10-14: 140 leads, 0 citable). A Mode 1 finding drawn from a lead was refused
+    under FD-001, or it cited a query that did not show it. The lead builder's read is now one
+    audited call per lead, holding that lead's rows and nothing else, so a finding citing it is
+    grounded in those rows. The id is reused while the lead's rows are unchanged, so rebuilding the
+    leads for every run does not grow the audit trail.
+    """
+    from nexus.audit import AuditWriter
+    from nexus.langgraph.evidence_rows import stored_rows_by_audit_id
+
+    path = case_dir / "analysis" / LEAD_AUDITS_FILENAME
+    try:
+        known = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        known = {}
+    if not isinstance(known, dict):
+        known = {}
+    # Only an id whose entry is in the case's audit trail is reused.
+    alive = stored_rows_by_audit_id(case_dir, [str(v) for v in known.values()]) if known else {}
+    writer = None  # made only when a lead is new: a rebuild that reuses every id writes nothing
+    out: list[Lead] = []
+    changed = False
+    for lead in leads:
+        rows = _lead_evidence_rows(lead)
+        if not rows:
+            out.append(lead)
+            continue
+        key = _lead_key(lead, rows)
+        audit_id = str(known.get(key) or "")
+        if audit_id not in alive:
+            writer = writer or AuditWriter("nexus", audit_dir=case_dir / "audit")
+            audit_id = str(writer.log(
+                tool="lead",
+                params={"case_id": case_dir.name, "kind": lead.kind, "family": lead.family,
+                        "subject": lead.subject, "key": key},
+                result_summary={"evidence_rows": rows, "rows": len(rows)},
+                source="pipeline",
+            ) or "")
+            if audit_id:
+                known[key] = audit_id
+                changed = True
+        if audit_id and audit_id not in lead.audit_ids:
+            lead = replace(lead, audit_ids=(audit_id, *lead.audit_ids))
+        out.append(lead)
+    if changed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(known, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+    return out
 
 
 def build_leads(
@@ -660,6 +787,11 @@ def build_leads(
         lead.kind,
         lead.subject,
     ))
+    try:
+        leads = _cite_leads(case_dir, leads)
+    except Exception as exc:  # noqa: BLE001 - the leads stand; their citations are reported missing
+        log.error("lead citation failed: %s: %s", type(exc).__name__, exc)
+        failed.append(f"citation {type(exc).__name__}: {exc}")
 
     if write:
         try:

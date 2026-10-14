@@ -698,11 +698,13 @@ def _supervisor_with_model(
     lead_lines = "(no leads)"
     try:
         from nexus.analysis.leads import build_leads
+        from nexus.langgraph.case_digest import lead_citation
 
         leads = build_leads(case_dir, write=False)
         if leads:
             lead_lines = "\n".join(
                 f"- [{lead.kind}] {lead.subject}: {lead.detail[:160]}"
+                f"{lead_citation(lead.to_dict())}"
                 for lead in leads[:20]
             )
     except Exception as exc:  # noqa: BLE001 - the supervisor must still run
@@ -1358,6 +1360,8 @@ def _spawns_for_agenda(
     spawns: list[dict[str, Any]] = []
     taken: set[str] = set()
 
+    from nexus.langgraph.case_digest import lead_citation
+
     for lead in (agenda.get("crit_leads") or [])[:max_agents]:
         subject = str(lead.get("subject") or "")
         key = _norm_key(subject)
@@ -1369,7 +1373,8 @@ def _spawns_for_agenda(
             "role": "evidence",
             "family": str(lead.get("family") or ""),
             "why": f"unexplained {str(lead_extra.get('level') or '')} lead",
-            "question": f"{question}\nInvestigate the lead: {subject}",
+            # The lead's own call: the seat can cite the rows that raised it.
+            "question": f"{question}\nInvestigate the lead: {subject}{lead_citation(lead)}",
             "lead": subject,
             "lead_extra": lead_extra,
         })

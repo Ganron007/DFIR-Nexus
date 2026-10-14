@@ -156,16 +156,31 @@ def _digest_summary(brief: dict[str, Any], *, limit: int = 2400) -> str:
             )
     leads = brief.get("top_leads") or []
     if leads:
+        from nexus.langgraph.case_digest import lead_citation
+
         lines.append(f"TOP LEADS ({len(leads)}):")
         for lead in leads[:20]:
-            level = str((lead.get("extra") or {}).get("level") or "").upper()
+            # The digest's leads carry their level at the top; reading only `extra` dropped every
+            # [CRIT]/[HIGH] tag from the Mode 2 worker prompts.
+            level = str(lead.get("level") or (lead.get("extra") or {}).get("level") or "").upper()
             tag = f"[{level}] " if level else ""
             lines.append(f"- {tag}{lead.get('subject', '')}: "
-                         f"{str(lead.get('detail') or '')[:160]}")
+                         f"{str(lead.get('detail') or '')[:160]}{lead_citation(lead)}")
     if not lines:
         return ""
-    return ("CASE DIGEST SUMMARY (the strongest signals this case holds; every "
-            "mode is given the same ones):\n" + "\n".join(lines))[:limit]
+    head = ("CASE DIGEST SUMMARY (the strongest signals this case holds; every "
+            "mode is given the same ones):")
+    # Whole lines only: a slice at `limit` used to cut a lead mid-line, and its citation with it.
+    kept: list[str] = []
+    size = len(head)
+    for line in lines:
+        if size + 1 + len(line) > limit:
+            break
+        kept.append(line)
+        size += 1 + len(line)
+    if len(kept) < len(lines):
+        kept.append(f"(+{len(lines) - len(kept)} more line(s) not shown here)")
+    return head + "\n" + "\n".join(kept)
 
 
 def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
