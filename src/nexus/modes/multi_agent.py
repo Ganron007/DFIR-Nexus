@@ -1338,7 +1338,11 @@ def _dispositioned_keys(board: list[dict[str, Any]]) -> set[str]:
         # ran on a lead (`entry["lead"]`) is not a disposition.
         disp = entry.get("lead_disposition")
         if isinstance(disp, dict):
-            dlead = str(disp.get("lead") or "").strip()
+            # The lead the seat was spawned for, when it has one. The model's echo of it carries
+            # what the seat was shown, "<subject> [audit_id X]" since leads became citable, so a
+            # disposition keyed by the echo never matched its lead, which was spawned again every
+            # superstep (D198).
+            dlead = str(entry.get("lead") or disp.get("lead") or "").strip()
             if dlead:
                 keys.add(_norm_key(dlead))
     return {k for k in keys if k}
@@ -2205,7 +2209,8 @@ def run_mode3(
         if seat_blocked:
             continue
         if isinstance(disp, dict) and (disp.get("lead") or spawn_lead):
-            subject = str(disp.get("lead") or spawn_lead).strip()
+            # The spawn's lead first, as in `_dispositioned_keys` (D198).
+            subject = str(spawn_lead or disp.get("lead") or "").strip()
             if subject and subject not in lead_dispositions:
                 lead_dispositions[subject] = {
                     "status": str(disp.get("status") or "insufficient"),

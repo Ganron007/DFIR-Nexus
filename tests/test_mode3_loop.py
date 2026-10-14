@@ -146,6 +146,47 @@ def test_a_crit_lead_keeps_the_run_open(tmp_path, monkeypatch):
     assert "budget" in str(record.get("stop_reason") or ""), record.get("stop_reason")
 
 
+def test_a_disposition_echoing_the_cited_lead_dispositions_its_lead(tmp_path, monkeypatch):
+    """D198: since leads became citable the seat reads "<subject> [audit_id X]", and a model that
+    echoed that text into its lead_disposition never matched the lead: the lead was spawned again
+    every superstep and the run ran to its cap (the reviewer's mode3_loop_probe: 10 seats a lead)."""
+    from nexus.modes.multi_agent import run_mode3
+
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "5")
+    monkeypatch.setenv("NEXUS_MODE3_SETTLE_SUPERSTEPS", "1")
+    spawned: list[str] = []
+
+    def seat(spawn, _board, step):
+        if spawn.get("lead"):
+            spawned.append(spawn["lead"])
+        echoed = f"{spawn.get('lead')} [audit_id nexus-test-20261015-001]" if spawn.get("lead") else ""
+        return {
+            "entry_id": f"{spawn['role']}-{step}-{len(spawned)}",
+            "agent_id": f"{spawn['role']}-{step}-{len(spawned)}",
+            "role": spawn["role"],
+            "family": spawn.get("family") or "",
+            "superstep": step,
+            "claims": [],
+            "open_questions": [],
+            "lead_disposition": ({"lead": echoed, "status": "insufficient", "basis": "no rows"}
+                                 if echoed else None),
+        }
+
+    case = _case(tmp_path)
+    hayabusa = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    hayabusa.mkdir(parents=True)
+    (hayabusa / "evtx-timeline.csv").write_text(
+        "RuleTitle,RuleID,Level,Computer,Timestamp,Details\n"
+        "Defender Alert (Severe),r1,crit,RD01,2026-01-01T00:00:00Z,x\n",
+        encoding="utf-8",
+    )
+    record = run_mode3(case, "compromise suspected", families=[("hayabusa", 10)],
+                       seat_fn=seat, es_ok=True)
+    assert spawned.count("Defender Alert (Severe)") == 1, spawned
+    assert set(record["lead_dispositions"]) == {"Defender Alert (Severe)"}
+    assert "budget" not in str(record.get("stop_reason") or ""), record.get("stop_reason")
+
+
 def test_a_verifier_seat_runs_each_superstep(tmp_path, monkeypatch):
     from nexus.modes.multi_agent import run_mode3
 
