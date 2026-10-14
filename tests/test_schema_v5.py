@@ -228,3 +228,34 @@ def test_mode1_type_mismatch_is_hard_error():
     textish = {"label": {"name": "Label", "type": "text", "has_kw": True, "path": "fields.Label"}}
     with pytest.raises(QuerySyntaxError):
         _filter_to_es({"name": "label", "op": "gt", "value": "x"}, textish)
+
+
+def test_a_bool_whose_every_should_clause_cannot_match_is_fatal(monkeypatch):
+    """2026-10-14, Mode 1 run 4: three should clauses on near-miss fields (ecs.event_data.rule_name
+    for ecs.rule.name) returned 0 rows and no error. A bool with no must/filter needs one should
+    clause to match; when none can, the query cannot match and must say so."""
+    from nexus.langgraph import es_native
+
+    monkeypatch.setattr(es_native, "_mapping_field_types",
+                        lambda case_id: {"ecs.rule.name": "text", "text": "text", "host": "keyword"})
+    unmatchable = {"bool": {"must": [{"bool": {"should": [
+        {"match": {"ecs.event_data.rule_name": "Pass the Hash"}},
+        {"match": {"ecs.event_data.details": "mimikatz"}}]}}]}}
+    fatal, optional = es_native.failed_field_refs_detail("CASE-X", unmatchable)
+    assert [f["field"] for f in fatal] == ["ecs.event_data.rule_name", "ecs.event_data.details"]
+    assert optional == []
+
+    # One clause that can match keeps the others optional.
+    partly = {"bool": {"should": [{"match": {"ecs.event_data.rule_name": "x"}},
+                                  {"match": {"ecs.rule.name": "Pass the Hash"}}]}}
+    fatal2, optional2 = es_native.failed_field_refs_detail("CASE-X", partly)
+    assert fatal2 == [] and [f["field"] for f in optional2] == ["ecs.event_data.rule_name"]
+
+    # With a must clause, should is scoring only unless minimum_should_match asks for one.
+    scoring = {"bool": {"must": [{"term": {"host": "ws01"}}],
+                        "should": [{"match": {"ecs.event_data.rule_name": "x"}}]}}
+    assert es_native.failed_field_refs_detail("CASE-X", scoring)[0] == []
+    asked = {"bool": {"must": [{"term": {"host": "ws01"}}], "minimum_should_match": 1,
+                      "should": [{"match": {"ecs.event_data.rule_name": "x"}}]}}
+    assert [f["field"] for f in es_native.failed_field_refs_detail("CASE-X", asked)[0]] == [
+        "ecs.event_data.rule_name"]

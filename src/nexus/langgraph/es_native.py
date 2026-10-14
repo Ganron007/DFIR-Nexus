@@ -292,6 +292,9 @@ def _collect_failed(
     for key, value in node.items():
         if key == "bool" and isinstance(value, dict):
             for subkey, sub in value.items():
+                if subkey == "should" and context == "required" and _should_required(value):
+                    _collect_required_should(sub, types, fatal, optional, seen)
+                    continue
                 sub_ctx = {
                     "must": "required", "filter": "required",
                     "should": "optional", "must_not": "negated",
@@ -313,6 +316,50 @@ def _collect_failed(
             _check_ref(value, None, types, context, fatal, optional, seen)
             continue
         _collect_failed(value, types, context, fatal, optional, seen)
+
+
+def _should_required(bool_body: dict[str, Any]) -> bool:
+    """True when a bool matches only if one of its ``should`` clauses does.
+
+    Elasticsearch requires one ``should`` match when the bool has no ``must``/``filter`` clause, or
+    when ``minimum_should_match`` asks for one.
+    """
+    if not bool_body.get("should"):
+        return False
+    if not (bool_body.get("must") or bool_body.get("filter")):
+        return True
+    try:
+        return int(str(bool_body.get("minimum_should_match") or 0).rstrip("%") or 0) > 0
+    except ValueError:
+        return True
+
+
+def _collect_required_should(
+    clauses: Any, types: dict[str, str],
+    fatal: list[dict[str, str]], optional: list[dict[str, str]], seen: set[str],
+) -> None:
+    """``should`` clauses of a bool that needs one of them: unmatchable only when all of them are.
+
+    A bool of three ``should`` clauses on fields the case does not have can never match, and it
+    used to return 0 rows with no error (2026-10-14, Mode 1 run 4: ``ecs.event_data.rule_name``,
+    a near-miss of ``ecs.rule.name``). If any clause can match, the failed ones stay optional.
+    """
+    items = clauses if isinstance(clauses, list) else [clauses]
+    per_clause: list[tuple[list[dict[str, str]], list[dict[str, str]]]] = []
+    for item in items:
+        clause_fatal: list[dict[str, str]] = []
+        clause_optional: list[dict[str, str]] = []
+        _collect_failed(item, types, "required", clause_fatal, clause_optional, set())
+        per_clause.append((clause_fatal, clause_optional))
+    unmatchable = bool(per_clause) and all(clause_fatal for clause_fatal, _ in per_clause)
+    context = "required" if unmatchable else "optional"
+    for clause_fatal, clause_optional in per_clause:
+        for ref in [*({**r, "context": context} for r in clause_fatal), *clause_optional]:
+            key = f"{ref['field']}\x00{ref.get('context')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            (fatal if ref.get("context") == "required" else optional).append(ref)
 
 
 def failed_field_refs_detail(case_id: str, query: Any) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
