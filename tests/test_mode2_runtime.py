@@ -688,3 +688,73 @@ def test_the_worker_contract_puts_the_alternative_and_refutation_inside_the_cand
     contract = m3.ROLES["evidence"].system_prompt
     assert '"benign_alternative":"...","refutation":"..."' in contract
     assert "never as candidates of their own" in contract
+
+
+def _audited_rows(case: Path, rows: list[dict]) -> str:
+    from nexus.audit import AuditWriter
+
+    aid = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search", params={"case_id": case.name, "query": {"match_all": {}}},
+        result_summary={"total": len(rows), "evidence_rows": rows})
+    assert aid
+    return aid
+
+
+LOGON_ROWS = [{"source": "evtxecmd/Security.csv", "artifact": "Security.csv", "loc": "Security.csv:41",
+               "host": "ws01", "user": "corp\\jdoe", "detail": "EventId 4624 LogonType 10 corp\\jdoe"}]
+
+
+def test_a_re_worded_claim_on_the_same_rows_keeps_one_verdict(tmp_path):
+    """D189: verdicts were keyed by title, and follow-up rounds re-word titles. Mode 2 run 3's 16
+    verdicts held one claim six times with different classes, and synthesis read six claims."""
+    case = _case(tmp_path)
+    first_call = _audited_rows(case, LOGON_ROWS)
+    second_call = _audited_rows(case, LOGON_ROWS)  # a follow-up query returning the same row
+    rounds = {"n": 0}
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        if order.role == "verifier":
+            parsed = {"verdicts": [{"title": c["title"],
+                                    "class": "confirmed" if rounds["n"] > 1 else "inferred",
+                                    "basis": "b", "audit_ids": c["audit_ids"]}
+                                   for c in context["candidates"]]}
+        elif order.role == "synthesis":
+            parsed = {"narrative": "n", "findings": [], "gaps": [], "coverage": {}}
+        else:
+            rounds["n"] += 1
+            title, cited = (("RDP logon by jdoe", first_call) if rounds["n"] == 1
+                            else ("Remote interactive logon by corp\\jdoe confirmed", second_call))
+            parsed = {"notes": [], "coverage": {}, "candidate_findings": [{
+                "title": title, "observation": "o", "interpretation": "i",
+                "confidence": "LOW", "audit_ids": [cited]}]}
+        return m3.AgentResult(order_id=order.order_id, role=order.role, status="ok",
+                              reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1")
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
+             order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
+
+    assert rounds["n"] >= 2
+    assert len(state["verdicts"]) == 1, state["verdicts"]
+    assert state["verdicts"][0]["class"] == "confirmed"
+
+
+def test_staging_finds_the_verdict_of_a_re_worded_claim_by_its_rows(tmp_path):
+    """D189: synthesis re-words titles; a refuted claim looked up by title was staged anyway."""
+    case = _case(tmp_path)
+    cited = _audited_rows(case, LOGON_ROWS)
+    claim = m3._claim_keys(case, [{"title": "RDP logon by jdoe", "audit_ids": [cited]}])[0]
+    m3._persist_state(case, "M2-claim", {
+        "run_id": "M2-claim", "case_id": case.name, "question": "q", "status": "completed",
+        "orders": [], "order_index": 0, "results": [], "gaps": [],
+        "verdicts": [{"title": "RDP logon by jdoe", "class": "refuted", "basis": "b",
+                      "audit_ids": [cited], "claim_key": claim}],
+        "candidates": [{"title": "Interactive remote logon by corp\\jdoe", "observation": "o",
+                        "interpretation": "i", "confidence": "LOW",
+                        "confidence_justification": "one query", "audit_ids": [cited]}],
+    })
+    result = m3.stage_run_candidates(case, "M2-claim")
+    assert result["staged_count"] == 0, result
+    assert result["skipped"] == [{"title": "Interactive remote logon by corp\\jdoe",
+                                  "reason": "verifier refuted"}]

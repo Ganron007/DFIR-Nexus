@@ -703,6 +703,38 @@ def _candidate_audit_ids(candidate: dict[str, Any]) -> list[str]:
     return out
 
 
+def _title_key(item: dict[str, Any]) -> str:
+    return json.dumps(["title", " ".join(str(item.get("title") or "").split()).lower()])
+
+
+def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
+    """The identity of each claim: the subject and rows its cited calls stored (D189).
+
+    The rule a DRAFT is keyed by (``case_manager._duplicate_key``), so a follow-up round that
+    re-words a claim's title is still the same claim. Keyed by title, Mode 2 run 3's 16 verdicts
+    held one claim six times with different classes. An item whose calls stored no rows keeps its
+    title. The audit log is read once for all the items.
+    """
+    from nexus.case_manager import _duplicate_key
+    from nexus.langgraph.evidence_rows import stored_rows_by_audit_id, unique_rows
+    from nexus.langgraph.subject import derive_subject
+
+    wanted = [a for item in items for a in _candidate_audit_ids(item)]
+    stored = stored_rows_by_audit_id(Path(case_dir), wanted) if wanted else {}
+    keys: list[str] = []
+    for item in items:
+        rows = unique_rows(stored, _candidate_audit_ids(item))
+        if not rows:
+            keys.append(_title_key(item))
+            continue
+        subject = derive_subject(rows)
+        keys.append(json.dumps(_duplicate_key({
+            "title": item.get("title"), "entity": subject["entity"],
+            "category": subject["category"], "evidence": rows,
+        })))
+    return keys
+
+
 def _backfill_audit_ids(
     rows: list[dict[str, Any]], *sources: list[dict[str, Any]] | None,
 ) -> int:
@@ -841,7 +873,16 @@ def stage_run_candidates(
         str(v.get("title") or "").strip().lower(): v
         for v in (record.get("verdicts") or [])
     }
+    # By claim first (D189): synthesis re-words titles, and a verdict looked up by title missed
+    # the claim it ruled on. A record from before the claim key keeps the title lookup.
+    verdicts_by_claim = {
+        str(v.get("claim_key")): v for v in (record.get("verdicts") or []) if v.get("claim_key")
+    }
     rows = candidates if candidates is not None else (record.get("candidates") or [])
+    claim_keys = _claim_keys(case_dir, [c for c in rows if isinstance(c, dict)])
+    claim_of_candidate = {
+        id(c): k for c, k in zip([c for c in rows if isinstance(c, dict)], claim_keys, strict=True)
+    }
     sink = EventSink(case_dir, run_id)
     if run_mode == "mode3":
         # Keep the staging event in the run's own stream so the Investigation
@@ -857,7 +898,8 @@ def stage_run_candidates(
             skipped.append({"title": title,
                             "reason": "FD-001: candidate has no audit_id"})
             continue
-        verdict = verdicts.get(title.lower(), {})
+        verdict = (verdicts_by_claim.get(claim_of_candidate.get(id(candidate), ""))
+                   or verdicts.get(title.lower(), {}))
         vclass = str(verdict.get("class") or "").lower()
         if vclass == "refuted":
             skipped.append({"title": title, "reason": "verifier refuted"})
@@ -2093,21 +2135,20 @@ def run_mode2(
             rows.extend(parsed.get("findings") or [])
         return rows
 
-    def _candidate_key(candidate: dict[str, Any]) -> str:
-        title = str(candidate.get("title") or "").strip().lower()
-        return json.dumps([title, sorted(_candidate_audit_ids(candidate))])
-
     def verify_node(_state: dict[str, Any]) -> dict[str, Any]:
-        # Only what has not been verified yet: a candidate already verified with the same
-        # citations keeps its verdict (verdicts merge by title). The whole pool used to be
-        # re-verified after every follow-up round, ~10 minutes each, on unchanged candidates
-        # (2026-10-14, Mode 2 run 3). A candidate a follow-up re-cites is verified again.
+        # Only what has not been verified yet: a claim already verified with the same citations
+        # keeps its verdict (verdicts merge by claim, D189). The whole pool used to be re-verified
+        # after every follow-up round, ~10 minutes each, on unchanged candidates (2026-10-14,
+        # Mode 2 run 3). A candidate a follow-up re-cites is verified again.
         verified = set(state.get("verified_candidates") or [])
         fresh: dict[str, dict[str, Any]] = {}
-        for candidate in _candidate_pool():
-            key = _candidate_key(candidate)
-            if key not in verified:
-                fresh.setdefault(key, candidate)
+        fresh_claims: dict[str, str] = {}
+        pool = _candidate_pool()
+        for candidate, claim in zip(pool, _claim_keys(case_dir, pool), strict=True):
+            key = json.dumps([claim, sorted(_candidate_audit_ids(candidate))])
+            if key not in verified and key not in fresh:
+                fresh[key] = candidate
+                fresh_claims[key] = claim
         candidates = list(fresh.values())
         if not candidates:
             if verified:
@@ -2135,15 +2176,25 @@ def run_mode2(
             # Recorded only once the pass ran, so a failed pass is retried, not skipped.
             state["verified_candidates"] = sorted(verified | set(fresh))
         parsed = result.parsed or {}
+        # A verdict is the verdict of the claim it answers (D189): the candidate of this pass whose
+        # title it names, else the rows it cites, else its title. A later pass on the same claim,
+        # however re-worded, replaces it.
+        claim_of_title = {
+            " ".join(str(fresh[key].get("title") or "").split()).lower(): fresh_claims[key]
+            for key in fresh
+        }
         merged = {
-            str(v.get("title") or "").strip().lower(): v
+            str(v.get("claim_key") or _title_key(v)): v
             for v in (state.get("verdicts") or [])
             if str(v.get("title") or "").strip()
         }
         for verdict in parsed.get("verdicts") or []:
-            title = str(verdict.get("title") or "").strip().lower()
-            if title:
-                merged[title] = verdict
+            if not isinstance(verdict, dict) or not str(verdict.get("title") or "").strip():
+                continue
+            title = " ".join(str(verdict.get("title") or "").split()).lower()
+            verdict["claim_key"] = (claim_of_title.get(title)
+                                    or _claim_keys(case_dir, [verdict])[0])
+            merged[verdict["claim_key"]] = verdict
         state["verdicts"] = list(merged.values())
         # Carry provenance forward: a verdict the model returned without
         # audit_ids inherits them from the candidate it names, so a confirmed
