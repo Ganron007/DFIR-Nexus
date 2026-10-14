@@ -257,6 +257,10 @@ _STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
 }
 
 
+#: Keys a model writes to explain a call. They belong on the call (``why``), not in its arguments.
+_ANNOTATION_ARGS = ("why", "reason", "rationale", "purpose")
+
+
 def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str]:
     """Reject unknown/ill-typed or missing required arguments with a clear error."""
     allowed = _TOOL_ARGS.get(tool)
@@ -534,6 +538,8 @@ def _observations_block(
         return "(no tool calls yet)"
     return "\n".join(
         f"- {o['tool']}: "
+        # What the loop changed in the call is said beside its result (never silently).
+        + (f"[{o['normalized']}] " if o.get("normalized") else "")
         + json.dumps(o.get("summary") or {}, default=str)[:per_obs_cap]
         for o in observations
     )
@@ -897,7 +903,20 @@ def run_context_loop(
             attempted_any = True
             name = str(call.get("tool") or "")
             why = str(call.get("why") or "")
-            clean_args, problem = _validate_args(name, call.get("args") or {})
+            args = call.get("args") or {}
+            # A reason written inside the arguments belongs on the call: it is moved there and the
+            # move is recorded, not refused. Mode 2 lost rounds to "es_aggregate: unsupported
+            # argument(s) why" (2026-10-14). Any other unknown argument is still refused.
+            moved: list[str] = []
+            if isinstance(args, dict):
+                args = dict(args)
+                for key in _ANNOTATION_ARGS:
+                    if key in args:
+                        text = str(args.pop(key) or "").strip()
+                        moved.append(key)
+                        if text and not why:
+                            why = text
+            clean_args, problem = _validate_args(name, args)
             if problem:
                 observations.append({
                     "tool": name or "unknown", "why": why, "audit_id": "",
@@ -959,6 +978,8 @@ def run_context_loop(
                 aggregations=aggregations, name=name, args=clean_args,
                 why=why, result=result, elapsed_ms=elapsed,
             )
+            if moved:
+                obs["normalized"] = f"moved {', '.join(moved)} from the arguments to the call's why"
             # The model must see successful tool results in the next round;
             # previously only errors/duplicates were in ``observations``.
             observations.append(obs)
@@ -967,6 +988,7 @@ def run_context_loop(
                 "why": why, "audit_id": obs.get("audit_id"),
                 "summary": _event_summary(obs.get("summary")),
                 "ms": round(elapsed, 1),
+                **({"normalized": obs["normalized"]} if moved else {}),
             })
             if time.monotonic() >= deadline:
                 finish_reason = "time"

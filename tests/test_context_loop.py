@@ -777,3 +777,31 @@ def test_alias_routing_is_read_only_and_documented():
     for forbidden in ("case_delete", "record_finding", "approve_finding",
                       "evidence_register", "case_archive"):
         assert forbidden not in TOOL_ALIASES
+
+
+def test_a_reason_written_inside_the_arguments_is_moved_to_the_call(tmp_path, monkeypatch):
+    """2026-10-14: Mode 2 lost rounds to "es_aggregate: unsupported argument(s) why". The reason
+    is moved to the call's why and the move is recorded; other unknown arguments are still refused."""
+    from nexus.langgraph.context_loop import run_context_loop
+
+    case = _case(tmp_path)
+    calls: list[dict[str, Any]] = []
+    _fake_backbone(monkeypatch, calls)
+    model = _ScriptedModel([
+        {"tool_calls": [{"tool": "es_search",
+                         "args": {"query": {"match_all": {}}, "size": 5, "why": "find rows"}}]},
+        {"tool_calls": [{"tool": "es_search",
+                         "args": {"query": {"match_all": {}}, "bogus": 1}, "why": "x"}]},
+        {"answer": "done", "citations": []},
+    ])
+    result = run_context_loop(
+        case_dir=case, case_id="CASE-LOOP", question="q", model=model,
+        audit=AuditWriter("nexus", audit_dir=case / "audit"),
+    )
+    (ran,) = result["tool_calls"]
+    assert ran["tool"] == "es_search" and ran["why"] == "find rows"
+    assert "why" not in ran["args"]
+    second_prompt = model.prompts[1][-1]["content"]
+    assert "moved why from the arguments" in second_prompt
+    third_prompt = model.prompts[2][-1]["content"]
+    assert "unsupported argument(s) bogus" in third_prompt
