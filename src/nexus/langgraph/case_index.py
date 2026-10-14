@@ -84,6 +84,34 @@ def _wildcard_mapping() -> dict[str, Any]:
         return {"type": "wildcard"}
     return {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}
 
+
+#: The analyzer of ``text`` (D195). The standard tokenizer keeps a dotted name as one word, so
+#: ``{"match":{"text":"lsass"}}`` found 20 of CASE-C5B04D31's 18,970 lsass rows. The word parts of
+#: a name are indexed beside it (``lsass.exe`` -> ``lsass.exe``, ``lsass``, ``exe``) and the query
+#: is split the same way as a graph, so ``lsass.exe`` still matches only lsass.exe and a phrase
+#: such as "powershell.exe -EncodedCommand" keeps its positions. Proved on a scratch index of the
+#: local ES on 2026-10-15.
+FORENSIC_TEXT_ANALYZER = "forensic_text_v1"
+_FORENSIC_WORD_PARTS = {
+    "type": "word_delimiter_graph",
+    "preserve_original": True,
+    "split_on_case_change": False,
+    "split_on_numerics": False,
+    "generate_word_parts": True,
+    "generate_number_parts": True,
+    "stem_english_possessive": False,
+}
+_FORENSIC_TEXT_ANALYSIS = {
+    "filter": {"forensic_word_parts": _FORENSIC_WORD_PARTS},
+    "analyzer": {
+        # Indexing flattens the graph (an index stores positions, not graphs).
+        "forensic_text": {"type": "custom", "tokenizer": "standard",
+                          "filter": ["forensic_word_parts", "flatten_graph", "lowercase"]},
+        "forensic_text_search": {"type": "custom", "tokenizer": "standard",
+                                 "filter": ["forensic_word_parts", "lowercase"]},
+    },
+}
+
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
 # A version mismatch triggers a rebuild on the next index_case()/ensure_index.
@@ -1048,9 +1076,13 @@ def _mapping_body() -> dict[str, Any]:
             "index.mapping.ignore_malformed": True,
             # 694 registry columns + keyword subfields exceed the 1000 default.
             "index.mapping.total_fields.limit": 10000,
+            "analysis": _FORENSIC_TEXT_ANALYSIS,
         },
         "mappings": {
-            "_meta": {"schema_version": INDEX_SCHEMA_VERSION},
+            # The analyzer is recorded, not versioned: a version bump makes every reader treat an
+            # older index as legacy (no field catalog, no ES aggregations) and the next indexing
+            # call drop it. An index built before keeps the standard analyzer until it is rebuilt.
+            "_meta": {"schema_version": INDEX_SCHEMA_VERSION, "text_analyzer": FORENSIC_TEXT_ANALYZER},
             "date_detection": False,
             "numeric_detection": False,
             "dynamic_templates": [
@@ -1105,6 +1137,8 @@ def _mapping_body() -> dict[str, Any]:
                 "event_id": {"type": "keyword"},
                 "text": {
                     "type": "text",
+                    "analyzer": "forensic_text",
+                    "search_analyzer": "forensic_text_search",
                     "fields": {"wc": _wildcard_mapping()},
                 },
                 "ts": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},

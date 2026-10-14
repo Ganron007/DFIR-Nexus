@@ -725,6 +725,21 @@ _WORKED_EXAMPLES = (
 )
 
 
+#: How free-text search on ``text`` behaves (D195). Measured on CASE-C5B04D31 (2026-10-14):
+#: ``{"match":{"text":"lsass"}}`` found 20 rows where ``*lsass*`` on ``text.wc`` found 18,970 (the
+#: standard analyzer keeps ``lsass.exe`` as one word), and ``match`` on "Pass the Hash" returned
+#: 37,786 rows holding ANY of the words where the phrase holds 17. The wording is true of every
+#: index schema: the wildcard field matches inside words on old and new indexes alike.
+_TEXT_SEARCH = (
+    "TEXT SEARCH on `text` (the whole row):\n"
+    "- A name or part of one (lsass, mimikatz, a file, host or task name): "
+    '{"wildcard":{"text.wc":{"value":"*lsass*","case_insensitive":true}}} - it matches '
+    'inside words. {"match":{"text":"lsass"}} can miss lsass.exe.\n'
+    '- Several words in order: {"match_phrase":{"text":"pass the hash"}}. A multi-word '
+    "`match` returns rows holding ANY of the words."
+)
+
+
 def query_protocol_block() -> str:
-    """The three rules plus three worked examples, for every investigative prompt."""
-    return f"ES QUERY PROTOCOL\n{QUERY_RULES}\n{_WORKED_EXAMPLES}"
+    """The three rules, three worked examples and text search, for every investigative prompt."""
+    return f"ES QUERY PROTOCOL\n{QUERY_RULES}\n{_WORKED_EXAMPLES}\n{_TEXT_SEARCH}"

@@ -159,6 +159,25 @@ def test_the_wildcard_subfields_have_no_length_cap():
     assert ecs_strings["mapping"]["fields"]["wc"] == {"type": "wildcard"}
 
 
+def test_text_indexes_the_word_parts_of_a_dotted_name():
+    """D195: the standard analyzer kept lsass.exe as one word, so {"match":{"text":"lsass"}} found
+    20 of 18,970 lsass rows. The parts are indexed beside the name and the query is split the same
+    way; the version is not bumped, so an index built before keeps working until it is rebuilt."""
+    from nexus.langgraph.case_index import INDEX_SCHEMA_VERSION, _mapping_body
+
+    body = _mapping_body()
+    text = body["mappings"]["properties"]["text"]
+    assert (text["analyzer"], text["search_analyzer"]) == ("forensic_text", "forensic_text_search")
+    analysis = body["settings"]["analysis"]
+    parts = analysis["filter"]["forensic_word_parts"]
+    assert parts["type"] == "word_delimiter_graph" and parts["preserve_original"] is True
+    assert analysis["analyzer"]["forensic_text"]["filter"] == [
+        "forensic_word_parts", "flatten_graph", "lowercase"]
+    assert "flatten_graph" not in analysis["analyzer"]["forensic_text_search"]["filter"]
+    assert body["mappings"]["_meta"] == {"schema_version": INDEX_SCHEMA_VERSION,
+                                         "text_analyzer": "forensic_text_v1"}
+
+
 def test_the_csv_record_guard_is_far_above_any_valid_record(monkeypatch):
     """Valid records never reach the guard; it only stops a stray quote from swallowing a file."""
     from nexus.langgraph.case_index import _csv_record_caps

@@ -275,3 +275,15 @@ def test_normalize_never_mutates_the_callers_body():
     snapshot = repr(aggs)
     normalize_aggs(aggs, TYPES)
     assert repr(aggs) == snapshot, "normalize_aggs mutated its input"
+
+
+def test_the_protocol_says_how_text_search_behaves():
+    """D195: the model wrote {"match":{"text":"lsass"}} (0 rows on the host; *lsass* on text.wc
+    gives 88) and a multi-word match that returned 37,786 rows of ANY word. Every investigative
+    prompt carries the protocol, so this is what each mode is told."""
+    from nexus.langgraph.query_normalize import query_protocol_block
+
+    block = query_protocol_block()
+    assert '{"wildcard":{"text.wc":{"value":"*lsass*","case_insensitive":true}}}' in block
+    assert '{"match_phrase":{"text":"pass the hash"}}' in block
+    assert "ANY of the words" in block
