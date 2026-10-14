@@ -1,8 +1,15 @@
 """Anonymize victim identifiers before a non-loopback LLM call.
 
-Tokens persist in the active case at ``analysis/egress_tokens.json`` so the
-same host or private IP keeps the same token across turns. The file stays on
-disk. ``NEXUS_LLM_EGRESS=raw`` turns this off.
+A call bound to a case tokenizes that case's own identifiers (its hosts, domains, user names,
+internal addresses, emails and SID domains), read from its index by
+``nexus.llm.victim_identifiers`` (D192, operator 2026-10-15). File names, paths, commands,
+hashes, public addresses and external domains reach the model: they are the evidence. Tokens
+persist in ``analysis/egress_identifiers.json`` so a value keeps its token across turns.
+
+A call with no case, or a case whose index cannot be read, keeps the shape-based anonymizer
+(``nexus.ingest.anonymize``), whose tokens persist in ``analysis/egress_tokens.json``: a failure
+keeps more out of the model, never less. Both files stay on disk. ``NEXUS_LLM_EGRESS=raw``
+turns this off.
 
 **Every** model entry point is covered: ``_generate``, ``_agenerate``,
 ``_stream`` and ``_astream``. Patching only ``_generate`` (the first version)
@@ -23,6 +30,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 from contextvars import ContextVar
@@ -105,6 +113,11 @@ def _write_tokens(path: Path, mapping: dict[str, str]) -> None:
 
 def anonymize_text(text: str, case_dir: Path | None, allowlist: set[str] | None = None) -> str:
     """Tokenize *text* and persist any new tokens for this case."""
+    from nexus.llm.victim_identifiers import case_engine
+
+    victim = case_engine(case_dir)
+    if victim is not None:
+        return victim.anonymize(text)
     engine = load_anonymizer(case_dir, allowlist)
     rewritten, mapping = engine.anonymize(text, reset=False)
     path = _token_path(case_dir)
@@ -222,7 +235,10 @@ def restore_tool_calls(tool_calls: list[dict], case_dir: Path | None) -> list[di
 
 
 def restore_text(text: str, case_dir: Path | None) -> str:
-    """Put real values back into a model reply."""
+    """Put real values back into a model reply: the case's identifiers, then shape tokens."""
+    from nexus.llm.victim_identifiers import restore_victim_tokens
+
+    text = restore_victim_tokens(text, case_dir)
     saved = _load_tokens(case_dir)
     if not saved:
         return text
@@ -275,9 +291,14 @@ class _StreamRestorer:
     unterminated ``{{`` is held until the next chunk completes it — or until
     ``flush()`` at the end of the stream. Nothing is dropped, and the delay is
     at most one token.
+
+    A bare token (``HOST_21``, D192) can straddle two chunks too, and restoring
+    ``HOST_2`` from the first would put back the wrong value, so a trailing run
+    of word characters is held as well: the delay is at most one word.
     """
 
     _OPEN = "{{"
+    _WORD_TAIL = re.compile(r"\w+$")
 
     def __init__(self, case_dir: Path | None) -> None:
         self._case = case_dir
@@ -293,12 +314,21 @@ class _StreamRestorer:
         elif buffered.endswith("{"):
             # A lone brace may become an opening "{{" in the next chunk.
             cut = len(buffered) - 1
+        else:
+            word = self._WORD_TAIL.search(buffered)
+            if word:
+                cut = word.start()
         emitted, self._tail = buffered[:cut], buffered[cut:]
-        return deanonymize(emitted, self._mapping) if emitted else ""
+        return self._restore(emitted) if emitted else ""
 
     def flush(self) -> str:
         remainder, self._tail = self._tail, ""
-        return deanonymize(remainder, self._mapping) if remainder else ""
+        return self._restore(remainder) if remainder else ""
+
+    def _restore(self, text: str) -> str:
+        from nexus.llm.victim_identifiers import restore_victim_tokens
+
+        return deanonymize(restore_victim_tokens(text, self._case), self._mapping)
 
 
 #: The case a run's model calls belong to. A ContextVar is per thread and per

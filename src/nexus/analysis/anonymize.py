@@ -32,6 +32,10 @@ class AnonPolicy:
         default_factory=lambda: dict.fromkeys(("IP", "EMAIL", "USER", "HOST", "DOMAIN", "PATH", "CMD", "REG"), True)
     )
     redact_secrets: bool = True
+    #: Tokenize a ``DOMAIN\user`` shape only when DOMAIN is a known host or domain. Egress sets it
+    #: (D192): by shape alone ``DET0593\nTechnique`` (rule text) and ``NT AUTHORITY\SYSTEM`` were
+    #: accounts.
+    user_shape_requires_known: bool = False
 
 
 @dataclass
@@ -64,6 +68,21 @@ class Anonymizer:
         self._to_real[token.upper()] = real
         return token
 
+    def seed(self, tokens: dict[str, str]) -> None:
+        """Keep tokens issued earlier (token -> real value), so a value keeps its token."""
+        for token, real in tokens.items():
+            m = re.match(r"^ANON_([A-Z]+)_(\d+)$", str(token), re.I)
+            if not m:
+                continue
+            category, n = m.group(1).upper(), int(m.group(2))
+            self._to_token[f"{category}:{str(real).lower()}"] = token.upper()
+            self._to_real[token.upper()] = str(real)
+            self._counters[category] = max(self._counters.get(category, 0), n)
+
+    def tokens(self) -> dict[str, str]:
+        """Every token issued so far (token -> real value)."""
+        return dict(self._to_real)
+
     def discoveries(self) -> list[CustomEntity]:
         out: list[CustomEntity] = []
         seen: set[str] = set()
@@ -81,6 +100,14 @@ class Anonymizer:
         if not self.policy.enabled:
             return text
         t = text
+        # Emails first: a known user name inside one would otherwise be a token inside a token,
+        # which the one-pass restore never puts back (D192).
+        if self.policy.categories.get("EMAIL"):
+            t = re.sub(
+                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+                lambda m: self._assign("EMAIL", m.group(0)),
+                t,
+            )
         for ent in sorted(self.known.custom, key=lambda e: len(e.value), reverse=True):
             if ent.value:
                 t = re.sub(
@@ -97,15 +124,20 @@ class Anonymizer:
                 flags=re.I,
             )
         if self.policy.categories.get("USER"):
+            known_names = {n.lower() for n in [*self.known.hosts, *self.known.internal_domains]}
+
+            def _account(m: re.Match[str]) -> str:
+                # A user name already tokenized stays as it is: a token inside a token is never
+                # restored, because the restore is one pass.
+                if TOKEN_RE.fullmatch(m.group(2)):
+                    return m.group(0)
+                if self.policy.user_shape_requires_known and m.group(1).lower() not in known_names:
+                    return m.group(0)
+                return self._assign("USER", f"{m.group(1)}\\{m.group(2)}")
+
             t = re.sub(
                 r"(?<![\\/:.\w])([A-Za-z][A-Za-z0-9.-]{1,14})\\([A-Za-z0-9._$-]{2,20})(?![\\/\w])",
-                lambda m: self._assign("USER", f"{m.group(1)}\\{m.group(2)}"),
-                t,
-            )
-        if self.policy.categories.get("EMAIL"):
-            t = re.sub(
-                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-                lambda m: self._assign("EMAIL", m.group(0)),
+                _account,
                 t,
             )
         if self.policy.categories.get("HOST"):
@@ -130,9 +162,11 @@ class Anonymizer:
                 flags=re.I,
             )
         if self.policy.categories.get("REG"):
+            # The domain part of a SID names the organisation; the RID after it names no one and
+            # tells a built-in account (500 is Administrator) from a created one, so it stays.
             t = re.sub(
-                r"\bS-1-5-21(?:-\d{1,10}){4}\b",
-                lambda m: self._assign("REG", m.group(0)),
+                r"\b(S-1-5-21-)(\d{1,10}-\d{1,10}-\d{1,10})(?!\d)",
+                lambda m: m.group(1) + self._assign("REG", m.group(2)),
                 t,
                 flags=re.I,
             )

@@ -31,10 +31,18 @@ _IPV4_RE = re.compile(
     r"(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\b"
 )
 
-# Windows account: DOMAIN\user
+# Windows account: DOMAIN\user, standing alone (D192). Not a segment of a longer path: nothing
+# path-like before it, no backslash after it. The domain starts with a letter (a NetBIOS name, at
+# most 15 characters). The backslash is single in prose and doubled inside JSON text. The old
+# pattern took 400 of the 467 "accounts" in a real case from JSON escapes (``0B80\n0C7C``),
+# relative paths (``SYSTEM\ControlSet001``) and rule text (``DET0593\nTechnique``).
 _DOMAIN_USER_RE = re.compile(
-    r"\b([A-Za-z0-9_.-]+)\\([A-Za-z0-9_.$-]+)\b"
+    r"(?<![\\/:.\w])([A-Za-z][A-Za-z0-9_-]{0,14})(\\{1,2})([A-Za-z0-9_.$-]+)(?![\\\w])"
 )
+
+# After a single backslash these are JSON escapes, not a user name: ``\uXXXX``, and ``\n`` ``\t``
+# ``\r`` ``\b`` ``\f`` before a capital, a digit or the end ("DET0593\nTechnique", "echo\n").
+_JSON_ESCAPE_RE = re.compile(r"u[0-9a-fA-F]{4}|[ntrbf](?:[A-Z0-9]|$)")
 
 # UNC path: \\server\share\...
 _UNC_PATH_RE = re.compile(
@@ -59,6 +67,9 @@ _HOSTNAME_RE = re.compile(
 
 # SHA-256 / SHA-1 / MD5 hex strings
 _HASH_RE = re.compile(r"\b[a-fA-F0-9]{32,64}\b")
+
+# A token as issued (``{{HOST_21}}``) or as a model sometimes writes it back (``HOST_21``).
+_TOKEN_RE = re.compile(r"\{\{([A-Z]+_\d+)\}\}|(?<![{\w])([A-Z]+_\d+)(?![}\w])")
 
 
 @dataclass
@@ -144,6 +155,9 @@ class Anonymizer:
             val = m.group(0)
             if self._is_allowed(val):
                 return val
+            # A path names something; "/01/1995" and "/1/2022," are dates (D192).
+            if not any(ch.isalpha() for ch in val):
+                return val
             return self._get_token("PATH", val)
         result = _UNIX_PATH_RE.sub(_replace_unix_path, result)
 
@@ -159,6 +173,8 @@ class Anonymizer:
         def _replace_account(m: re.Match[str]) -> str:
             full = m.group(0)
             if self._is_allowed(full):
+                return full
+            if len(m.group(2)) == 1 and _JSON_ESCAPE_RE.match(m.group(3)):
                 return full
             return self._get_token("ACCT", full)
         result = _DOMAIN_USER_RE.sub(_replace_account, result)
@@ -221,9 +237,10 @@ def deanonymize(text: str, token_dict: dict[str, str]) -> str:
     str
         The original text with all known tokens replaced.
     """
-    result = text
-    # Sort by token length descending so longer tokens are replaced first
-    # (avoids partial replacement if tokens share prefixes).
-    for original, token in sorted(token_dict.items(), key=lambda kv: -len(kv[1])):
-        result = result.replace(token, original)
-    return result
+    # One pass, so a restored value is never read again as a token. A model sometimes writes a
+    # token without its braces ("HOST_21"); the DRAFT then carried the pseudonym (D192,
+    # 2026-10-14). Only tokens this map issued are restored, braced or bare.
+    reverse = {token.strip("{}"): original for original, token in token_dict.items()}
+    if not reverse:
+        return text
+    return _TOKEN_RE.sub(lambda m: reverse.get(m.group(1) or m.group(2), m.group(0)), text)
