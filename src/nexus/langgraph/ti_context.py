@@ -47,6 +47,34 @@ def _is_private_ip(value: str) -> bool:
     return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
 
 
+_VERSION_LABEL_RE = re.compile(r"(?:version|revision)[^\d\n]{0,24}$", re.IGNORECASE)
+
+
+def _address_quads(text: str) -> list[str]:
+    """The dotted quads in ``text`` that stand as network addresses.
+
+    Windows also writes versions as dotted quads: a registry key or folder named for a version
+    (``...\\InprocServer32\\1.0.0.0``, ``...\\Modules\\LocalAccounts\\1.0.0.0``), a ``Version`` or
+    ``Revision`` value, or the first four parts of a longer version. CASE-C5B04D31's entity census
+    (2026-10-14) listed 1.0.0.0 and 3.0.0.0 as IPv4 indicators from 2,659 and 1,318 such rows. A quad
+    is a path component when separators come straight after a name; a UNC host
+    (``\\\\10.1.2.3\\share``) and a URL host stay addresses.
+    """
+    quads: list[str] = []
+    for match in _IPV4_RE.finditer(text):
+        start, end = match.span()
+        if text[end:end + 1] == "." and text[end + 1:end + 2].isdigit():
+            continue  # the start of a longer dotted number
+        before = text[max(0, start - 64):start]
+        name = before.rstrip("\\/")
+        if len(name) < len(before) and name and (name[-1].isalnum() or name[-1] in "_$-.~}])"):
+            continue  # a path component under a named key or folder
+        if _VERSION_LABEL_RE.search(before):
+            continue
+        quads.append(match.group(0))
+    return quads
+
+
 def extract_iocs(texts: list[str], *, cap: int = 12) -> dict[str, list[str]]:
     """Deterministic IOC census over evidence text (hashes > IPs > domains > URLs)."""
     found: dict[str, set[str]] = {"sha256": set(), "sha1": set(), "md5": set(),
@@ -60,7 +88,7 @@ def extract_iocs(texts: list[str], *, cap: int = 12) -> dict[str, list[str]]:
             found["sha1"].add(m.lower())
         for m in _MD5_RE.findall(text):
             found["md5"].add(m.lower())
-        for m in _IPV4_RE.findall(text):
+        for m in _address_quads(text):
             if not _is_private_ip(m):
                 found["ipv4"].add(m)
         for m in _DOMAIN_RE.findall(text):
