@@ -200,9 +200,9 @@ def test_only_the_models_findings_are_staged(case):
                        "rejected": []}
 
 
-def test_the_runs_draft_report_and_verdict_cover_its_own_findings_only(case):
+def test_the_run_writes_no_draft_report_and_its_verdict_covers_its_own_findings(case):
     """D169 (2026-10-14): an independent Mode 1 run's verdict listed 23 findings from four runs,
-    and its draft report re-read every DRAFT in the case."""
+    and its model-written draft report re-read every DRAFT in the case (21 of 42 minutes)."""
     from nexus.langgraph.llm_pipeline import stage_findings
 
     case_dir, run = case
@@ -216,8 +216,9 @@ def test_the_runs_draft_report_and_verdict_cover_its_own_findings_only(case):
     asyncio.run(stage_findings(_state(case_dir, run.run_id, [_msg(claim)]),
                                {"record_finding": _RealRecord(case_dir)}))
 
-    draft = (run.path / "reports" / "REPORT-DRAFT.md").read_text(encoding="utf-8")
-    assert "Defender tamper" in draft and "Another run's DRAFT" not in draft
+    # No model-written draft report in the run (D169, operator 2026-10-14): the examiner's
+    # preview is `nexus report generate`, the report comes from APPROVED findings.
+    assert not (run.path / "reports" / "REPORT-DRAFT.md").exists()
     assert not (case_dir / "reports" / "REPORT-DRAFT.md").exists()
     verdict = (case_dir / "analysis" / "interpretation.md").read_text(encoding="utf-8")
     assert verdict.startswith("# Mode 1 interpretation")

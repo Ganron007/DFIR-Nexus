@@ -1468,8 +1468,8 @@ def build_dfir_markdown(
         skip_n = sum(1 for r in tool_ledger if r.get("status") == "SKIP")
         lines.append(
             f"**{ok_n} OK** · **{fail_n} FAIL** · **{skip_n} SKIP** "
-            f"(total {len(tool_ledger)}). Every OK extraction was available to "
-            "the interpretation agent (see `analysis/query_pack.md`)."
+            f"(total {len(tool_ledger)}). The interpretation agent queried the case "
+            "index built from these extractions."
         )
         lines.append("")
         lines.append("| Host | Tool | Status | Purpose | audit_id |")
@@ -1539,14 +1539,13 @@ def build_dfir_markdown(
     return "\n".join(lines)
 
 
-def write_findings_preview(case_dir, llm: bool = True, *,
-                           finding_ids: set[str] | None = None, out: Path | None = None) -> Path:
+def write_findings_preview(case_dir, llm: bool = True) -> Path:
     """Write ``reports/REPORT-DRAFT.md`` from staged DRAFT+APPROVED findings.
 
     ``llm`` toggles the N8 analysis layer's model calls — tests and offline
     use pass ``llm=False`` (deterministic category mapping still runs).
-    ``finding_ids`` limits the draft to a run's own findings and ``out`` places it in that
-    run's folder: a Mode 1 run's draft covered every DRAFT in the case (2026-10-14, D169).
+    The examiner's preview, on demand (``nexus report generate``); a Mode 1 run does not write it
+    (D169).
     """
     import json
 
@@ -1557,8 +1556,6 @@ def write_findings_preview(case_dir, llm: bool = True, *,
     findings = []
     if findings_path.is_file():
         findings = json.loads(findings_path.read_text(encoding="utf-8"))
-    if finding_ids is not None:
-        findings = [f for f in findings if isinstance(f, dict) and str(f.get("id")) in finding_ids]
     meta: dict = {}
     case_yaml = case_dir / "CASE.yaml"
     if case_yaml.is_file():
@@ -1599,7 +1596,7 @@ def write_findings_preview(case_dir, llm: bool = True, *,
         case_dir=case_dir,
         llm=llm,
     )
-    out = Path(out) if out is not None else case_dir / "reports" / "REPORT-DRAFT.md"
+    out = case_dir / "reports" / "REPORT-DRAFT.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8")
     return out
