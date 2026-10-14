@@ -24,12 +24,16 @@ REAL_OUTPUT = (
 
 
 def _real_csv(tmp_path: Path) -> Path:
-    """A verbatim EvtxECmd output file. Skips where the operator's set is absent."""
+    """A verbatim EvtxECmd output file. Skips where the operator's set is absent.
+
+    The smallest one: resolution only asks whether a run holds data, and the first by name
+    is 1.3 GB, copied into every run folder (12 GB of temp files per suite run).
+    """
     found = sorted(REAL_OUTPUT.glob("*.csv")) if REAL_OUTPUT.is_dir() else []
     if not found:
         pytest.skip("operator's ES-Mapping EvtxECmd outputs are not present")
     dest = tmp_path / "source.csv"
-    shutil.copy2(found[0], dest)
+    shutil.copy2(min(found, key=lambda p: p.stat().st_size), dest)
     return dest
 
 
