@@ -33,7 +33,9 @@ Both engines are read because they do not agree on what a detection is:
 from __future__ import annotations
 
 import csv
+import functools
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -198,14 +200,18 @@ def _lead_from_rule(rule: dict[str, Any]) -> Lead:
         "crit_high": level in CRIT_HIGH_LEVELS,
     }
     tag = rule.get("attack_ids") or []
-    if not tag:
-        # Neither engine emits MITRE columns, so attribute from the rule's own
-        # text against the case's technique needles (item 8).
+    if tag:
+        extra["attack_source"] = "rule"
+    else:
+        # A rule with no tags of its own: attribute from its text against the case's technique
+        # needles (item 8). The rule's tags come first (D173).
         tag = _techniques_for_rule_text(
             f"{rule.get('subject') or ''} {rule.get('detail') or ''} "
             + " ".join(str(s.get("details") or "") for s in (rule.get("samples") or ())),
             str(rule.get("family") or ""),
         )
+        if tag:
+            extra["attack_source"] = "rule text"
     if tag:
         extra["attack_ids"] = list(tag)
         # The NAME, not just the id (item 8). A reader should not have to look a
@@ -234,6 +240,56 @@ def _lead_from_rule(rule: dict[str, Any]) -> Lead:
         score=float(rule.get("score") or 0.0),
         extra=extra,
     )
+
+
+_RULE_ID = re.compile(r"^id:\s*([0-9A-Fa-f-]{36})\s*$", re.MULTILINE)
+_RULE_TAG = re.compile(r"^\s*-\s*attack\.(t\d{4}(?:\.\d{3})?)\s*$", re.MULTILINE | re.IGNORECASE)
+
+
+def _hayabusa_rules_dir() -> Path:
+    """The Hayabusa rule set the lane runs: the checkout ``lineage.RULE_SETS`` pins."""
+    from nexus.tools.lineage import RULE_SETS
+
+    return Path(__file__).resolve().parents[3] / "tools" / "windows" / RULE_SETS["hayabusa"]
+
+
+def hayabusa_rule_techniques(rules_dir: Path | None = None) -> dict[str, list[str]]:
+    """RuleID -> the ATT&CK technique ids the rule file tags (D173).
+
+    The lane's Hayabusa CSV has no MITRE column, so rule leads were attributed from their text
+    against technique needles: 4 distinct techniques across the top 40 leads of CASE-C5B04D31.
+    Every rule the tool runs carries its own ``id`` and ``attack.tNNNN`` tags, so a RuleID in the
+    CSV names its techniques. Read once per rules checkout (the commit lineage records); a
+    missing rule set gives an empty map and the text attribution stays the fallback.
+    """
+    root = Path(rules_dir) if rules_dir is not None else _hayabusa_rules_dir()
+    from nexus.tools.lineage import _git_head_commit
+
+    return dict(_rule_techniques(str(root), _git_head_commit(root) if root.is_dir() else ""))
+
+
+@functools.lru_cache(maxsize=4)
+def _rule_techniques(root: str, _commit: str) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    base = Path(root)
+    if not base.is_dir():
+        return out
+    for path in base.rglob("*.yml"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        match = _RULE_ID.search(text)
+        if not match:
+            continue
+        ids: list[str] = []
+        for tag in _RULE_TAG.findall(text):
+            tid = tag.upper()
+            if tid not in ids:
+                ids.append(tid)
+        if ids:
+            out[match.group(1).lower()] = ids
+    return out
 
 
 def _attack_ids_from_tags(raw: Any) -> list[str]:
@@ -330,6 +386,7 @@ def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
     Reads every detection before ranking. ``limit`` counts rules.
     """
     by_rule: dict[tuple[str, str], dict[str, Any]] = {}
+    rule_techniques = hayabusa_rule_techniques()
     for run in _newest_runs(Path(case_dir)):
         base = run / "extractions" / "hayabusa"
         if not base.is_dir():
@@ -362,7 +419,7 @@ def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                         "hosts": [], "samples": [],
                         "attack_ids": _attack_ids_from_tags(
                             row.get("MitreTactics") or row.get("Tags")
-                        ),
+                        ) or list(rule_techniques.get(rule_id.lower(), [])),
                     }
                     by_rule[key] = rule
                 else:

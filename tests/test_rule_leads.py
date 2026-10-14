@@ -328,3 +328,40 @@ def test_the_written_leads_file_contains_rule_detections(tmp_path):
     chainsaw = [r for r in engine_rows if r["family"] == "chainsaw"]
     assert hayabusa and all(r["rows"] and "level" in r["rows"][0] for r in hayabusa)
     assert chainsaw and all(r["extra"]["level"] == "" for r in chainsaw)
+
+
+RULE_YML = """title: Log Cleared
+id: 00000000-0000-0000-0000-00000000abcd
+status: stable
+related:
+    - id: 11111111-1111-1111-1111-111111111111
+      type: derived
+tags:
+    - attack.defense-evasion
+    - attack.t1070
+    - attack.t1070.001
+logsource:
+    product: windows
+"""
+
+
+def test_a_hayabusa_lead_takes_the_techniques_its_rule_file_tags(tmp_path, monkeypatch):
+    """D173: the lane's Hayabusa CSV has no MITRE column, so rule leads were attributed from their
+    text (4 distinct techniques across CASE-C5B04D31's top 40). The rule the RuleID names tags them."""
+    from nexus.analysis import rule_leads
+
+    rules = tmp_path / "rules" / "sigma" / "builtin"
+    rules.mkdir(parents=True)
+    (rules / "log_cleared.yml").write_text(RULE_YML, encoding="utf-8")
+    monkeypatch.setattr(rule_leads, "_hayabusa_rules_dir", lambda: tmp_path / "rules")
+    case = _case_with_rule_output(tmp_path)
+    csv_path = case / "runs" / "RUN-1" / "extractions" / "hayabusa" / "evtx-timeline.csv"
+    text = csv_path.read_text(encoding="utf-8")
+    csv_path.write_text(text.replace("abc-clear", "00000000-0000-0000-0000-00000000abcd"),
+                        encoding="utf-8")
+
+    cleared = next(lead for lead in hayabusa_leads(case) if lead.subject == "Log Cleared")
+    assert cleared.extra["attack_ids"] == ["T1070", "T1070.001"]
+    assert cleared.extra["attack_source"] == "rule"
+    assert rule_leads.hayabusa_rule_techniques(tmp_path / "rules") == {
+        "00000000-0000-0000-0000-00000000abcd": ["T1070", "T1070.001"]}
