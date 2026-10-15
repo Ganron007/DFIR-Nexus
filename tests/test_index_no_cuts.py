@@ -203,3 +203,27 @@ def test_a_csv_record_of_many_lines_is_kept_whole():
     by_id = {cells[0]: cells for _start, _raw, cells in records if cells}
     assert by_id["1"][1] == body
     assert by_id["2"][1] == "tail"
+
+
+MPLOG_HEADER = ("start_time,threat_name,threat_id,action,resource_action_complete,schema,path,"
+                "resource_refcount,result,finished_threat_id,threat_result,threat_status_flags,"
+                "threat_effective_removalpolicy")
+MPLOG_ROW = ("2023-01-25T00:41:57.000Z,Behavior:Win32/CobaltStrike.E!sms,2147735503,remove,1,file,"
+             "C:\\Windows\\System32\\SRLUpdate.exe,1,0x0,2147735503,0x0,0x0,1")
+
+
+@pytest.mark.parametrize("encoding,bom", [("utf-16-le", b"\xff\xfe"), ("utf-16-le", b""),
+                                          ("utf-8", b"\xef\xbb\xbf")])
+def test_a_utf16_tool_output_is_indexed_as_text(run_case, encoding, bom):
+    """D207: Mplog-Parser's CSVs and the WER reports are UTF-16. Read as UTF-8 they indexed with a
+    NUL after every character (310 files of CASE-C5B04D31), unsearchable, and their column names
+    reached the field sheet as NUL-interleaved strings."""
+    case_dir, extractions = run_case
+    path = extractions / "mplog" / "MPLog_ThreatAction.csv"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(bom + (MPLOG_HEADER + "\r\n" + MPLOG_ROW + "\r\n").encode(encoding))
+
+    (doc,) = [d for d in _docs(case_dir) if d["family"] == "mplog"]
+    assert "\x00" not in doc["text"] and "CobaltStrike" in doc["text"]
+    assert doc["fields"]["threat_name"] == "Behavior:Win32/CobaltStrike.E!sms"
+    assert not [k for k in doc["fields"] if "\x00" in k or "\ufeff" in k]

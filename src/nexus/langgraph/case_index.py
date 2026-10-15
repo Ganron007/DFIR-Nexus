@@ -702,13 +702,36 @@ def _index_rel(path: Path, root: Path) -> str:
     return str(path.relative_to(root)).replace("\\", "/")
 
 
+def _text_encoding(head: bytes) -> str:
+    """The encoding of a tool's text output, from its first bytes (D207).
+
+    Windows tools write UTF-16: Mplog-Parser's CSVs and the WER reports carry the UTF-16LE BOM. Read
+    as UTF-8 they became text with a NUL after every character, so CASE-C5B04D31's 310 such files
+    (Defender's detections and threat actions among them) indexed as rows no search could match,
+    and their column names reached the field sheet as ``\\x00a\\x00c\\x00t...``.
+    """
+    if head.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    if head.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "utf-16"
+    # UTF-16LE with no BOM: ASCII text with a NUL after every character.
+    odd, even = head[1::2], head[0::2]
+    if len(head) >= 8 and odd and odd.count(0) == len(odd) and even.count(0) == 0:
+        return "utf-16-le"
+    return "utf-8"
+
+
 def _open_text_auto(path: Path):
-    """Text open with transparent gzip decompression (EH-11)."""
+    """Text open with transparent gzip decompression (EH-11) and the file's own encoding (D207)."""
     if str(path).lower().endswith(".gz"):
         import gzip
 
-        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
-    return path.open(encoding="utf-8", errors="replace")
+        with gzip.open(path, "rb") as raw:
+            head = raw.read(64)
+        return gzip.open(path, "rt", encoding=_text_encoding(head), errors="replace")
+    with path.open("rb") as raw:
+        head = raw.read(64)
+    return path.open(encoding=_text_encoding(head), errors="replace")
 
 
 def _index_header(path: Path) -> list[str] | None:
