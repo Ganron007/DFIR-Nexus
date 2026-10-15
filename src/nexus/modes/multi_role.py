@@ -133,6 +133,15 @@ def _investigative_extras(case_dir: Path) -> str:
         out += query_protocol_block() + "\n\n"
     except Exception:  # noqa: BLE001
         pass
+    # D212: a machine renamed over its life is one host. Every mode read its names as separate hosts.
+    try:
+        from nexus.analysis.host_identity import host_identity_block
+
+        block = host_identity_block(case_dir)
+        if block:
+            out += block + "\n\n"
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 

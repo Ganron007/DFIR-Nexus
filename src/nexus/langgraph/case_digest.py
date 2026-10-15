@@ -146,6 +146,13 @@ def _entity_spans(case_dir: Path) -> dict[str, Any]:
         return {}
 
 
+def _host_identity(case_dir: Path) -> dict[str, Any]:
+    """The machines the case's event logs show under several names (D212)."""
+    from nexus.analysis.host_identity import host_identity
+
+    return host_identity(case_dir)
+
+
 def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> dict[str, Any]:
     """Assemble the deterministic digest for one case (no LLM involved).
 
@@ -200,6 +207,7 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "top_leads": top_leads(case_dir),
         "entities": brief.get("entities") or {},
         "entity_spans": _entity_spans(case_dir),
+        "host_identity": _host_identity(case_dir),
         "timeline": _timeline(case_dir),
         "ti_context_md": ti_md,
         "hits_examined": brief.get("hits_examined", 0),
@@ -428,6 +436,13 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
                 f"{i['value']}({i['count']}; {i.get('first_seen', '?')}→{i.get('last_seen', '?')})"
                 for i in items[:10]
             ))
+    from nexus.analysis.host_identity import host_identity_lines
+
+    identity = host_identity_lines(digest.get("host_identity") or {})
+    if identity:
+        lines.append("")
+        lines.append("## Host identity (one machine, several names)")
+        lines.extend(identity)
     tl = digest.get("timeline") or {}
     if tl.get("buckets_per_day"):
         buckets = list((tl.get("buckets_per_day") or {}).items())[:30]
