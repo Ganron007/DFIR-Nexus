@@ -237,3 +237,27 @@ def test_the_seat_is_asked_to_rate_its_claims(tmp_path, monkeypatch):
         "question": "Compromise suspected."}, json.dumps({"claims": []}))
     _system, user = _messages(model.sent[0])
     assert '"severity":"LOW|MEDIUM|HIGH|CRITICAL"' in user
+
+
+def test_a_seat_spawned_for_several_questions_settles_each(tmp_path, monkeypatch):
+    """D222: a question seat holds a share of the open questions; each one it leaves unsettled is closed
+    as investigated, as a single question was."""
+    from nexus.modes.multi_agent import _question_ledger, question_id
+
+    reply = json.dumps({"claims": [], "question_dispositions": [
+        {"question": "Qa1a1a1", "status": "unanswerable", "basis": "dc01 is not in this case"}]})
+    entry, model = _seat(tmp_path, monkeypatch, {
+        "role": "evidence", "family": "", "why": "open questions from seats",
+        "question": "Compromise suspected.\nSeats asked these open questions; settle each one:",
+        "question_ids": ["Qa1a1a1", "Qb2b2b2"]}, reply)
+    _system, user = _messages(model.sent[0])
+    assert "You were spawned for open questions Qa1a1a1, Qb2b2b2: return a disposition for each" in user
+    assert entry["question_dispositions"][0]["status"] == "unanswerable"
+    first, second = "Was dc01 reached?", "Who ran STUN.exe?"
+    raised = _entry("seat-a", 1, open_questions=[first, second])
+    seated = {**entry, "question_ids": [question_id(first), question_id(second)],
+              "question_dispositions": [{"question": question_id(first), "status": "unanswerable",
+                                         "basis": "dc01 is not in this case"}]}
+    ledger = _question_ledger([raised, seated])
+    assert ledger[question_id(first)]["status"] == "unanswerable"
+    assert ledger[question_id(second)]["status"] == "investigated"

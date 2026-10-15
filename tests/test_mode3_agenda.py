@@ -96,9 +96,12 @@ def test_questions_and_pivots_take_turns_for_seats():
               "questions": [{"id": question_id(t), "text": t} for t in texts],
               "pivots": [{"entity_type": "process", "entity_value": f"p{n}.exe", "why": "x"} for n in range(10)]}
     spawns = _spawns_for_agenda(agenda, [], max_agents=6, question="Compromise suspected.", superstep=3)
-    assert ["q" if s.get("question_id") else "p" for s in spawns] == ["q", "p", "q", "p", "q", "p"]
-    assert spawns[0]["question_id"] == question_id(texts[0])
-    assert "A seat asked: question 0?" in spawns[0]["question"]
+    assert ["q" if s.get("question_ids") else "p" for s in spawns] == ["q", "p", "q", "p", "q", "p"]
+    # D222: the question seats share out every open question, so none waits for a seat of its own.
+    shares = [s["question_ids"] for s in spawns if s.get("question_ids")]
+    assert shares[0] == [question_id(texts[n]) for n in (0, 3, 6, 9)]
+    assert sorted(q for share in shares for q in share) == sorted(question_id(t) for t in texts)
+    assert f"- {question_id(texts[0])}: question 0?" in spawns[0]["question"]
 
 
 def _settling_seat(raised: list[str]):
@@ -146,17 +149,17 @@ def test_a_capped_run_names_what_kept_it_open(tmp_path, monkeypatch):
     from nexus.modes.multi_agent import run_mode3
 
     monkeypatch.setenv("NEXUS_MODE3_MAX_AGENTS", "3")
-    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "2")
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "1")
 
     def seat(spawn, _board, step):
-        return _entry(f"{spawn['role']}-{step}-{spawn.get('question_id') or spawn.get('family')}", step,
+        return _entry(f"{spawn['role']}-{step}-{spawn.get('family')}", step,
                       finish_reason="answer", coverage_gaps=["no proxy or DNS logs were collected"],
                       open_questions=[f"Which process wrote dropped file {n}?" for n in range(8)])
 
     case = _case(tmp_path)
     record = run_mode3(case, "Compromise suspected.", families=[("hayabusa", 10)], seat_fn=seat, es_ok=True)
     assert record["stop_reason"] == "budget: max supersteps"
-    assert len(record["open_agenda"]["questions"]) == 5, "eight raised, three seated and investigated"
+    assert len(record["open_agenda"]["questions"]) == 8, "raised in the last superstep, never seated"
     assert all(q["id"].startswith("Q") and q["text"] for q in record["open_agenda"]["questions"])
     assert any("no proxy or DNS logs were collected" in gap for gap in record["gaps"])
     events = [json.loads(line) for line in (case / "analysis" / "mode3_runs" / f"{record['run_id']}.jsonl")
@@ -237,3 +240,30 @@ def test_the_seat_is_told_what_an_open_question_is_and_its_retry_keeps_its_field
     assert entry["coverage_gaps"] == ["no Sysmon EID 1 rows in the evidence"]
     assert entry["question_dispositions"][0]["status"] == "duplicate"
     assert entry["open_questions"] == ["Which account created the task?"]
+
+
+def test_question_seats_share_out_every_open_question_and_the_run_settles(tmp_path, monkeypatch):
+    """D222: one question per seat and three seats a superstep left Mode 3 run 3 at its cap with 17 open.
+    Twelve questions raised in superstep 1 are all seated in superstep 2, and each seat settles its share."""
+    from nexus.modes.multi_agent import run_mode3
+
+    monkeypatch.setenv("NEXUS_MODE3_MAX_AGENTS", "3")
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "3")
+    shares: list[list[str]] = []
+
+    def seat(spawn, _board, step):
+        entry = _entry(f"{spawn['role']}-{step}-{len(shares)}", step, role=spawn["role"], finish_reason="answer")
+        if step == 1:
+            entry["open_questions"] = [f"Which process wrote dropped file {n}?" for n in range(12)]
+        if spawn.get("question_ids"):
+            shares.append(list(spawn["question_ids"]))
+            entry["question_dispositions"] = [{"question": q, "status": "unanswerable",
+                                               "basis": "a host this case does not hold"}
+                                              for q in spawn["question_ids"]]
+        return entry
+
+    record = run_mode3(_case(tmp_path), "Compromise suspected.", families=[("hayabusa", 10)], seat_fn=seat,
+                       es_ok=True)
+    assert sorted(len(s) for s in shares) == [4, 4, 4]
+    assert record["stop_reason"] == "settled", (record["stop_reason"], record["open_agenda"])
+    assert record["superstep"] == 2

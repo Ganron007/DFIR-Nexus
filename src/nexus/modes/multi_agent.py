@@ -1005,10 +1005,11 @@ def _seat_with_model(
             'on the board is settled through "question_dispositions", never raised again in '
             '"open_questions". ',
         ]
-        if spawn.get("question_id"):
+        spawned_for = _spawned_question_ids(spawn)
+        if spawned_for:
             contract.append(
-                f'You were spawned for open question {spawn["question_id"]}: return its disposition in '
-                '"question_dispositions". '
+                f'You were spawned for open question{"s" if len(spawned_for) > 1 else ""} '
+                f'{", ".join(spawned_for)}: return a disposition for each in "question_dispositions". '
             )
         if spawn.get("lead"):
             contract.append(
@@ -1345,12 +1346,18 @@ def _question_ledger(board: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             if item is not None and item["status"] == "open":
                 item.update(status=status, basis=str(disp.get("basis") or ""),
                             audit_ids=list(disp.get("audit_ids") or []), settled_by=agent)
-        qid = str(entry.get("question_id") or "")
-        item = ledger.get(qid)
-        if item is not None and item["status"] == "open":
-            item.update(status="investigated", basis="the seat spawned for it returned no disposition",
-                        settled_by=agent)
+        for qid in _spawned_question_ids(entry):
+            item = ledger.get(qid)
+            if item is not None and item["status"] == "open":
+                item.update(status="investigated", basis="the seat spawned for it returned no disposition",
+                            settled_by=agent)
     return ledger
+
+
+def _spawned_question_ids(item: Mapping[str, Any]) -> list[str]:
+    """The open questions a seat was spawned to settle; a board written before D222 names one."""
+    ids = [str(q) for q in item.get("question_ids") or [] if str(q)]
+    return ids or ([str(item["question_id"])] if item.get("question_id") else [])
 
 
 #: Entity types worth a follow-up seat when first seen (item 7b (c)).
@@ -1513,20 +1520,15 @@ def _spawns_for_agenda(
             "lead_extra": lead_extra,
         })
 
-    def question_seat(item: Any) -> dict[str, Any] | None:
+    questions: list[dict[str, str]] = []
+    for item in agenda.get("questions") or []:
         text = str(item.get("text") if isinstance(item, dict) else item or "")
         key = _norm_key(text)[:80]
         if not key or key in taken:
-            return None
+            continue
         taken.add(key)
         qid = str(item.get("id") or "") if isinstance(item, dict) else ""
-        return {
-            "role": "evidence",
-            "family": "",
-            "why": "open question from a seat",
-            "question": f"{question}\nA seat asked: {text}",
-            "question_id": qid or question_id(text),
-        }
+        questions.append({"id": qid or question_id(text), "text": text})
 
     def pivot_seat(pivot: dict[str, Any]) -> dict[str, Any] | None:
         evalue = str(pivot.get("entity_value") or "")
@@ -1549,17 +1551,28 @@ def _spawns_for_agenda(
             },
         }
 
-    # Open questions and pivots take turns (D208): questions went first, outnumbered the seats
-    # every superstep of Mode 3 run 1, and no pivot was seated after superstep 2.
-    queued_questions = list(agenda.get("questions") or [])
+    # Open questions and pivots take turns for seats (D208), and the question seats share out every
+    # open question (D222). A seat used to be spawned for one question while any seat can raise
+    # several: Mode 3 run 3 (2026-10-15) seated three a superstep and stopped at its cap with 17 open,
+    # down from 26 but level for the last five supersteps.
     queued_pivots = [p for p in agenda.get("pivots") or [] if isinstance(p, dict)]
-    while len(spawns) < max_agents and (queued_questions or queued_pivots):
-        for queue, build in ((queued_questions, question_seat), (queued_pivots, pivot_seat)):
-            while queue and len(spawns) < max_agents:
-                seat_spec = build(queue.pop(0))
-                if seat_spec:
-                    spawns.append(seat_spec)
-                    break
+    question_seats: list[dict[str, Any]] = []
+    turn = 0
+    while len(spawns) < max_agents and (len(question_seats) < len(questions) or queued_pivots):
+        if turn % 2 == 0 and len(question_seats) < len(questions):
+            seat_spec: dict[str, Any] | None = {"role": "evidence", "family": "",
+                                               "why": "open questions from seats"}
+            question_seats.append(seat_spec)
+        else:
+            seat_spec = pivot_seat(queued_pivots.pop(0)) if queued_pivots else None
+        if seat_spec:
+            spawns.append(seat_spec)
+        turn += 1
+    for n, seat_spec in enumerate(question_seats):
+        share = questions[n::len(question_seats)]
+        seat_spec["question_ids"] = [q["id"] for q in share]
+        seat_spec["question"] = (f"{question}\nSeats asked these open questions; settle each one:\n"
+                                 + "\n".join(f"- {q['id']}: {q['text']}" for q in share))
 
     # Correlation/pattern only from superstep 2, on a non-empty board: they exist
     # to cross-examine what the evidence seats reported.
@@ -2134,8 +2147,8 @@ def run_mode3(
             entry["lead"] = str(spawn.get("lead") or "")
         # D208: the question or pivot this seat was spawned to settle, so the board alone says what
         # is still open, in a resumed run as well.
-        if spawn.get("question_id"):
-            entry["question_id"] = str(spawn["question_id"])
+        if _spawned_question_ids(spawn):
+            entry["question_ids"] = _spawned_question_ids(spawn)
         if isinstance(spawn.get("pivot_entity"), dict):
             entry["pivot_entity"] = dict(spawn["pivot_entity"])
         with contextlib.suppress(TypeError, ValueError):
