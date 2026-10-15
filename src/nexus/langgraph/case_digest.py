@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,7 @@ log = logging.getLogger(__name__)
 
 _NETWORK_FAMILIES = ("suricata", "zeek", "wireshark", "sysdig", "pcap", "netflow", "arkime")
 _CLOUD_FAMILIES = ("cloudtrail", "azure", "m365", "o365", "entra", "gcp", "aws")
-_EMAIL_FAMILIES = ("email", "eml", "msg", "mbox", "pst")
+_EMAIL_FAMILIES = ("email", "eml", "msg", "mbox", "pst", "ost")
 _SIEM_FAMILIES = ("splunk", "elastic", "security_onion", "wazuh", "socrates", "syslog", "socrate")
 _MEMORY_FAMILIES = ("volatility", "memprocfs", "memory")
 _LINUX_FAMILIES = ("auditd", "authlog", "auth", "bash_history", "linux")
@@ -36,8 +37,14 @@ def _classify(families: list[str]) -> dict[str, list[str]]:
 
     low = {f.lower(): f for f in families}
 
+    def named(lower: str, hints: tuple[str, ...]) -> bool:
+        # A family is an identifier the lane or an importer chose (`zeek_conn`, `pff-ost`), so a hint
+        # names the whole family or one of its parts. It used to match any substring: `pstranscript`
+        # (PowerShell transcripts) was email for its "pst", `oauth` would be Linux for its "auth" (D205).
+        return lower in hints or any(part in hints for part in re.split(r"[-_.\s]+", lower))
+
     def pick(hints: tuple[str, ...]) -> list[str]:
-        return [orig for lower, orig in low.items() if any(h in lower for h in hints)]
+        return [orig for lower, orig in low.items() if named(lower, hints)]
 
     # A family named for the memory job that wrote it is memory: the SIFT lane's Volatility output is
     # the family `vol`, which no name hint matched, so 88,965 memory rows were "host" (D204).
@@ -45,7 +52,7 @@ def _classify(families: list[str]) -> dict[str, list[str]]:
                     | {orig for lower, orig in low.items() if lower in _MEMORY_JOB_TOOLS})
     host = [
         orig for lower, orig in low.items()
-        if orig not in memory and not any(h in lower for h in (
+        if orig not in memory and not named(lower, (
             _NETWORK_FAMILIES + _CLOUD_FAMILIES + _EMAIL_FAMILIES
             + _SIEM_FAMILIES + _MEMORY_FAMILIES + _DISK_FAMILIES
         ))

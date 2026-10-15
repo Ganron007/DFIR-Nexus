@@ -550,8 +550,39 @@ def _row_in_window(line: str, start: datetime | None, end: datetime | None) -> b
     return not found  # keyword hit with no timestamp still kept
 
 
+#: Tools whose own output folder holds a whole tree of artifacts. MemProcFS writes `forensic/
+#: prefetch`, `forensic/amcache`, `forensic/csv`, ... under `memprocfs/<image>/`.
+_TREE_TOOLS = ("memprocfs",)
+
+
+def _tool_folder_family(rel: str) -> str:
+    """The family of the tool that owns the first folder of ``rel``, or "" (D210).
+
+    One family per tool (WO-R2F item 5, D44): a tool's output belongs to that tool, whatever its
+    own sub-folders and file names say. The hints below matched anywhere in the path, so
+    CASE-C5B04D31's MemProcFS output became ten families (`json`, `csv`, `ntfs`, `prefetch`,
+    `amcache`, ..., one named after the memory image) and 3.18 M memory rows read as host
+    evidence; memory-carved Amcache shared the `amcache` family with the disk's, and LogFileParser's
+    `LogFile_BitsInNonresidentBitMap.csv` (NTFS $LogFile records) became the BITS family.
+    """
+    from nexus.langgraph.audit_linkage import _FAMILY_TO_TOOL
+
+    first = rel.split("/", 1)[0]
+    if "/" not in rel:
+        return ""
+    owner = next((tool for tool in (*_TOOL_FAMILIES, *_TREE_TOOLS)
+                  if first == tool or first.startswith(tool + "-")), "")
+    if not owner or owner in _FAMILY_TO_TOOL:
+        return owner
+    # A tool whose family is named for its artifact keeps that name (bitsparser writes `bits`).
+    return next((fam for fam, tool in _FAMILY_TO_TOOL.items() if tool == owner), owner)
+
+
 def _family(path: Path, root: Path) -> str:
     rel = str(path.relative_to(root)).replace("\\", "/").lower()
+    owned = _tool_folder_family(rel)
+    if owned:
+        return owned
     for hint in _FAMILY_HINTS:
         if hint in rel:
             return hint
@@ -562,7 +593,7 @@ def _family(path: Path, root: Path) -> str:
     # SC1 where there are 24 (D44), 120 of them `extractions` holding
     # `deepbluecli-<channel>-<hash>.txt`. The tool prefix IS the family.
     stem = path.stem.lower()
-    for tool in _TOOL_FAMILIES:
+    for tool in (*_TOOL_FAMILIES, *_TREE_TOOLS):
         if stem == tool or stem.startswith(tool + "-"):
             return tool
     # A tool that writes a per-run subdirectory (LogFileParser's
