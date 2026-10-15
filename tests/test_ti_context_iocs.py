@@ -32,3 +32,28 @@ def test_addresses_are_still_found_in_text_urls_and_unc_paths():
                   r"net use \\185.199.108.153\share",
                   "TLS version 1.2 to 8.8.4.4")
     assert found == ["185.199.108.153", "45.33.32.156", "8.8.4.4", "93.184.216.34"]
+
+
+def _domains(*texts: str) -> list[str]:
+    return extract_iocs(list(texts))["domain"]
+
+
+def test_a_dotnet_type_or_namespace_is_not_a_domain():
+    """D202: `System.Net` (from `System.Net.WebClient`) and a cmdletization namespace went to the TI
+    providers as domains. The second row is CASE-C5B04D31's hayabusa 4104 ScriptBlock text."""
+    assert _domains(
+        "(New-Object System.Net.WebClient).DownloadFile($u, $p)",
+        "[System.Net.ServicePointManager]::SecurityProtocol = 3072",
+        "ParameterType = 'Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Action'; Bind",
+        "[Microsoft.PowerShell.Cmdletization.GeneratedTypes.Net]",
+        "[System.Net]::new()",
+    ) == []
+
+
+def test_domains_in_text_urls_and_mail_are_still_found():
+    assert _domains(
+        "beacon to d3azl80n0qqn6q.cloudfront.net every 60 s",
+        "GET https://evil-c2.top/stage2.ps1 HTTP/1.1",
+        "from attacker@phish.example.org.",
+        "Computer: RD01.SHIELDBASE.COM",
+    ) == ["d3azl80n0qqn6q.cloudfront.net", "evil-c2.top", "phish.example.org", "rd01.shieldbase.com"]

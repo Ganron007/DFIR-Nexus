@@ -21,12 +21,27 @@ _SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
 _SHA1_RE = re.compile(r"\b[a-fA-F0-9]{40}\b")
 _MD5_RE = re.compile(r"\b[a-fA-F0-9]{32}\b")
 _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+# A domain is a whole dotted name: not the head of a longer one (`System.Net` in
+# `System.Net.WebClient`) and not its tail (D202).
 _DOMAIN_RE = re.compile(
-    r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+"
+    r"(?<![\w.-])(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+"
     r"(?:com|net|org|io|ru|cn|top|xyz|info|biz|online|site|club|live|"
-    r"support|link|click|onion|dev|app|cloud|pro|cc|tk|gg)\b",
+    r"support|link|click|onion|dev|app|cloud|pro|cc|tk|gg)(?![\w-]|\.[A-Za-z0-9])",
     re.IGNORECASE,
 )
+
+
+def _is_code_name(name: str) -> bool:
+    """A dotted name written as code: a .NET type or namespace, not a host.
+
+    Evidence writes host names in lower or upper case; code writes `PowerShell`, `GeneratedTypes`,
+    `System.Net`. CASE-C5B04D31's census sent `system.net` (from `System.Net.WebClient`, the
+    commonest PowerShell download idiom) and a `...Cmdletization.GeneratedTypes.Net` namespace to the
+    threat-intel providers as domains (D202).
+    """
+    labels = name.split(".")
+    return any(re.search(r"[a-z][A-Z]", label) for label in labels) or all(
+        re.fullmatch(r"[A-Z][a-z0-9]+", label) for label in labels)
 _URL_RE = re.compile(r"https?://[^\s\"'<>|)]{6,200}", re.IGNORECASE)
 
 _SYSTEM_DOMAINS = {
@@ -92,6 +107,8 @@ def extract_iocs(texts: list[str], *, cap: int = 12) -> dict[str, list[str]]:
             if not _is_private_ip(m):
                 found["ipv4"].add(m)
         for m in _DOMAIN_RE.findall(text):
+            if _is_code_name(m):
+                continue
             d = m.lower().strip(".")
             if d in _SYSTEM_DOMAINS:
                 continue
