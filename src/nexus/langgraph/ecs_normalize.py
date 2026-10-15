@@ -105,6 +105,24 @@ def _parse_payload(payload: Any) -> dict[str, Any]:
     return out
 
 
+#: MemProcFS's `forensic/csv/eventlog.csv` writes an event's data as `Name=value; Name=value` in its
+#: Payload column (`ServiceName=...; ImagePath=%SystemRoot%\system32\svchost.exe -k print; ...`). A
+#: value may hold `; ` itself, so a piece starts only where a name and `=` follow.
+_PAIR_SPLIT = re.compile(r";\s+(?=[A-Za-z_][\w.-]*=)")
+_PAIR_NAME = re.compile(r"[A-Za-z_][\w.-]*")
+
+
+def _parse_pairs(payload: Any) -> dict[str, Any]:
+    """`Name=value; Name=value` -> {name: value} (D233)."""
+    out: dict[str, Any] = {}
+    for piece in _PAIR_SPLIT.split(str(payload or "").strip()):
+        name, sep, value = piece.partition("=")
+        name = name.strip()
+        if sep and _PAIR_NAME.fullmatch(name) and value.strip():
+            out[name] = value.strip()
+    return out
+
+
 def _parse_hashes(value: Any) -> dict[str, str]:
     """`SHA1=..,MD5=..,SHA256=..` -> {sha1:.., md5:.., sha256:..} (lowercased)."""
     out: dict[str, str] = {}
@@ -201,6 +219,10 @@ def normalize(
     #    per-(channel, event) common fields from names the event carries.
     payload = fields.get("Payload")
     ev = _parse_payload(payload)
+    if not ev and fam == "memprocfs":
+        # Event logs recovered from memory: the same event data, written as pairs (D233). Without
+        # it, no event from memory got an event-data field (130 Task Scheduler 129 rows here).
+        ev = _parse_pairs(payload)
     if ev:
         for name, value in ev.items():
             # WO-CS1c item 1 (cap removed 2026-10-11): a script block (a real 4104 carries

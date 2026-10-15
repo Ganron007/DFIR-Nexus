@@ -1,0 +1,45 @@
+{
+ "task_129": {
+  "Log": "Microsoft-Windows-TaskScheduler%4Operational.evtx",
+  "RecordID": "57187",
+  "TimeCreated": "2022-11-15 07:15:18",
+  "EventID": "129",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "Computer": "rd01.shieldbase.com",
+  "UserSID": "S-1-5-18",
+  "Payload": "TaskName=\\GoogleUpdateTaskMachineUA{42B0144D-9B9B-4C46-9417-CB961B0AF417}; Path=C:\\Program Files (x86)\\Google\\Update\\GoogleUpdate.exe; ProcessID=5460; Priority=16384"
+ },
+ "task_100": {
+  "Log": "Microsoft-Windows-TaskScheduler%4Operational.evtx",
+  "RecordID": "57188",
+  "TimeCreated": "2022-11-15 07:15:18",
+  "EventID": "100",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "Computer": "rd01.shieldbase.com",
+  "UserSID": "S-1-5-18",
+  "Payload": "TaskName=\\GoogleUpdateTaskMachineUA{42B0144D-9B9B-4C46-9417-CB961B0AF417}; UserContext=NT AUTHORITY\\SYSTEM; InstanceId=1d7fc051-96e2-4984-b33b-b082fba83cd2"
+ },
+ "system_7045": {
+  "Log": "System.evtx",
+  "RecordID": "183",
+  "TimeCreated": "2022-08-31 17:36:42",
+  "EventID": "7045",
+  "Provider": "Service Control Manager",
+  "Channel": "System",
+  "Computer": "tpl-packer",
+  "UserSID": "S-1-5-18",
+  "Payload": "ServiceName=Printer Extensions and Notifications; ImagePath=%SystemRoot%\\system32\\svchost.exe -k print; ServiceType=user mode service; StartType=demand start; AccountName=LocalSystem"
+ },
+ "security_4634": {
+  "Log": "Security.evtx",
+  "RecordID": "166295",
+  "TimeCreated": "2023-01-25 03:57:48",
+  "EventID": "4634",
+  "Provider": "Microsoft-Windows-Security-Auditing",
+  "Channel": "Security",
+  "Computer": "rd01.shieldbase.com",
+  "Payload": "TargetUserSid=S-1-5-18; TargetUserName=RD01$; TargetDomainName=shieldbase; TargetLogonId=0x0000000005e19c03; LogonType=3"
+ }
+}
