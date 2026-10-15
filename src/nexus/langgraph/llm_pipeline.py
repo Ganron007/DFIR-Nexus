@@ -515,6 +515,12 @@ def get_model(model_name: str = ""):
         )
         if openai_like:
             kwargs["extra_body"] = {"reasoning_effort": reasoning}
+        else:
+            # Said, not dropped without a word: agnes-3.0-flash has no reasoning levels, and
+            # NEXUS_LLM_REASONING=high sat in the operator's .env for every run (2026-10-15).
+            log.warning(
+                "NEXUS_LLM_REASONING=%s is not sent to %s: reasoning_effort is an OpenAI parameter. "
+                "Set the host's own switch in NEXUS_LLM_EXTRA_BODY instead.", reasoning, host or base_url)
     # A host's own request fields, declared in NEXUS_LLM_EXTRA_BODY as JSON, e.g. agnes-3.0-flash's
     # thinking switch {"chat_template_kwargs": {"enable_thinking": true}}: an OpenAI-compatible host
     # names its parameters its own way, and NEXUS_LLM_REASONING only reaches OpenAI hosts.

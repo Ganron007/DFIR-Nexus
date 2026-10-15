@@ -26,6 +26,14 @@ def test_the_hosts_fields_reach_the_model(monkeypatch):
     assert model.extra_body == {"chat_template_kwargs": {"enable_thinking": True}}
 
 
+def test_a_reasoning_level_the_host_does_not_take_is_not_sent_and_is_said(monkeypatch, caplog):
+    """agnes-3.0-flash has no reasoning levels; NEXUS_LLM_REASONING=high was dropped without a word."""
+    with caplog.at_level("WARNING", logger="nexus.langgraph.llm_pipeline"):
+        model = _model(monkeypatch, '{"chat_template_kwargs": {"enable_thinking": true}}')
+    assert "reasoning_effort" not in (model.extra_body or {})
+    assert any("NEXUS_LLM_REASONING=high is not sent" in r.getMessage() for r in caplog.records)
+
+
 def test_a_malformed_value_is_refused_not_dropped(monkeypatch):
     with pytest.raises(RuntimeError, match="NEXUS_LLM_EXTRA_BODY"):
         _model(monkeypatch, "enable_thinking=true")

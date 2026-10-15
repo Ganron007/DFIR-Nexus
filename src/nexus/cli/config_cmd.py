@@ -174,7 +174,8 @@ def env_cmd(
     """Set runtime config in .env — e.g. `nexus config env NEXUS_ES_URL=http://127.0.0.1:9200`.
 
     Allowlisted keys: NEXUS_ES_URL, NEXUS_LLM_MODEL, NEXUS_LLM_BASE_URL,
-    NEXUS_LLM_API_KEY, NEXUS_LLM_PROVIDER, NEXUS_LLM_REASONING.
+    NEXUS_LLM_API_KEY, NEXUS_LLM_PROVIDER, NEXUS_LLM_REASONING (OpenAI hosts only),
+    NEXUS_LLM_CONTEXT_WINDOW, NEXUS_LLM_EXTRA_BODY (a JSON object of the host's own request fields).
     """
     if not pairs:
         typer.echo("Usage: nexus config env KEY=VALUE [KEY=VALUE ...]")

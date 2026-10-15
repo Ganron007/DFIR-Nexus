@@ -98,8 +98,15 @@ NEXUS_LLM_MODEL=your-model-name          # e.g. gpt-4o, step-3.7-flash
 NEXUS_LLM_BASE_URL=https://your-endpoint/v1   # any OpenAI-compatible API
 NEXUS_LLM_API_KEY=***                    # optional for local endpoints
 NEXUS_LLM_PROVIDER=openai-compatible     # or: openai | anthropic | ollama
-NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
+NEXUS_LLM_CONTEXT_WINDOW=512000          # the model's context window, in tokens
+NEXUS_LLM_EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": true}}'  # host's own fields
+# NEXUS_LLM_REASONING=high               # OpenAI hosts only (reasoning_effort)
 ```
+
+`NEXUS_LLM_REASONING` is OpenAI's `reasoning_effort` and is sent only to OpenAI hosts; set on any
+other host it is not sent, and the run logs a warning saying so. A compatible host's own request
+fields go in `NEXUS_LLM_EXTRA_BODY` as a JSON object, merged into every request: agnes-3.0-flash has
+no reasoning levels and turns thinking on with `chat_template_kwargs.enable_thinking`.
 
 `NEXUS_LLM_PROVIDER` is optional — it defaults to `openai-compatible` whenever
 `NEXUS_LLM_BASE_URL` is set, which works with any OpenAI-compatible service
