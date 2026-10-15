@@ -1518,6 +1518,69 @@ def _domain_order(indexed: list[Any]) -> list[str]:
     return ordered
 
 
+def board_view(board: list[dict[str, Any]], limit: int = 0, whole_from: int = 0) -> str:
+    """What a seat and the supervisor read of the board (D206).
+
+    Every claim on one line, with the verifier's class, the calls it cites and the seat that made
+    it; then the lead dispositions and the open questions. A claim from superstep ``whole_from`` on
+    carries its value whole; an earlier one is a compact line without it (operator decision
+    2026-10-15: earlier results travel compact), and a seat that needs the detail reads the cited
+    rows. The board used to be sent as its JSON, every entry whole with its 600-character reply
+    excerpt and skill references, to every seat on every round: 58 M of Mode 3 run 1's 130.7 M
+    characters. With ``limit``, whole lines are kept and the rest counted, never a line cut.
+    """
+    verdicts: dict[str, str] = {}
+    for entry in board:
+        for verdict in entry.get("verdicts") or []:
+            if isinstance(verdict, dict) and verdict.get("subject"):
+                verdicts[_norm_key(verdict["subject"])] = str(verdict.get("class") or "")
+    lines: list[str] = []
+    for entry in board:
+        if not isinstance(entry, dict):
+            continue
+        author = str(entry.get("agent_id") or entry.get("role") or "seat")
+        try:
+            whole = int(entry.get("superstep") or 0) >= whole_from
+        except (TypeError, ValueError):
+            whole = True
+        for claim in entry.get("claims") or []:
+            if not isinstance(claim, dict):
+                continue
+            subject = f"{claim.get('entity_type')}={claim.get('entity_value')}"
+            line = f"- {subject} | {claim.get('claim_kind')}/{claim.get('polarity')}"
+            if whole:
+                line += f" | {' '.join(str(claim.get('value') or '').split())}"
+            if claim.get("other_entity_value"):
+                line += f" | {claim.get('other_entity_type')}={claim.get('other_entity_value')}"
+            if verdicts.get(_norm_key(subject)):
+                line += f" | verifier: {verdicts[_norm_key(subject)]}"
+            if claim.get("audit_ids"):
+                line += f" | cites {', '.join(str(a) for a in claim['audit_ids'])}"
+            lines.append(line + f" | {author}")
+        disp = entry.get("lead_disposition")
+        if isinstance(disp, dict) and (entry.get("lead") or disp.get("lead")):
+            lines.append(f"- lead {entry.get('lead') or disp.get('lead')}: {disp.get('status')} "
+                         f"- {' '.join(str(disp.get('basis') or '').split())}")
+    questions = list(dict.fromkeys(
+        " ".join(str(q).split()) for e in board if isinstance(e, dict)
+        for q in (e.get("open_questions") or []) if str(q).strip()))
+    lines += [f"- open question: {q}" for q in questions]
+    if not lines:
+        return "(empty)"
+    if limit > 0:
+        kept: list[str] = []
+        used = 0
+        for line in lines:
+            if used + len(line) + 1 > limit:
+                break
+            kept.append(line)
+            used += len(line) + 1
+        if len(kept) < len(lines):
+            kept.append(f"({len(lines) - len(kept)} more line(s) on the board, not shown)")
+        lines = kept
+    return "\n".join(lines)
+
+
 def _unverified_claims(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Accepted claims on the board with no verifier verdict yet (item 7b).
 
@@ -1854,7 +1917,7 @@ def run_mode3(
                     case_dir=case_dir,
                     question=focus,
                     families=indexed,
-                    board_digest=json.dumps(state.get("board") or [], default=str),
+                    board_digest=board_view(state.get("board") or [], whole_from=step - 1),
                     steering="\n".join(
                         f"- {str(line.get('text') or '')}" for line in steering[-3:]
                     ),
@@ -1885,7 +1948,8 @@ def run_mode3(
         if status in {"stopped", "paused", "capped", "settled"}:
             return "join"
         board = state.get("board") or []
-        digest = json.dumps(board, default=str)
+        # The last superstep's claims whole, earlier ones compact (D206).
+        digest = board_view(board, whole_from=int(state.get("superstep") or 1) - 1)
         steering = read_mode3_steering(case_dir, run_id)
         if steering:
             steer_text = "\n".join(

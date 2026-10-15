@@ -71,6 +71,16 @@ def _text(messages) -> str:
     return "\n".join(str(m.get("content") if isinstance(m, dict) else m) for m in messages)
 
 
+def _has_search_result(text: str) -> bool:
+    """True once the prompt shows an es_search result ("- es_search [audit_id X]: ...").
+
+    The stand-in used to look for "- es_search:", which only an error line without an audit id
+    has: it answered after its repeated call came back as "duplicate call suppressed". A repeat
+    is now replayed with its audit id (D206), so the result line is what it looks for.
+    """
+    return "\n- es_search [audit_id " in text or "\n- es_search:" in text
+
+
 def _audit_ids(case_dir: Path, tool: str) -> list[str]:
     """Audit ids of this case's successful calls to one tool, oldest first (real calls)."""
     out: list[str] = []
@@ -188,7 +198,7 @@ def test_one_case_modes_one_two_three_then_cross_mode(case, monkeypatch):
         if "You are the synthesis agent" in text:
             return json.dumps({"narrative": SHARED_TITLE,
                                "findings": [_candidate(_audit_ids(case, "es_search")[-1])], "gaps": []})
-        if "- es_search:" not in text:
+        if not _has_search_result(text):
             return json.dumps({"tool_calls": [{"tool": "es_search", "why": "1004 rows",
                                                "args": {"query": ES_QUERY}}]})
         return json.dumps({"notes": [], "patterns": [], "corroborated_entities": [],
@@ -206,7 +216,7 @@ def test_one_case_modes_one_two_three_then_cross_mode(case, monkeypatch):
             return json.dumps({"spawns": [{"role": "evidence", "family": "evtxecmd", "why": "event logs"}]})
         if "You are the verifier" in text:
             return json.dumps({"verdicts": []})
-        if "- es_search:" not in text:
+        if not _has_search_result(text):
             return json.dumps({"tool_calls": [{"tool": "es_search", "why": "1004 rows",
                                                "args": {"query": ES_QUERY}}]})
         return json.dumps({"claims": [{

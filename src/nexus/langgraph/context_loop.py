@@ -523,9 +523,39 @@ def _clip(text: str, limit: int) -> str:
     return body[:limit]
 
 
+#: A result shorter than this is always shown whole: compacting it would save little.
+_COMPACT_ABOVE = 2_000
+
+
+def _observation_head(o: dict[str, Any]) -> str:
+    # The call's own audit id, so the model can cite what it ran. It was never shown: Mode 2's
+    # workers saw only the ledger's and the leads' ids and cited those instead of their own
+    # twenty queries (2026-10-14, Mode 2 run 2).
+    return (f"- {o['tool']}" + (f" [audit_id {o['audit_id']}]" if o.get("audit_id") else "") + ": "
+            # What the loop changed in the call is said beside its result (never silently).
+            + (f"[{o['normalized']}] " if o.get("normalized") else ""))
+
+
+def _compact_observation(o: dict[str, Any]) -> str:
+    """An earlier result as one line: its facts, the locations of its rows, and how to see it again.
+
+    Nothing is cut inside a row: the rows are named by location, and repeating the call shows the
+    whole result again (it is replayed, not run again), with the same audit id to cite.
+    """
+    summary = o.get("summary") if isinstance(o.get("summary"), dict) else {}
+    facts: dict[str, Any] = {k: v for k, v in summary.items()
+                             if isinstance(v, (str, int, float, bool)) or v is None}
+    hits = summary.get("hits")
+    if isinstance(hits, list):
+        facts["rows"] = [f"{h.get('file')}:{h.get('line')}" for h in hits if isinstance(h, dict)]
+    return (_observation_head(o) + json.dumps(facts, default=str)
+            + f" (shown whole in round {o.get('round')}; repeat the call to see it whole again)")
+
+
 def _observations_block(
     observations: list[dict[str, Any]],
     per_obs_cap: int = 60_000,
+    fresh_round: int | None = None,
 ) -> str:
     """Render observations for the next round.
 
@@ -533,19 +563,23 @@ def _observations_block(
     catalog can exceed 10k chars, and hiding columns behind a small cap is what
     made the live model repeat the same tool call. The project-wide context
     budget still bounds the final packed prompt.
+
+    With ``fresh_round`` (D206, operator decision 2026-10-15), a result is shown whole in the
+    round after it arrived and as a compact line afterwards. Every round used to re-send every
+    result whole: Mode 3 run 1 sent 130.7 M characters in 506 calls (one call 839 K) and used up
+    the provider's credit.
     """
     if not observations:
         return "(no tool calls yet)"
-    return "\n".join(
-        # The call's own audit id, so the model can cite what it ran. It was never shown: Mode 2's
-        # workers saw only the ledger's and the leads' ids and cited those instead of their own
-        # twenty queries (2026-10-14, Mode 2 run 2).
-        f"- {o['tool']}" + (f" [audit_id {o['audit_id']}]" if o.get("audit_id") else "") + ": "
-        # What the loop changed in the call is said beside its result (never silently).
-        + (f"[{o['normalized']}] " if o.get("normalized") else "")
-        + json.dumps(o.get("summary") or {}, default=str)[:per_obs_cap]
-        for o in observations
-    )
+    lines: list[str] = []
+    for o in observations:
+        whole = json.dumps(o.get("summary") or {}, default=str)[:per_obs_cap]
+        if (fresh_round is not None and o.get("round") is not None
+                and o.get("round") != fresh_round and len(whole) > _COMPACT_ABOVE):
+            lines.append(_compact_observation(o))
+        else:
+            lines.append(_observation_head(o) + whole)
+    return "\n".join(lines)
 
 
 def _force_answer(
@@ -718,6 +752,8 @@ def run_context_loop(
     aggregations: list[dict[str, Any]] = []
     stages: list[dict[str, Any]] = []
     seen_call_keys: set[str] = set()
+    # The result of each successful call, so a repeated call replays it whole (D206).
+    seen_results: dict[str, dict[str, Any]] = {}
     duplicate_calls = 0
     finish_reason = "rounds"
     partial = True
@@ -763,8 +799,10 @@ def run_context_loop(
         "schema, the run record and the rows you actually need; a zero-hit "
         "search is not negative evidence until run_record shows the relevant "
         "parser ran; cite only rows returned by tools in this turn.\n"
-        "EFFICIENCY: never call the same tool twice with the same arguments — "
-        "reuse the observation already returned. Call es_mappings once, then "
+        "EFFICIENCY: a result is shown whole in the round after it arrives; "
+        "later rounds show it as a compact line (its audit id, totals and row "
+        "locations). To see it whole again, repeat the same call: it is "
+        "replayed from the earlier result, not run again. Call es_mappings once, then "
         "move to es_search / es_aggregate / sample_rows. For an unknown parsed "
         "column use a multi_match over fields.* rather than re-reading the "
         "whole catalog. If you have enough evidence, answer."
@@ -801,10 +839,13 @@ def run_context_loop(
         # round, then the round's nudge. The system text used to be repeated at the top of every
         # user message (4.5 KB per call, 2026-10-14 trace), and the task sat behind the growing
         # observations, so no two rounds shared more than the system message as a prefix.
+        # Everything not yet tagged arrived in the previous round (D206).
+        for obs in observations:
+            obs.setdefault("round", round_no - 1)
         sections = [
             (0, "protocol", protocol.strip()),
             (1, "question", question),
-            (2, "observations", _observations_block(observations)),
+            (2, "observations", _observations_block(observations, fresh_round=round_no - 1)),
             (3, "prior_conversation", history_block),
             (4, "round", _round_nudge(round_no).strip()),
         ]
@@ -955,6 +996,16 @@ def run_context_loop(
                 {"tool": name, "args": clean_args}, sort_keys=True, default=str)
             if call_key in seen_call_keys:
                 duplicate_calls += 1
+                earlier = seen_results.get(call_key)
+                if earlier is not None:
+                    # Replayed whole, with the audit id to cite, and not run again (D206): an
+                    # earlier result is a compact line by now, and this is how it is read again.
+                    replay = {k: v for k, v in earlier.items() if k != "round"}
+                    replay["normalized"] = "replayed from the earlier identical call; not run again"
+                    observations.append(replay)
+                    _emit({"event": "tool_result", "round": round_no, "tool": name,
+                           "audit_id": earlier.get("audit_id"), "replayed": True})
+                    continue
                 observations.append({
                     "tool": name,
                     "why": why,
@@ -995,6 +1046,8 @@ def run_context_loop(
             # The model must see successful tool results in the next round;
             # previously only errors/duplicates were in ``observations``.
             observations.append(obs)
+            if call_key in seen_call_keys:
+                seen_results[call_key] = obs
             _emit({
                 "event": "tool_result", "round": round_no, "tool": name,
                 "why": why, "audit_id": obs.get("audit_id"),

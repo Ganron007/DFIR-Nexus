@@ -610,3 +610,59 @@ def test_a_model_that_never_answers_fails_the_run_at_once(tmp_path, monkeypatch)
     assert record["status"] == "failed"
     assert record["superstep"] == 1
     assert record["stop_reason"].startswith("model unavailable: ")
+
+
+BOARD = [
+    {"agent_id": "evidence:hayabusa:1", "superstep": 1, "lead": "Defender Alert (Severe)",
+     "claims": [{"entity_type": "process", "entity_value": "SRLUpdate.exe", "claim_kind": "presence",
+                 "polarity": "affirm", "value": "launched by the task SRL User Maintenance",
+                 "audit_ids": ["a-1"]}],
+     "lead_disposition": {"lead": "Defender Alert (Severe)", "status": "supported", "basis": "EID 1116"},
+     "open_questions": ["What wrote SRLUpdate.exe?"], "reply_excerpt": "X" * 600,
+     "skill_refs": [{"skill": "ir_scoping_and_leads"}]},
+    {"agent_id": "verifier:2", "superstep": 2, "role": "verifier",
+     "verdicts": [{"subject": "process=SRLUpdate.exe", "class": "confirmed"}]},
+    {"agent_id": "evidence:vol:2", "superstep": 2,
+     "claims": [{"entity_type": "process", "entity_value": "lsass.exe", "claim_kind": "presence",
+                 "polarity": "affirm", "value": "beacon YARA match in pid 692", "audit_ids": ["a-2"]}]},
+]
+
+
+def test_the_board_view_keeps_every_claim_and_drops_the_bulk():
+    """D206: seats read the board as its JSON, reply excerpts and skill references included, on
+    every round: 58 M of Mode 3 run 1's 130.7 M characters."""
+    from nexus.modes.multi_agent import board_view
+
+    view = board_view(BOARD)
+    assert ("- process=SRLUpdate.exe | presence/affirm | launched by the task SRL User Maintenance"
+            " | verifier: confirmed | cites a-1 | evidence:hayabusa:1") in view
+    assert "lsass.exe | presence/affirm | beacon YARA match in pid 692" in view
+    assert "- lead Defender Alert (Severe): supported - EID 1116" in view
+    assert "- open question: What wrote SRLUpdate.exe?" in view
+    assert "XXXX" not in view and "ir_scoping_and_leads" not in view
+
+    older = board_view(BOARD, whole_from=2)
+    assert "SRLUpdate.exe | presence/affirm | verifier: confirmed | cites a-1" in older
+    assert "launched by the task" not in older, "an earlier claim travels without its value"
+    assert "beacon YARA match in pid 692" in older, "the last superstep's claims stay whole"
+
+    capped = board_view(BOARD, limit=150)
+    assert capped.endswith("more line(s) on the board, not shown)")
+    assert all(not line.startswith("- process=") or "| cites" in line for line in capped.splitlines())
+
+
+def test_seats_get_the_board_view_with_the_last_superstep_whole(tmp_path, monkeypatch):
+    from nexus.modes import multi_agent
+
+    seen: list[int] = []
+    real = multi_agent.board_view
+
+    def spy(board, limit=0, whole_from=0):
+        seen.append(whole_from)
+        return real(board, limit=limit, whole_from=whole_from)
+
+    monkeypatch.setattr(multi_agent, "board_view", spy)
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "3")
+    multi_agent.run_mode3(_crit_case(tmp_path), "compromise suspected",
+                          families=[("hayabusa", 10)], seat_fn=_seat_answering_until(9), es_ok=True)
+    assert seen[:3] == [0, 1, 2]
