@@ -735,6 +735,32 @@ def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
     return keys
 
 
+def _carry_claim_tests(finals: list[dict[str, Any]], sources: list[dict[str, Any]]) -> int:
+    """Give a final candidate the benign alternatives and refutation tests of the claims it absorbs.
+
+    A worker candidate is absorbed when every call it cites is cited by the final candidate:
+    synthesis merges claims and re-words them, so neither a title nor one claim key matches. A
+    field the final candidate already has is kept. Returns how many fields were filled.
+    """
+    cited = [(set(_candidate_audit_ids(s)), s) for s in sources
+             if isinstance(s, dict) and _candidate_audit_ids(s)]
+    filled = 0
+    for final in finals:
+        if not isinstance(final, dict):
+            continue
+        ids = set(_candidate_audit_ids(final))
+        absorbed = [s for source_ids, s in cited if ids and source_ids <= ids]
+        for key in ("benign_alternative", "refutation"):
+            if str(final.get(key) or "").strip():
+                continue
+            texts = list(dict.fromkeys(
+                str(s.get(key) or "").strip() for s in absorbed if str(s.get(key) or "").strip()))
+            if texts:
+                final[key] = "\n".join(texts)
+                filled += 1
+    return filled
+
+
 def _backfill_audit_ids(
     rows: list[dict[str, Any]], *sources: list[dict[str, Any]] | None,
 ) -> int:
@@ -2365,19 +2391,20 @@ def run_mode2(
 
     # ── Synthesis node ─────────────────────────────────────────────────
     def synthesis_node(_state: dict[str, Any]) -> dict[str, Any]:
+        # A refuted claim stays out however a worker worded it (D189: by claim, title as fallback).
         rejected = {
-            str(v.get("title") or "").strip().lower()
+            str(v.get("claim_key") or _title_key(v))
             for v in (state.get("verdicts") or [])
             if str(v.get("class") or "").lower() == "refuted"
         }
-        candidates: list[dict[str, Any]] = []
-        for result in state.get("results", []):
-            parsed = result.get("parsed") or {}
-            for candidate in (parsed.get("candidate_findings") or []):
-                title = str(candidate.get("title") or "").strip().lower()
-                if title and title in rejected:
-                    continue
-                candidates.append(candidate)
+        pool = [candidate
+                for result in state.get("results", [])
+                for candidate in ((result.get("parsed") or {}).get("candidate_findings") or [])
+                if isinstance(candidate, dict)]
+        candidates: list[dict[str, Any]] = [
+            candidate for candidate, claim in zip(pool, _claim_keys(case_dir, pool), strict=True)
+            if claim not in rejected and _title_key(candidate) not in rejected
+        ]
         if candidates:
             order = WorkOrder(
                 order_id=WorkOrder.new_id(),
@@ -2412,6 +2439,9 @@ def run_mode2(
                 state.get("verdicts") or [],
                 candidates,
             )
+            # The alternative a worker weighed and its refutation test go with the claim into the
+            # final candidate that absorbs it (D203: run 6's synthesis returned 0 of 5 with them).
+            _carry_claim_tests(state.get("candidates") or [], candidates)
             # WO-R2F item 3 (D42): a final candidate whose only citations are
             # calls that returned 0 rows is not a finding. On SC1 synthesis
             # staged "Cobalt Strike ... not supported by retrieved evidence" as

@@ -758,3 +758,45 @@ def test_staging_finds_the_verdict_of_a_re_worded_claim_by_its_rows(tmp_path):
     assert result["staged_count"] == 0, result
     assert result["skipped"] == [{"title": "Interactive remote logon by corp\\jdoe",
                                   "reason": "verifier refuted"}]
+
+
+def test_synthesis_keeps_the_alternative_and_refutation_of_the_claims_it_merges(tmp_path):
+    """D203: Mode 2 run 6's workers carried each claim's benign alternative and refutation test
+    (D190), and 0 of synthesis's 5 candidates did, so staging had nothing to append."""
+    case = _case(tmp_path)
+    worker_claim = {"title": "Task runs SRLUpdate.exe", "observation": "o", "interpretation": "i",
+                    "confidence": "LOW", "audit_ids": ["a-1"],
+                    "benign_alternative": "an IT maintenance task",
+                    "refutation": "a signed vendor binary with a deployment record"}
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        if order.role == "verifier":
+            parsed = {"verdicts": [{"title": c["title"], "class": "confirmed", "basis": "b",
+                                    "audit_ids": c["audit_ids"]} for c in context["candidates"]]}
+        elif order.role == "synthesis":
+            parsed = {"narrative": "n", "gaps": [], "coverage": {}, "findings": [{
+                "title": "Cobalt Strike anchored to a scheduled task", "observation": "o",
+                "interpretation": "i", "confidence": "MEDIUM", "audit_ids": ["a-1", "a-2"]}]}
+        else:
+            parsed = {"notes": [], "candidate_findings": [worker_claim], "coverage": {}}
+        return m3.AgentResult(order_id=order.order_id, role=order.role, status="ok",
+                              reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1")
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
+             order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
+
+    (final,) = state["candidates"]
+    assert final["benign_alternative"] == "an IT maintenance task"
+    assert final["refutation"] == "a signed vendor binary with a deployment record"
+
+
+def test_a_final_candidate_absorbs_only_claims_whose_every_call_it_cites():
+    finals = [{"title": "merged", "audit_ids": ["a-1", "a-2"], "refutation": "kept"}]
+    sources = [{"audit_ids": ["a-1"], "benign_alternative": "alt one", "refutation": "ref one"},
+               {"audit_ids": ["a-2"], "benign_alternative": "alt two"},
+               {"audit_ids": ["a-2", "a-9"], "benign_alternative": "not absorbed"}]
+    assert m3._carry_claim_tests(finals, sources) == 1
+    assert finals[0]["benign_alternative"] == "alt one\nalt two"
+    assert finals[0]["refutation"] == "kept"
