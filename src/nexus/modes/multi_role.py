@@ -572,12 +572,15 @@ ROLES: dict[str, AgentRole] = {
             "with audit_ids. Return JSON: {\"narrative\":\"...\","
             "\"findings\":[{\"title\":\"...\",\"observation\":\"...\","
             "\"interpretation\":\"...\",\"confidence\":\"LOW|MEDIUM|HIGH\","
+            "\"severity\":\"LOW|MEDIUM|HIGH|CRITICAL\","
             "\"confidence_justification\":\"...\",\"audit_ids\":[\"...\"],"
+            "\"merges\":[\"<candidate_id>\"],"
             "\"attack_ids\":[\"...\"],\"itm_stage\":\"...\","
             "\"itm_objects\":\"...\"}],\"gaps\":[\"...\"],"
             "\"coverage\":{...}}. A finding is a claim about the evidence: a benign "
             "alternative or a refutation test belongs in its interpretation, never "
-            "in a finding of its own. Never approve anything."
+            "in a finding of its own. `merges` names the candidate_id of every "
+            "candidate the finding is built from. Never approve anything."
         ),
     ),
     "reporter": AgentRole(
@@ -768,22 +771,32 @@ _SEVERITY_RANK = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 
 def _carry_claim_tests(finals: list[dict[str, Any]], sources: list[dict[str, Any]]) -> int:
-    """Give a final candidate the benign alternatives, refutation tests and severity of the claims it absorbs.
+    """Give a final candidate the calls, benign alternatives, refutation tests and severity of the claims
+    it absorbs.
 
-    A worker candidate is absorbed when every call it cites is cited by the final candidate:
-    synthesis merges claims and re-words them, so neither a title nor one claim key matches. A
-    field the final candidate already has is kept. A merged claim is as severe as the most severe
-    claim it absorbs: run 6's synthesis returned no severity for its five findings while its workers
-    had rated the claims (CRITICAL, HIGH, MEDIUM), and the CobaltStrike finding staged LOW (D211).
-    Returns how many fields were filled.
+    A worker candidate is absorbed when synthesis names it in `merges` (by the candidate_id it was
+    given), or when every call it cites is cited by the final candidate: synthesis merges claims and
+    re-words them, so neither a title nor one claim key matches. A named claim's calls join the
+    final candidate's: synthesis cited fewer calls than the claims it merged rest on, and DRAFT 045
+    carried the Defender detections but not the Task Scheduler query its task facts came from
+    (D225). A field the final candidate already has is kept. A merged claim is as severe as the most
+    severe claim it absorbs (D211). Returns how many fields were filled.
     """
     cited = [(set(_candidate_audit_ids(s)), s) for s in sources
              if isinstance(s, dict) and _candidate_audit_ids(s)]
+    by_id = {str(s.get("candidate_id")): s for s in sources
+             if isinstance(s, dict) and s.get("candidate_id")}
     filled = 0
     for final in finals:
         if not isinstance(final, dict):
             continue
-        ids = set(_candidate_audit_ids(final))
+        named = [by_id[str(c)] for c in (final.get("merges") or []) if str(c) in by_id]
+        merged_ids = list(dict.fromkeys(
+            [*_candidate_audit_ids(final), *(a for s in named for a in _candidate_audit_ids(s))]))
+        if len(merged_ids) > len(_candidate_audit_ids(final)):
+            final["audit_ids"] = merged_ids
+            filled += 1
+        ids = set(merged_ids)
         absorbed = [s for source_ids, s in cited if ids and source_ids <= ids]
         for key in ("benign_alternative", "refutation"):
             if str(final.get(key) or "").strip():
@@ -1223,7 +1236,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '{"narrative":"...","findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
-        '"confidence_justification":"...","audit_ids":["..."],'
+        '"confidence_justification":"...","audit_ids":["..."],"merges":["<candidate_id>"],'
         '"attack_ids":["..."],"itm_stage":"...","itm_objects":"..."}],'
         '"gaps":["..."],"coverage":{"checked":["..."],"not_checked":["..."]}}'
     ),
@@ -2446,6 +2459,8 @@ def run_mode2(
             candidate for candidate, claim in zip(pool, _claim_keys(case_dir, pool), strict=True)
             if claim not in rejected and _title_key(candidate) not in rejected
         ]
+        # Each candidate is named, so synthesis can say which it merges and their calls follow (D225).
+        candidates = [{**candidate, "candidate_id": f"C{n}"} for n, candidate in enumerate(candidates, 1)]
         if candidates:
             order = WorkOrder(
                 order_id=WorkOrder.new_id(),
