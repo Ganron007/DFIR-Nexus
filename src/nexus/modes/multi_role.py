@@ -1089,7 +1089,8 @@ def stage_run_candidates(
         else:
             reasons = [str(e) for e in (saved.get("errors") or [])]
             if not reasons:
-                reasons = [str(saved.get("status") or "failed")]
+                # A claim already on the case says which finding holds it (D223).
+                reasons = [str(saved.get("note") or saved.get("status") or "failed")]
             skipped.append({"title": title, "reason": "; ".join(reasons)})
 
     return {

@@ -226,7 +226,7 @@ def test_only_the_models_findings_are_staged(case):
     assert len(timeline.payloads) == 1
     staging = json.loads((run.analysis / "staging.json").read_text(encoding="utf-8"))
     assert staging == {"run_id": run.run_id, "candidates": 1, "staged": ["F-2"], "linked": [],
-                       "rejected": [], "dispositions": []}
+                       "decided": [], "rejected": [], "dispositions": []}
 
 
 class _VerdictModel:

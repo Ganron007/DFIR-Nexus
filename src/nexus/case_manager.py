@@ -146,6 +146,41 @@ def _find_duplicate_draft(findings: list[dict], finding: dict) -> dict | None:
     return None
 
 
+#: The examiner's decisions: a claim decided once is not staged again (D223).
+_DECIDED = frozenset({"APPROVED", "REJECTED"})
+
+
+def _same_claim(existing: dict, finding: dict) -> bool:
+    """Whether an existing finding holds the claim being staged (D223).
+
+    The same subject and category, and at least one cited row in common. A re-run words a claim
+    differently and cites a different subset of the same rows: the beacon was staged three times
+    (034, 039, 046) because the duplicate rule asked for the exact same rows. The category keeps
+    apart two claims about one file (its detection, its persistence). A subject that is only the
+    host is the last resort and names no claim: two claims that cite one large call for context and
+    their own rows besides keep the exact rule (D194).
+    """
+    from nexus.langgraph.subject import subject_key
+
+    entity = finding.get("entity") if isinstance(finding.get("entity"), dict) else {}
+    if str(entity.get("type") or "").lower() == "host":
+        return False
+    key = subject_key(finding.get("entity"), finding.get("category"))
+    if not key or key != subject_key(existing.get("entity"), existing.get("category")):
+        return False
+    rows = {_evidence_row_identity(e) for e in (finding.get("evidence") or []) if e}
+    return bool(rows & {_evidence_row_identity(e) for e in (existing.get("evidence") or []) if e})
+
+
+def _find_same_claim(findings: list[dict], finding: dict) -> dict | None:
+    """The finding already on the case that holds this claim: a DRAFT first (the re-proposal joins it),
+    else one the examiner approved or rejected. None when the claim is new."""
+    matches = [f for f in findings if _same_claim(f, finding)]
+    drafts = [f for f in matches if str(f.get("status") or "").upper() == "DRAFT"]
+    decided = [f for f in matches if str(f.get("status") or "").upper() in _DECIDED]
+    return (drafts or decided or [None])[0]
+
+
 def _run_mode(run_id: str, provenance: Any = None) -> int | None:
     """The mode a run belongs to (1, 2 or 3), or None when it cannot be told.
 
@@ -500,9 +535,24 @@ class CaseManager:
         # run id to its lineage instead of minting a second copy. SC1 was staged
         # four times over this way, which makes every count and every report wrong.
         duplicate = _find_duplicate_draft(findings, finding)
-        if duplicate is not None:
-            _append_lineage(duplicate, finding)
-            finding_id = str(duplicate.get("id") or "")
+        # D223: the same claim from any run or mode, worded differently and citing other rows of the
+        # same set, is the finding already on the case.
+        same = duplicate if duplicate is not None else _find_same_claim(findings, finding)
+        if same is not None and str(same.get("status") or "").upper() in _DECIDED:
+            # The examiner decided this claim. It is not staged again, and the decided finding is not
+            # touched: its content is what the examiner signed.
+            decision = str(same.get("status")).upper()
+            return {
+                "status": "DECIDED",
+                "finding_id": str(same.get("id") or ""),
+                "decision": decision,
+                "run_id": str(finding.get("run_id") or ""),
+                "note": (f"the examiner {decision.lower()} this claim as {same.get('id')} (same subject, "
+                         "shared evidence); not staged again (D223)"),
+            }
+        if same is not None:
+            _append_lineage(same, finding)
+            finding_id = str(same.get("id") or "")
             self._save_findings(case_dir, findings)
             return {
                 "status": "DUPLICATE",
@@ -510,10 +560,10 @@ class CaseManager:
                 "duplicate": True,
                 "linked_to": finding_id,
                 "run_id": str(finding.get("run_id") or ""),
-                "lineage": list(duplicate.get("run_ids") or []),
+                "lineage": list(same.get("run_ids") or []),
                 "note": (
-                    "identical title and evidence to an existing DRAFT — linked "
-                    "instead of staging a second copy (WO-R1F item 4)"
+                    "the same claim as an existing DRAFT (same subject, shared evidence) — linked "
+                    "instead of staging a second copy (WO-R1F item 4, D223)"
                 ),
             }
         seq = _next_seq(findings, "id", "F", exam)

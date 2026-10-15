@@ -2025,6 +2025,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
 
     draft_ids = []
     linked_drafts: list[dict[str, str]] = []
+    decided_claims: list[dict[str, str]] = []
     timeline_ids = []
     errors = []
 
@@ -2085,6 +2086,12 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         except Exception as e:
             return _reject(str(e))
         fid = result.get("finding_id") or result.get("id")
+        if fid and result.get("status") == "DECIDED":
+            # The examiner already approved or rejected this claim (D223): it is not staged again.
+            decision = str(result.get("decision") or "").lower()
+            decided_claims.append({"title": title, "finding_id": str(fid), "decision": decision})
+            emit_stage(state, "stage_findings", "decided", f"{fid} ({decision} by the examiner): {title[:100]}")
+            return ""
         if fid and result.get("duplicate"):
             # The same claim on the same rows as an existing DRAFT: record_finding linked this run to
             # it. It is not a new finding, and the log said "staged" for it.
@@ -2141,6 +2148,8 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
         log_msg.append("The interpret run produced no finding candidates; nothing was staged")
     for item in linked_drafts:
         log_msg.append(f"Linked to existing DRAFT {item['finding_id']}: {item['title']}")
+    for item in decided_claims:
+        log_msg.append(f"Already {item['decision']} by the examiner as {item['finding_id']}: {item['title']}")
     for item in rejected:
         log_msg.append(f"Not staged: {item['title'] or '(untitled)'}: {item['reason'][:300]}")
     if errors and len(errors) > len(rejected):
@@ -2160,6 +2169,7 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 "candidates": len(candidates),
                 "staged": list(draft_ids),
                 "linked": linked_drafts,
+                "decided": decided_claims,
                 "rejected": rejected,
                 "dispositions": dispositions,
             })
