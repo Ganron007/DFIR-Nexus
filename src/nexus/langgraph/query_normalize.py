@@ -40,8 +40,12 @@ _FIELD_ALIASES = {
     "@timestamp": "ts",
     "timestamp": "ts",
     "time": "ts",
-    "event.code": "ecs.winlog.event_data.EventId",
-    "event.id": "ecs.winlog.event_data.EventId",
+    # The event's id is `ecs.event.code` (the ECS map writes EvtxECmd's EventId and Hayabusa's
+    # EventID there); these names pointed at an EventId in event_data no event carries (D218).
+    "event.code": "ecs.event.code",
+    "event.id": "ecs.event.code",
+    "ecs.winlog.event_data.EventId": "ecs.event.code",
+    "ecs.winlog.event_data.EventID": "ecs.event.code",
     "event.action": "ecs.event.action",
     "host.name": "ecs.host.name",
     "host.hostname": "ecs.host.name",
@@ -55,7 +59,7 @@ _FIELD_ALIASES = {
     "process.parent.name": "ecs.process.parent.name",
     "process.executable": "ecs.process.executable",
     "hash.sha256": "ecs.hash.sha256",
-    "winlog.event_id": "ecs.winlog.event_data.EventId",
+    "winlog.event_id": "ecs.event.code",
 }
 
 #: Prefixes rewritten when the plain name is not in the map but is in the index.
@@ -422,6 +426,13 @@ def _alias_field(field: str, types: dict[str, str]) -> str:
     # A `.kw` or `.wc` sub-field this index does not have: only text fields carry one. On a number,
     # a date or a keyword it matched nothing and raised no error: `fields.EventId.kw` on the `long`
     # EventId returned 0 hits (D69). The field itself is what the query meant.
+    # `.keyword` is the sub-field other Elasticsearch indexes name; this one names it `.kw` (D218).
+    if name.endswith(".keyword"):
+        base = _alias_field(name[: -len(".keyword")], types)
+        if base + _KW_SUFFIX in types:
+            return base + _KW_SUFFIX
+        if base in types:
+            return base
     for suffix in (_KW_SUFFIX, ".wc"):
         if name.endswith(suffix):
             base = _alias_field(name[: -len(suffix)], types)
@@ -429,6 +440,9 @@ def _alias_field(field: str, types: dict[str, str]) -> str:
                 return base
     if name in _SHORT_COLUMNS and name in types:
         return name
+    # A core column written as a tool column (`fields.family`): the envelope holds it (D218).
+    if name.startswith("fields.") and name[len("fields."):] in types:
+        return name[len("fields."):]
     if name in _FIELD_ALIASES and _FIELD_ALIASES[name] in types:
         return _FIELD_ALIASES[name]
     for prefix, replacement in _PREFIX_ALIASES:
@@ -439,7 +453,18 @@ def _alias_field(field: str, types: dict[str, str]) -> str:
     # Already-looking ECS path that the index carries as-is.
     if f"ecs.{name}" in types:
         return f"ecs.{name}"
+    # The one field the name means, written in another case or with underscores (`fields.task_name`
+    # for `fields.TaskName`, D218). Only a single match is taken; two or more stay an unknown field.
+    loose = _loose_key(name)
+    matches = [field for field in types if _loose_key(field) == loose]
+    if len(matches) == 1:
+        return matches[0]
     return name
+
+
+def _loose_key(name: str) -> str:
+    """A field name with case and underscores ignored."""
+    return name.replace("_", "").lower()
 
 
 def _normalize_match_body(value: dict[str, Any], notes: list[str]) -> tuple[Any, list[str]]:

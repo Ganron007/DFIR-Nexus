@@ -308,3 +308,30 @@ def test_a_keyword_subfield_a_number_does_not_have_is_dropped():
 def test_a_keyword_subfield_that_exists_is_kept():
     body, notes = normalize_query({"term": {"fields.Payload.kw": "x"}}, field_types=D69_TYPES)
     assert body == {"term": {"fields.Payload.kw": "x"}} and not notes
+
+
+#: CASE-C5B04D31's mapping, for the names Mode 2 run M2-20261015T081007-bcdcf9 sent (D218).
+D218_TYPES = {"ts": "date", "family": "keyword", "event_id": "keyword", "ecs.event.code": "keyword",
+              "ecs.process.executable": "keyword", "fields.TaskName": "text", "fields.TaskName.kw": "keyword",
+              "ecs.winlog.event_data.TaskName": "keyword", "ecs.winlog.event_data.Family": "keyword",
+              "fields.EventID": "long", "fields.EventId": "long"}
+
+
+def test_the_names_a_model_writes_for_a_field_that_exists_reach_it():
+    """Four of the run's nine refused calls named a field this index has, in another spelling."""
+    for written, meant in (("ecs.winlog.event_data.EventId", "ecs.event.code"),
+                           ("event.code", "ecs.event.code"),
+                           ("winlog.event_id", "ecs.event.code"),
+                           ("ecs.process.executable.keyword", "ecs.process.executable"),
+                           ("fields.TaskName.keyword", "fields.TaskName.kw"),
+                           ("fields.family", "family"),
+                           ("fields.task_name", "fields.TaskName")):
+        body, notes = normalize_query({"term": {written: "x"}}, field_types=D218_TYPES)
+        target = meant + (".kw" if D218_TYPES.get(meant) == "text" else "")
+        assert body == {"term": {target: "x"}}, written
+        assert notes, f"{written}: the rewrite is reported"
+
+
+def test_a_name_that_could_mean_two_fields_is_left_for_the_caller():
+    body, _ = normalize_query({"term": {"fields.eventid": 4104}}, field_types=D218_TYPES)
+    assert body == {"term": {"fields.eventid": 4104}}, "EventID and EventId both exist"
