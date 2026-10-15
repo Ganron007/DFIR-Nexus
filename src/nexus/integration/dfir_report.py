@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.evidence_rows import row_time
+
 
 def _format_rag_notes(rag_notes: list[str]) -> list[str]:
     """Turn RAG warmup blobs into examiner-readable bullets."""
@@ -220,7 +222,7 @@ def _rehydrate_finding(f: dict[str, Any], case_dir) -> dict[str, Any]:
                             loc = f"{rel}:{ln}"
                             break
                 if not loc:
-                    t = str(r.get("time") or "").strip()
+                    t = row_time(r).strip()
                     loc = f"{rel}@{t}" if t and t != "—" else rel
                 r["loc"] = loc
         except Exception:

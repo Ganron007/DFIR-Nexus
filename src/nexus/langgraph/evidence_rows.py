@@ -28,11 +28,34 @@ def render_hit_detail(hit: dict[str, Any]) -> str:
     return detail or str(hit.get("text") or "")
 
 
+def row_time(row: dict[str, Any]) -> str:
+    """A row's event time in UTC, by the rule the index computes its `ts` with (D236).
+
+    The canonical `ts` when the row carries it, else the time column of its parsed fields with any
+    offset honoured, else the time recorded on the row. A row used to take the first date in its raw
+    text: a Hayabusa row's `2023-01-25 06:11:57.276 +05:30` lost its offset and read as 06:11:57 UTC,
+    five and a half hours after the same event's EvtxECmd row, in every prompt, DRAFT and report.
+    """
+    ts = str(row.get("ts") or "").strip()
+    if ts:
+        return ts
+    fields = row.get("fields")
+    if isinstance(fields, dict) and fields:
+        from datetime import UTC
+
+        from nexus.langgraph.timestamps import extract_event_ts
+
+        got = extract_event_ts("", fields)
+        if got:
+            return got["dt"].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(row.get("time") or "")
+
+
 def hit_time_of(hit: dict[str, Any]) -> str:
-    """The hit's time: its own field, else the first timestamp in the raw row text."""
+    """The hit's time (row_time), else the first timestamp in the raw row text."""
     # n4_hits does not emit a time field — parse the first timestamp
     # from the raw row text so evidence rows carry a usable time.
-    hit_time = hit.get("time") or ""
+    hit_time = row_time(hit)
     if not hit_time:
         try:
             from nexus.langgraph.query_pack import _DATE_RE

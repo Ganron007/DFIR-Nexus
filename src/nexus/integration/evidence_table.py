@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from nexus.langgraph.evidence_rows import row_time
+
 _TS = re.compile(
     r"\b(20\d{2}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})(?::(\d{2}(?:\.\d+)?))?)?"
 )
@@ -314,7 +316,7 @@ def normalize_evidence_rows(
                 or render_hit_fields(item.get("fields"))
                 or str(item.get("text") or "—")
             )
-            ts = str(item.get("time") or item.get("timestamp") or "")
+            ts = row_time(item) or str(item.get("timestamp") or "")
             if not ts or ts == "—":
                 ts = _first_ts(detail)
             rows.append(_row(

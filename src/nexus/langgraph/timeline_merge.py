@@ -11,6 +11,7 @@ from typing import Any
 
 from nexus.case.locks import lock_case_writes
 from nexus.ingest.schemas import Artifact, ArtifactSource
+from nexus.langgraph.evidence_rows import row_time
 from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_intake_window
 
 _HOST_RE = re.compile(
@@ -436,8 +437,8 @@ def _bookmark_events(case_dir: Path) -> list[dict[str, Any]]:
     for ev, b in zip(events, bookmarks, strict=False):
         if b.get("note"):
             ev["note"] = str(b["note"])[:200]
-        if b.get("time") and not ev.get("timestamp"):
-            ev["timestamp"] = str(b["time"])
+        if row_time(b) and not ev.get("timestamp"):
+            ev["timestamp"] = row_time(b)
         ev["status"] = "UNREVIEWED"  # bookmarked, pre-approval
     return events
 
@@ -470,7 +471,7 @@ def _finding_evidence_events(case_dir: Path) -> list[dict[str, Any]]:
                 rfile = str(row.get("artifact") or "")
             fam = str(row.get("source") or "").split("/")[0]
             events.append({
-                "timestamp": str(row.get("time") or ""),
+                "timestamp": row_time(row),
                 "host": str(f.get("host") or ""),
                 "description": str(row.get("detail") or f.get("title") or "")[:240],
                 "status": str(f.get("status") or "DRAFT"),

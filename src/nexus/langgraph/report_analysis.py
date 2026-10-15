@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.evidence_rows import row_time
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -225,7 +227,7 @@ def _cluster_blob(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
     for r in sig_rows[:cap_rows]:
         line = " | ".join(
             x for x in (
-                str(r.get("time") or ""),
+                row_time(r),
                 str(r.get("source") or ""),
                 str(r.get("detail") or "")[:300],
                 str(r.get("loc") or ""),
@@ -250,7 +252,7 @@ _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 def _real_times(rows: list[dict[str, str]]) -> list[str]:
     """Sorted real timestamps — drops '', '—', and other non-date markers."""
     return sorted(
-        t for t in (str(r.get("time") or "") for r in rows)
+        t for t in (row_time(r) for r in rows)
         if _TS_RE.match(t)
     )
 
@@ -491,7 +493,7 @@ def case_assessment(clusters: list[list[dict[str, Any]]],
     for i, cluster in enumerate(clusters):
         a = analyses.get(i) or {}
         rows = rows_for.get(i, [])
-        times = sorted(str(r.get("time") or "") for r in rows if r.get("time"))
+        times = sorted(t for t in (row_time(r) for r in rows) if t)
         briefs.append(
             f"#{i}: {a.get('category','other')} | sev "
             f"{cluster[0].get('severity','?')} | {len(cluster)} finding(s), "
