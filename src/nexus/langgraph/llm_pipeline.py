@@ -396,6 +396,24 @@ def _record_built_model(provider: str, model: str) -> None:
     _BUILT_MODEL["model"] = model or "none"
 
 
+def _llm_extra_body() -> dict[str, Any]:
+    """NEXUS_LLM_EXTRA_BODY: a JSON object of request fields for an OpenAI-compatible host.
+
+    A value that is not a JSON object is refused loudly: a silently dropped setting would let a
+    run go out without the switch the operator set.
+    """
+    raw = os.environ.get("NEXUS_LLM_EXTRA_BODY", "").strip()
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"NEXUS_LLM_EXTRA_BODY is not valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("NEXUS_LLM_EXTRA_BODY must be a JSON object")
+    return value
+
+
 def get_model(model_name: str = ""):
     """Create the LLM instance from the NEXUS_LLM_* configuration.
 
@@ -497,6 +515,12 @@ def get_model(model_name: str = ""):
         )
         if openai_like:
             kwargs["extra_body"] = {"reasoning_effort": reasoning}
+    # A host's own request fields, declared in NEXUS_LLM_EXTRA_BODY as JSON, e.g. agnes-3.0-flash's
+    # thinking switch {"chat_template_kwargs": {"enable_thinking": true}}: an OpenAI-compatible host
+    # names its parameters its own way, and NEXUS_LLM_REASONING only reaches OpenAI hosts.
+    extra = _llm_extra_body()
+    if extra:
+        kwargs["extra_body"] = {**kwargs.get("extra_body", {}), **extra}
     built = ChatOpenAI(**kwargs)
     _record_built_model(provider or "openai-compatible", model)
     from nexus.llm.egress import attach_egress, egress_required

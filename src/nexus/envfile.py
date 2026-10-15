@@ -23,6 +23,10 @@ SETUP_ENV_KEYS = {
     "NEXUS_LLM_API_KEY",
     "NEXUS_LLM_PROVIDER",
     "NEXUS_LLM_REASONING",
+    # The model's context window and its host's own request fields (agnes-3.0-flash: 512K tokens,
+    # thinking through chat_template_kwargs), declared where the model is declared.
+    "NEXUS_LLM_CONTEXT_WINDOW",
+    "NEXUS_LLM_EXTRA_BODY",
 }
 
 # Keys never echoed back in responses.
