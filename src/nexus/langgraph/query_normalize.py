@@ -419,6 +419,14 @@ def _alias_field(field: str, types: dict[str, str]) -> str:
         return name
     if name in types or not types:
         return name
+    # A `.kw` or `.wc` sub-field this index does not have: only text fields carry one. On a number,
+    # a date or a keyword it matched nothing and raised no error: `fields.EventId.kw` on the `long`
+    # EventId returned 0 hits (D69). The field itself is what the query meant.
+    for suffix in (_KW_SUFFIX, ".wc"):
+        if name.endswith(suffix):
+            base = _alias_field(name[: -len(suffix)], types)
+            if base in types:
+                return base
     if name in _SHORT_COLUMNS and name in types:
         return name
     if name in _FIELD_ALIASES and _FIELD_ALIASES[name] in types:

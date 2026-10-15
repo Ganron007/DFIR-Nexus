@@ -969,7 +969,10 @@ def es_sample(
 
             for name in fields_property_names(case_id):
                 if name.lower() == key:
-                    parsed_key = f"fields.{name}.kw"
+                    # The keyword sub-field when the column has one (text); a number or a keyword
+                    # column is matched as itself. `.kw` on the `long` EventId matched nothing (D69).
+                    kw = f"fields.{name}.kw"
+                    parsed_key = kw if kw in _field_types(case_id) else f"fields.{name}"
                     break
         except Exception:  # noqa: BLE001
             parsed_key = None

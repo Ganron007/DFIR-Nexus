@@ -287,3 +287,24 @@ def test_the_protocol_says_how_text_search_behaves():
     assert '{"wildcard":{"text.wc":{"value":"*lsass*","case_insensitive":true}}}' in block
     assert '{"match_phrase":{"text":"pass the hash"}}' in block
     assert "ANY of the words" in block
+
+
+#: CASE-C5B04D31's mapping: EvtxECmd's EventId is a `long`, its Payload text with a `.kw`.
+D69_TYPES = {"ts": "date", "fields.EventId": "long", "fields.Payload": "text",
+             "fields.Payload.kw": "keyword", "family": "keyword"}
+
+
+def test_a_keyword_subfield_a_number_does_not_have_is_dropped():
+    """D69: `fields.EventId.kw` matched nothing and raised no error; EventId has no `.kw`."""
+    body, notes = normalize_query({"term": {"fields.EventId.kw": 4104}}, field_types=D69_TYPES)
+    assert body == {"term": {"fields.EventId": 4104}}
+    assert any("fields.EventId.kw" in n and "fields.EventId" in n for n in notes)
+    aggs, _ = normalize_aggs({"ids": {"terms": {"field": "fields.EventId.kw"}}}, D69_TYPES)
+    assert aggs["ids"]["terms"]["field"] == "fields.EventId"
+    sort, _ = normalize_sort([{"fields.EventId.kw": "asc"}], D69_TYPES)
+    assert sort == [{"fields.EventId": {"order": "asc"}}]
+
+
+def test_a_keyword_subfield_that_exists_is_kept():
+    body, notes = normalize_query({"term": {"fields.Payload.kw": "x"}}, field_types=D69_TYPES)
+    assert body == {"term": {"fields.Payload.kw": "x"}} and not notes
