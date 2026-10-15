@@ -59,9 +59,12 @@ def test_informed_ignores_approved_findings(tmp_path: Path):
     """Only DRAFT prior context is passed; signed decisions are the examiner's."""
     from nexus.analysis.context_policy import prior_context
 
+    # The fields findings.json keeps (D235): `status` is updated by a decision, `approval_state`
+    # keeps its staged value (as on 7 of CASE-C5B04D31's rejected findings).
     (tmp_path / "findings.json").write_text(json.dumps([
-        {"title": "Approved one", "state": "APPROVED"},
-        {"title": "Draft one", "state": "DRAFT"},
+        {"title": "Approved one", "status": "APPROVED"},
+        {"title": "Rejected one", "status": "REJECTED", "approval_state": "DRAFT"},
+        {"title": "Draft one", "status": "DRAFT"},
     ]), encoding="utf-8")
 
     ctx = prior_context(tmp_path)

@@ -261,3 +261,38 @@ def test_a_seat_spawned_for_several_questions_settles_each(tmp_path, monkeypatch
     ledger = _question_ledger([raised, seated])
     assert ledger[question_id(first)]["status"] == "unanswerable"
     assert ledger[question_id(second)]["status"] == "investigated"
+
+
+def _informed_run(tmp_path, monkeypatch, policy: str) -> list[str]:
+    """One superstep of a real Mode 3 run; the user messages its seats were sent."""
+    from nexus.modes.multi_agent import run_mode3
+
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "1")
+    monkeypatch.setenv("NEXUS_MODE3_MAX_AGENTS", "2")
+    monkeypatch.setenv("NEXUS_MODE3_ROUNDS", "1")
+    case = _case(tmp_path)
+    (case / "findings.json").write_text(json.dumps([
+        {"id": "F-x-001", "title": "Task SRL User Maintenance launches SRLUpdate.exe", "status": "DRAFT",
+         "interpretation": "persistence for the beacon"},
+        {"id": "F-x-002", "title": "Metasploit payload on rd01", "status": "REJECTED", "approval_state": "DRAFT",
+         "interpretation": "mislabel"},
+    ]), encoding="utf-8")
+    model = _RecordingModel(json.dumps({"claims": []}))
+    run_mode3(case, "Compromise suspected.", model=model, families=[("hayabusa", 10)], es_ok=True,
+              context_policy=policy)
+    return [m["content"] for call in model.sent for m in call
+            if m["role"] == "user" and "seat. Examiner objective" in m["content"]]
+
+
+def test_an_informed_run_gives_every_seat_the_prior_analysis(tmp_path, monkeypatch):
+    """D235: Mode 3 run M3-20261015T200722-698a5a was informed, and none of its 1,040 calls held the prior
+    analysis: it went to the model supervisor only, which the agenda path bypasses."""
+    seats = _informed_run(tmp_path, monkeypatch, "informed")
+    assert seats and all("PRIOR ANALYSIS CONTEXT" in q for q in seats)
+    assert all("Task SRL User Maintenance launches SRLUpdate.exe" in q for q in seats)
+    assert not any("Metasploit payload on rd01" in q for q in seats), "a decided finding is not a draft"
+
+
+def test_an_independent_run_gives_no_seat_the_prior_analysis(tmp_path, monkeypatch):
+    seats = _informed_run(tmp_path, monkeypatch, "independent")
+    assert seats and not any("PRIOR ANALYSIS CONTEXT" in q for q in seats)

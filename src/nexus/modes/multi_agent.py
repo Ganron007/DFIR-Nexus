@@ -914,7 +914,9 @@ def _seat_with_model(
     board_digest: str,
     superstep: int,
     audit: Any = None,
+    prior_context: str = "",
 ) -> dict[str, Any]:
+    """One seat's turn. ``prior_context`` is what an ``informed`` run adds, labelled as not evidence."""
     from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
     from nexus.modes.multi_role import _investigative_extras, role_for
 
@@ -967,6 +969,7 @@ def _seat_with_model(
             f"You are the {role_name} seat. Examiner objective: {objective}\n"
             f"{skill_block}\n"
             f"Board so far:\n{board_digest}\n\n"
+            + (f"{prior_context}\n\n" if prior_context else "")
             + _investigative_extras(case_dir)
             + 'Return JSON {"verdicts":[{"subject":"<entity_type>=<entity_value>",'
             '"class":"confirmed|inferred|refuted","basis":"one clause",'
@@ -1023,6 +1026,9 @@ def _seat_with_model(
             f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n",
             f"{skill_block}\n",
             f"Board so far:\n{board_digest}\n\n",
+            # D235: an informed run's prior analysis reaches every seat; it went to the model
+            # supervisor only, which the agenda path bypasses whenever a lead is open.
+            f"{prior_context}\n\n" if prior_context else "",
             _investigative_extras(case_dir),
             *contract,
         ])
@@ -1871,6 +1877,12 @@ def run_mode3(
             record["stop_reason"] = ""
             record.pop("resume_state", None)
             record.pop("completed_at", None)
+    # What an informed run adds, read once for every seat (D235): the case's report and pending DRAFTs,
+    # labelled as not evidence. Empty for an independent run.
+    from nexus.analysis.context_policy import context_sections
+
+    prior_context = "\n\n".join(
+        text for _pri, _name, text in context_sections(case_dir, str(record.get("context_policy") or "")))
     if not ready:
         record["status"] = "failed"
         record["stop_reason"] = "elasticsearch_required"
@@ -2053,8 +2065,6 @@ def run_mode3(
             focus = f"{question}\nExaminer steer: {fresh_steer}" if fresh_steer else question
             spawns: list[dict[str, Any]] = []
             if model is not None:
-                from nexus.analysis.context_policy import context_sections
-
                 spawns = _supervisor_with_model(
                     model,
                     case_dir=case_dir,
@@ -2065,9 +2075,7 @@ def run_mode3(
                         f"- {str(line.get('text') or '')}" for line in steering[-3:]
                     ),
                     max_agents=max_agents,
-                    prior_context="\n\n".join(
-                        text for _pri, _name, text
-                        in context_sections(case_dir, str(record.get("context_policy") or ""))),
+                    prior_context=prior_context,
                 )
             supervisor_mode = "model" if spawns else "deterministic"
             if not spawns:
@@ -2123,7 +2131,7 @@ def run_mode3(
             entry = _seat_with_model(
                 spawn, case_dir=case_dir, model=model, run_id=run_id,
                 sink=sink, board_digest=str(payload.get("board_digest") or ""),
-                superstep=step, audit=run_audit,
+                superstep=step, audit=run_audit, prior_context=prior_context,
             )
         else:
             entry = _fallback_entry(spawn, step)

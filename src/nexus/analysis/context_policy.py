@@ -98,7 +98,11 @@ def prior_context(case_dir: Path) -> dict[str, Any]:
             for f in loaded:
                 if not isinstance(f, dict):
                     continue
-                state = str(f.get("state") or f.get("approval_state") or "").upper()
+                # `status` is the field a decision updates; `approval_state` keeps the value it was
+                # staged with (7 of CASE-C5B04D31's rejected findings still read DRAFT there), so
+                # reading it first passed decided findings as drafts (D235). The case layer reads
+                # the same order (case/compat.py).
+                state = str(f.get("status") or f.get("approval_state") or f.get("state") or "").upper()
                 if state and state != "DRAFT":
                     continue
                 drafts.append({
