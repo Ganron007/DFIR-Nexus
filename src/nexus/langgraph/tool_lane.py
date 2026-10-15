@@ -4129,8 +4129,14 @@ async def run_tool_lane(
         # does not: the extraction is then silently unreachable, and the format
         # parses, records OK, and contributes zero rows to the index. Promote the
         # saved stdout to a named artifact so the content is reachable.
+        # Whether the job wrote anything else is read from the files it created in the folders it
+        # was told to write into (the before/after snapshot), whatever its flag spelling. The argv
+        # check alone misses `/OutputPath:` and `-d`, so LogFileParser's progress log (5,138 rows),
+        # maldump's and bmc-tools' banners were promoted and indexed beside their CSVs (D229).
+        _created = [f for f in _new_output_files(_out_dirs, _before)
+                    if not Path(f).name.lower().endswith(_CAPTURE_SUFFIXES)]
         if job.output_saved_to and not (
-            _structured_output_present(job) or _tool_wrote_structured_output(job)
+            _created or _structured_output_present(job) or _tool_wrote_structured_output(job)
         ):
             # Promote into the RUN's extraction dir, which is what the indexer
             # walks. Beside the source is the case-level dir the MCP tool chose,
@@ -4577,11 +4583,15 @@ def _windows_switch_output_paths(argv: list[str]) -> list[Path]:
     return out
 
 
+#: The executor's own capture of a job: its console output and the call's metadata.
+_CAPTURE_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
+
+
 def _structured_output_present(job: ToolJob) -> bool:
     """True when a job produced something other than its own stdout capture."""
     for path in (job.output_files or []):
         name = Path(str(path)).name.lower()
-        if name.endswith(("_stdout.txt", "_stderr.txt", "_meta.json")):
+        if name.endswith(_CAPTURE_SUFFIXES):
             continue
         if Path(str(path)).is_file():
             return True

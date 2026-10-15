@@ -132,6 +132,11 @@ _SCAN_FIRST = (
     "rbcmd", "srum", "jlecmd", "lecmd", "wxtcmd",
 )
 _SKIP_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
+#: A tool's own run log, written among its output, by family (D229): what the tool did, not what
+#: the evidence holds. LogFileParser 2.0.0.53 writes `debug.log` into its output folder (its version
+#: banner, its settings and its progress); CASE-C5B04D31's index held 5,135 of its lines, 27 of
+#: them dated by the run.
+_TOOL_OWN_LOGS: dict[str, frozenset[str]] = {"logfileparser": frozenset({"debug.log"})}
 _MAX_COLLECT_PER_FILE = _env_int("NEXUS_N4_COLLECT_PER_FILE", 200)
 _USB_TERMS = frozenset({"usbstor", "mountpoints2"})
 _CLOUD_TERMS = frozenset({"googledrive", "drivefs", "my drive"})
@@ -578,6 +583,11 @@ def _tool_folder_family(rel: str) -> str:
     return next((fam for fam, tool in _FAMILY_TO_TOOL.items() if tool == owner), owner)
 
 
+def is_tool_own_log(path: Path, root: Path) -> bool:
+    """True for a file a tool writes about its own run (D229); the index leaves it out."""
+    return path.name.lower() in _TOOL_OWN_LOGS.get(_family(path, root), frozenset())
+
+
 def _family(path: Path, root: Path) -> str:
     rel = str(path.relative_to(root)).replace("\\", "/").lower()
     owned = _tool_folder_family(rel)
@@ -1006,7 +1016,7 @@ def iter_extraction_files(
                 continue
             if path.name.startswith("_"):
                 continue
-            if path.name.endswith(_SKIP_SUFFIXES):
+            if path.name.endswith(_SKIP_SUFFIXES) or is_tool_own_log(path, root):
                 continue
             # I1 dump — processing-time JSON, not a host parser CSV. N7 reads it
             # via load_ingest_artifacts; scanning it as N4 text matches UUIDs.

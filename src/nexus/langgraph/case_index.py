@@ -39,6 +39,7 @@ from nexus.langgraph.query_pack import (
     _scan_prio,
     finalize_hits,
     is_staging_copy,
+    is_tool_own_log,
     iter_extraction_files,
     needle_in_text,
 )
@@ -1852,7 +1853,7 @@ def iter_index_files(case_dir: Path, run_id: str = "") -> list[Path]:
         pats = EXTRACTION_PATTERNS
         for pat in pats:
             for p in root.rglob(pat):
-                if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES):
+                if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES) or is_tool_own_log(p, root):
                     continue
                 if is_staging_copy(p, root):
                     continue
