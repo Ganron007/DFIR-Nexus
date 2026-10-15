@@ -13,9 +13,11 @@ A new multi-agent case stores ``investigation_mode: 3``.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
+import re
 import threading
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -838,6 +840,21 @@ def _parse_seat_fields(text: str) -> dict[str, Any]:
             }
             for v in raw_verdicts if isinstance(v, dict)
         ]
+    # D208: what this evidence cannot answer, and the open questions the seat settled.
+    raw_gaps = parsed.get("coverage_gaps")
+    if isinstance(raw_gaps, list):
+        out["coverage_gaps"] = [" ".join(str(item).split()) for item in raw_gaps if str(item).strip()]
+    raw_qd = parsed.get("question_dispositions")
+    if isinstance(raw_qd, list):
+        out["question_dispositions"] = [
+            {
+                "question": str(d.get("question") or "").strip(),
+                "status": str(d.get("status") or "").strip().lower(),
+                "basis": " ".join(str(d.get("basis") or "").split())[:400],
+                "audit_ids": [str(a) for a in (d.get("audit_ids") or []) if str(a)],
+            }
+            for d in raw_qd if isinstance(d, dict)
+        ]
     return out
 
 
@@ -973,7 +990,21 @@ def _seat_with_model(
             '"confidence_justification":"..."}],"open_questions":["..."]}. ',
             'A time_order claim sets value to "before" or "after" (the entity happened before or after the '
             'other_entity) and names that other entity, which the cited rows must contain. ',
+            # D208: an open question is work for another seat, so it is only one this case's evidence can
+            # answer; seats used to list what no seat could ever answer (a live host, other hosts,
+            # artifacts never collected) and repeat questions already open, and the run could not settle.
+            'An open question is one this case\'s indexed evidence can answer and that is not already open on '
+            'the board; what this evidence cannot answer (another host, a live system, an artifact not '
+            'collected or not parsed) goes in "coverage_gaps":["..."]. For an open question on the board that '
+            'your work settles, return "question_dispositions":[{"question":"<its id>","status":"'
+            'answered|unanswerable|duplicate","basis":"one clause","audit_ids":["..."]}]: answered cites the '
+            'calls that answer it, duplicate names in basis the question it repeats. ',
         ]
+        if spawn.get("question_id"):
+            parts.append(
+                f'You were spawned for open question {spawn["question_id"]}: return its disposition in '
+                '"question_dispositions". '
+            )
         if spawn.get("lead"):
             parts.append(
                 'When investigating a lead, also return '
@@ -1044,9 +1075,9 @@ def _seat_with_model(
             )
             if corrected.strip():
                 entry["claims"] = _parse_claims(corrected)
-                corrected_fields = _parse_seat_fields(corrected)
-                if corrected_fields.get("lead_disposition"):
-                    entry["lead_disposition"] = corrected_fields["lead_disposition"]
+                # The corrected reply is the seat's answer: its fields are read below. Its lead
+                # disposition used to be set here and then replaced by the first reply's (none).
+                fields_parsed = _parse_seat_fields(corrected)
                 entry["corrective_retry_used"] = True
                 entry["reply_excerpt"] = " ".join(str(corrected).split())[:600]
         except Exception as exc:  # noqa: BLE001 — the retry is best-effort
@@ -1065,7 +1096,7 @@ def _seat_with_model(
     # verdicts were all being dropped here (open_questions hard-reset to [] and
     # the other two never read). Root cause: only `_parse_claims` ran, which
     # returns the claims list alone. `_parse_seat_fields` reads the full object.
-    fields = _parse_seat_fields(reply_text)
+    fields = fields_parsed
     if is_verifier:
         # The verifier's terminal key is `verdicts`; its claims list is empty by
         # design. Parse the verdicts from the same reply object.
@@ -1076,6 +1107,8 @@ def _seat_with_model(
         entry["open_questions"] = fields.get("open_questions", [])
         entry["lead_disposition"] = fields.get("lead_disposition")
         entry["verdicts"] = fields.get("verdicts", [])
+    entry["coverage_gaps"] = fields.get("coverage_gaps", [])
+    entry["question_dispositions"] = fields.get("question_dispositions", [])
     # What the seat actually returned, capped. Without it the board records only
     # the *spawn reason* when a seat produces no claims, so "the model answered
     # in prose / returned an empty object" and "the seat never ran" are
@@ -1148,10 +1181,6 @@ class Mode3State(TypedDict, total=False):
     last_fp: list[str]
     disputes: list[dict[str, Any]]
     steering_seen: int
-    # WO-R1F-M3 item 4: pivots and open questions already investigated, so a
-    # consumed pivot or an answered question is not re-queued next superstep.
-    consumed_pivots: list[dict[str, Any]]
-    answered_questions: list[str]
     # What join and synthesize report to the run record (D129, D138). LangGraph drops any key
     # a node returns that is not declared here.
     gaps: list[str]
@@ -1196,7 +1225,6 @@ def _absence_for_record(case_dir: Path) -> dict[str, Any]:
 def _open_agenda(
     case_dir: Path,
     board: list[dict[str, Any]],
-    state: Mapping[str, Any],
 ) -> dict[str, Any]:
     """What still needs investigating, from the board (WO-R1F item 7b).
 
@@ -1211,27 +1239,15 @@ def _open_agenda(
     Pure over its inputs plus the case's lead file, so a scripted model can drive
     it. Empty agenda == everything dispositioned.
 
-    WO-R1F-M3: consumed items are tracked in ``state`` so a pivot or question
-    that has already been investigated is not re-queued (item 4, "pivots
-    consumed"), which is what lets the stop rule actually terminate.
+    A question or pivot a seat has settled is not re-queued (WO-R1F-M3 item 4), and what settled it
+    is read from the board itself (D208), so a resumed run knows it too: a question closes with a
+    seat's disposition (answered, unanswerable, duplicate) or a seat spawned for it; a pivot closes
+    with a seat spawned for it or a later superstep's seat working on the entity.
     """
-    consumed_pivots = {
-        (_norm_key(p.get("entity_type")), _norm_key(p.get("entity_value")))
-        for p in (state.get("consumed_pivots") or [])
-        if isinstance(p, dict)
-    }
-    answered_questions = {
-        _norm_key(q) for q in (state.get("answered_questions") or [])
-    }
-    questions: list[str] = []
-    for entry in board:
-        for q in entry.get("open_questions") or []:
-            text = " ".join(str(q).split())
-            if not text or text in questions:
-                continue
-            if _norm_key(text) in answered_questions:
-                continue
-            questions.append(text)
+    questions = [
+        {"id": qid, "text": item["text"]}
+        for qid, item in _question_ledger(board).items() if item["status"] == "open"
+    ]
 
     dispositioned = _dispositioned_keys(board)
     crit_leads: list[dict[str, Any]] = []
@@ -1248,20 +1264,75 @@ def _open_agenda(
     except Exception:  # noqa: BLE001 — an agenda must never break the run
         crit_leads = []
 
-    pivots = _pivot_entities(board, state)
-    # Pivots already consumed in a previous superstep are dropped (item 4):
-    # a pivot seat that already ran on this entity does not re-queue it.
-    if consumed_pivots:
-        pivots = [
-            p for p in pivots
-            if (_norm_key(p.get("entity_type")), _norm_key(p.get("entity_value")))
-            not in consumed_pivots
-        ]
     return {
         "questions": questions,
         "crit_leads": crit_leads,
-        "pivots": pivots,
+        "pivots": _pivot_entities(board),
     }
+
+
+#: How a seat settles an open question on the board (D208).
+QUESTION_STATUSES = ("answered", "unanswerable", "duplicate")
+_QUESTION_ID = re.compile(r"\bQ[0-9a-f]{6}\b", re.IGNORECASE)
+
+
+def question_id(text: Any) -> str:
+    """An open question's id on the board: the same in every superstep, resume and board order."""
+    return "Q" + hashlib.sha1(_norm_key(text).encode("utf-8")).hexdigest()[:6]
+
+
+def _seat_settles(entry: Mapping[str, Any]) -> bool:
+    """Whether a seat's work can settle what it was spawned for.
+
+    Not a seat the model never answered (D209), and not a blind seat, one that called an evidence
+    tool and read nothing (WO-R2F item 2).
+    """
+    if str(entry.get("finish_reason") or "") == "model_error":
+        return False
+    return not (entry.get("evidence_attempted") and not entry.get("evidence_read", True))
+
+
+def _question_ledger(board: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Every open question raised on the board, by id, with how it was settled (D208).
+
+    Settling needed a seat spawned with the question's exact wording, and nothing else closed it:
+    Mode 3 run 1 (2026-10-15) raised 95 questions, a seat for at most five each superstep, and
+    ended with 73 open, so the run could only stop at its budget. A question now closes with a
+    seat's disposition, answered (citing calls), unanswerable from this evidence or a duplicate,
+    or with a seat spawned for it that answered.
+    """
+    ledger: dict[str, dict[str, Any]] = {}
+    for entry in board:
+        if not isinstance(entry, dict):
+            continue
+        for raw in entry.get("open_questions") or []:
+            text = " ".join(str(raw).split())
+            qid = question_id(text)
+            if text and qid not in ledger:
+                ledger[qid] = {"text": text, "status": "open", "raised_by": str(entry.get("agent_id") or "")}
+    for entry in board:
+        if not isinstance(entry, dict) or not _seat_settles(entry):
+            continue
+        agent = str(entry.get("agent_id") or "")
+        for disp in entry.get("question_dispositions") or []:
+            if not isinstance(disp, dict):
+                continue
+            status = str(disp.get("status") or "").lower()
+            if status not in QUESTION_STATUSES or (status == "answered" and not disp.get("audit_ids")):
+                continue
+            named = str(disp.get("question") or "")
+            match = _QUESTION_ID.search(named)
+            qid = ("Q" + match.group(0)[1:].lower()) if match else question_id(named)
+            item = ledger.get(qid)
+            if item is not None and item["status"] == "open":
+                item.update(status=status, basis=str(disp.get("basis") or ""),
+                            audit_ids=list(disp.get("audit_ids") or []), settled_by=agent)
+        qid = str(entry.get("question_id") or "")
+        item = ledger.get(qid)
+        if item is not None and item["status"] == "open":
+            item.update(status="investigated", basis="the seat spawned for it returned no disposition",
+                        settled_by=agent)
+    return ledger
 
 
 #: Entity types worth a follow-up seat when first seen (item 7b (c)).
@@ -1274,40 +1345,67 @@ _PIVOT_ENTITIES = {
 }
 
 
-def _pivot_entities(
-    board: list[dict[str, Any]],
-    state: Mapping[str, Any],
-) -> list[dict[str, str]]:
-    """Entities raised on the board that no later seat picked up."""
-    claimed: set[tuple[str, str]] = set()
+def _pivot_entities(board: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Entities raised on the board that no later seat picked up.
+
+    Picked up: a seat was spawned to pivot on the entity, or a seat of a later superstep, which read
+    the board, worked on it. The set of picked-up entities used to be built and then discarded, so
+    every entity ever claimed stayed a pivot (24 at the end of Mode 3 run 1, none seated after
+    superstep 2) and the run could not settle (D208).
+    """
+    def step_of(entry: Mapping[str, Any]) -> int:
+        try:
+            return int(entry.get("superstep") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def entities(entry: Mapping[str, Any]) -> list[tuple[str, str]]:
+        keys = [_claim_key(claim) for claim in entry.get("claims") or [] if isinstance(claim, dict)]
+        return [(_norm_key(k[0]), _norm_key(k[1])) for k in keys if k and k[0] in _PIVOT_ENTITIES]
+
+    consumed: set[tuple[str, str]] = set()
+    first: dict[tuple[str, str], int] = {}
     for entry in board:
-        for claim in entry.get("claims") or []:
-            key = _claim_key(claim)
-            if key:
-                claimed.add((key[0], key[1]))
-    seen: set[tuple[str, str]] = set()
-    out: list[dict[str, str]] = []
-    for entry in board:
-        for claim in entry.get("claims") or []:
-            key = _claim_key(claim)
-            if not key:
-                continue
-            etype, evalue, _kind = key
-            look = (etype, evalue)
-            if look in seen or etype not in _PIVOT_ENTITIES:
-                continue
-            seen.add(look)
-            out.append({
-                "entity_type": etype,
-                "entity_value": evalue,
-                "why": _PIVOT_ENTITIES[etype],
-            })
-    del claimed
-    return out
+        if not isinstance(entry, dict):
+            continue
+        pivot = entry.get("pivot_entity")
+        if isinstance(pivot, dict) and _seat_settles(entry):
+            consumed.add((_norm_key(pivot.get("entity_type")), _norm_key(pivot.get("entity_value"))))
+        for look in entities(entry):
+            first[look] = min(first.get(look, step_of(entry)), step_of(entry))
+    picked_up = {
+        look for entry in board if isinstance(entry, dict)
+        for look in entities(entry) if step_of(entry) > first[look]
+    }
+    return [
+        {"entity_type": etype, "entity_value": evalue, "why": _PIVOT_ENTITIES[etype]}
+        for (etype, evalue) in first
+        if (etype, evalue) not in picked_up and (etype, evalue) not in consumed
+    ]
 
 
 def _norm_key(value: Any) -> str:
     return " ".join(str(value or "").split()).lower()
+
+
+def _board_gaps(board: list[dict[str, Any]]) -> list[str]:
+    """What the seats said this evidence cannot answer (D208), for the run record's gaps.
+
+    A seat's coverage gaps, an open question settled as unanswerable here, and one a seat spawned
+    for it investigated without an answer.
+    """
+    gaps: list[str] = []
+    for entry in board:
+        if isinstance(entry, dict) and _seat_settles(entry):
+            gaps += [f"coverage gap ({entry.get('agent_id') or 'seat'}): {gap}"
+                     for gap in entry.get("coverage_gaps") or [] if str(gap).strip()]
+    for qid, item in _question_ledger(board).items():
+        if item["status"] == "unanswerable":
+            gaps.append(f"open question {qid} not answerable from this evidence: {item['text']}"
+                        + (f" ({item['basis']})" if item.get("basis") else ""))
+        elif item["status"] == "investigated":
+            gaps.append(f"open question {qid} investigated without an answer: {item['text']}")
+    return gaps
 
 
 def _dispositioned_keys(board: list[dict[str, Any]]) -> set[str]:
@@ -1397,29 +1495,28 @@ def _spawns_for_agenda(
             "lead_extra": lead_extra,
         })
 
-    for text in agenda.get("questions") or []:
-        if len(spawns) >= max_agents:
-            break
+    def question_seat(item: Any) -> dict[str, Any] | None:
+        text = str(item.get("text") if isinstance(item, dict) else item or "")
         key = _norm_key(text)[:80]
         if not key or key in taken:
-            continue
+            return None
         taken.add(key)
-        spawns.append({
+        qid = str(item.get("id") or "") if isinstance(item, dict) else ""
+        return {
             "role": "evidence",
             "family": "",
             "why": "open question from a seat",
             "question": f"{question}\nA seat asked: {text}",
-        })
+            "question_id": qid or question_id(text),
+        }
 
-    for pivot in agenda.get("pivots") or []:
-        if len(spawns) >= max_agents:
-            break
+    def pivot_seat(pivot: dict[str, Any]) -> dict[str, Any] | None:
         evalue = str(pivot.get("entity_value") or "")
         key = _norm_key(evalue)
         if not key or key in taken:
-            continue
+            return None
         taken.add(key)
-        spawns.append({
+        return {
             "role": "correlation" if superstep >= 2 else "evidence",
             "family": "",
             "why": f"pivot on {pivot.get('entity_type')} {evalue}",
@@ -1432,7 +1529,19 @@ def _spawns_for_agenda(
                 "entity_type": str(pivot.get("entity_type") or ""),
                 "entity_value": evalue,
             },
-        })
+        }
+
+    # Open questions and pivots take turns (D208): questions went first, outnumbered the seats
+    # every superstep of Mode 3 run 1, and no pivot was seated after superstep 2.
+    queued_questions = list(agenda.get("questions") or [])
+    queued_pivots = [p for p in agenda.get("pivots") or [] if isinstance(p, dict)]
+    while len(spawns) < max_agents and (queued_questions or queued_pivots):
+        for queue, build in ((queued_questions, question_seat), (queued_pivots, pivot_seat)):
+            while queue and len(spawns) < max_agents:
+                seat_spec = build(queue.pop(0))
+                if seat_spec:
+                    spawns.append(seat_spec)
+                    break
 
     # Correlation/pattern only from superstep 2, on a non-empty board: they exist
     # to cross-examine what the evidence seats reported.
@@ -1561,10 +1670,13 @@ def board_view(board: list[dict[str, Any]], limit: int = 0, whole_from: int = 0)
         if isinstance(disp, dict) and (entry.get("lead") or disp.get("lead")):
             lines.append(f"- lead {entry.get('lead') or disp.get('lead')}: {disp.get('status')} "
                          f"- {' '.join(str(disp.get('basis') or '').split())}")
-    questions = list(dict.fromkeys(
-        " ".join(str(q).split()) for e in board if isinstance(e, dict)
-        for q in (e.get("open_questions") or []) if str(q).strip()))
-    lines += [f"- open question: {q}" for q in questions]
+    # Each question with its id, so a seat can settle it (D208); a settled one says how, so it is not
+    # raised again.
+    for qid, item in _question_ledger(board).items():
+        if item["status"] == "open":
+            lines.append(f"- open question {qid}: {item['text']}")
+        else:
+            lines.append(f"- question {qid} {item['status']}: {item['text']}")
     if not lines:
         return "(empty)"
     if limit > 0:
@@ -1840,7 +1952,7 @@ def run_mode3(
         # `step == 1` (or fresh steering) and otherwise returned `settled`, so a
         # "2 superstep" run was one wave of <= 4 seats and a stop.
         board = state.get("board") or []
-        agenda = _open_agenda(case_dir, board, state)
+        agenda = _open_agenda(case_dir, board)
         # A returned agenda dict is never empty of keys, so `if agenda` was
         # always true and domain seats (item 5) preempted steering and the
         # model supervisor on a case with no open leads. Enter this path only
@@ -2002,6 +2114,12 @@ def run_mode3(
         # is the fact that it was investigated, even when it found nothing).
         if spawn.get("lead"):
             entry["lead"] = str(spawn.get("lead") or "")
+        # D208: the question or pivot this seat was spawned to settle, so the board alone says what
+        # is still open, in a resumed run as well.
+        if spawn.get("question_id"):
+            entry["question_id"] = str(spawn["question_id"])
+        if isinstance(spawn.get("pivot_entity"), dict):
+            entry["pivot_entity"] = dict(spawn["pivot_entity"])
         with contextlib.suppress(TypeError, ValueError):
             tool_calls_used["n"] += int(entry.get("tool_calls_used") or 0)
         return {"board": [entry]}
@@ -2021,7 +2139,7 @@ def run_mode3(
         # digest item has a disposition (a claim, refuted, or an explicit gap)
         # AND no open question remains — or when the budget ends. NEVER on "the
         # board was quiet", which is what made a 2-superstep run look complete.
-        agenda = _open_agenda(case_dir, board, state)
+        agenda = _open_agenda(case_dir, board)
         open_items = (
             len(agenda.get("questions") or [])
             + len(agenda.get("crit_leads") or [])
@@ -2112,48 +2230,24 @@ def run_mode3(
             ))
             return {"disputes": disputes, "quiet": quiet, "last_fp": fp,
                     "status": status, **settled_keys}
+        # The open items behind the decision (D208): a run that keeps going says what keeps it open.
         sink.emit(new_event(
             run_id, "join.decision", actor="join",
             detail=status,
-            data={"disputes": len(disputes), "quiet": quiet},
+            data={"disputes": len(disputes), "quiet": quiet, "open_items": open_items,
+                  "open_questions": len(agenda.get("questions") or []),
+                  "open_crit_leads": len(agenda.get("crit_leads") or []),
+                  "pivots": len(agenda.get("pivots") or []), "superstep": step_no},
         ))
         for dispute in disputes:
             sink.emit(new_event(
                 run_id, "dispute.opened", actor="join",
                 detail=f"{dispute['entity_value']} {dispute['claim_kind']}",
             ))
-        # WO-R1F-M3 item 4: record which pivots and open questions this
-        # superstep's seats consumed, so the next superstep does not re-queue
-        # them. The spawn dicts that ran are on `state["spawns"]`.
-        consumed = [
-            p for p in (state.get("consumed_pivots") or []) if isinstance(p, dict)
-        ]
-        seen_pivots = {
-            (_norm_key(p.get("entity_type")), _norm_key(p.get("entity_value")))
-            for p in consumed
-        }
-        for spawn in state.get("spawns") or []:
-            pentity = spawn.get("pivot_entity")
-            if isinstance(pentity, dict):
-                key = (_norm_key(pentity.get("entity_type")),
-                       _norm_key(pentity.get("entity_value")))
-                if key not in seen_pivots:
-                    consumed.append(dict(pentity))
-                    seen_pivots.add(key)
-        answered = list(state.get("answered_questions") or [])
-        answered_seen = {_norm_key(q) for q in answered}
-        for spawn in state.get("spawns") or []:
-            question_text = str(spawn.get("question") or "")
-            marker = "A seat asked: "
-            if marker in question_text:
-                qtext = question_text.split(marker, 1)[1].splitlines()[0].strip()
-                key = _norm_key(qtext)[:80]
-                if key and key not in answered_seen:
-                    answered.append(qtext)
-                    answered_seen.add(key)
+        # The pivots and questions the seats settled are read from the board (D208); join used to
+        # keep them in state from the spawns, whatever the seat returned, and a resume lost them.
         return {
             "disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status,
-            "consumed_pivots": consumed, "answered_questions": answered,
             **({"pause_reason": pause_reason} if pause_reason else {}),
             **settled_keys,
         }
@@ -2345,6 +2439,16 @@ def run_mode3(
                 }
     record["lead_dispositions"] = lead_dispositions
     record["blocked_leads"] = blocked_leads
+    # D208: how each open question was settled, and what was still open when the run stopped, so a
+    # run that ends at its budget says what kept it open.
+    ledger = _question_ledger(_board)
+    record["question_dispositions"] = {qid: item for qid, item in ledger.items() if item["status"] != "open"}
+    end_agenda = _open_agenda(case_dir, _board)
+    record["open_agenda"] = {
+        "questions": list(end_agenda.get("questions") or []),
+        "crit_leads": [str(lead.get("subject") or "") for lead in end_agenda.get("crit_leads") or []],
+        "pivots": list(end_agenda.get("pivots") or []),
+    }
 
     # 36c: the run record carries the model that ran, so R2 knows which one
     # produced the findings. Derived from the object the seats called (D48), so
@@ -2397,7 +2501,7 @@ def run_mode3(
     # The run's own gaps (unexamined families, roles that never contributed) and the
     # candidates' gaps are both kept; the second used to overwrite the first (D129).
     merged_gaps: list[str] = []
-    for gap in [*(final.get("gaps") or []), *candidate_gaps]:
+    for gap in [*(final.get("gaps") or []), *_board_gaps(_board), *candidate_gaps]:
         if gap and gap not in merged_gaps:
             merged_gaps.append(str(gap))
     record["gaps"] = merged_gaps

@@ -631,14 +631,14 @@ BOARD = [
 def test_the_board_view_keeps_every_claim_and_drops_the_bulk():
     """D206: seats read the board as its JSON, reply excerpts and skill references included, on
     every round: 58 M of Mode 3 run 1's 130.7 M characters."""
-    from nexus.modes.multi_agent import board_view
+    from nexus.modes.multi_agent import board_view, question_id
 
     view = board_view(BOARD)
     assert ("- process=SRLUpdate.exe | presence/affirm | launched by the task SRL User Maintenance"
             " | verifier: confirmed | cites a-1 | evidence:hayabusa:1") in view
     assert "lsass.exe | presence/affirm | beacon YARA match in pid 692" in view
     assert "- lead Defender Alert (Severe): supported - EID 1116" in view
-    assert "- open question: What wrote SRLUpdate.exe?" in view
+    assert f"- open question {question_id('What wrote SRLUpdate.exe?')}: What wrote SRLUpdate.exe?" in view
     assert "XXXX" not in view and "ir_scoping_and_leads" not in view
 
     older = board_view(BOARD, whole_from=2)

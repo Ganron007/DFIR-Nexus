@@ -141,7 +141,7 @@ def test_the_pivot_map_follows_the_derived_subject_types():
             ("host", "ws01"),
         )
     ]}]
-    pivots = _pivot_entities(board, {})
+    pivots = _pivot_entities(board)
     assert {pivot["entity_type"] for pivot in pivots} == {"process", "address", "account", "file", "registry"}
     assert all(pivot["why"] for pivot in pivots)
 
