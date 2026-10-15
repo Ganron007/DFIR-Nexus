@@ -225,7 +225,7 @@ def _sealed_case_error(case_id: str):
     return None
 
 
-def _busy_run_error(case_dir: Path, own_run_id: str = ""):
+def _busy_run_error(case_dir: Path, own_run_id: str = "", *, full_run_handler: bool = False):
     """409 while another analysis run is already running on this case.
 
     WO-1C item 2: a case may run any mode, but only ONE analysis run at a time
@@ -283,7 +283,11 @@ def _busy_run_error(case_dir: Path, own_run_id: str = ""):
     # Mode 1 — the needle full-run record. A "running" record whose worker
     # thread is dead is a tombstone (server restart / worker crash), so it
     # must not block; the worker marks it interrupted in place.
-    rec = _mode1_run_record(case_dir)
+    # The full-run handler answers a live full run itself, with the record (D175): reading the
+    # record here as well raced its own start. The handler read the record to name its own run,
+    # the first POST's worker wrote a new one, and this second read saw another run and answered
+    # with the generic body.
+    rec = None if full_run_handler else _mode1_run_record(case_dir)
     if isinstance(rec, dict) and rec.get("status") == "running":
         rid = str(rec.get("run_id") or "mode1_full_run")
         # The caller's own run is not a competitor — it is the run that is
@@ -3150,9 +3154,7 @@ async def api_mode1_full_run(request):
     # competitor: the singleton full-run record is the run this POST would
     # supersede, and its own thread-aware check below answers 409 with the
     # record itself (the guard's generic body loses every needle counter).
-    _own = _mode1_run_record(case_dir)
-    own_run_id = str((_own or {}).get("run_id") or "mode1_full_run")
-    wrong = _busy_run_error(case_dir, own_run_id=own_run_id)
+    wrong = _busy_run_error(case_dir, full_run_handler=True)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)
