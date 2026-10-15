@@ -142,6 +142,15 @@ def _investigative_extras(case_dir: Path) -> str:
             out += block + "\n\n"
     except Exception:  # noqa: BLE001
         pass
+    # D224: what the examiner says the responders did, so no mode reads the acquisition as the incident.
+    try:
+        from nexus.langgraph.case_intake import responder_block
+
+        block = responder_block(case_dir)
+        if block:
+            out += block + "\n\n"
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 

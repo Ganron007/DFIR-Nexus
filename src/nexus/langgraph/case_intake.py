@@ -48,7 +48,45 @@ INTAKE_KEYS = (
     # silently dropped them and the CLI flag appeared to do nothing.
     "set_by",
     "interpret_rounds",
+    # D224: the responders' own tools and when they acquired. Without them every mode read the
+    # acquisition as the incident (F-Response removing its own firewall rules was staged as
+    # anti-forensics, DRAFT 042).
+    "responder_tools",
+    "acquisition_window",
 )
+
+
+def responder_block(case_dir: Path) -> str:
+    """The examiner's statement of the responders' own activity, for every investigative prompt (D224).
+
+    Empty when the examiner set neither field: nothing is inferred from the evidence.
+    """
+    import yaml
+
+    try:
+        meta = yaml.safe_load((Path(case_dir) / "CASE.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return ""
+    intake = meta.get("intake") if isinstance(meta, dict) else None
+    lines = responder_lines(intake if isinstance(intake, dict) else {})
+    return "RESPONDER ACTIVITY " + "\n".join(lines) if lines else ""
+
+
+def responder_lines(intake: dict[str, Any]) -> list[str]:
+    """The responder statement from an intake dict; the digest renders the same lines (Mode 1)."""
+    tools = str(intake.get("responder_tools") or "").strip()
+    window = str(intake.get("acquisition_window") or "").strip()
+    if not tools and not window:
+        return []
+    lines = [f"(examiner intake, set by {intake.get('set_by') or 'the examiner'}):"]
+    if tools:
+        lines.append(f"- the responders' own tools on this case: {tools}")
+    if window:
+        lines.append(f"- acquisition window: {window}")
+    lines.append("Rows these tools made, and rows inside the window that the acquisition explains, record the "
+                 "response, not the incident. A claim resting on them says so; they are not attacker activity "
+                 "unless other evidence shows it.")
+    return lines
 
 
 def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:

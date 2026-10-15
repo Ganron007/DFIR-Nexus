@@ -472,6 +472,14 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
         lines.append("## Examiner intake")
         for key, value in intake.items():
             lines.append(f"- {key}: {value}")
+        # D224: the responders' activity is stated with what it means, as Modes 2 and 3 receive it.
+        from nexus.langgraph.case_intake import responder_lines
+
+        responder = responder_lines(intake)
+        if responder:
+            lines.append("")
+            lines.append("## Responder activity " + responder[0])
+            lines.extend(responder[1:])
     ti = digest.get("ti_context_md") or ""
     if ti:
         lines.append("")

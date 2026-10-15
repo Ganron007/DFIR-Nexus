@@ -466,6 +466,13 @@ def intake_case(
         "operator", "--set-by",
         help="Who set this intake: operator (default) or agent",
     ),
+    responder_tools: str = typer.Option(
+        "", "--responder-tools",
+        help="The responders' own tools on this case, e.g. 'F-Response (C:\\Windows\\subject_srv.exe)'",
+    ),
+    acquisition_window: str = typer.Option(
+        "", "--acquisition-window", help="When the responders acquired, e.g. '2023-01-25 14:00-16:00 UTC'",
+    ),
 ):
     """Update N1 intake on CASE.yaml (does not re-parse).
 
@@ -497,6 +504,10 @@ def intake_case(
                 "query_extra ignored: path-like / schema-label values are not "
                 "needles (they match every row and pollute the scan)."
             )
+    if responder_tools:
+        ctx["responder_tools"] = responder_tools
+    if acquisition_window:
+        ctx["acquisition_window"] = acquisition_window
     if interpret_rounds:
         # WO-R1F item 7d: "allow the examiner to raise [the rounds] in intake."
         # Clamped to the loop's own range so an odd value cannot break a run.
