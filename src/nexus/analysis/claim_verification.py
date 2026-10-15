@@ -879,13 +879,16 @@ def _verify_draft_rows(case_dir: Path, drafts: list[dict[str, Any]]) -> list[dic
     return rows
 
 
-def verify_drafts(case_dir: Path) -> dict[str, dict[str, Any]]:
+def verify_drafts(case_dir: Path, ids: Any = None) -> dict[str, dict[str, Any]]:
     """L1 verdict for every DRAFT finding, keyed by finding id (WO-2).
 
     The approval desk shows which claims hold before the examiner signs: this
     builds the shared verification inputs once and verifies DRAFT findings
     only. Results are cached per case keyed by (finding id, submission seal) -
     a re-staged finding is re-verified, an untouched one is not re-queried.
+
+    ``ids`` limits the run to those findings: `nexus approve` of five findings verified all 49
+    DRAFTs of CASE-C5B04D31 first, 52 s with nothing on screen (D221).
 
     ``UNVERIFIABLE`` means the check could not run (e.g. the index is down);
     it is never reported as PROVEN.
@@ -901,6 +904,9 @@ def verify_drafts(case_dir: Path) -> dict[str, dict[str, Any]]:
         except (OSError, ValueError):
             findings = []
     drafts = [f for f in findings if str(f.get("status") or "").upper() == "DRAFT"]
+    if ids is not None:
+        wanted = {str(i) for i in ids}
+        drafts = [f for f in drafts if _draft_finding_id(f) in wanted]
 
     case_key = str(case_dir)
     with _DRAFT_CACHE_LOCK:
@@ -926,7 +932,12 @@ def verify_drafts(case_dir: Path) -> dict[str, dict[str, Any]]:
                 cached[fid] = (key, row)
 
     with _DRAFT_CACHE_LOCK:
-        if out:
+        if ids is not None:
+            # A partial run keeps the other findings' entries.
+            merged = dict(_DRAFT_CACHE.get(case_key) or {})
+            merged.update({k: v for k, v in cached.items() if k in out})
+            _DRAFT_CACHE[case_key] = merged
+        elif out:
             _DRAFT_CACHE[case_key] = {k: v for k, v in cached.items() if k in out}
         else:
             _DRAFT_CACHE.pop(case_key, None)

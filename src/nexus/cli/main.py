@@ -209,8 +209,11 @@ def approve(
     # verifier did not prove needs an explicit override reason.
     from nexus.analysis.claim_verification import verify_drafts
 
+    # Only the findings being approved, and said before it starts (D221): all 49 DRAFTs were
+    # verified, 52 s with nothing on screen.
+    typer.echo(f"Verifying {len(finding_ids)} finding(s) against the case index (L1)...")
     try:
-        verdicts = verify_drafts(case_dir)
+        verdicts = verify_drafts(case_dir, ids=finding_ids)
     except Exception:  # noqa: BLE001 - verification informs, never blocks outright
         verdicts = {}
     blocked: list[str] = []
@@ -280,6 +283,7 @@ def _interactive_approve(analyst: str, case: str = ""):
 
     from nexus.analysis.claim_verification import verify_drafts
 
+    typer.echo(f"Verifying {len(drafts)} DRAFT finding(s) against the case index (L1)...")
     try:
         verdicts = verify_drafts(case_dir)
     except Exception:  # noqa: BLE001 - verification informs, never blocks outright

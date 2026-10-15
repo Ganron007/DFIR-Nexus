@@ -31,10 +31,12 @@ def _require_approval_auth(analyst: str) -> str | None:
             f"No password file for {analyst} "
             f"({Path.home() / '.nexus' / 'passwords' / (analyst + '.json')})."
         )
-        print("This Windows login is not the lab examiner.")
-        print("Use: nexus approve --examiner e2e_host ...")
-        print("  or: $env:NEXUS_EXAMINER = 'e2e_host'")
-        print("Do not run: nexus config --setup-password for a new identity.")
+        # The examiners that can sign here, not a lab name that may not exist (D221).
+        known = sorted(p.stem for p in (Path.home() / ".nexus" / "passwords").glob("*.json"))
+        if known:
+            print(f"Examiners with a password on this machine: {', '.join(known)}")
+            print("Use: nexus approve --examiner <name> ...")
+        print("Set one up: nexus config --examiner <name> --setup-password")
         return None
 
     if check_lockout(analyst):

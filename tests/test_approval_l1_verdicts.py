@@ -184,6 +184,27 @@ def test_verify_drafts_proven_unsupported_and_cache(l1_env):
     assert fake.calls == calls, "cached verdicts must not re-query the index"
 
 
+def test_verify_drafts_runs_only_the_findings_named(l1_env):
+    """D221: approving five findings verified all 49 DRAFTs first, 52 s with nothing on screen."""
+    tmp: Path = l1_env["tmp"]
+    client: TestClient = l1_env["client"]
+    fake: _FakeSearcher = l1_env["fake"]
+    _, case_dir = _make_case(client, tmp)
+    good = _stage(case_dir, GOOD)
+    bad = _stage(case_dir, BAD, evidence=BAD_ROWS)
+
+    from nexus.analysis.claim_verification import verify_drafts
+
+    assert list(verify_drafts(case_dir, ids=[good])) == [good]
+    after_one = fake.calls
+    rows = verify_drafts(case_dir)
+    assert set(rows) == {good, bad}
+    assert fake.calls > after_one, "the other finding is verified when asked for"
+    settled = fake.calls
+    assert list(verify_drafts(case_dir, ids=[bad])) == [bad]
+    assert fake.calls == settled, "a partial run keeps the cache of the findings it did not name"
+
+
 def test_portal_commit_enforces_override_reason(l1_env):
     tmp: Path = l1_env["tmp"]
     client: TestClient = l1_env["client"]
@@ -277,8 +298,16 @@ def test_cli_approve_shows_verdict_and_requires_reason(l1_env, monkeypatch):
     runner = CliRunner()
     r = runner.invoke(cli_app, ["approve", bad, "--examiner", EXAMINER, "--case", case_id])
     assert r.exit_code == 1, r.output
+    assert "Verifying 1 finding(s) against the case index" in r.output, "D221: said before it starts"
     assert "L1 UNSUPPORTED" in r.output
     assert "Refused" in r.output
+
+    # D221: an identity with no password is told which ones can sign here.
+    r = runner.invoke(cli_app, ["approve", bad, "--examiner", "nobody", "--case", case_id,
+                                "--reason", "x"])
+    assert r.exit_code == 1, r.output
+    assert "Examiners with a password on this machine:" in r.output
+    assert "nexus config --examiner <name> --setup-password" in r.output
     drafts = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
     assert [f for f in drafts if f["status"] == "DRAFT"], "refusal must not approve"
 
@@ -315,7 +344,7 @@ def test_portal_commit_verifier_raise_requires_reason(l1_env, monkeypatch):
 
     import nexus.analysis.claim_verification as cv
 
-    def _boom(case_dir):  # noqa: ANN001
+    def _boom(case_dir, ids=None):  # noqa: ANN001
         raise RuntimeError("verifier unavailable")
 
     monkeypatch.setattr(cv, "verify_drafts", _boom)
@@ -368,7 +397,7 @@ def test_portal_commit_absent_from_verdict_map_requires_reason(l1_env, monkeypat
 
     import nexus.analysis.claim_verification as cv
 
-    monkeypatch.setattr(cv, "verify_drafts", lambda case_dir: {})
+    monkeypatch.setattr(cv, "verify_drafts", lambda case_dir, ids=None: {})
 
     ch, resp = _respond(client, headers, stored)
     r = client.post(

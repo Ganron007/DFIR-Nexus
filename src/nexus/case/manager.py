@@ -39,7 +39,7 @@ def _l1_verdict_for(case_dir: Path, finding_id: str) -> str:
     try:
         from nexus.analysis.claim_verification import verify_drafts
 
-        row = (verify_drafts(case_dir) or {}).get(finding_id) or {}
+        row = (verify_drafts(case_dir, ids=[finding_id]) or {}).get(finding_id) or {}
         return str(row.get("verdict") or "")
     except Exception:  # noqa: BLE001 — the service treats empty as UNVERIFIABLE
         return ""
