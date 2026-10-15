@@ -1056,13 +1056,14 @@ async def run_interpret_loop(
         items_block ="\n".join(
             f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed_final[:40]
         )
+        # The same rules and finding shape as the first pass (D213): the extra pass named neither, so
+        # agnes-3.0-flash returned its findings as {id, title, detail, severity} and none could stage
+        # (2026-10-15: four, among them seven denied RDP logons just before the successful one).
         extra_system = (
-            "These digest items were not addressed by the findings so far. "
-            "Return ONE JSON object {\"findings\": [...], \"dispositions\": [...]}: a "
-            "disposition for each item (status "
-            + "|".join(DISPOSITION_STATUSES)
-            + ", with the reason and the audit_ids it rests on), and a finding only when the "
-            "rows support a claim the findings so far do not make. Use the digest/evidence above."
+            findings_system
+            + "\nTHIS PASS: the findings so far left the DIGEST RECONCILIATION items listed under "
+            "unaddressed_items unanswered. Give each a disposition, and write a finding only when "
+            "the rows support a claim the findings so far do not make."
         )
         extra_sections = reconcile_extra + [(0, "unaddressed_items", items_block)]
         packed_extra, report_extra = pack_sections(

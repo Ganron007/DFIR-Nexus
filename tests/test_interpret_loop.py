@@ -856,7 +856,7 @@ def test_the_extra_pass_answers_with_dispositions_not_findings(tmp_path):
     assert result["findings_emitted"] == 1
     assert result["unaddressed"] == []
     assert [d["status"] for d in result["dispositions"]] == ["benign", "coverage_gap"]
-    assert "a disposition for each item" in model.calls[3][0]["content"]
+    assert "Give each a disposition" in model.calls[3][0]["content"]
 
 
 def test_a_bare_findings_array_is_still_read_as_findings(tmp_path):
@@ -867,3 +867,37 @@ def test_a_bare_findings_array_is_still_read_as_findings(tmp_path):
         digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
     ))
     assert result["findings_emitted"] == 3 and result["dispositions"] == []
+
+
+def test_the_extra_reconcile_pass_asks_for_findings_in_the_staging_shape(tmp_path):
+    """D213: the extra pass named no finding shape; agnes-3.0-flash returned {id, title, detail,
+    severity} and none of its four findings could stage (2026-10-15, among them seven denied RDP
+    logons just before the successful one)."""
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    sent: list[str] = []
+
+    class _Recording(ScriptedModel):
+        async def ainvoke(self, messages):
+            sent.append("\n".join(str(m.get("content") or "") for m in messages))
+            return await super().ainvoke(messages)
+
+    first = json.dumps({"findings": [json.loads(_findings_all_addressed())[0]], "dispositions": []})
+    extra = json.dumps({"findings": [{
+        "title": "psexec lateral movement", "severity": "high",
+        "entity": {"type": "process", "value": "psexec.exe"},
+        "observation": "psexec 9 hits", "interpretation": "remote service execution",
+        "confidence": "MEDIUM", "confidence_justification": "counts",
+        "audit_ids": ["n4_query-test-20260918-001"]}],
+        "dispositions": [{"item": "Ransomware note", "status": "benign", "reason": "lab note file",
+                          "audit_ids": ["n4_query-test-20260918-001"]}]})
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST",
+        model=_Recording([_orientation(), _verify_settled(), first, extra]),
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    extra_call = next(s for s in sent if "THIS PASS" in s)
+    assert "observation, interpretation (non-empty)" in extra_call
+    assert "Negative evidence, a census, a scope note" in extra_call
+    assert result["findings_emitted"] == 2, "the extra pass's finding stages beside the first"
