@@ -966,6 +966,13 @@ async def run_interpret_loop(
         "no row supports are dispositions, never findings.\n"
         "- Every DIGEST RECONCILIATION item is covered by a finding or has a disposition. "
         "Silence is a failure.\n"
+        # D217: with no status for "part of a finding", run d1a28c66 disposed a service install it
+        # tied to the beacon as benign ("subsumed by H1 beacon").
+        "- A finding covers an item only when its observation names the item: an item that is "
+        "part of a finding's activity is named in that finding's observation, never disposed. "
+        "benign = the rows show legitimate activity (say which); coverage_gap = the evidence "
+        "needed is not in this case; not_examined = not queried in this run; refuted = rows "
+        "contradict it.\n"
         "- Absent evidence classes are SCOPE - never phrase them as "
         "'no compromise'.\n"
         "- Checked needles with 0 hits are negative evidence: name them in "

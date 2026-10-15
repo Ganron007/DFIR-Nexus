@@ -901,3 +901,7 @@ def test_the_extra_reconcile_pass_asks_for_findings_in_the_staging_shape(tmp_pat
     assert "observation, interpretation (non-empty)" in extra_call
     assert "Negative evidence, a census, a scope note" in extra_call
     assert result["findings_emitted"] == 2, "the extra pass's finding stages beside the first"
+    # D217: each status is defined, and an item that belongs to a finding is named in it, not disposed.
+    for prompt in (extra_call, next(s for s in sent if "write the final findings JSON" in s)):
+        assert "A finding covers an item only when its observation names the item" in prompt
+        assert "benign = the rows show legitimate activity" in prompt
