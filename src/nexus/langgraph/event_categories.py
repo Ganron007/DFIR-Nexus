@@ -39,12 +39,29 @@ def present(value: object) -> str:
 
 
 @lru_cache(maxsize=1)
+def _doc() -> dict:
+    return yaml.safe_load(_TABLE.read_text(encoding="utf-8")) or {}
+
+
+@lru_cache(maxsize=1)
 def _table() -> dict[tuple[str, str], str]:
-    doc = yaml.safe_load(_TABLE.read_text(encoding="utf-8")) or {}
     return {
         (str(e["provider"]), str(e["event_id"])): str(e["category"])
-        for e in doc.get("entries") or []
+        for e in _doc().get("entries") or []
     }
+
+
+@lru_cache(maxsize=1)
+def _channel_owners() -> dict[tuple[str, str], str]:
+    return {(str(r["channel"]), str(r["event_id"])): str(r["provider"]) for r in _doc().get("channels") or []}
+
+
+def provider_for(channel: object, event_id: object) -> str:
+    """The provider that logs (channel, event id), as its pinned manifest declares; '' when none does.
+
+    For a row that names only its channel, Hayabusa's timeline among them (D232).
+    """
+    return _channel_owners().get((str(channel or "").strip(), str(event_id or "").strip()), "")
 
 
 def category_for(provider: object, event_id: object) -> str:

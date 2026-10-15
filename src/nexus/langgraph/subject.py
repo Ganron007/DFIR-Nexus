@@ -133,6 +133,10 @@ GROUP_OF_CATEGORY = {
     "remote_session": "account",
     "scheduled_task_run": "process",
     "scheduled_task_change": "account",
+    # D232 (operator 2026-10-16), from Defender's manifest: a detection is about what it detected (the
+    # file, else the process a behavior ran in); a protection setting change is about the setting.
+    "malware": "file",
+    "configuration": "registry",
 }
 
 

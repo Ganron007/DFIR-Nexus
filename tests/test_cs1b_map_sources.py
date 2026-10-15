@@ -173,6 +173,10 @@ def test_every_evtx_event_data_name_is_real():
     # D95: verbatim WinRM and Task Scheduler rows (CASE-C5B04D31's index)
     for row in json.loads((REPO / "tests/fixtures/winrm_taskscheduler_rows.json").read_text(encoding="utf-8")).values():
         _ingest_row(row)
+    # D232: verbatim EvtxECmd Defender rows (CASE-C5B04D31's index)
+    for row in json.loads((REPO / "tests/fixtures/defender_rows.json").read_text(encoding="utf-8")).values():
+        if row["family"] == "evtxecmd":
+            _ingest_row(row["fields"])
     # the operator's own EvtxECmd outputs, when present (never committed)
     for extra in (REPO / "Evidence-files/ES-Mapping/outputs/ccs1b-real").glob("*.csv") \
             if (REPO / "Evidence-files/ES-Mapping/outputs/ccs1b-real").is_dir() else []:

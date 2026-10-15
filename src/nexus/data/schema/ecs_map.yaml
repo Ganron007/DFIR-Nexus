@@ -123,6 +123,23 @@ winlog_event_data:
       UserName: ecs.user.name
     "142":
       UserName: ecs.user.name
+  # D232 (operator 2026-10-16): what a Defender event is about, from the event data Defender writes
+  # (checked against real rows, tests/fixtures/defender_rows.json). Path lists the detected resources
+  # as `type:_resource`; Process Name is the process the threat was found in (`Unknown` when none);
+  # 5007 and 5013 name the setting changed as `<registry value> = <data>`.
+  Microsoft-Windows-Windows Defender/Operational:
+    "1116":
+      Process Name: __defender_process__
+      Path: __defender_resources__
+      Detection User: ecs.user.name
+    "1117":
+      Process Name: __defender_process__
+      Path: __defender_resources__
+      Detection User: ecs.user.name
+    "5007":
+      New Value: __registry_assignment__
+    "5013":
+      Value: __registry_assignment__
 
 # ── Column -> ECS field, per tool family (from the operator's ES-Mapping) ──
 # `transform` (optional): path_split | hash_list | lower.

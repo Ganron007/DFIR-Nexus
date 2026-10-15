@@ -48,6 +48,13 @@ def test_sources_are_pinned_to_the_reviewed_digests():
             "29ba1637e2e9cc3084627d054192888b23b9f8f85bcd2ef0b8929ae5eab8d4a6",
         ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-TaskScheduler"):
             "ac59aa58adced97397db925a333763b979a7f03a0c816e744605a27366d5b417",
+        # D232: Defender's events, and the channels the PowerShell and Security events are logged to.
+        ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-Windows Defender"):
+            "8b5821ecbc447f3116b36accc5e78ee9ef8acc94ab334441fdcf767588248c7e",
+        ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-PowerShell"):
+            "573adc637f8a15dade1789104070f601db2a3e796d1377b21abf544cf84664d6",
+        ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-Security-Auditing"):
+            "f05d09902542c7feba4e410411e3df57297214beec763aa1e402edcb20570f9d",
     }
     elastic = next(s for s in doc["sources"] if s["package"].startswith("elastic"))
     assert elastic["licence"] == "Elastic-2.0"

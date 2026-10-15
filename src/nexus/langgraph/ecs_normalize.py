@@ -219,21 +219,32 @@ def normalize(
     #    per-(channel, event) common fields from names the event carries.
     payload = fields.get("Payload")
     ev = _parse_payload(payload)
+    event_id = str(fields.get("EventId") or fields.get("EventID") or "").strip()
+    channel = str(
+        fields.get("Channel") or fields.get("Provider")
+        or fields.get("SourceName") or ""
+    ).strip()
     if not ev and fam == "memprocfs":
         # Event logs recovered from memory: the same event data, written as pairs (D233). Without
         # it, no event from memory got an event-data field (130 Task Scheduler 129 rows here).
         ev = _parse_pairs(payload)
+    if fam == "hayabusa":
+        # D232: a Hayabusa row read back as its event: the channel its abbreviation names, the provider
+        # that logs that event, and the fields its details and extra field info hold. Read as written,
+        # no Hayabusa row had a category or an event-data field.
+        from nexus.langgraph.hayabusa_fields import hayabusa_event
+
+        channel, provider, ev = hayabusa_event(fields)
+        for dst, value in (("ecs.winlog.channel", channel), ("ecs.event.provider", provider)):
+            if value:
+                _set(ecs, dst, value)
+                from_event.add(dst)
     if ev:
         for name, value in ev.items():
             # WO-CS1c item 1 (cap removed 2026-10-11): a script block (a real 4104 carries
             # 20,411 chars) and the other event_data values are kept whole.
             limit = MAX_SCRIPT_BLOCK if name == "ScriptBlockText" else MAX_EVENT_DATA
             _set(ecs, f"ecs.winlog.event_data.{name}", value, limit=limit)
-        event_id = str(fields.get("EventId") or fields.get("EventID") or "").strip()
-        channel = str(
-            fields.get("Channel") or fields.get("Provider")
-            or fields.get("SourceName") or ""
-        ).strip()
         # WO-CS1b item 2: the table is keyed by (channel or provider, event ID), so
         # Sysmon's "1"/"3"/"11" apply only to the Sysmon channel, Security's 4624
         # only to Security.
@@ -263,6 +274,8 @@ def normalize(
             if str(column).startswith("__") or column not in fields:
                 continue
             value = fields[column]
+            if fam == "hayabusa" and dst in from_event:
+                continue  # its Channel column is the abbreviation; the channel read back stands (D232)
             if fam == "evtxecmd":
                 from nexus.langgraph.evtx_templates import map_value, rendered_columns
 
@@ -367,8 +380,56 @@ def _winrm_shell_request(value: Any) -> dict[str, str]:
             "ecs.source.ip": match.group("ip")}
 
 
+#: One resource of a Defender detection's Path: `file:_C:\x.exe`, `behavior:_process: C:\x.exe, pid:..`,
+#: `process:_pid:2376,ProcessStart:..`, `amsi:_\Device\..`; several are joined by `; `.
+_DEFENDER_RESOURCE_SPLIT = re.compile(r";\s*(?=[A-Za-z]+:_)")
+
+
+def _defender_resources(value: Any) -> dict[str, str]:
+    """What a Defender detection found, from its Path (D232): the first file, the process a behavior ran
+    in and its pid. An AMSI resource names the process whose script was scanned, which Process Name
+    gives with its drive path."""
+    out: dict[str, str] = {}
+    for item in _DEFENDER_RESOURCE_SPLIT.split(str(value or "").strip()):
+        kind, sep, rest = item.partition(":_")
+        kind, rest = kind.strip().lower(), rest.strip()
+        if not sep or not rest:
+            continue
+        if kind in ("file", "containerfile"):
+            out.setdefault("ecs.file.path", rest)
+        elif kind == "behavior" and rest.lower().startswith("process: "):
+            out.setdefault("ecs.process.executable", rest[len("process: "):].split(", pid:", 1)[0].strip())
+        elif kind == "process":
+            pid = re.match(r"pid:(\d+)", rest)
+            if pid:
+                out.setdefault("ecs.process.pid", pid.group(1))
+        elif kind == "regkey":
+            out.setdefault("ecs.registry.path", rest)
+    return out
+
+
+def _defender_process(value: Any) -> dict[str, str]:
+    """The process a Defender threat was found in; Defender writes `Unknown` when there is none."""
+    text = str(value or "").strip()
+    return {} if not text or text.lower() == "unknown" else {"ecs.process.executable": text}
+
+
+def _registry_assignment(value: Any) -> dict[str, str]:
+    """`<registry value path> = <data>` (Defender 5007, 5013) -> the registry value and its data."""
+    path, sep, data = str(value or "").partition(" =")
+    out = {"ecs.registry.path": path.strip()} if sep and path.strip() else {}
+    if out and data.strip():
+        out["ecs.registry.data.strings"] = data.strip()
+    return out
+
+
 #: Per-event parsers a map entry can name instead of an ECS field: one EventData value holding several.
-_EVENT_PARSERS = {"__winrm_shell_request__": _winrm_shell_request}
+_EVENT_PARSERS = {
+    "__winrm_shell_request__": _winrm_shell_request,
+    "__defender_resources__": _defender_resources,
+    "__defender_process__": _defender_process,
+    "__registry_assignment__": _registry_assignment,
+}
 
 
 def _flatten_hashes(ecs: dict[str, Any]) -> dict[str, Any]:

@@ -95,9 +95,21 @@ ELASTIC_EXTRA_IDS = frozenset({"4672"})
 MANIFEST_BUILD = "10.0.26200.9711"
 MANIFESTS = (
     {"provider": "Microsoft-Windows-WinRM", "file": "manifests/Microsoft-Windows-WinRM.xml",
-     "sha256": "29ba1637e2e9cc3084627d054192888b23b9f8f85bcd2ef0b8929ae5eab8d4a6"},
+     "sha256": "29ba1637e2e9cc3084627d054192888b23b9f8f85bcd2ef0b8929ae5eab8d4a6", "encoding": "utf-8"},
     {"provider": "Microsoft-Windows-TaskScheduler", "file": "manifests/Microsoft-Windows-TaskScheduler.xml",
-     "sha256": "ac59aa58adced97397db925a333763b979a7f03a0c816e744605a27366d5b417"},
+     "sha256": "ac59aa58adced97397db925a333763b979a7f03a0c816e744605a27366d5b417", "encoding": "utf-8"},
+    # D232 (operator 2026-10-16): Defender's detections and its protection settings.
+    {"provider": "Microsoft-Windows-Windows Defender", "file": "manifests/Microsoft-Windows-Windows Defender.xml",
+     "sha256": "8b5821ecbc447f3116b36accc5e78ee9ef8acc94ab334441fdcf767588248c7e", "encoding": "utf-8"},
+    # D232: which provider logs each PowerShell and Security event, for a row that names only its channel
+    # (Hayabusa's timeline). Their categories come from the pipelines above. Security-Auditing is kept as
+    # wevtutil wrote it with /uni:true: its plain export is in the console's code page, not the UTF-8 it
+    # declares.
+    {"provider": "Microsoft-Windows-PowerShell", "file": "manifests/Microsoft-Windows-PowerShell.xml",
+     "sha256": "573adc637f8a15dade1789104070f601db2a3e796d1377b21abf544cf84664d6", "encoding": "utf-8"},
+    {"provider": "Microsoft-Windows-Security-Auditing", "file": "manifests/Microsoft-Windows-Security-Auditing.xml",
+     "sha256": "f05d09902542c7feba4e410411e3df57297214beec763aa1e402edcb20570f9d", "encoding": "utf-16",
+     "unicode": True},
 )
 
 #: WinRM, event by event: its tasks mix sessions with protocol plumbing ("Request handling" also holds
@@ -126,9 +138,31 @@ TASK_SCHEDULER_TASKS = {
                            "Action started", "Action completed", "Action failed", "Action failed to start"),
 }
 
+#: Defender, event by event (D232): its manifest declares no tasks, so each id names a phrase its own
+#: message must hold. The categories are ECS's: `malware` (malware detection events and alerts) and
+#: `configuration` (creating, modifying or deleting the settings of an application or system). Scans,
+#: health reports and updates stay uncategorised.
+DEFENDER_EVENTS = {
+    "malware": {
+        "has detected malware or other potentially unwanted software": (1006, 1116),
+        "has detected malware or potentially unwanted software using defender security intelligence": (1007, 1117),
+        "error when taking action on malware or other potentially unwanted software": (1008, 1118, 1119),
+        "has detected a suspicious behavior": (1015,),
+        "has detected potentially unwanted application": (1160,),
+    },
+    "configuration": {
+        "real-time protection scanning for malware and other potentially unwanted software was": (5000, 5001),
+        "real-time protection feature configuration has changed": (5004,),
+        "configuration has changed": (5007,),
+        "scanning for spyware and other potentially unwanted software": (5009, 5010),
+        "scanning for viruses": (5011, 5012),
+        "tamper protection": (5013,),
+    },
+}
 
-def _manifest(entry: dict[str, str]) -> tuple[dict[int, str], str]:
-    """The manifest's event id -> task name, after its SHA-256 check, and the file's hash."""
+
+def _manifest_events(entry: dict[str, Any]) -> dict[int, dict[str, str]]:
+    """The manifest's events after its SHA-256 check: id -> its task name, message and channel."""
     import xml.etree.ElementTree as ET
 
     path = PINNED / entry["file"]
@@ -137,18 +171,31 @@ def _manifest(entry: dict[str, str]) -> tuple[dict[int, str], str]:
     data = path.read_bytes()
     if _sha256(data) != entry["sha256"]:
         raise SystemExit(f"{entry['file']}: SHA-256 differs from the reviewed value")
-    root = ET.fromstring(data.decode("utf-8"))
+    # Parsed from bytes, so the XML declaration's own encoding is the one used.
+    root = ET.fromstring(data)
 
     def local(tag: str) -> str:
         return tag.rsplit("}", 1)[-1]
 
-    tasks = {el.get("value"): " ".join((el.get("message") or "").split())
-             for el in root.iter() if local(el.tag) == "task"}
-    events: dict[int, str] = {}
+    def text(value: str | None) -> str:
+        return " ".join((value or "").split())
+
+    tasks = {el.get("value"): text(el.get("message")) for el in root.iter() if local(el.tag) == "task"}
+    channels = {el.get("id"): el.get("name") or "" for el in root.iter() if local(el.tag) == "channel"}
+    events: dict[int, dict[str, str]] = {}
     for el in root.iter():
         if local(el.tag) == "event" and el.get("value", "").isdigit():
-            events.setdefault(int(el.get("value")), tasks.get(el.get("task") or "", ""))
-    return events, entry["sha256"]
+            events.setdefault(int(el.get("value")), {
+                "task": tasks.get(el.get("task") or "", ""),
+                "message": text(el.get("message")),
+                "channel": channels.get(el.get("channel") or "", ""),
+            })
+    return events
+
+
+def _manifest(entry: dict[str, Any]) -> tuple[dict[int, str], str]:
+    """The manifest's event id -> task name, after its SHA-256 check, and the file's hash."""
+    return {eid: ev["task"] for eid, ev in _manifest_events(entry).items()}, entry["sha256"]
 
 
 def _manifest_rows() -> list[tuple[str, int, str]]:
@@ -165,13 +212,42 @@ def _manifest_rows() -> list[tuple[str, int, str]]:
                             raise SystemExit(f"{provider} {eid}: manifest task is {events.get(eid)!r}, "
                                              f"the rule expects {task!r}")
                         rows.append((provider, eid, category))
-        else:
+        elif provider == "Microsoft-Windows-TaskScheduler":
             for category, tasks in TASK_SCHEDULER_TASKS.items():
                 missing = [t for t in tasks if t not in events.values()]
                 if missing:
                     raise SystemExit(f"{provider}: no manifest task named {missing}")
                 rows += [(provider, eid, category) for eid, task in sorted(events.items()) if task in tasks]
+        elif provider == "Microsoft-Windows-Windows Defender":
+            messages = {eid: ev["message"].lower() for eid, ev in _manifest_events(entry).items()}
+            for category, by_phrase in DEFENDER_EVENTS.items():
+                for phrase, ids in by_phrase.items():
+                    for eid in ids:
+                        if phrase not in messages.get(eid, ""):
+                            raise SystemExit(f"{provider} {eid}: the manifest message does not say {phrase!r}")
+                        rows.append((provider, eid, category))
+        # The other manifests are read for their channels only (_channel_rows).
     return rows
+
+
+def _channel_rows() -> list[dict[str, Any]]:
+    """(channel, event id) -> the provider that logs it, from every pinned manifest (D232).
+
+    A row that names only its channel (Hayabusa's timeline) is matched to its provider here, so the
+    pinned category of that provider's event applies to it. A (channel, event id) two manifests claim
+    stops the import.
+    """
+    owners: dict[tuple[str, int], str] = {}
+    for entry in MANIFESTS:
+        for eid, ev in _manifest_events(entry).items():
+            if not ev["channel"]:
+                continue
+            key = (ev["channel"], eid)
+            if owners.get(key, entry["provider"]) != entry["provider"]:
+                raise SystemExit(f"{key}: logged by {owners[key]} and {entry['provider']}")
+            owners[key] = entry["provider"]
+    return [{"channel": channel, "event_id": eid, "provider": provider}
+            for (channel, eid), provider in sorted(owners.items())]
 
 
 #: One event id can carry several categories: the specific ones are rule-level filters on the
@@ -291,10 +367,12 @@ def build() -> dict[str, Any]:
         entry["categories"][category] = ELASTIC["package"]
 
     for manifest in MANIFESTS:
+        name = f'"{manifest["provider"]}"' if " " in manifest["provider"] else manifest["provider"]
         sources.append({"package": "windows-provider-manifest", "version": MANIFEST_BUILD,
                         "provider": manifest["provider"], "path": f"devtools/knowledge/pinned/{manifest['file']}",
                         "sha256": manifest["sha256"],
-                        "export": f"wevtutil gp {manifest['provider']} /ge /gm:true /f:xml"})
+                        "export": f"wevtutil gp {name} /ge /gm:true /f:xml"
+                                  + (" /uni:true" if manifest.get("unicode") else "")})
     for provider, eid, category in _manifest_rows():
         entry = by_key.setdefault((provider, eid), {"categories": {}, "package": "windows-provider-manifest"})
         entry["categories"][category] = "windows-provider-manifest"
@@ -320,6 +398,7 @@ def build() -> dict[str, Any]:
                  "category and resolve to 'other'. Do not edit by hand."),
         "sources": sources,
         "entries": entries,
+        "channels": _channel_rows(),
     }
 
 
