@@ -538,3 +538,75 @@ def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     assert record["stop_reason"] == "settled" or "settled" in str(record["stop_reason"])
     assert int(record["superstep"]) < 6
     assert record["model"] == {"provider": "test", "model": "scripted-seat"}
+
+
+def test_first_superstep_domain_seats_take_memory_first_not_the_first_names():
+    """D204: CASE-C5B04D31's Mode 3 run (2026-10-15) gave three of six first-superstep seats to
+    amcache, appcompat and bits, the first families by name, while the memory image went unread;
+    the SIFT Volatility family `vol` was not even classed as memory."""
+    from nexus.langgraph.case_digest import _classify
+    from nexus.modes.multi_agent import _domain_order, _spawns_for_agenda
+
+    indexed = [("amcache", 1000), ("appcompat", 5000), ("bits", 50), ("evtxecmd", 1171322),
+               ("hayabusa", 89872), ("mftecmd", 400000), ("vol", 88965)]
+    assert "vol" in _classify([name for name, _ in indexed])["memory"]
+    assert _domain_order(indexed)[:3] == ["vol", "evtxecmd", "mftecmd"]
+
+    leads = [{"subject": f"Lead {n}", "family": "hayabusa", "extra": {"level": "crit"}}
+             for n in range(6)]
+    spawns = _spawns_for_agenda({"crit_leads": leads, "questions": [], "pivots": []}, [],
+                                max_agents=6, question="q", superstep=1, indexed=indexed)
+    domains = [s["family"] for s in spawns if not s.get("lead")]
+    assert domains == ["vol", "evtxecmd", "mftecmd"]
+    assert sum(1 for s in spawns if s.get("lead")) == 3
+
+
+def _crit_case(tmp_path):
+    case = _case(tmp_path)
+    hayabusa = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    hayabusa.mkdir(parents=True)
+    (hayabusa / "evtx-timeline.csv").write_text(
+        "RuleTitle,RuleID,Level,Computer,Timestamp,Details\n"
+        + "".join(f"Crit rule {n},r{n},crit,RD01,2026-01-01T00:00:00Z,x\n" for n in range(12)),
+        encoding="utf-8",
+    )
+    return case
+
+
+def _seat_answering_until(last_good_step: int):
+    def seat(spawn, _board, step):
+        entry = {"entry_id": f"{spawn['role']}-{step}-{spawn.get('lead') or spawn.get('family')}",
+                 "agent_id": f"{spawn['role']}-{step}", "role": spawn["role"],
+                 "family": spawn.get("family") or "", "superstep": step,
+                 "claims": [], "open_questions": []}
+        if step > last_good_step:
+            entry.update(finish_reason="model_error", model_error="Error code: 429 - no left credit")
+        else:
+            entry.update(finish_reason="answer", claims=[_claim(f"seen-{step}.exe")])
+        return entry
+    return seat
+
+
+def test_a_model_that_stops_answering_mid_run_pauses_the_run_with_its_reason(tmp_path, monkeypatch):
+    """D209 (2026-10-15): the provider answered "no left credit" from superstep 7; the run spent
+    three more supersteps on nothing and recorded `completed / budget: max supersteps`."""
+    from nexus.modes.multi_agent import run_mode3
+
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "6")
+    record = run_mode3(_crit_case(tmp_path), "compromise suspected", families=[("hayabusa", 10)],
+                       seat_fn=_seat_answering_until(1), es_ok=True)
+    assert record["status"] == "paused"
+    assert record["superstep"] == 2
+    assert record["stop_reason"].startswith("model unavailable from superstep 2: Error code: 429")
+    assert record["candidates"], "what the first superstep found is kept"
+
+
+def test_a_model_that_never_answers_fails_the_run_at_once(tmp_path, monkeypatch):
+    from nexus.modes.multi_agent import run_mode3
+
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "6")
+    record = run_mode3(_crit_case(tmp_path), "compromise suspected", families=[("hayabusa", 10)],
+                       seat_fn=_seat_answering_until(0), es_ok=True)
+    assert record["status"] == "failed"
+    assert record["superstep"] == 1
+    assert record["stop_reason"].startswith("model unavailable: ")

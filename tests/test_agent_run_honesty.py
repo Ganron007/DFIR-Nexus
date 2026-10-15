@@ -112,7 +112,8 @@ def test_mode3_capped_and_stopped_paths_are_untouched():
     assert 'stop_reason = (\n            "budget: max supersteps"' in src
     assert '"budget: tool-call budget"' in src
     assert 'stop_reason = "examiner_stop"' in src
-    assert 'stop_reason = "paused"' in src
+    # D209: a paused run says why when the model stopped answering, and "paused" otherwise.
+    assert 'stop_reason = str(final.get("pause_reason") or "paused")' in src
 
 
 def test_the_normal_settle_path_survives():

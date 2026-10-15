@@ -1087,6 +1087,11 @@ def _seat_with_model(
     # found nothing and a seat that never ran, which look identical from an empty
     # claim list and must not be reported the same way.
     entry["finish_reason"] = str(loop.get("finish_reason") or "")
+    if entry["finish_reason"] == "model_error":
+        # What the provider said, so a paused run names its cause (D209).
+        entry["model_error"] = next(
+            (str(s.get("detail") or "") for s in loop.get("stages") or []
+             if isinstance(s, dict) and s.get("status") == "error"), "")
     # WO-R2F item 2: whether this seat actually read evidence rows. A seat that
     # CALLED an evidence tool and got nothing back (refused, failed or zero-hit)
     # is blind and must not disposition a lead, and the run must not settle on
@@ -1155,6 +1160,8 @@ class Mode3State(TypedDict, total=False):
     family_ledger: dict[str, Any]
     candidates: list[dict[str, Any]]
     candidate_gaps: list[str]
+    # Why join paused the run when the model stopped answering (D209).
+    pause_reason: str
 
 
 class _LockedSink:
@@ -1455,16 +1462,10 @@ def _spawns_for_agenda(
             str(s.get("family") or "").lower().strip()
             for s in spawns if str(s.get("family") or "").strip()
         }
-        domains = []
-        for name, _rows in indexed:
-            low = str(name or "").lower().strip()
-            if not low:
-                continue
-            if low in lead_families:
-                continue
-            if low in {"correlation", "pattern"}:
-                continue
-            domains.append(low)
+        domains = [
+            low for low in _domain_order(indexed)
+            if low not in lead_families and low not in {"correlation", "pattern"}
+        ]
         # At most half the seats go to domains; the remaining seats stay with
         # the lead/question/pivot seats that came first.
         cap = max(1, max_agents // 2)
@@ -1484,6 +1485,37 @@ def _spawns_for_agenda(
                 "question": question,
             })
     return spawns[:max_agents]
+
+
+#: The evidence classes a first-superstep domain seat covers before the host families, memory first
+#: (the design: "memory when `vol` exists, event logs, file system").
+_DOMAIN_CLASSES = ("memory", "email", "network", "cloud", "siem", "linux", "disk_timeline")
+
+
+def _domain_order(indexed: list[Any]) -> list[str]:
+    """The families a first-superstep domain seat takes, in order (D204).
+
+    One family for each evidence class present other than host, memory first, each the class's
+    largest family; then the host families, largest first. The seats used to take the first
+    families in name order: CASE-C5B04D31's Mode 3 run of 2026-10-15 spent three of six seats on
+    amcache, appcompat and bits while the memory image went unread.
+    """
+    from nexus.langgraph.case_digest import _classify
+
+    rows: dict[str, int] = {}
+    for item in indexed or []:
+        name, count = (item if isinstance(item, (list, tuple)) else (item, 0))[:2]
+        low = str(name or "").lower().strip()
+        if low:
+            rows[low] = max(rows.get(low, 0), int(count or 0))
+    classes = _classify(list(rows))
+    ordered: list[str] = []
+    for cls in _DOMAIN_CLASSES:
+        members = sorted(classes.get(cls) or [], key=lambda f: (-rows.get(f, 0), f))
+        if members:
+            ordered.append(members[0])
+    ordered += sorted((f for f in rows if f not in ordered), key=lambda f: (-rows[f], f))
+    return ordered
 
 
 def _unverified_claims(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1932,6 +1964,19 @@ def run_mode3(
             + len(agenda.get("pivots") or [])
         )
         stop_rule = ""
+        pause_reason = ""
+        # D209: a superstep in which no seat got an answer from the model means the model is gone.
+        # On 2026-10-15 the provider answered "no left credit" from superstep 7, the run spent three
+        # more supersteps on nothing and recorded "completed". It pauses instead, keeping what the
+        # earlier supersteps found, and resumes when the model is back.
+        step_seats = [e for e in board
+                      if isinstance(e, dict) and str(e.get("superstep") or "") == str(step_no)]
+        if (status not in {"stopped", "paused"} and step_seats
+                and all(str(e.get("finish_reason") or "") == "model_error" for e in step_seats)):
+            cause = next((str(e.get("model_error") or "") for e in step_seats if e.get("model_error")), "")
+            pause_reason = (f"model unavailable from superstep {step_no}"
+                            + (f": {cause}" if cause else "") + "; resume when it answers again")
+            status, stop_rule = "paused", pause_reason
         if status not in {"capped", "stopped", "paused"}:
             if step_no >= max_steps:
                 status, stop_rule = "capped", "budget: max supersteps"
@@ -2045,6 +2090,7 @@ def run_mode3(
         return {
             "disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status,
             "consumed_pivots": consumed, "answered_questions": answered,
+            **({"pause_reason": pause_reason} if pause_reason else {}),
             **settled_keys,
         }
 
@@ -2126,7 +2172,9 @@ def run_mode3(
     ]
     _no_evidence_read = bool(_seats) and len(_blocked_seats) == len(_seats)
     _dead_model = _model_dead
-    if _dead_model and status in ("settled", "completed"):
+    # A model that never answered: join pauses the run at the first superstep (D209), and a capped
+    # run never settles, so both end here as failed; a model that died after answering pauses.
+    if _dead_model and status in ("settled", "completed", "capped", "paused"):
         status = "failed"
         stop_reason = (
             f"model unavailable: {len(_seats)} seat(s) returned no claims"
@@ -2159,7 +2207,9 @@ def run_mode3(
     elif status == "stopped":
         stop_reason = "examiner_stop"
     elif status == "paused":
-        stop_reason = "paused"
+        stop_reason = str(final.get("pause_reason") or "paused")
+        if final.get("pause_reason"):
+            record["error"] = stop_reason
     else:
         stop_reason = status
     # Which documented procedures this run actually used, aggregated from what

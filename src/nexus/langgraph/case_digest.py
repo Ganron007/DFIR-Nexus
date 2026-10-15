@@ -32,14 +32,20 @@ _DISK_FAMILIES = ("plaso", "log2timeline", "super_timeline")
 
 
 def _classify(families: list[str]) -> dict[str, list[str]]:
+    from nexus.langgraph.lane_gate import _MEMORY_JOB_TOOLS
+
     low = {f.lower(): f for f in families}
 
     def pick(hints: tuple[str, ...]) -> list[str]:
         return [orig for lower, orig in low.items() if any(h in lower for h in hints)]
 
+    # A family named for the memory job that wrote it is memory: the SIFT lane's Volatility output is
+    # the family `vol`, which no name hint matched, so 88,965 memory rows were "host" (D204).
+    memory = sorted(set(pick(_MEMORY_FAMILIES))
+                    | {orig for lower, orig in low.items() if lower in _MEMORY_JOB_TOOLS})
     host = [
         orig for lower, orig in low.items()
-        if not any(h in lower for h in (
+        if orig not in memory and not any(h in lower for h in (
             _NETWORK_FAMILIES + _CLOUD_FAMILIES + _EMAIL_FAMILIES
             + _SIEM_FAMILIES + _MEMORY_FAMILIES + _DISK_FAMILIES
         ))
@@ -50,7 +56,7 @@ def _classify(families: list[str]) -> dict[str, list[str]]:
         "cloud": sorted(pick(_CLOUD_FAMILIES)),
         "email": sorted(pick(_EMAIL_FAMILIES)),
         "siem": sorted(pick(_SIEM_FAMILIES)),
-        "memory": sorted(pick(_MEMORY_FAMILIES)),
+        "memory": memory,
         "linux": sorted(pick(_LINUX_FAMILIES)),
         "disk_timeline": sorted(pick(_DISK_FAMILIES)),
     }
