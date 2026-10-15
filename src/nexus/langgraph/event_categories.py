@@ -25,7 +25,8 @@ _FAMILY_TABLE = Path(__file__).resolve().parents[1] / "data" / "schema" / "famil
 #: What the logs write for "nothing here". Observed in the case index (2026-10-12): `-\-` is an empty subject
 #: account, `%%1833` is an unresolved message code, `S-1-0-0` is the null SID. A listening socket names its foreign end
 #: as the unspecified address (0.0.0.0 or ::) or, in Volatility's netscan, as `*` (D117, 2026-10-13). None is a destination.
-PLACEHOLDERS = frozenset({"", "-", "-\\-", "n/a", "(null)", "s-1-0-0", "0.0.0.0", "::", "::0", "*"})
+#: `(none)` is Task Scheduler's user context for a task that ran with none (D214).
+PLACEHOLDERS = frozenset({"", "-", "-\\-", "n/a", "(null)", "(none)", "s-1-0-0", "0.0.0.0", "::", "::0", "*"})
 _MESSAGE_CODE = re.compile(r"%%\d+")
 
 

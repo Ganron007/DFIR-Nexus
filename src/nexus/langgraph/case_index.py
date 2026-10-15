@@ -693,7 +693,17 @@ _EVENT_KEYS = frozenset(("eventid", "event_id", "eventcode"))
 
 def _host_user_event(fields: dict[str, str]) -> tuple[str, str, str]:
     host = _pick_field(fields, _HOST_KEYS)
-    user = _pick_field(fields, _USER_KEYS)
+    user = ""
+    for name, value in fields.items():
+        if value and name.lower() in _USER_KEYS:
+            user = str(value)
+            if name == "UserName" and fields.get("Channel") and fields.get("EventId"):
+                # EvtxECmd's UserName is its map's template rendered (`Context: %UserContext%`,
+                # `%domain%\%user% (%sid%)`): the user is what the map placed in it (D214).
+                from nexus.langgraph.evtx_templates import map_value
+
+                user = map_value(fields["Channel"], fields["EventId"], name, user)
+            break
     event = _pick_field(fields, _EVENT_KEYS)
     return host, user, event
 

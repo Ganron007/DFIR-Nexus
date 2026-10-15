@@ -193,6 +193,9 @@ def normalize(
     fields = {str(k): v for k, v in (fields or {}).items()}
     record = record or {}
     ecs: dict[str, Any] = {}
+    # The ECS fields the event's own data gave (step 1). EvtxECmd's map-rendered columns (step 2) do not
+    # replace them: `UserName` overwrote a 4624's SubjectUserName with `shieldbase\RD01$ (S-1-5-18)` (D214).
+    from_event: set[str] = set()
 
     # 1. Every EVTX row: EventData -> ecs.winlog.event_data.<Name>, then the
     #    per-(channel, event) common fields from names the event carries.
@@ -217,6 +220,8 @@ def normalize(
         for name, dst in per_event.items():
             if name in ev:
                 _apply_mapped(ecs, dst, ev[name])
+                if str(ev[name]).strip() not in ("", "-"):
+                    from_event.add(dst)
 
     # 2. Column -> ECS for this family, plus the importer slot table.
     tables = emap.get("family_columns") or {}
@@ -229,13 +234,23 @@ def normalize(
         for column, dst in table.items():
             if str(column).startswith("__") or column not in fields:
                 continue
+            value = fields[column]
+            if fam == "evtxecmd":
+                from nexus.langgraph.evtx_templates import map_value, rendered_columns
+
+                if str(column) in rendered_columns():
+                    if dst in from_event:
+                        continue
+                    # An EvtxECmd generic column holds its map's template rendered, label and all
+                    # (`Detection User: %User%`); the value is what the map placed in it (D214).
+                    value = map_value(fields.get("Channel"), fields.get("EventId"), str(column), value)
             if dst == "ecs.file.path":
                 # WO-CS1c item 2: "join" is an explicit per-family transform
                 # (MFTECmd ParentPath + FileName). Every other family takes the
                 # FIRST non-empty path column in the declared order.
-                file_path_parts.append(str(fields[column]))
+                file_path_parts.append(str(value))
                 continue
-            _apply_mapped(ecs, dst, fields[column])
+            _apply_mapped(ecs, dst, value)
     if file_path_parts:
         if path_transform == "join":
             joined = "\\".join(p.rstrip("\\/") for p in file_path_parts if p)

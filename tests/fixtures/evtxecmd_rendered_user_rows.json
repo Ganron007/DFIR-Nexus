@@ -1,0 +1,32 @@
+{
+ "defender_1116_empty": {
+  "Channel": "Microsoft-Windows-Windows Defender/Operational",
+  "EventId": "1116",
+  "Computer": "rd01.shieldbase.com",
+  "UserId": "S-1-5-18",
+  "UserName": "Detection User:",
+  "Payload": "{\"EventData\":{\"Data\":[{\"@Name\":\"Product Name\",\"#text\":\"Microsoft Defender Antivirus\"},{\"@Name\":\"Product Version\",\"#text\":\"4.18.2211.5\"},{\"@Name\":\"Detection ID\",\"#text\":\"{3284EB33-4503-4309-A056-31CE05786686}\"},{\"@Name\":\"Detection Time\",\"#text\":\"2023-01-24T00:51:58.217Z\"},{\"@Name\":\"Unused\"},{\"@Name\":\"Unused2\"},{\"@Name\":\"Threat ID\",\"#text\":\"2147776941\"},{\"@Name\":\"Threat Name\",\"#text\":\"Behavior:Win32/CobaltStrike.E!sms\"},{\"@Name\":\"Severity ID\",\"#text\":\"5\"},{\"@Name\":\"Severity Name\",\"#text\":\"Severe\"},{\"@Name\":\"Category ID\",\"#text\":\"46\"},{\"@Name\":\"Category Name\",\"#text\":\"Suspicious Behavior\"},{\"@Name\":\"FWLink\",\"#text\":\"https://go.microsoft.com/fwlink/?linkid=37020&amp;name=Behavior:Win32/CobaltStrike.E!sms&amp;threatid=2147776941&amp;enterprise=0\"},{\"@Name\":\"Status Code\",\"#text\":\"1\"},{\"@Name\":\"Status Description\"},{\"@Name\":\"State\",\"#text\":\"1\"},{\"@Name\":\"Source ID\",\"#text\":\"0\"},{\"@Name\":\"Source Name\",\"#text\":\"Unknown\"},{\"@Name\":\"Process Name\",\"#text\":\"Unknown\"},{\"@Name\":\"Detection User\"},{\"@Name\":\"Unused3\"},{\"@Name\":\"Path\",\"#text\":\"behavior:_process: C:\\\\Windows\\\\System32\\\\svchost.exe, pid:2376:111820579542652; process:_pid:2376,ProcessStart:133189590785418864\"},{\"@Name\":\"Origin ID\",\"#text\":\"0\"},{\"@Name\":\"Origin Name\",\"#text\":\"Unknown\"},{\"@Name\":\"Execution ID\",\"#text\":\"3\"},{\"@Name\":\"Execution Name\",\"#text\":\"Executing\"},{\"@Name\":\"Type ID\",\"#text\":\"0\"},{\"@Name\":\"Type Name\",\"#text\":\"Concrete\"},{\"@Name\":\"Pre Execution Status\",\"#text\":\"0\"},{\"@Name\":\"Action ID\",\"#text\":\"9\"},{\"@Name\":\"Action Name\",\"#text\":\"Not Applicable\"},{\"@Name\":\"Unused4\"},{\"@Name\":\"Error Code\",\"#text\":\"0x00000000\"},{\"@Name\":\"Error Description\",\"#text\":\"The operation completed successfully. \"},{\"@Name\":\"Unused5\"},{\"@Name\":\"Post Clean Status\",\"#text\":\"0\"},{\"@Name\":\"Additional Actions ID\",\"#text\":\"0\"},{\"@Name\":\"Additional Actions String\",\"#text\":\"No additional actions required\"},{\"@Name\":\"Remediation User\"},{\"@Name\":\"Unused6\"},{\"@Name\":\"Security intelligence Version\",\"#text\":\"AV: 1.381.1388.0, AS: 1.381.1388.0, NIS: 1.381.1388.0\"},{\"@Name\":\"Engine Version\",\"#text\":\"AM: 1.1.19900.2, NIS: 1.1.19900.2\"}]}}"
+ },
+ "security_sid": {
+  "Channel": "Security",
+  "EventId": "4799",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "shieldbase\\RD01$ (S-1-5-18)",
+  "Payload": "{\"EventData\":{\"Data\":[{\"@Name\":\"TargetUserName\",\"#text\":\"Administrators\"},{\"@Name\":\"TargetDomainName\",\"#text\":\"Builtin\"},{\"@Name\":\"TargetSid\",\"#text\":\"S-1-5-32-544\"},{\"@Name\":\"SubjectUserSid\",\"#text\":\"S-1-5-18\"},{\"@Name\":\"SubjectUserName\",\"#text\":\"RD01$\"},{\"@Name\":\"SubjectDomainName\",\"#text\":\"shieldbase\"},{\"@Name\":\"SubjectLogonId\",\"#text\":\"0x3E7\"},{\"@Name\":\"CallerProcessId\",\"#text\":\"0xA98\"},{\"@Name\":\"CallerProcessName\",\"#text\":\"C:\\\\Windows\\\\System32\\\\svchost.exe\"}]}}"
+ },
+ "task_context": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "100",
+  "Computer": "rd01.shieldbase.com",
+  "UserId": "S-1-5-18",
+  "UserName": "Context: shieldbase\\tdungan",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskStartEvent\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\User_Feed_Synchronization-{C2E4AA97-7B3E-4506-BA8B-5497B41F2A4C}\"},{\"@Name\":\"UserContext\",\"#text\":\"shieldbase\\\\tdungan\"},{\"@Name\":\"InstanceId\",\"#text\":\"94114fd1-98f2-4e02-9065-4c865858f8d1\"}]}}"
+ },
+ "security_4624": {
+  "Channel": "Security",
+  "EventId": "4624",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "shieldbase\\RD01$",
+  "Payload": "{\"EventData\":{\"Data\":[{\"@Name\":\"SubjectUserSid\",\"#text\":\"S-1-5-18\"},{\"@Name\":\"SubjectUserName\",\"#text\":\"RD01$\"},{\"@Name\":\"SubjectDomainName\",\"#text\":\"shieldbase\"},{\"@Name\":\"SubjectLogonId\",\"#text\":\"0x3E7\"},{\"@Name\":\"TargetUserSid\",\"#text\":\"S-1-5-21-2838623409-1327563992-2591358621-1136\"},{\"@Name\":\"TargetUserName\",\"#text\":\"tdungan\"},{\"@Name\":\"TargetDomainName\",\"#text\":\"shieldbase\"},{\"@Name\":\"TargetLogonId\",\"#text\":\"0x3881E39\"},{\"@Name\":\"LogonType\",\"#text\":\"10\"},{\"@Name\":\"LogonProcessName\",\"#text\":\"User32 \"},{\"@Name\":\"AuthenticationPackageName\",\"#text\":\"Negotiate\"},{\"@Name\":\"WorkstationName\",\"#text\":\"RD01\"},{\"@Name\":\"LogonGuid\",\"#text\":\"b1e802f7-5750-45a9-61a3-6563a5e60ff1\"},{\"@Name\":\"TransmittedServices\",\"#text\":\"-\"},{\"@Name\":\"LmPackageName\",\"#text\":\"-\"},{\"@Name\":\"KeyLength\",\"#text\":\"0\"},{\"@Name\":\"ProcessId\",\"#text\":\"0xBB8\"},{\"@Name\":\"ProcessName\",\"#text\":\"C:\\\\Windows\\\\System32\\\\svchost.exe\"},{\"@Name\":\"IpAddress\",\"#text\":\"172.16.30.3\"},{\"@Name\":\"IpPort\",\"#text\":\"0\"},{\"@Name\":\"ImpersonationLevel\",\"#text\":\"%%1833\"},{\"@Name\":\"RestrictedAdminMode\",\"#text\":\"%%1843\"},{\"@Name\":\"TargetOutboundUserName\",\"#text\":\"-\"},{\"@Name\":\"TargetOutboundDomainName\",\"#text\":\"-\"},{\"@Name\":\"VirtualAccount\",\"#text\":\"%%1843\"},{\"@Name\":\"TargetLinkedLogonId\",\"#text\":\"0x0\"},{\"@Name\":\"ElevatedToken\",\"#text\":\"%%1843\"}]}}"
+ }
+}
