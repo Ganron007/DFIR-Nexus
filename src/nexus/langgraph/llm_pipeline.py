@@ -431,12 +431,16 @@ def get_model(model_name: str = ""):
     ``built_model_record()`` always names what was actually constructed.
     """
     _load_dotenv()
+    from nexus.llm.providers import llm_timeout
 
     model = model_name or os.environ.get("NEXUS_LLM_MODEL", "")
     base_url = os.environ.get("NEXUS_LLM_BASE_URL", "")
     api_key = os.environ.get("NEXUS_LLM_API_KEY", "")
     provider = os.environ.get("NEXUS_LLM_PROVIDER", "").lower()
     reasoning = os.environ.get("NEXUS_LLM_REASONING", "")
+    # Every client gets the call timeout: a slow model makes a run slow, a stalled one must never hold it.
+    # Only the OpenAI-compatible client had one, so a local Ollama model or Anthropic could hang a run (D228).
+    timeout = llm_timeout()
 
     if not model:
         # Legacy prefix form: "openai/gpt-4o", "ollama/qwen...", anthropic name
@@ -445,7 +449,7 @@ def get_model(model_name: str = ""):
             from langchain_openai import ChatOpenAI
             built = legacy[len("openai/"):] or "gpt-4o"
             _record_built_model("openai", built)
-            return ChatOpenAI(model=built)
+            return ChatOpenAI(model=built, timeout=timeout)
         if legacy.startswith("ollama/"):
             try:
                 from langchain_ollama import ChatOllama
@@ -455,11 +459,11 @@ def get_model(model_name: str = ""):
                 ) from None
             built = legacy[len("ollama/"):]
             _record_built_model("ollama", built)
-            return ChatOllama(model=built)
+            return ChatOllama(model=built, client_kwargs={"timeout": timeout})
         if legacy:
             from langchain_anthropic import ChatAnthropic
             _record_built_model("anthropic", legacy)
-            return ChatAnthropic(model=legacy)
+            return ChatAnthropic(model=legacy, timeout=timeout)
         # No model configured. The run record must not claim one ran (D48).
         _record_built_model("none", "none")
         raise RuntimeError(
@@ -470,7 +474,7 @@ def get_model(model_name: str = ""):
 
     if provider == "anthropic" and not base_url:
         from langchain_anthropic import ChatAnthropic
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {"timeout": timeout}
         if api_key:
             kwargs["api_key"] = api_key
         _record_built_model("anthropic", model)
@@ -484,7 +488,7 @@ def get_model(model_name: str = ""):
                 "langchain-ollama not installed — run: pip install langchain-ollama"
             ) from None
         _record_built_model("ollama", model)
-        return ChatOllama(model=model)
+        return ChatOllama(model=model, client_kwargs={"timeout": timeout})
 
     # Default: any OpenAI-compatible endpoint (StepFun, OpenAI, LiteLLM,
     # vLLM, Ollama /v1, ...)
@@ -494,10 +498,7 @@ def get_model(model_name: str = ""):
         kwargs["base_url"] = base_url
     # Explicit client timeout — a stalled provider must never hang a turn
     # (the 4j.33 latency budget depends on this).
-    try:
-        kwargs["timeout"] = float(os.environ.get("NEXUS_LLM_TIMEOUT", "120"))
-    except ValueError:
-        kwargs["timeout"] = 120.0
+    kwargs["timeout"] = timeout
     # reasoning_effort is an OpenAI-only param. Compatible hosts (e.g.
     # StepFun) reject it as "no active step plan subscription".
     if reasoning:

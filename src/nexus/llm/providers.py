@@ -41,6 +41,23 @@ from nexus.llm.exceptions import (
     ProviderResponseError,
 )
 
+#: Seconds one model call may take when NEXUS_LLM_TIMEOUT is not set (Docs/SETUP.md).
+DEFAULT_LLM_TIMEOUT = 180.0
+
+
+def llm_timeout() -> float:
+    """Seconds one model call may take before it fails, for every provider (NEXUS_LLM_TIMEOUT).
+
+    A slow model only makes a run slow; a stalled one must never hold it (D228, operator 2026-10-16:
+    runs on modest and local models are expected to be slow, never stuck). Raise it for slow
+    long-context providers (e.g. 600).
+    """
+    try:
+        value = float(os.environ.get("NEXUS_LLM_TIMEOUT", "") or DEFAULT_LLM_TIMEOUT)
+    except ValueError:
+        value = DEFAULT_LLM_TIMEOUT
+    return max(10.0, value)
+
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers.
@@ -97,19 +114,14 @@ class LLMProvider(ABC):
     async def _get_client(self) -> httpx.AsyncClient:
         """Lazy-init async HTTP client."""
         if self._client is None:
-            # Slow providers (long-context interpret calls) need headroom; the
-            # 180 s default can be raised per deployment (e.g. NEXUS_LLM_TIMEOUT=600).
-            try:
-                timeout_s = float(os.environ.get("NEXUS_LLM_TIMEOUT", "180") or "180")
-            except ValueError:
-                timeout_s = 180.0
+            timeout_s = llm_timeout()
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers={
                     "Authorization": f"Bearer {self._get_api_key()}",
                     "Content-Type": "application/json",
                 },
-                timeout=httpx.Timeout(max(10.0, timeout_s), connect=10.0),
+                timeout=httpx.Timeout(timeout_s, connect=10.0),
             )
         return self._client
 
