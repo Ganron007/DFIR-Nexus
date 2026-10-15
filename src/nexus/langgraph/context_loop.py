@@ -788,13 +788,29 @@ def run_context_loop(
         + "\n" + (system_prompt.strip() or DEFAULT_SYSTEM)
         + "\n\n" + tool_contracts_block(include_external=False)
     )
+    # One answer contract per call (D231). A caller that declares terminal keys defines its own
+    # final object in the task; the protocol used to ask for {"answer": ...} anyway, so a Mode 3 seat
+    # held three return formats (this one, Mode 2's role schema and its own claims object), and a
+    # third of its replies came back as prose or an answer envelope that dropped its dispositions.
+    if terminal_keys:
+        final_shape = (
+            "the JSON object the task defines (with its "
+            + " / ".join(f'"{k}"' for k in terminal_keys)
+            + " key), returned as is, not inside an {\"answer\":...} envelope"
+        )
+        answer_line = f"To answer: return {final_shape}.\n"
+    else:
+        final_shape = "{\"answer\":\"...\"}"
+        answer_line = (
+            "To answer: {\"answer\":\"...\",\"citations\":[{\"family\":\"...\","
+            "\"file\":\"...\",\"line\":\"...\"}]}\n"
+        )
     protocol = (
         "\n\nTOOL PROTOCOL:\n"
         "Return ONLY one JSON object per reply.\n"
         "To call tools: {\"tool_calls\":[{\"tool\":\"es_search\","
         "\"args\":{...},\"why\":\"one clause\"}]}\n"
-        "To answer: {\"answer\":\"...\",\"citations\":[{\"family\":\"...\","
-        "\"file\":\"...\",\"line\":\"...\"}]}\n"
+        + answer_line +
         "Rules: do not pre-fetch unrelated evidence; use tools to inspect the "
         "schema, the run record and the rows you actually need; a zero-hit "
         "search is not negative evidence until run_record shows the relevant "
@@ -813,14 +829,13 @@ def run_context_loop(
         remaining = budget.rounds - round_no
         if remaining <= 0:
             return (
-                "\n\nFINAL ROUND: do NOT call another tool. Return "
-                "{\"answer\":\"...\"} now from the observations already collected; "
-                "state explicitly what remains unchecked."
+                f"\n\nFINAL ROUND: do NOT call another tool. Return {final_shape} now from the "
+                "observations already collected; state explicitly what remains unchecked."
             )
         if remaining <= 1:
             return (
                 "\n\nYou already have enough evidence for a useful answer. "
-                "Prefer {\"answer\":\"...\"} now; call another tool only if it is "
+                f"Prefer returning {final_shape} now; call another tool only if it is "
                 "essential to avoid a false negative."
             )
         return ""
@@ -944,7 +959,7 @@ def run_context_loop(
                 "tool": "system",
                 "why": "",
                 "audit_id": "",
-                "summary": {"error": "reply contained neither tool_calls nor answer"},
+                "summary": {"error": f"reply contained neither tool_calls nor {final_shape}"},
             })
             continue
 

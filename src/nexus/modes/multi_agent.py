@@ -917,18 +917,16 @@ def _seat_with_model(
     from nexus.modes.multi_role import _investigative_extras, role_for
 
     role_name = str(spawn.get("role") or "evidence")
-    try:
-        role = role_for(role_name if role_name in _SEATS else "evidence")
-    except KeyError:
-        role = role_for("evidence")
+    # The verifier seat runs as the verifier. It was looked up among the claim seats only, so every
+    # verifier call of Mode 3 run 2 (128 on 2026-10-15) went out as an evidence agent (D231).
+    seat_kind = role_name if role_name in (*_SEATS, "verifier") else "evidence"
+    role = role_for(seat_kind)
     family = str(spawn.get("family") or "")
     objective = str(spawn.get("question") or "")
     # Announce the seat before it works. The board only holds seats that have
     # *reported*, so without this an examiner watching a run cannot tell one
     # agent grinding from three - and the interaction timeline has no start.
-    seat_agent_id = (
-        f"{role_name if role_name in _SEATS else 'evidence'}:{family or 'unknown'}:{superstep}"
-    )
+    seat_agent_id = f"{seat_kind}:{family or 'unknown'}:{superstep}"
     sink.emit(new_event(
         run_id, "seat.started", actor="agent", agent_id=seat_agent_id,
         detail=f"{role_name} {family}".strip(),
@@ -950,7 +948,7 @@ def _seat_with_model(
     )
     skill_block = _skill_procedure_block(WorkOrder(
         order_id="seat",
-        role=role_name if role_name in _SEATS else "evidence",
+        role=seat_kind,
         task=objective or "investigate",
         family=family,
         skill_refs=skill_refs,
@@ -959,7 +957,9 @@ def _seat_with_model(
     # Use the right terminal key, or the loop never recognises the reply and
     # the verdicts are lost (the original defect in this seat path).
     is_verifier = role_name == "verifier"
-    terminal_keys = ("verdicts",) if is_verifier else ("claims",)
+    # A seat that settles a question or its lead without a new claim has still returned its object.
+    terminal_keys = ("verdicts",) if is_verifier else (
+        ("claims", "question_dispositions") + (("lead_disposition",) if spawn.get("lead") else ()))
     if is_verifier:
         question = (
             f"You are the {role_name} seat. Examiner objective: {objective}\n"
@@ -977,12 +977,10 @@ def _seat_with_model(
         # lead clause as `+ (clause) if lead else "" + tail`; a conditional expression binds
         # weaker than `+`, so every seat without a lead received only the tail sentence: no
         # objective, family, board or claims schema (D128, from f09d9d4).
-        parts = [
-            f"You are the {role_name} seat. Examiner objective: {objective}\n",
-            f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n",
-            f"{skill_block}\n",
-            f"Board so far:\n{board_digest}\n\n",
-            _investigative_extras(case_dir),
+        # The seat's output contract is said once and only here (D231): the system message is the
+        # role's brief, with no return format of its own, and the corrective retry below points
+        # back at this contract instead of restating a smaller one that had no dispositions.
+        contract = [
             'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
             '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
             '"value":"...","other_entity_type":"...","other_entity_value":"...",'
@@ -998,21 +996,30 @@ def _seat_with_model(
             'collected or not parsed) goes in "coverage_gaps":["..."]. For an open question on the board that '
             'your work settles, return "question_dispositions":[{"question":"<its id>","status":"'
             'answered|unanswerable|duplicate","basis":"one clause","audit_ids":["..."]}]: answered cites the '
-            'calls that answer it, duplicate names in basis the question it repeats. ',
+            'calls that answer it, duplicate names in basis the question it repeats. A question already '
+            'on the board is settled through "question_dispositions", never raised again in '
+            '"open_questions". ',
         ]
         if spawn.get("question_id"):
-            parts.append(
+            contract.append(
                 f'You were spawned for open question {spawn["question_id"]}: return its disposition in '
                 '"question_dispositions". '
             )
         if spawn.get("lead"):
-            parts.append(
+            contract.append(
                 'When investigating a lead, also return '
                 '"lead_disposition":{"lead":"<subject>","status":"'
                 'supported|refuted|benign|insufficient","basis":"one clause"}. '
             )
-        parts.append("Every claim needs an audit_id from a tool call. Do not attribute an actor.")
-        question = "".join(parts)
+        contract.append("Every claim needs an audit_id from a tool call. Do not attribute an actor.")
+        question = "".join([
+            f"You are the {role_name} seat. Examiner objective: {objective}\n",
+            f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n",
+            f"{skill_block}\n",
+            f"Board so far:\n{board_digest}\n\n",
+            _investigative_extras(case_dir),
+            *contract,
+        ])
     rounds = _env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80)
     calls = _env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200)
     seconds = float(_env_int("NEXUS_MODE3_SECONDS", 1800, low=30, high=7200))
@@ -1021,7 +1028,7 @@ def _seat_with_model(
         case_id=case_dir.name,
         question=question,
         model=model,
-        system_prompt=role.system_prompt,
+        system_prompt=role.brief or role.system_prompt,
         task=f"mode3-{role_name}",
         budget=LoopBudget(rounds=rounds, seconds=seconds, calls=calls, call_chars=budget_chars(case_window(case_dir))),
         audit=audit,
@@ -1046,6 +1053,7 @@ def _seat_with_model(
         not is_verifier
         and not entry["claims"]
         and not fields_parsed.get("lead_disposition")
+        and not fields_parsed.get("question_dispositions")
         and reply_text.strip()
         and not _has_claims_key(reply_text)
         and str(loop.get("finish_reason") or "") not in ("model_error", "empty_model")
@@ -1054,21 +1062,17 @@ def _seat_with_model(
             corrected = _call_model(
                 model,
                 [
-                    {"role": "system", "content": role.system_prompt},
+                    {"role": "system", "content": role.brief or role.system_prompt},
                     {
                         "role": "user",
                         "content": (
                             question
-                            + "\n\nYour previous reply had no claims. Return ONLY "
-                            'JSON: {"claims":[{"entity_type":"...",'
-                            '"entity_value":"...",'
-                            '"claim_kind":"presence|absence|attribution|time_order",'
-                            '"polarity":"affirm|deny","value":"...",'
-                            '"other_entity_type":"...","other_entity_value":"...",'
-                            '"audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
-                            '"confidence_justification":"..."}],'
-                            '"open_questions":["..."]}. If nothing is supportable, '
-                            'return {"claims": [], "open_questions": ["..."]}.'
+                            + "\n\nYour previous reply was not the JSON object asked for above. "
+                            "Return ONLY that object, with every key that applies to your work "
+                            '("claims", "open_questions", "question_dispositions", "coverage_gaps"'
+                            + (', "lead_disposition"' if spawn.get("lead") else "")
+                            + '). If nothing is supportable, return {"claims": []} with the '
+                            "other keys that apply."
                         ),
                     },
                 ],
@@ -1079,7 +1083,9 @@ def _seat_with_model(
                 # disposition used to be set here and then replaced by the first reply's (none).
                 fields_parsed = _parse_seat_fields(corrected)
                 entry["corrective_retry_used"] = True
-                entry["reply_excerpt"] = " ".join(str(corrected).split())[:600]
+                # Kept beside the first reply's excerpt, which is recorded below; it used to be
+                # written here and then overwritten by the first reply (D231).
+                entry["corrected_excerpt"] = " ".join(str(corrected).split())[:600]
         except Exception as exc:  # noqa: BLE001 — the retry is best-effort
             log.warning("seat corrective re-prompt failed: %s", exc)
     # Item 7: a claim that only says "tool X parsed N records" is COVERAGE, not
@@ -1307,6 +1313,13 @@ def _question_ledger(board: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             continue
         for raw in entry.get("open_questions") or []:
             text = " ".join(str(raw).split())
+            # The board lists its questions by id, and seats name them by it. One that names a
+            # question already on the board restates it: 23 of the 79 raised in Mode 3 run 2
+            # ("Q8ce78f remains open: ...") each opened a new question, and the run could not
+            # settle (D222).
+            named = {"Q" + found[1:].lower() for found in _QUESTION_ID.findall(text)}
+            if named & ledger.keys():
+                continue
             qid = question_id(text)
             if text and qid not in ledger:
                 ledger[qid] = {"text": text, "status": "open", "raised_by": str(entry.get("agent_id") or "")}
@@ -2249,6 +2262,9 @@ def run_mode3(
         return {
             "disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status,
             **({"pause_reason": pause_reason} if pause_reason else {}),
+            # Which roles worked is part of every record, not only a settled one: Mode 3 run 2
+            # stopped at its superstep budget and recorded none of its 60 seats' roles (D231).
+            "roles_used": roles_used,
             **settled_keys,
         }
 

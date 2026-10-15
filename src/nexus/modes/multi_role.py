@@ -464,6 +464,9 @@ class AgentRole:
     description: str
     tools: tuple[str, ...]
     system_prompt: str
+    #: Who the role is and how it works, with no return format: a Mode 3 seat defines its own
+    #: output object, and Mode 2's schema in its system message contradicted it (D231).
+    brief: str = ""
     max_rounds: int = 24
     max_calls: int = 48
     max_seconds: float = 1800.0
@@ -473,6 +476,29 @@ class AgentRole:
         return mode2_loop_budget()
 
 
+_EVIDENCE_BRIEF = (
+    "You are an evidence agent. Answer the work order using ONLY the "
+    "read-only tools for this case. Start from the assigned family, "
+    "but check other families when corroboration is needed. Always use "
+    "run_record before claiming something is absent. Do not invent evidence; "
+    "a zero-hit search is not negative evidence until run_record shows the parser ran."
+)
+_CORRELATION_BRIEF = (
+    "You are the correlation agent. Given the evidence notes, identify "
+    "entities that appear across families and temporal chains worth "
+    "investigating. Verify each link with a tool call before asserting it."
+)
+_PATTERN_BRIEF = (
+    "You are the pattern agent. Match the evidence against the case's "
+    "framework registries (ITM/ATT&CK/ATLAS/MBC) through rag_search, "
+    "and verify the required evidence rows exist with "
+    "es_search/es_aggregate. Do not force a pattern when the required evidence is missing."
+)
+_VERIFIER_BRIEF = (
+    "You are the verifier. Re-check each claim you are given with tools and classify "
+    "it confirmed, inferred or refuted. A refuted claim must state the counter-evidence."
+)
+
 ROLES: dict[str, AgentRole] = {
       "evidence": AgentRole(
           name="evidence",
@@ -481,11 +507,9 @@ ROLES: dict[str, AgentRole] = {
                  "check_file", "check_process_tree", "check_service", "check_hash",
                  "check_autorun", "check_registry", "analyze_filename_triage",
                  "check_lolbin", "check_hijackable_dll", "deobfuscate_command"),
+        brief=_EVIDENCE_BRIEF,
         system_prompt=(
-            "You are an evidence agent. Answer the work order using ONLY the "
-            "read-only tools for this case. Start from the assigned family, "
-            "but check other families when corroboration is needed. Always use "
-            "run_record before claiming something is absent. Return JSON: "
+            _EVIDENCE_BRIEF + " Return JSON: "
             '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
             '"audit_ids":["..."]}],"entities":["..."],'
             '"candidate_findings":[{"title":"...","observation":"...",'
@@ -497,8 +521,7 @@ ROLES: dict[str, AgentRole] = {
             "A candidate is one claim about the evidence. The benign alternative "
             "you weighed and what would refute the claim go in that candidate's "
             "benign_alternative and refutation fields, never as candidates of their "
-            "own. Do not invent evidence; a zero-hit search is not negative evidence "
-            "until run_record shows the parser ran."
+            "own."
         ),
     ),
       "correlation": AgentRole(
@@ -508,11 +531,9 @@ ROLES: dict[str, AgentRole] = {
                  "check_file", "check_process_tree", "check_service", "check_hash",
                  "check_autorun", "analyze_filename_triage", "check_lolbin",
                  "deobfuscate_command"),
+        brief=_CORRELATION_BRIEF,
         system_prompt=(
-            "You are the correlation agent. Given the evidence notes, identify "
-            "entities that appear across families and temporal chains worth "
-            "investigating. Verify each link with a tool call before asserting "
-            "it. Return JSON with keys: corroborated_entities, chains, "
+            _CORRELATION_BRIEF + " Return JSON with keys: corroborated_entities, chains, "
             "unexplained, next_questions, coverage."
         ),
     ),
@@ -520,13 +541,10 @@ ROLES: dict[str, AgentRole] = {
         name="pattern",
         description="ITM/ATT&CK/ATLAS/MBC pattern matching.",
         tools=("es_mappings", "es_search", "es_aggregate", "run_record", "rag_search"),
+        brief=_PATTERN_BRIEF,
         system_prompt=(
-            "You are the pattern agent. Match the evidence against the case's "
-            "framework registries (ITM/ATT&CK/ATLAS/MBC) through rag_search, "
-            "and verify the required evidence rows exist with "
-            "es_search/es_aggregate. Return JSON with keys: patterns, evidence, "
-            "caveats, next_questions, coverage. Do not force a pattern when the "
-            "required evidence is missing."
+            _PATTERN_BRIEF + " Return JSON with keys: patterns, evidence, "
+            "caveats, next_questions, coverage."
         ),
     ),
     "verifier": AgentRole(
@@ -534,6 +552,7 @@ ROLES: dict[str, AgentRole] = {
         description="Adversarial refutation of candidate findings.",
         tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
                "rag_search"),
+        brief=_VERIFIER_BRIEF,
         system_prompt=(
             "You are the verifier. For EACH candidate finding, re-check its "
             "cited claims with tools and classify it confirmed, inferred or "

@@ -201,7 +201,7 @@ class _ProseThenJsonModel:
     def invoke(self, messages):
         blob = "\n".join(str(m.get("content") or "") for m in messages)
         self.sent.append(blob)
-        if "Your previous reply had no claims" in blob:
+        if "Your previous reply was not the JSON object" in blob:
             return _Content(json.dumps({
                 "claims": [], "open_questions": ["Which account created the task?"],
                 "coverage_gaps": ["no Sysmon EID 1 rows in the evidence"],
