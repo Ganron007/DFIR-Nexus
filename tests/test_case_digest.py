@@ -15,6 +15,20 @@ from nexus.langgraph.case_digest import (
     write_case_digest,
 )
 
+
+def test_the_ledger_shows_every_job():
+    """D216: the first 20 of 92 rows were listed; the memory jobs came last and Mode 1 recorded the
+    memory image as unprocessed from the triage discovery's SKIP, the first row shown."""
+    entries = [{"tool": "(discovery)", "status": "SKIP",
+                "reason": "No recognized evidence shape under ...\\rd01-memory.img"}]
+    entries += [{"tool": "recmd", "status": "OK"} for _ in range(30)]
+    entries += [{"tool": "memprocfs", "status": "OK"}] + [{"tool": "vol", "status": "OK"} for _ in range(30)]
+    md = render_digest_markdown({"case_id": "CASE-X", "ledger": {"ok": 61, "skip": 1, "fail": 0,
+                                                                  "entries": entries}})
+    assert "- OK: memprocfs, recmd x30, vol x30" in md
+    assert "- SKIP: (discovery) — No recognized evidence shape" in md
+
+
 # ── prompt_budget ────────────────────────────────────────────────────────
 
 def test_budget_from_window_and_ratio(monkeypatch):

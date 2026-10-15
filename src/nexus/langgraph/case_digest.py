@@ -365,9 +365,23 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             f"## Parser ledger — {led.get('ok', 0)} OK / {led.get('skip', 0)} SKIP / "
             f"{led.get('fail', 0)} FAIL"
         )
-        for entry in (led.get("entries") or [])[:20]:
-            reason = f" — {entry.get('reason')}" if entry.get("reason") else ""
-            lines.append(f"- {entry.get('status', '')}: {entry.get('tool', '')}{reason}")
+        # Every job, OK ones counted by tool and every other one whole (D216). The first 20 of 92 rows
+        # used to be listed with no word of the rest: the memory jobs (MemProcFS, 31 Volatility runs)
+        # came last and never showed, while the triage discovery's SKIP naming the memory image came
+        # first, and Mode 1 recorded the memory image as unprocessed.
+        entries = led.get("entries") or []
+        ok: dict[str, int] = {}
+        for entry in entries:
+            if str(entry.get("status") or "").upper() == "OK":
+                tool = str(entry.get("tool") or "")
+                ok[tool] = ok.get(tool, 0) + 1
+        if ok:
+            lines.append("- OK: " + ", ".join(
+                f"{tool} x{n}" if n > 1 else tool for tool, n in sorted(ok.items())))
+        for entry in entries:
+            if str(entry.get("status") or "").upper() != "OK":
+                reason = f" — {entry.get('reason')}" if entry.get("reason") else ""
+                lines.append(f"- {entry.get('status', '')}: {entry.get('tool', '')}{reason}")
     smap = digest.get("signal_map") or {}
     with_hits = smap.get("with_hits") or []
     if with_hits:
