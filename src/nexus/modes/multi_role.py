@@ -735,12 +735,19 @@ def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
     return keys
 
 
+#: Severity order, for the severity a merged claim carries.
+_SEVERITY_RANK = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+
+
 def _carry_claim_tests(finals: list[dict[str, Any]], sources: list[dict[str, Any]]) -> int:
-    """Give a final candidate the benign alternatives and refutation tests of the claims it absorbs.
+    """Give a final candidate the benign alternatives, refutation tests and severity of the claims it absorbs.
 
     A worker candidate is absorbed when every call it cites is cited by the final candidate:
     synthesis merges claims and re-words them, so neither a title nor one claim key matches. A
-    field the final candidate already has is kept. Returns how many fields were filled.
+    field the final candidate already has is kept. A merged claim is as severe as the most severe
+    claim it absorbs: run 6's synthesis returned no severity for its five findings while its workers
+    had rated the claims (CRITICAL, HIGH, MEDIUM), and the CobaltStrike finding staged LOW (D211).
+    Returns how many fields were filled.
     """
     cited = [(set(_candidate_audit_ids(s)), s) for s in sources
              if isinstance(s, dict) and _candidate_audit_ids(s)]
@@ -757,6 +764,12 @@ def _carry_claim_tests(finals: list[dict[str, Any]], sources: list[dict[str, Any
                 str(s.get(key) or "").strip() for s in absorbed if str(s.get(key) or "").strip()))
             if texts:
                 final[key] = "\n".join(texts)
+                filled += 1
+        if str(final.get("severity") or "").strip().upper() not in _SEVERITY_RANK:
+            rated = [str(s.get("severity") or "").strip().upper() for s in absorbed]
+            rated = [r for r in rated if r in _SEVERITY_RANK]
+            if rated:
+                final["severity"] = max(rated, key=_SEVERITY_RANK.__getitem__)
                 filled += 1
     return filled
 
@@ -949,11 +962,11 @@ def stage_run_candidates(
         confidence = str(candidate.get("confidence") or "LOW").upper()
         if confidence not in ("LOW", "MEDIUM", "HIGH", "SPECULATIVE"):
             confidence = "LOW"
-        severity = str(
-            candidate.get("severity") or verdict.get("severity") or "LOW"
-        ).strip().upper()
-        if severity not in ("LOW", "MEDIUM", "HIGH", "CRITICAL", "INFO"):
-            severity = "LOW"
+        # A severity no one assessed stays empty for the examiner, as Mode 1's does (D47); it used to
+        # be LOW, so a CobaltStrike beacon whose synthesis dropped the rating staged LOW (D211).
+        severity = str(candidate.get("severity") or verdict.get("severity") or "").strip().upper()
+        if severity not in _SEVERITY_RANK:
+            severity = ""
         justification = str(
             candidate.get("confidence_justification") or "").strip() or (
             f"{mode_label} run {run_id} synthesis candidate"

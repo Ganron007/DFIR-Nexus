@@ -297,12 +297,12 @@ def test_backfill_never_invents_ids_for_unmatched_rows():
     assert rows[0]["audit_ids"] == []
 
 
-def test_stage_run_candidates_defaults_severity(tmp_path):
-    """D39: a staged finding must not carry an empty severity.
+def test_stage_run_candidates_never_invents_a_severity(tmp_path):
+    """A staged finding carries the severity its claim was rated, never an invented one.
 
-    The candidate/synthesis schemas named confidence but not severity, so every
-    staged Mode 2 finding had `severity: ""` - sorting and reporting had
-    nothing to read.
+    Staging used to fill a missing severity with LOW, so run 6's CobaltStrike finding, whose
+    synthesis dropped the workers' rating, staged LOW (D211). Mode 1 keeps an unrated severity empty
+    for the examiner (D47), and so does Mode 2.
     """
     case = _case(tmp_path)
     from nexus.audit import AuditWriter
@@ -314,18 +314,37 @@ def test_stage_run_candidates_defaults_severity(tmp_path):
     m3._persist_state(case, "M2-sev", {
         "run_id": "M2-sev", "case_id": case.name, "question": "q",
         "status": "completed", "orders": [], "order_index": 0, "results": [],
-        "verdicts": [{"title": "Candidate without severity", "class": "confirmed"}],
+        "verdicts": [{"title": "Candidate without severity", "class": "confirmed"},
+                     {"title": "Rated candidate", "class": "confirmed"}],
         "candidates": [{"title": "Candidate without severity", "observation": "o",
                         "interpretation": "i", "confidence": "LOW",
-                        "audit_ids": [audit_id]}],
+                        "audit_ids": [audit_id]},
+                       {"title": "Rated candidate", "observation": "o2", "interpretation": "i2",
+                        "confidence": "HIGH", "severity": "critical", "audit_ids": [audit_id]}],
         "gaps": [],
     })
     result = m3.stage_run_candidates(case, "M2-sev")
-    assert result["staged_count"] == 1
+    assert result["staged_count"] == 2
     rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
-    staged = [f for f in rows if f.get("run_id") == "M2-sev"]
-    assert staged
-    assert str(staged[0].get("severity") or "").strip(), "severity must not be empty"
+    staged = {f["title"]: f for f in rows if f.get("run_id") == "M2-sev"}
+    assert staged["Candidate without severity"].get("severity") == ""
+    assert staged["Rated candidate"].get("severity") == "critical"
+
+
+def test_a_merged_claim_is_as_severe_as_the_claims_it_absorbs():
+    """D211: run 6's synthesis returned its five findings with no severity; its workers had rated
+    the claims it merged CRITICAL, HIGH and MEDIUM."""
+    finals = [{"title": "SRLUpdate.exe beacon under the SRL User Maintenance task",
+               "audit_ids": ["a-1", "a-2", "a-3"]},
+              {"title": "rated by synthesis", "severity": "MEDIUM", "audit_ids": ["a-1"]},
+              {"title": "no source", "audit_ids": ["a-9"]}]
+    sources = [{"title": "Defender CobaltStrike detections", "severity": "HIGH", "audit_ids": ["a-1"]},
+               {"title": "task runs SRLUpdate.exe as SYSTEM", "severity": "critical", "audit_ids": ["a-2", "a-3"]},
+               {"title": "unrated", "audit_ids": ["a-3"]}]
+    m3._carry_claim_tests(finals, sources)
+    assert finals[0]["severity"] == "CRITICAL"
+    assert finals[1]["severity"] == "MEDIUM", "a severity synthesis gave is kept"
+    assert "severity" not in finals[2]
 
 
 def test_run_work_order_formats_prose_answer(tmp_path):
