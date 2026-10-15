@@ -37,6 +37,24 @@ def test_a_bad_unicode_escape_is_repaired_as_text():
     assert loads_model_json(r'{"p": "C:\users\x"}') == {"p": "C:\\users\\x"}
 
 
+@pytest.mark.parametrize("written, meant", [
+    # CASE-C5B04D31's DRAFTs (D215): each parsed, with a control character in place of the separator.
+    (r'{"o": "SrcUser shieldbase\rd01$, Target shieldbase\tdungan"}',
+     "SrcUser shieldbase\\rd01$, Target shieldbase\\tdungan"),
+    (r'{"o": "C:\terraform\execute_script(5)"}', "C:\\terraform\\execute_script(5)"),
+    (r'{"o": "C:\ProgramData\chocolatey\helpers\functions\Get-OS.ps1"}',
+     "C:\\ProgramData\\chocolatey\\helpers\\functions\\Get-OS.ps1"),
+    (r'{"o": "ran C:\Windows\notepad.exe"}', "ran C:\\Windows\\notepad.exe"),
+])
+def test_a_separator_that_reads_as_an_escape_stays_a_separator(written, meant):
+    assert loads_model_json(written) == {"o": meant}
+
+
+def test_a_newline_in_prose_stays_a_newline():
+    assert loads_model_json(r'{"o": "two rows.\nNext the task", "p": "line\nbreak"}') == {
+        "o": "two rows.\nNext the task", "p": "line\nbreak"}
+
+
 def test_a_reply_broken_another_way_still_fails():
     with pytest.raises(json.JSONDecodeError):
         loads_model_json('{"a": 1,,}')

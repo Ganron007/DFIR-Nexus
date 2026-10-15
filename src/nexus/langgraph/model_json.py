@@ -24,8 +24,35 @@ def repair_invalid_escapes(text: str) -> str:
     return _ESCAPE.sub(lambda m: m.group(0) if m.group(1) else "\\\\", text)
 
 
+#: A one-letter escape written between two name characters, the backslash itself unescaped.
+_NAME_ESCAPE = re.compile(r"(?<=[\w:$.)\]])\\([bfnrt])(?=\w)")
+_DRIVE = re.compile(r"[A-Za-z]:")
+
+
+def repair_path_escapes(text: str) -> str:
+    """Double a backslash that separates the parts of a Windows name but reads as a JSON escape (D215).
+
+    A path segment that begins with t, f, r, b or n makes a valid escape out of its separator, so the
+    reply parses and the name is cut by a control character: `c:\\terraform` read as a tab,
+    `helpers\\functions` as a form feed, `shieldbase\\rd01$` as a carriage return (CASE-C5B04D31's
+    DRAFTs 017 and 041). Between two name characters a tab, form feed, carriage return or backspace
+    is never what a model means. `\\n` is read as a separator only inside a name that is already a
+    path (a drive or an earlier backslash), so a newline in prose stays a newline.
+    """
+    def fix(match: re.Match[str]) -> str:
+        if match.group(1) != "n":
+            return "\\\\" + match.group(1)
+        start = max(text.rfind(c, 0, match.start()) for c in ' "\'\n\t') + 1
+        token = text[start:match.start()]
+        return "\\\\n" if ("\\" in token or _DRIVE.search(token)) else match.group(0)
+
+    return _NAME_ESCAPE.sub(fix, text)
+
+
 def loads_model_json(text: str) -> Any:
-    """``json.loads``, retried once with invalid escapes repaired when that is the error."""
+    """``json.loads`` of a reply whose path separators are repaired, retried once with invalid
+    escapes repaired when that is the error."""
+    text = repair_path_escapes(text)
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
