@@ -547,6 +547,8 @@ def settled_candidates(
                 "interpretation": justification,
                 "confidence": str(claim.get("confidence") or "LOW"),
                 "confidence_justification": justification,
+                # D227: the seat's rating; staging keeps one of LOW..CRITICAL and leaves the rest empty.
+                "severity": str(claim.get("severity") or "").strip().upper(),
                 "audit_ids": _audit_ids(claim),
                 "agent_id": entry.get("agent_id"),
                 **time_order,
@@ -985,7 +987,10 @@ def _seat_with_model(
             '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
             '"value":"...","other_entity_type":"...","other_entity_value":"...",'
             '"audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
-            '"confidence_justification":"..."}],"open_questions":["..."]}. ',
+            '"confidence_justification":"...","severity":"LOW|MEDIUM|HIGH|CRITICAL"}],"open_questions":["..."]}. ',
+            # D227: a claim is rated as Mode 1's and Mode 2's are; a claim left unrated stages unrated.
+            'severity is how much the claim matters to the investigation if it holds; leave it out when you '
+            'cannot rate it. ',
             'A time_order claim sets value to "before" or "after" (the entity happened before or after the '
             'other_entity) and names that other entity, which the cited rows must contain. ',
             # D208: an open question is work for another seat, so it is only one this case's evidence can

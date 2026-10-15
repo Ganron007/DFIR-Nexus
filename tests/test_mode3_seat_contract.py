@@ -203,3 +203,37 @@ def test_a_run_stopped_at_its_budget_records_the_roles_that_worked(tmp_path, mon
                        seat_fn=seat, es_ok=True)
     assert record["stop_reason"] == "budget: max supersteps"
     assert record["roles_used"] and record["roles_used"] == sorted({e["role"] for e in record["board"]})
+
+
+def test_a_seats_severity_reaches_the_draft_and_an_unrated_claim_stays_unrated(tmp_path):
+    """D227: Mode 3 DRAFTs carried no severity because seats were never asked for one."""
+    from nexus.audit import AuditWriter
+    from nexus.modes.multi_agent import _persist, settled_candidates, stage_mode3
+
+    case = _case(tmp_path)
+    (case / "audit").mkdir(exist_ok=True)
+    audit_id = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search", params={"family": "evtxecmd", "query": {"match": {"event_id": "129"}}},
+        result_summary={"total": 1}, source="portal")
+    claim = {"entity_type": "process", "entity_value": "SRLUpdate.exe", "claim_kind": "presence",
+             "polarity": "affirm", "value": "launched by the task SRL User Maintenance",
+             "audit_ids": [audit_id], "confidence": "MEDIUM", "confidence_justification": "event 129 cited"}
+    board = [_entry("seat-a", 1, claims=[{**claim, "severity": "high"},
+                                         {**claim, "entity_value": "svchost.exe", "value": "a service host"}])]
+    candidates, _gaps = settled_candidates(board, [], case_dir=case)
+    assert [c["severity"] for c in candidates] == ["HIGH", ""]
+    _persist(case, "M3-severity", {"run_id": "M3-severity", "case_id": case.name, "question": "q",
+                                   "status": "completed", "product_mode": "multi-agent", "board": board,
+                                   "disputes": [], "candidates": candidates, "gaps": []})
+    assert stage_mode3(case, "M3-severity")["staged_count"] == 2
+    drafts = [f for f in json.loads((case / "findings.json").read_text(encoding="utf-8"))
+              if f.get("run_id") == "M3-severity"]
+    assert sorted(str(f.get("severity") or "").upper() for f in drafts) == ["", "HIGH"]
+
+
+def test_the_seat_is_asked_to_rate_its_claims(tmp_path, monkeypatch):
+    _entry, model = _seat(tmp_path, monkeypatch, {
+        "role": "evidence", "family": "evtxecmd", "why": "domain seat",
+        "question": "Compromise suspected."}, json.dumps({"claims": []}))
+    _system, user = _messages(model.sent[0])
+    assert '"severity":"LOW|MEDIUM|HIGH|CRITICAL"' in user
