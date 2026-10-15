@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -171,7 +172,73 @@ def index_name(case_id: str) -> str:
     return f"nexus-case-{raw}"
 
 
+#: Elasticsearch endpoints whose answer is read-only: a dropped connection is safe to send again (D219).
+_READ_ONLY_ES_ENDPOINTS = frozenset({"_search", "_count", "_msearch", "_field_caps", "_mapping",
+                                     "_mappings", "_validate"})
+_SHARED_CLIENTS: dict[str, Any] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def _read_only_request(request: Any) -> bool:
+    if request.method in ("GET", "HEAD"):
+        return True
+    if request.method == "POST":
+        parts = [p for p in request.url.path.split("/") if p]
+        return bool(parts) and parts[-1] in _READ_ONLY_ES_ENDPOINTS
+    return False
+
+
+def _reset_retry_transport(inner: Any) -> Any:
+    """A transport that sends a read-only request once more when Elasticsearch dropped its connection.
+
+    A write (bulk, delete, index creation) is never resent: it may have been applied (D219).
+    """
+    import httpx
+
+    class _ResetRetryTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            try:
+                return inner.handle_request(request)
+            except (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError):
+                if not _read_only_request(request):
+                    raise
+                log.debug("ES dropped the connection on %s %s; sending once more",
+                          request.method, request.url.path)
+                return inner.handle_request(request)
+
+        def close(self) -> None:
+            inner.close()
+
+    return _ResetRetryTransport()
+
+
+class _SharedClient:
+    """The pooled client, used as `with _client() as c:` or directly; neither closes the pool."""
+
+    def __init__(self, client: Any):
+        self._client = client
+
+    def __enter__(self) -> Any:
+        return self._client
+
+    def __exit__(self, *_exc: Any) -> bool:
+        return False
+
+    def close(self) -> None:
+        """The pool outlives its callers; a caller's close is not the pool's."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)
+
+
 def _client():
+    """The pooled client of the configured Elasticsearch, one per URL (D219).
+
+    Every call used to open its own client: a new TCP connection for each request, two per search.
+    A Mode 2 run sends hundreds of searches and the suite thousands; through the Docker port forwarder
+    such churn ended in `WinError 10054` resets (a stored-query test, 2026-10-15). The connections are
+    now kept and reused, and a read-only request whose connection was dropped is sent once more.
+    """
     import httpx
 
     url = es_url()
@@ -180,7 +247,13 @@ def _client():
     parsed = urlparse(url)
     if parsed.hostname in {"192.168.77.50", "elk"}:
         raise RuntimeError("N3 must not point at the CADRE elk SIEM (.50)")
-    return httpx.Client(base_url=url, timeout=120.0)
+    with _SHARED_LOCK:
+        client = _SHARED_CLIENTS.get(url)
+        if client is None or client.is_closed:
+            transport = _reset_retry_transport(httpx.HTTPTransport(retries=1))
+            client = httpx.Client(base_url=url, timeout=120.0, transport=transport)
+            _SHARED_CLIENTS[url] = client
+    return _SharedClient(client)
 
 
 # A full purge deletes every document of the case in one request. At millions of rows it runs longer than
