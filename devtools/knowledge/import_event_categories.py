@@ -88,6 +88,92 @@ ELASTIC = {
 ELASTIC_CATEGORIES = frozenset({"authentication"})
 ELASTIC_EXTRA_IDS = frozenset({"4672"})
 
+#: Windows' own provider manifests (D95, operator 2026-10-15), for the channels no pipeline above
+#: categorises: WinRM (remote sessions, lateral movement) and Task Scheduler (persistence). Exported
+#: on Windows 11 25H2 build 26200.9711 with ``wevtutil gp <provider> /ge /gm:true /f:xml`` and pinned
+#: in ``pinned/manifests/``. The manifest is the authority for what each event is.
+MANIFEST_BUILD = "10.0.26200.9711"
+MANIFESTS = (
+    {"provider": "Microsoft-Windows-WinRM", "file": "manifests/Microsoft-Windows-WinRM.xml",
+     "sha256": "29ba1637e2e9cc3084627d054192888b23b9f8f85bcd2ef0b8929ae5eab8d4a6"},
+    {"provider": "Microsoft-Windows-TaskScheduler", "file": "manifests/Microsoft-Windows-TaskScheduler.xml",
+     "sha256": "ac59aa58adced97397db925a333763b979a7f03a0c816e744605a27366d5b417"},
+)
+
+#: WinRM, event by event: its tasks mix sessions with protocol plumbing ("Request handling" also holds
+#: SOAP chunk and quota events), so a task-wide rule would call plumbing a session. Each id names the
+#: manifest task it must carry. Precedent for what gets a category: Graylog's WinRM content pack
+#: (Illuminate 7.1: 6/80 outbound and 91 inbound sessions, authentication and authorization events;
+#: operation events 132/145 left out) and JPCERT/CC, "Detecting Lateral Movement through Tracking Event
+#: Logs" (2017: 6 on the source host, 91 on the destination). Where Graylog and the manifest disagree
+#: (192 is an authorization failure, 1291 an AutoLogon policy note), the manifest wins.
+WINRM_EVENTS = {
+    # The client opens a session to a remote host ("Creating WSMan Session. The connection string is").
+    "network_connection": {"WSMan Session initialize": (6, 7, 31)},
+    # The server takes a remote request: a shell created for it, a host process started for its user.
+    "remote_session": {"Request handling": (91, 785, 786)},
+    # Credentials accepted or refused, and the authorization of the authenticated user.
+    "authentication": {"User authentication": (161, 162, 164, 171, 172, 173, 1295, 1296, 1843),
+                       "User authorization": (192, 193, 1537)},
+}
+
+#: Task Scheduler by manifest task: registration changes the persistence, a run executes it.
+TASK_SCHEDULER_TASKS = {
+    "scheduled_task_change": ("Task registered", "Task registration updated", "Task registration deleted",
+                              "Task disabled", "Task registered without some triggers",
+                              "Task registered without credentials"),
+    "scheduled_task_run": ("Task Started", "Task completed", "Task terminated", "Created Task Process",
+                           "Action started", "Action completed", "Action failed", "Action failed to start"),
+}
+
+
+def _manifest(entry: dict[str, str]) -> tuple[dict[int, str], str]:
+    """The manifest's event id -> task name, after its SHA-256 check, and the file's hash."""
+    import xml.etree.ElementTree as ET
+
+    path = PINNED / entry["file"]
+    if not path.is_file():
+        raise SystemExit(f"pinned manifest missing: {path}")
+    data = path.read_bytes()
+    if _sha256(data) != entry["sha256"]:
+        raise SystemExit(f"{entry['file']}: SHA-256 differs from the reviewed value")
+    root = ET.fromstring(data.decode("utf-8"))
+
+    def local(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    tasks = {el.get("value"): " ".join((el.get("message") or "").split())
+             for el in root.iter() if local(el.tag) == "task"}
+    events: dict[int, str] = {}
+    for el in root.iter():
+        if local(el.tag) == "event" and el.get("value", "").isdigit():
+            events.setdefault(int(el.get("value")), tasks.get(el.get("task") or "", ""))
+    return events, entry["sha256"]
+
+
+def _manifest_rows() -> list[tuple[str, int, str]]:
+    """(provider, event id, category) from the pinned manifests, every rule checked against them."""
+    rows: list[tuple[str, int, str]] = []
+    for entry in MANIFESTS:
+        events, _ = _manifest(entry)
+        provider = entry["provider"]
+        if provider == "Microsoft-Windows-WinRM":
+            for category, by_task in WINRM_EVENTS.items():
+                for task, ids in by_task.items():
+                    for eid in ids:
+                        if events.get(eid) != task:
+                            raise SystemExit(f"{provider} {eid}: manifest task is {events.get(eid)!r}, "
+                                             f"the rule expects {task!r}")
+                        rows.append((provider, eid, category))
+        else:
+            for category, tasks in TASK_SCHEDULER_TASKS.items():
+                missing = [t for t in tasks if t not in events.values()]
+                if missing:
+                    raise SystemExit(f"{provider}: no manifest task named {missing}")
+                rows += [(provider, eid, category) for eid, task in sorted(events.items()) if task in tasks]
+    return rows
+
+
 #: One event id can carry several categories: the specific ones are rule-level filters on the
 #: same id (Sysmon 12 is registry_add, registry_delete and registry_event). The generic one
 #: names the event, so it is the one kept. Any other conflict stops the import.
@@ -203,6 +289,15 @@ def build() -> dict[str, Any]:
     for provider, eid, category in _elastic_rows(doc):
         entry = by_key.setdefault((provider, eid), {"categories": {}, "package": ELASTIC["package"]})
         entry["categories"][category] = ELASTIC["package"]
+
+    for manifest in MANIFESTS:
+        sources.append({"package": "windows-provider-manifest", "version": MANIFEST_BUILD,
+                        "provider": manifest["provider"], "path": f"devtools/knowledge/pinned/{manifest['file']}",
+                        "sha256": manifest["sha256"],
+                        "export": f"wevtutil gp {manifest['provider']} /ge /gm:true /f:xml"})
+    for provider, eid, category in _manifest_rows():
+        entry = by_key.setdefault((provider, eid), {"categories": {}, "package": "windows-provider-manifest"})
+        entry["categories"][category] = "windows-provider-manifest"
 
     entries = []
     for (provider, eid), entry in sorted(by_key.items()):

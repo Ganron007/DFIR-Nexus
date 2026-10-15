@@ -34,6 +34,7 @@ ECS_SUBJECT_PATHS = (
     "process.executable",
     "source.ip",
     "destination.ip",
+    "destination.domain",
     "file.path",
     "registry.path",
 )
@@ -126,6 +127,12 @@ GROUP_OF_CATEGORY = {
     # A logon's subject is the account it logs on (user.target.name, see subject_fields), so account.
     "authentication": "account",
     "iam": "account",
+    # D95 (operator 2026-10-15), from Windows' own provider manifests: a WinRM shell created on this
+    # host is about who opened it (the account, then its client address); a task run is about the
+    # process it launched; a task registration, update or deletion is about the account that made it.
+    "remote_session": "account",
+    "scheduled_task_run": "process",
+    "scheduled_task_change": "account",
 }
 
 
@@ -144,7 +151,8 @@ def subject_fields(ecs: Any) -> dict[str, str]:
         "channel": present(ecs.get("winlog.channel")),
         "account": account,
         "source_ip": present(ecs.get("source.ip")),
-        "destination_ip": present(ecs.get("destination.ip")),
+        # A remote end named by host, not address (a WinRM session's connection string, D95).
+        "destination_ip": present(ecs.get("destination.ip")) or present(ecs.get("destination.domain")),
         "process": present(ecs.get("process.executable")),
         "file_path": present(ecs.get("file.path")),
         "registry_path": present(ecs.get("registry.path")),

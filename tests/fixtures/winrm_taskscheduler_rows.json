@@ -1,0 +1,86 @@
+{
+ "winrm_6": {
+  "Channel": "Microsoft-Windows-WinRM/Operational",
+  "EventId": "6",
+  "Provider": "Microsoft-Windows-WinRM",
+  "Computer": "rd01.shieldbase.com",
+  "Payload": "{\"EventData\":{\"Data\":{\"@Name\":\"connection\",\"#text\":\"wac01.shieldbase.com/wsman?PSVersion=5.1.22000.1335\"}}}"
+ },
+ "winrm_91": {
+  "Channel": "Microsoft-Windows-WinRM/Operational",
+  "EventId": "91",
+  "Provider": "Microsoft-Windows-WinRM",
+  "Computer": "rd01.shieldbase.com",
+  "Payload": "{\"EventData\":{\"Data\":{\"@Name\":\"resourceUri\",\"#text\":\"http://schemas.microsoft.com/powershell/Microsoft.PowerShell (shieldbase\\\\rsydow-a clientIP: 172.16.4.7)\"}}}"
+ },
+ "winrm_161": {
+  "Channel": "Microsoft-Windows-WinRM/Operational",
+  "EventId": "161",
+  "Provider": "Microsoft-Windows-WinRM",
+  "Computer": "rd01.shieldbase.com",
+  "Payload": "{\"EventData\":{\"Data\":{\"@Name\":\"authFailureMessage\",\"#text\":\"WinRM cannot process the request. The following error with errorcode 0x80090301 occurred while using Kerberos authentication: The handle is invalid.  ,  Possible causes are:,   -The user name or password specified are invalid.,   -Kerberos is used when no authentication method and no user name are specified.,   -Kerberos accepts domain user names, but not local user names.,   -The Service Principal Name (SPN) for the remote computer name and port does not exist.,   -The client and remote computers are in different domains and there is no trust between the two domains.,  After checking for the above issues, try the following:,   -Check the Event Viewer for events related to authentication.,   -Change the authentication method; add the destination computer to the WinRM TrustedHosts configuration setting or use HTTPS transport.,  Note that computers in the TrustedHosts list might not be authenticated.,    -For more information about WinRM configuration, run the following command: winrm help config.\"}}}"
+ },
+ "task_106": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "106",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "shieldbase\\tdungan",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskRegisteredEvent\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\SRL User Maintenance\"},{\"@Name\":\"UserContext\",\"#text\":\"shieldbase\\\\tdungan\"}]}}"
+ },
+ "task_129": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "129",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "ExecutableInfo": "C:\\Windows\\System32\\SRLUpdate.exe",
+  "Payload": "{\"EventData\":{\"@Name\":\"CreatedTaskProcess\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\SRL User Maintenance\"},{\"@Name\":\"Path\",\"#text\":\"C:\\\\Windows\\\\System32\\\\SRLUpdate.exe\"},{\"@Name\":\"ProcessID\",\"#text\":\"6976\"},{\"@Name\":\"Priority\",\"#text\":\"16384\"}]}}"
+ },
+ "task_141": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "141",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "NT AUTHORITY\\System",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskDeleted\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\srl user maintenance\"},{\"@Name\":\"UserName\",\"#text\":\"NT AUTHORITY\\\\System\"}]}}"
+ },
+ "task_200": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "200",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "ExecutableInfo": "C:\\Windows\\System32\\SRLUpdate.exe",
+  "Payload": "{\"EventData\":{\"@Name\":\"ActionStart\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\SRL User Maintenance\"},{\"@Name\":\"ActionName\",\"#text\":\"C:\\\\Windows\\\\System32\\\\SRLUpdate.exe\"},{\"@Name\":\"TaskInstanceId\",\"#text\":\"8a105c21-8cac-4a6f-881b-685c887d927b\"},{\"@Name\":\"EnginePID\",\"#text\":\"6976\"}]}}"
+ },
+ "task_100": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "100",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "Context: NT AUTHORITY\\SYSTEM",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskStartEvent\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\Microsoft\\\\Windows\\\\WindowsUpdate\\\\Scheduled Start\"},{\"@Name\":\"UserContext\",\"#text\":\"NT AUTHORITY\\\\SYSTEM\"},{\"@Name\":\"InstanceId\",\"#text\":\"26a4bfb7-328f-42a5-8841-74dc3051ba46\"}]}}"
+ },
+ "task_102": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "102",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "Context: NT AUTHORITY\\SYSTEM",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskSuccessEvent\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\Microsoft\\\\Windows\\\\Flighting\\\\OneSettings\\\\RefreshCache\"},{\"@Name\":\"UserContext\",\"#text\":\"NT AUTHORITY\\\\SYSTEM\"},{\"@Name\":\"InstanceId\",\"#text\":\"3be6ec8f-ea58-45e0-9159-8768ac4f54e6\"}]}}"
+ },
+ "task_140": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "140",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "UserName": "shieldbase\\RD01$",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskUpdated\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\Microsoft\\\\Windows\\\\Flighting\\\\OneSettings\\\\RefreshCache\"},{\"@Name\":\"UserName\",\"#text\":\"shieldbase\\\\RD01$\"}]}}"
+ },
+ "task_142": {
+  "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+  "EventId": "142",
+  "Provider": "Microsoft-Windows-TaskScheduler",
+  "Computer": "rd01.shieldbase.com",
+  "Payload": "{\"EventData\":{\"@Name\":\"TaskDisabled\",\"Data\":[{\"@Name\":\"TaskName\",\"#text\":\"\\\\Microsoft\\\\Windows\\\\.NET Framework\\\\.NET Framework NGEN v4.0.30319 64 Critical\"},{\"@Name\":\"UserName\",\"#text\":\"System\"}]}}"
+ }
+}

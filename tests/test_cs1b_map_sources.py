@@ -145,28 +145,34 @@ def test_every_evtx_event_data_name_is_real():
     # (channel, event_id) -> set of real EventData @Name values
     real: dict[tuple[str, str], set[str]] = {}
 
+    def _ingest_row(row: dict) -> None:
+        pl = row.get("Payload", "")
+        if not pl.startswith("{"):
+            return
+        try:
+            doc = json.loads(pl)
+        except ValueError:
+            return
+        data = ((doc.get("EventData") or {}).get("Data")) or []
+        if isinstance(data, dict):
+            data = [data]
+        names = {str(i.get("@Name")) for i in data if isinstance(i, dict)}
+        key = (str(row.get("Channel")), str(row.get("EventId")))
+        real.setdefault(key, set()).update(names)
+
     def _ingest(path: Path) -> None:
         if not path.is_file():
             return
         with path.open(encoding="utf-8", errors="replace") as fh:
             for row in csv.DictReader(fh):
-                pl = row.get("Payload", "")
-                if not pl.startswith("{"):
-                    continue
-                try:
-                    doc = json.loads(pl)
-                except ValueError:
-                    continue
-                data = ((doc.get("EventData") or {}).get("Data")) or []
-                if isinstance(data, dict):
-                    data = [data]
-                names = {str(i.get("@Name")) for i in data if isinstance(i, dict)}
-                key = (str(row.get("Channel")), str(row.get("EventId")))
-                real.setdefault(key, set()).update(names)
+                _ingest_row(row)
 
     fixture = REPO / "tests/fixtures/cs1b_evtx_real_rows.csv"
     assert fixture.is_file(), "the CS1b real-row fixture is missing"
     _ingest(fixture)
+    # D95: verbatim WinRM and Task Scheduler rows (CASE-C5B04D31's index)
+    for row in json.loads((REPO / "tests/fixtures/winrm_taskscheduler_rows.json").read_text(encoding="utf-8")).values():
+        _ingest_row(row)
     # the operator's own EvtxECmd outputs, when present (never committed)
     for extra in (REPO / "Evidence-files/ES-Mapping/outputs/ccs1b-real").glob("*.csv") \
             if (REPO / "Evidence-files/ES-Mapping/outputs/ccs1b-real").is_dir() else []:

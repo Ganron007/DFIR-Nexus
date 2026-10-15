@@ -218,10 +218,16 @@ def normalize(
         winlog_table = emap.get("winlog_event_data") or {}
         per_event = (winlog_table.get(channel) or {}).get(event_id) or {}
         for name, dst in per_event.items():
-            if name in ev:
-                _apply_mapped(ecs, dst, ev[name])
-                if str(ev[name]).strip() not in ("", "-"):
-                    from_event.add(dst)
+            if name not in ev:
+                continue
+            if dst in _EVENT_PARSERS:
+                for target, value in _EVENT_PARSERS[dst](ev[name]).items():
+                    _apply_mapped(ecs, target, value)
+                    from_event.add(target)
+                continue
+            _apply_mapped(ecs, dst, ev[name])
+            if str(ev[name]).strip() not in ("", "-"):
+                from_event.add(dst)
 
     # 2. Column -> ECS for this family, plus the importer slot table.
     tables = emap.get("family_columns") or {}
@@ -300,6 +306,11 @@ def _apply_mapped(ecs: dict[str, Any], dst: str, value: Any) -> None:
         for algo, h in hashes.items():
             _set(ecs, f"{dst}.{algo}", h)
         return
+    if dst == "ecs.destination.domain":
+        # A domain is a host name: a WinRM connection string carries a path and a query after it
+        # (`host.example.com/wsman?PSVersion=5.1`, D95).
+        _set(ecs, dst, _url_host(value))
+        return
     if dst in _PATH_TARGETS:
         pieces = _split_path(value)
         base = dst[: -len(".path")] if dst.endswith(".path") else dst
@@ -309,6 +320,33 @@ def _apply_mapped(ecs: dict[str, Any], dst: str, value: Any) -> None:
     # WO-CS1c item 1 (cap removed 2026-10-11): every value is kept whole.
     limit = MAX_SCRIPT_BLOCK if dst.endswith(".ScriptBlockText") else MAX_GENERIC
     _set(ecs, dst, value, limit=limit)
+
+
+def _url_host(value: Any) -> str:
+    """The host of a URL or a bare `host[:port]/path?query` string."""
+    text = str(value or "").strip()
+    text = re.sub(r"^[A-Za-z][A-Za-z0-9+.-]*://", "", text)
+    host = re.split(r"[/?#]", text, maxsplit=1)[0]
+    if host.startswith("["):  # [IPv6]:port
+        return host[1:host.find("]")] if "]" in host else host
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+#: WinRM 91's ResourceUri as WinRM writes it on the server: "<uri> (<domain\user> clientIP: <address>)".
+_WINRM_SHELL_REQUEST = re.compile(r"^(?P<uri>\S*)\s*\((?P<user>[^()]*?)\s+clientIP:\s*(?P<ip>[^()\s]+)\)\s*$")
+
+
+def _winrm_shell_request(value: Any) -> dict[str, str]:
+    """The URI, the requesting account and the client address of a WinRM shell request (D95)."""
+    match = _WINRM_SHELL_REQUEST.match(str(value or "").strip())
+    if not match:
+        return {"ecs.url.original": str(value or "").strip()}
+    return {"ecs.url.original": match.group("uri"), "ecs.user.name": match.group("user").strip(),
+            "ecs.source.ip": match.group("ip")}
+
+
+#: Per-event parsers a map entry can name instead of an ECS field: one EventData value holding several.
+_EVENT_PARSERS = {"__winrm_shell_request__": _winrm_shell_request}
 
 
 def _flatten_hashes(ecs: dict[str, Any]) -> dict[str, Any]:

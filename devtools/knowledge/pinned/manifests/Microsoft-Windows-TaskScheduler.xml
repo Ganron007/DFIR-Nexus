@@ -1,0 +1,631 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<provider name="Microsoft-Windows-TaskScheduler" guid="de7b24ea-73c8-4a09-985d-5bdadcfa9017" helpLink="" resourceFileName="%SystemRoot%\system32\schedsvc.dll" messageFileName="%SystemRoot%\system32\schedsvc.dll" message="Microsoft-Windows-TaskScheduler" xmlns="http://schemas.microsoft.com/win/2004/08/events">
+  <channels>
+    <channel name="Microsoft-Windows-TaskScheduler/Operational" id="16" flags="0" message="Operational">
+    </channel>
+    <channel name="System" id="8" flags="1" message="System">
+    </channel>
+    <channel name="Microsoft-Windows-TaskScheduler/Debug" id="17" flags="0" message="Debug">
+    </channel>
+    <channel name="Microsoft-Windows-TaskScheduler/Diagnostic" id="18" flags="0" message="Diagnostic">
+    </channel>
+    <channel name="Microsoft-Windows-TaskScheduler/Maintenance" id="19" flags="0" message="Maintenance">
+    </channel>
+  </channels>
+  <levels>
+    <level name="win:Critical" value="1" message="Critical">
+    </level>
+    <level name="win:Error" value="2" message="Error">
+    </level>
+    <level name="win:Warning" value="3" message="Warning">
+    </level>
+    <level name="win:Informational" value="4" message="Information">
+    </level>
+    <level name="win:Verbose" value="5" message="Verbose">
+    </level>
+  </levels>
+  <opcodes>
+    <opcode name="win:Info" value="0" message="Info">
+    </opcode>
+    <opcode name="win:Start" value="65536" message="Start">
+    </opcode>
+    <opcode name="win:Stop" value="131072" message="Stop">
+    </opcode>
+    <opcode name="StartFailed" value="6619136" message="Launch Failure">
+    </opcode>
+    <opcode name="ExecutionFailed" value="6684672" message="Run Failure">
+    </opcode>
+    <opcode name="ExecutionTerminated" value="6750208" message="Termination">
+    </opcode>
+    <opcode name="Failed" value="6815744" message="Failure">
+    </opcode>
+  </opcodes>
+  <tasks>
+    <task name="task:JobExecute" value="100" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Started">
+    </task>
+    <task name="task:TaskStartFail" value="101" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Start Failed">
+    </task>
+    <task name="task:TaskCompleted" value="102" eventGUID="00000000-0000-0000-0000-000000000000" message="Task completed">
+    </task>
+    <task name="task:TaskFailure" value="103" eventGUID="00000000-0000-0000-0000-000000000000" message="Action start failed">
+    </task>
+    <task name="task:LogonFailure" value="104" eventGUID="00000000-0000-0000-0000-000000000000" message="Logon failure">
+    </task>
+    <task name="task:ImpersonationFailure" value="105" eventGUID="00000000-0000-0000-0000-000000000000" message="Impersonation failure">
+    </task>
+    <task name="task:JobRegistered" value="106" eventGUID="00000000-0000-0000-0000-000000000000" message="Task registered">
+    </task>
+    <task name="task:TimeTrigger" value="107" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on scheduler">
+    </task>
+    <task name="task:EventTrigger" value="108" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on event">
+    </task>
+    <task name="task:ImmediateTrigger" value="109" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered by registration">
+    </task>
+    <task name="task:Run" value="110" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered by user">
+    </task>
+    <task name="task:TaskTerminated" value="111" eventGUID="00000000-0000-0000-0000-000000000000" message="Task terminated">
+    </task>
+    <task name="task:NoStartWithoutNetwork" value="112" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, network unavailable">
+    </task>
+    <task name="task:RegisteredWithoutSomeTriggers" value="113" eventGUID="00000000-0000-0000-0000-000000000000" message="Task registered without some triggers">
+    </task>
+    <task name="task:MissedTaskLaunched" value="114" eventGUID="00000000-0000-0000-0000-000000000000" message="Missed task started">
+    </task>
+    <task name="task:TransactionRollbackFailure" value="115" eventGUID="00000000-0000-0000-0000-000000000000" message="Task update or deletion error">
+    </task>
+    <task name="task:TaskRegisteredWithoutCreds" value="116" eventGUID="00000000-0000-0000-0000-000000000000" message="Task registered without credentials">
+    </task>
+    <task name="task:IdleTrigger" value="117" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on Idle">
+    </task>
+    <task name="task:BootTrigger" value="118" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered by computer startup">
+    </task>
+    <task name="task:LogonTrigger" value="119" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on logon">
+    </task>
+    <task name="task:ConsoleConnectTrigger" value="120" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on local console connect">
+    </task>
+    <task name="task:ConsoleDisconnectTrigger" value="121" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on local console disconnect">
+    </task>
+    <task name="task:RemoteConnectTrigger" value="122" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on remote console connect">
+    </task>
+    <task name="task:RemoteDisconnectTrigger" value="123" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered on remote console disconnect">
+    </task>
+    <task name="task:SessionLockTrigger" value="124" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered by locking the workstation">
+    </task>
+    <task name="task:SessionUnlockTrigger" value="125" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered by unlocking the workstation">
+    </task>
+    <task name="task:FailedTaskRestart" value="126" eventGUID="00000000-0000-0000-0000-000000000000" message="Task restarted on failure">
+    </task>
+    <task name="task:RejectedTaskRestart" value="127" eventGUID="00000000-0000-0000-0000-000000000000" message="Task restarted on failure">
+    </task>
+    <task name="task:IgnoredTaskRestart" value="128" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, beyond end time">
+    </task>
+    <task name="task:CreatedTaskProcess" value="129" eventGUID="00000000-0000-0000-0000-000000000000" message="Created Task Process">
+    </task>
+    <task name="task:TaskNotRunServiceBusy" value="130" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, service busy">
+    </task>
+    <task name="task:TaskNotStartedTaskQuotaExceeded" value="131" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, quota exceeded">
+    </task>
+    <task name="task:TaskQuotaApproaching" value="132" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition warning, quota approaching">
+    </task>
+    <task name="task:TaskNotStartedEngineQuotaExceeded" value="133" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, quota exceeded">
+    </task>
+    <task name="task:EngineQuotaApproaching" value="134" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition warning, quota approaching">
+    </task>
+    <task name="task:NoStartWithoutIdle" value="135" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, machine not idle">
+    </task>
+    <task name="task:JobCompletionPending" value="136" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Completion Pending">
+    </task>
+    <task name="task:TaskUpdated" value="140" eventGUID="00000000-0000-0000-0000-000000000000" message="Task registration updated">
+    </task>
+    <task name="task:TaskDeleted" value="141" eventGUID="00000000-0000-0000-0000-000000000000" message="Task registration deleted">
+    </task>
+    <task name="task:TaskDisabled" value="142" eventGUID="00000000-0000-0000-0000-000000000000" message="Task disabled">
+    </task>
+    <task name="task:ComputerWakeupToStartTask" value="145" eventGUID="00000000-0000-0000-0000-000000000000" message="Task triggered by coming out of suspend mode">
+    </task>
+    <task name="task:TaskLoadFailed" value="146" eventGUID="00000000-0000-0000-0000-000000000000" message="Task loading at service startup failed">
+    </task>
+    <task name="task:TaskImageRecoveredAfterMigration" value="147" eventGUID="00000000-0000-0000-0000-000000000000" message="Task image recovered after OS migration">
+    </task>
+    <task name="task:TaskImageRecoverFailedAfterMigration" value="148" eventGUID="00000000-0000-0000-0000-000000000000" message="Task image recovering failed after OS migration">
+    </task>
+    <task name="task:TaskUbpmCompatibilityIssueDetected" value="149" eventGUID="00000000-0000-0000-0000-000000000000" message="Task is using a combination of properties that is incompatible with the scheduling engine">
+    </task>
+    <task name="task:TaskEventSubscriptionFailed" value="150" eventGUID="00000000-0000-0000-0000-000000000000" message="Task registration on event failed">
+    </task>
+    <task name="task:TaskInstantiateFailed" value="151" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Scheduler failed to instantiate task at service startup.">
+    </task>
+    <task name="task:TaskUbpmCompatibilityIssueResolved" value="152" eventGUID="00000000-0000-0000-0000-000000000000" message="Task was redirected to legacy engine">
+    </task>
+    <task name="task:MissedTaskRejected" value="153" eventGUID="00000000-0000-0000-0000-000000000000" message="Missed task start rejected">
+    </task>
+    <task name="task:Action" value="200" eventGUID="00000000-0000-0000-0000-000000000000" message="Action started">
+    </task>
+    <task name="task:ActionCompleted" value="201" eventGUID="00000000-0000-0000-0000-000000000000" message="Action completed">
+    </task>
+    <task name="task:ActionFailed" value="202" eventGUID="00000000-0000-0000-0000-000000000000" message="Action failed">
+    </task>
+    <task name="task:ActionFailedToStart" value="203" eventGUID="00000000-0000-0000-0000-000000000000" message="Action failed to start">
+    </task>
+    <task name="task:EventRenderFailed" value="204" eventGUID="00000000-0000-0000-0000-000000000000" message="Task failed to start on event">
+    </task>
+    <task name="task:EventAggregateFailed" value="205" eventGUID="00000000-0000-0000-0000-000000000000" message="Task failed to start on event pattern match">
+    </task>
+    <task name="task:Session" value="300" eventGUID="00000000-0000-0000-0000-000000000000" message="Task engine launched">
+    </task>
+    <task name="task:TaskEngineExit" value="301" eventGUID="00000000-0000-0000-0000-000000000000" message="Task engine properly shut down">
+    </task>
+    <task name="task:TaskEngineError" value="303" eventGUID="00000000-0000-0000-0000-000000000000" message="Task engine shut down due to error">
+    </task>
+    <task name="task:SessionSentJob" value="304" eventGUID="00000000-0000-0000-0000-000000000000" message="Task sent to engine">
+    </task>
+    <task name="task:SessionSentJobFailed" value="305" eventGUID="00000000-0000-0000-0000-000000000000" message="Task failed to be sent to engine">
+    </task>
+    <task name="task:SessionProcessMessage" value="306" eventGUID="00000000-0000-0000-0000-000000000000" message="Engine failed to receive the task">
+    </task>
+    <task name="task:SessionManagerConnectFailed" value="307" eventGUID="00000000-0000-0000-0000-000000000000" message="Service Engine connection failure">
+    </task>
+    <task name="task:SessionManagerConnect" value="308" eventGUID="00000000-0000-0000-0000-000000000000" message="Service Engine connected">
+    </task>
+    <task name="task:SessionJobsOrphaned" value="309" eventGUID="00000000-0000-0000-0000-000000000000" message="Engine orphaned">
+    </task>
+    <task name="task:SessionProcessStart" value="310" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine started">
+    </task>
+    <task name="task:SessionProcessStartFailed" value="311" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine failed to start">
+    </task>
+    <task name="task:SessionWin32ObjCreated" value="312" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine job object created">
+    </task>
+    <task name="task:SessionChannelReady" value="313" eventGUID="00000000-0000-0000-0000-000000000000" message="Service Engine channel ready">
+    </task>
+    <task name="task:SessionProcessIdle" value="314" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine idle">
+    </task>
+    <task name="task:SessionProcessConnect" value="315" eventGUID="00000000-0000-0000-0000-000000000000" message="Service Engine connection failure">
+    </task>
+    <task name="task:SessionMessageSend" value="316" eventGUID="00000000-0000-0000-0000-000000000000" message="Engine failed to send message to service">
+    </task>
+    <task name="task:SessionMain" value="317" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine started">
+    </task>
+    <task name="task:SessionMainShutdown" value="318" eventGUID="00000000-0000-0000-0000-000000000000" message="Task engine properly shut down">
+    </task>
+    <task name="task:SessionJob" value="319" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine received message to start task">
+    </task>
+    <task name="task:SessionJobReceivedStop" value="320" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Engine received message to stop task">
+    </task>
+    <task name="task:NewInstanceIgnored" value="322" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch request ignored, instance already running">
+    </task>
+    <task name="task:RunningInstanceStopped" value="323" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch request acknowledged, current instance stopped">
+    </task>
+    <task name="task:NewInstanceQueued" value="324" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch request queued, instance already running">
+    </task>
+    <task name="task:TaskInstanceQueued" value="325" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch request queued">
+    </task>
+    <task name="task:NoStartOnBatteries" value="326" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, computer on batteries">
+    </task>
+    <task name="task:StoppingOnBatteries" value="327" eventGUID="00000000-0000-0000-0000-000000000000" message="Task stopping due to  switching to batteries">
+    </task>
+    <task name="task:StoppingOffIdle" value="328" eventGUID="00000000-0000-0000-0000-000000000000" message="Task stopping due to computer not idle">
+    </task>
+    <task name="task:StoppingOnTimeout" value="329" eventGUID="00000000-0000-0000-0000-000000000000" message="Task stopping due to timeout reached">
+    </task>
+    <task name="task:StoppingOnRequest" value="330" eventGUID="00000000-0000-0000-0000-000000000000" message="Task stopping due to user request">
+    </task>
+    <task name="task:TimeoutWontWork" value="331" eventGUID="00000000-0000-0000-0000-000000000000" message="Task failed to stop on timeout">
+    </task>
+    <task name="task:NoStartUserNotLogged" value="332" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, user not logged-on">
+    </task>
+    <task name="task:NoStartOnRailSession" value="333" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, session is RemoteApp Session">
+    </task>
+    <task name="task:NoStartOnWorkerSession" value="334" eventGUID="00000000-0000-0000-0000-000000000000" message="Launch condition not met, session is a Worker Session">
+    </task>
+    <task name="task:ServiceMain" value="400" eventGUID="00000000-0000-0000-0000-000000000000" message="Service started">
+    </task>
+    <task name="task:ServiceStartFailed" value="401" eventGUID="00000000-0000-0000-0000-000000000000" message="Service failed to start">
+    </task>
+    <task name="task:ServiceStop" value="402" eventGUID="00000000-0000-0000-0000-000000000000" message="Service is shutting down">
+    </task>
+    <task name="task:ServiceError" value="403" eventGUID="00000000-0000-0000-0000-000000000000" message="Service critical error">
+    </task>
+    <task name="task:ServiceRPCInitError" value="404" eventGUID="00000000-0000-0000-0000-000000000000" message="Service RPC error">
+    </task>
+    <task name="task:ServiceCOMInitError" value="405" eventGUID="00000000-0000-0000-0000-000000000000" message="Service COM error">
+    </task>
+    <task name="task:ServiceCredStoreInitFailed" value="406" eventGUID="00000000-0000-0000-0000-000000000000" message="Cred store initialization error">
+    </task>
+    <task name="task:ServiceLSAInitFailed" value="407" eventGUID="00000000-0000-0000-0000-000000000000" message="LSA initialization error">
+    </task>
+    <task name="task:ServiceIdleInitFailed" value="408" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle detection error">
+    </task>
+    <task name="task:ServiceTimeChangeInitFailed" value="409" eventGUID="00000000-0000-0000-0000-000000000000" message="Time change notification error">
+    </task>
+    <task name="task:ServiceSetWakeupTimerFailed" value="410" eventGUID="00000000-0000-0000-0000-000000000000" message="Wakeup timer error">
+    </task>
+    <task name="task:ServiceTimeChangeSignaled" value="411" eventGUID="00000000-0000-0000-0000-000000000000" message="Service signaled time change">
+    </task>
+    <task name="task:TaskMisconfigured" value="414" eventGUID="00000000-0000-0000-0000-000000000000" message="Task Misconfiguration">
+    </task>
+    <task name="task:IdleTaskRegister" value="500" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Register">
+    </task>
+    <task name="task:IdleTaskUnregister" value="501" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Unregister">
+    </task>
+    <task name="task:IdleTaskExecute" value="502" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Execute">
+    </task>
+    <task name="task:IdleTaskNotify" value="504" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Notify">
+    </task>
+    <task name="task:IdleTaskExplicitProcessing" value="506" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Explicit Processing">
+    </task>
+    <task name="task:IdleTaskExplicitProcessingActive" value="508" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Explicit Processing Active">
+    </task>
+    <task name="task:IdleTaskPowerNotificationReceived" value="509" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task Power Notification Received">
+    </task>
+    <task name="task:ItSpEvt_PerfTrack_IdleEntryStats" value="510" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task PerfTrack Resource Consumption">
+    </task>
+    <task name="task:ItSpEvt_PerfTrack_IdleExitStats" value="511" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Task PerfTrack Idle Exit">
+    </task>
+    <task name="task:IdleCheckPoint" value="512" eventGUID="00000000-0000-0000-0000-000000000000" message="Idle Check Point">
+    </task>
+    <task name="task:CompatStart" value="700" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module started">
+    </task>
+    <task name="task:CompatStartFailed" value="701" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module failed to start">
+    </task>
+    <task name="task:CompatStartRPCFailed" value="702" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module RPC failed">
+    </task>
+    <task name="task:CompatStartNetschedFailed" value="703" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module Net Schedule API failed">
+    </task>
+    <task name="task:CompatStartLSAFailed" value="704" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module LSA failed">
+    </task>
+    <task name="task:CompatDirectoryMonitoringFailed" value="705" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module directory monitoring failed">
+    </task>
+    <task name="task:CompatTaskStatusUpdateFailed" value="706" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module task status update failed">
+    </task>
+    <task name="task:CompatTaskDeleteFailed" value="707" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module task deletion failed">
+    </task>
+    <task name="task:CompatTaskSetSDFailed" value="708" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module security descriptor failed">
+    </task>
+    <task name="task:CompatTaskUpdateFailed" value="709" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module task update failed">
+    </task>
+    <task name="task:CompatUpgradeFailed" value="710" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module tasks upgrade failed">
+    </task>
+    <task name="task:CompatUpgradeUndetermined" value="711" eventGUID="00000000-0000-0000-0000-000000000000" message="Compatibility module tasks upgrade undetermined">
+    </task>
+    <task name="task:Beta2CredStoreUpgradeFailed" value="712" eventGUID="00000000-0000-0000-0000-000000000000" message="Credential store upgrade failed">
+    </task>
+    <task name="task:OpChannelDisabled" value="719" eventGUID="00000000-0000-0000-0000-000000000000" message="TaskScheduler Operational log was disabled">
+    </task>
+    <task name="task:MaintenanceStateChanged" value="800" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance state has changed">
+    </task>
+    <task name="task:MaintenanceLaunchError" value="801" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance launch failed">
+    </task>
+    <task name="task:MaintenanceReconfigurationError" value="802" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance re-configuration failed">
+    </task>
+    <task name="task:MaintenanceSchedulerTaskError" value="803" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance Scheduler engine task error">
+    </task>
+    <task name="task:MaintenanceCycleDependencyError" value="804" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance task cycle dependency detected">
+    </task>
+    <task name="task:MaintenanceTaskBehindDeadline" value="805" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance task is behind deadline">
+    </task>
+    <task name="task:MaintenanceTaskError" value="806" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance task processing error">
+    </task>
+    <task name="task:MaintenanceComplete" value="807" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance complete">
+    </task>
+    <task name="task:MaintenanceTaskWakeupRequested" value="808" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance wakeup requested">
+    </task>
+    <task name="task:MaintenanceKeysMalformed" value="809" eventGUID="00000000-0000-0000-0000-000000000000" message="Maintenance Scheduler configuration error">
+    </task>
+    <task name="task:MethodFailure" value="998" eventGUID="00000000-0000-0000-0000-000000000000" message="Method Failure">
+    </task>
+    <task name="task:Debug" value="999" eventGUID="00000000-0000-0000-0000-000000000000" message="Debug">
+    </task>
+  </tasks>
+  <keywords>
+    <keyword name="ForcedIdleProcessing" mask="1" message="">
+    </keyword>
+    <keyword name="win:ResponseTime" mask="1000000000000" message="Response Time">
+    </keyword>
+  </keywords>
+  <events>
+    <event value="100" version="0" opcode="1" channel="16" level="4" task="100" keywords="0x8000000000000001" message="Task Scheduler started &quot;%3&quot; instance of the &quot;%1&quot; task for user &quot;%2&quot;.">
+    </event>
+    <event value="101" version="0" opcode="101" channel="16" level="2" task="101" keywords="0x8000000000000001" message="Task Scheduler failed to start &quot;%1&quot; task for user &quot;%2&quot;. Additional Data: Error Value: %3.">
+    </event>
+    <event value="102" version="0" opcode="2" channel="16" level="4" task="102" keywords="0x8000000000000001" message="Task Scheduler successfully finished &quot;%3&quot; instance of the &quot;%1&quot; task for user &quot;%2&quot;.">
+    </event>
+    <event value="103" version="0" opcode="102" channel="16" level="2" task="103" keywords="0x8000000000000001" message="Task Scheduler failed to start instance &quot;%2&quot; of &quot;%1&quot; task for user &quot;%3&quot; . Additional Data: Error Value: %4.">
+    </event>
+    <event value="104" version="0" opcode="0" channel="16" level="2" task="104" keywords="0x8000000000000000" message="Task Scheduler failed to log on &quot;%1&quot; . Failure occurred in &quot;%2&quot; . User Action: Ensure the credentials for the task are correctly specified. Additional Data: Error Value: %3.">
+    </event>
+    <event value="105" version="0" opcode="0" channel="16" level="2" task="105" keywords="0x8000000000000000" message="Task Scheduler failed to impersonate &quot;%1&quot; . Additional Data: Error Value: %2.">
+    </event>
+    <event value="106" version="0" opcode="0" channel="16" level="4" task="106" keywords="0x8000000000000000" message="User &quot;%2&quot; registered Task Scheduler task &quot;%1&quot;">
+    </event>
+    <event value="107" version="0" opcode="0" channel="16" level="4" task="107" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%2&quot; instance of task &quot;%1&quot; due to a time trigger condition.">
+    </event>
+    <event value="108" version="0" opcode="0" channel="16" level="4" task="108" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%2&quot; instance of task &quot;%1&quot; according to an event trigger.">
+    </event>
+    <event value="109" version="0" opcode="0" channel="16" level="4" task="109" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%2&quot; instance of task &quot;%1&quot; according to a registration trigger.">
+    </event>
+    <event value="110" version="0" opcode="0" channel="16" level="4" task="110" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%2&quot; instance of task &quot;%1&quot; for user &quot;%3&quot; .">
+    </event>
+    <event value="111" version="0" opcode="103" channel="16" level="4" task="111" keywords="0x8000000000000001" message="Task Scheduler terminated &quot;%2&quot; instance of the &quot;%1&quot; task.">
+    </event>
+    <event value="112" version="0" opcode="0" channel="16" level="3" task="112" keywords="0x8000000000000000" message="Task Scheduler could not start task &quot;%1&quot;  because the network was unavailable. User Action: Ensure that the computer is connected to the required network as specified in the task. If the task does not require network presence, remove the network condition from the task configuration.">
+    </event>
+    <event value="113" version="0" opcode="0" channel="16" level="3" task="113" keywords="0x8000000000000000" message="Task registered task &quot;%1&quot; but not all specified triggers will start the task. User Action: Ensure that all the task triggers are valid as configured. Additional Data: Error Value: %2.">
+    </event>
+    <event value="114" version="0" opcode="0" channel="16" level="3" task="114" keywords="0x8000000000000000" message="Task Scheduler could not launch task &quot;%1&quot; as scheduled. Instance &quot;%2&quot; is now started as required by the configuration option to start the task when available, if schedule is missed.">
+    </event>
+    <event value="115" version="0" opcode="0" channel="16" level="2" task="115" keywords="0x8000000000000000" message="Task Scheduler failed to roll back a transaction when updating or deleting a task. Additional Data: Error Value: %1.">
+    </event>
+    <event value="116" version="0" opcode="0" channel="16" level="3" task="116" keywords="0x8000000000000000" message="Task Scheduler validated the configuration for task &quot;%1&quot; but credentials could not be stored. User Action: Re-register the task ensuring the credentials are valid. Additional Data: Error Value: %2.">
+    </event>
+    <event value="117" version="0" opcode="0" channel="16" level="4" task="117" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%2&quot; instance of task &quot;%1&quot; due to an idle condition.">
+    </event>
+    <event value="118" version="0" opcode="0" channel="16" level="4" task="118" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%2&quot; instance of task &quot;%1&quot; due to system start-up.">
+    </event>
+    <event value="119" version="0" opcode="0" channel="16" level="4" task="119" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; log-on.">
+    </event>
+    <event value="120" version="0" opcode="0" channel="16" level="4" task="120" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; connecting to the console trigger.">
+    </event>
+    <event value="121" version="0" opcode="0" channel="16" level="4" task="121" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; disconnecting from the console trigger.">
+    </event>
+    <event value="122" version="0" opcode="0" channel="16" level="4" task="122" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; remotely connecting trigger.">
+    </event>
+    <event value="123" version="0" opcode="0" channel="16" level="4" task="123" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; remotely disconnecting trigger.">
+    </event>
+    <event value="124" version="0" opcode="0" channel="16" level="4" task="124" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; locking the computer trigger.">
+    </event>
+    <event value="125" version="0" opcode="0" channel="16" level="4" task="125" keywords="0x8000000000000000" message="Task Scheduler launched &quot;%3&quot; instance of task &quot;%1&quot; due to user &quot;%2&quot; unlocking the computer trigger.">
+    </event>
+    <event value="126" version="0" opcode="0" channel="16" level="3" task="126" keywords="0x8000000000000000" message="Task Scheduler failed to execute task &quot;%1&quot; . Attempting to restart. Additional Data: Error Value: %2.">
+    </event>
+    <event value="127" version="0" opcode="0" channel="16" level="4" task="127" keywords="0x8000000000000000" message="Task Scheduler failed to execute task &quot;%1&quot; due to a shut-down race condition. Attempting to restart.">
+    </event>
+    <event value="128" version="0" opcode="0" channel="16" level="4" task="128" keywords="0x8000000000000000" message="Task Scheduler did not launch task &quot;%1&quot; because current time exceeds the configured task end time. User Action: Extend the end time boundary for the task if required.">
+    </event>
+    <event value="129" version="0" opcode="0" channel="16" level="4" task="129" keywords="0x8000000000000000" message="Task Scheduler launch task &quot;%1&quot;, instance &quot;%2&quot; with process ID %3.">
+    </event>
+    <event value="130" version="0" opcode="0" channel="16" level="2" task="130" keywords="0x8000000000000000" message="Task Scheduler failed to start task &quot;%1&quot; due to the service being busy.">
+    </event>
+    <event value="131" version="0" opcode="0" channel="16" level="2" task="131" keywords="0x8000000000000000" message="Task Scheduler failed to start task &quot;%1&quot; because the number of tasks in the task queue exceed the quota currently configured to %2. User Action: Reduce the number of running tasks or increase the configured queue quota.">
+    </event>
+    <event value="132" version="0" opcode="0" channel="16" level="3" task="132" keywords="0x8000000000000000" message="Task Scheduler task launching queue quota is approaching its pre-set limit of tasks currently configured to %1. User Action: Reduce the number of running tasks or increase the configured queue quota.">
+    </event>
+    <event value="133" version="0" opcode="0" channel="16" level="2" task="133" keywords="0x8000000000000000" message="Task Scheduler failed to start task %1&quot; in TaskEngine &quot;%2&quot; for user &quot;%3&quot;. User Action: Reduce the number of tasks running in the specified user context.">
+    </event>
+    <event value="134" version="0" opcode="0" channel="16" level="3" task="134" keywords="0x8000000000000000" message="Task Engine &quot;%1&quot;  or user &quot;%2&quot; is approaching its pre-set limit of tasks. User Action: Reduce the number of tasks running in the specified user context.">
+    </event>
+    <event value="135" version="0" opcode="0" channel="16" level="3" task="135" keywords="0x8000000000000000" message="Task Scheduler could not start task &quot;%1&quot; because the machine was not idle.">
+    </event>
+    <event value="140" version="0" opcode="0" channel="16" level="4" task="140" keywords="0x8000000000000000" message="User &quot;%2&quot; updated Task Scheduler task &quot;%1&quot;">
+    </event>
+    <event value="141" version="0" opcode="0" channel="16" level="4" task="141" keywords="0x8000000000000000" message="User &quot;%2&quot; deleted Task Scheduler task &quot;%1&quot;">
+    </event>
+    <event value="142" version="0" opcode="0" channel="16" level="4" task="142" keywords="0x8000000000000000" message="User &quot;%2&quot; disabled Task Scheduler task &quot;%1&quot;">
+    </event>
+    <event value="145" version="0" opcode="0" channel="16" level="4" task="145" keywords="0x8000000000000000" message="Task Scheduler woke up the computer to run a task.">
+    </event>
+    <event value="146" version="0" opcode="0" channel="16" level="2" task="146" keywords="0x8000000000000000" message="Task Scheduler failed to load task &quot;%1&quot; at service start-up. Additional Data: Error Value: %2.">
+    </event>
+    <event value="147" version="0" opcode="0" channel="16" level="4" task="147" keywords="0x8000000000000000" message="Task Scheduler successfully recovered the image of task &quot;%1&quot; after a corruption occurred during OS upgrade.">
+    </event>
+    <event value="148" version="0" opcode="0" channel="16" level="2" task="148" keywords="0x8000000000000000" message="Task Scheduler failed to recover the image of task &quot;%1&quot; after a corruption occurred during OS upgrade. Additional Data: Error Value: 0x%2.">
+    </event>
+    <event value="149" version="0" opcode="0" channel="16" level="3" task="149" keywords="0x8000000000000000" message="Task &quot;%1&quot; is using a combination of properties that is incompatible with the scheduling engine.">
+    </event>
+    <event value="150" version="0" opcode="0" channel="16" level="2" task="150" keywords="0x8000000000000000" message="Task Scheduler failed to subscribe for the event trigger for task &quot;%1&quot;. Additional Data: Error Value: %2.">
+    </event>
+    <event value="151" version="0" opcode="0" channel="16" level="2" task="151" keywords="0x8000000000000000" message="Task Scheduler failed to instantiate task &quot;%1&quot;. Additional Data: %2 - Error Value: %3.">
+    </event>
+    <event value="152" version="0" opcode="0" channel="16" level="3" task="152" keywords="0x8000000000000000" message="Task &quot;%1&quot; was re-directed to legacy scheduling engine.">
+    </event>
+    <event value="153" version="0" opcode="0" channel="16" level="3" task="153" keywords="0x8000000000000000" message="Task Scheduler did not launch task &quot;%1&quot; as it missed its schedule. Consider using the configuration option to start the task when available, if schedule is missed.">
+    </event>
+    <event value="155" version="0" opcode="0" channel="16" level="4" task="136" keywords="0x8000000000000001" message="Task Scheduler is currently waiting on completion of task &quot;%1&quot;.">
+    </event>
+    <event value="200" version="0" opcode="1" channel="16" level="4" task="200" keywords="0x8000000000000000" message="Task Scheduler launched action &quot;%2&quot; in instance &quot;%3&quot; of task &quot;%1&quot;.">
+    </event>
+    <event value="200" version="1" opcode="1" channel="16" level="4" task="200" keywords="0x8000000000000000" message="Task Scheduler launched action &quot;%2&quot; in instance &quot;%3&quot; of task &quot;%1&quot;.">
+    </event>
+    <event value="201" version="0" opcode="2" channel="16" level="4" task="201" keywords="0x8000000000000000" message="Task Scheduler successfully completed task &quot;%1&quot; , instance &quot;%3&quot; , action &quot;%2&quot; .">
+    </event>
+    <event value="201" version="1" opcode="2" channel="16" level="4" task="201" keywords="0x8000000000000000" message="Task Scheduler successfully completed task &quot;%1&quot; , instance &quot;%2&quot; , action &quot;%3&quot; with return code %4.">
+    </event>
+    <event value="201" version="2" opcode="2" channel="16" level="4" task="201" keywords="0x8000000000000000" message="Task Scheduler successfully completed task &quot;%1&quot; , instance &quot;%2&quot; , action &quot;%3&quot; with return code %4.">
+    </event>
+    <event value="202" version="0" opcode="102" channel="16" level="2" task="202" keywords="0x8000000000000000" message="Task Scheduler failed to complete task &quot;%1&quot; , instance &quot;%2&quot; , action &quot;%3&quot; . Additional Data: Error Value: %4.">
+    </event>
+    <event value="202" version="1" opcode="102" channel="16" level="2" task="202" keywords="0x8000000000000000" message="Task Scheduler failed to complete task &quot;%1&quot; , instance &quot;%2&quot; , action &quot;%3&quot; . Additional Data: Error Value: %4.">
+    </event>
+    <event value="203" version="0" opcode="101" channel="16" level="2" task="203" keywords="0x8000000000000000" message="Task Scheduler failed to launch action &quot;%3&quot; in instance &quot;%2&quot; of task &quot;%1&quot;. Additional Data: Error Value: %4.">
+    </event>
+    <event value="204" version="0" opcode="0" channel="16" level="2" task="204" keywords="0x8000000000000000" message="Task Scheduler failed to retrieve the event triggering values for task &quot;%1&quot; . The event will be ignored. Additional Data: Error Value: %2.">
+    </event>
+    <event value="205" version="0" opcode="0" channel="16" level="2" task="205" keywords="0x8000000000000000" message="Task Scheduler failed to match the pattern of events for task &quot;%1&quot; . The events will be ignored. Additional Data: Error Value: %2.">
+    </event>
+    <event value="300" version="0" opcode="1" channel="16" level="4" task="300" keywords="0x8000000000000000" message="Task Scheduler started Task Engine &quot;%1&quot; with process ID %2.">
+    </event>
+    <event value="301" version="0" opcode="2" channel="16" level="4" task="301" keywords="0x8000000000000000" message="Task Scheduler is shutting down Task Engine &quot;%1&quot;">
+    </event>
+    <event value="303" version="0" opcode="104" channel="16" level="2" task="303" keywords="0x8000000000000000" message="Task Scheduler is shutting down Task Engine &quot;%1&quot; due to an error in &quot;%2&quot;. Additional Data: Error Value: %3.">
+    </event>
+    <event value="304" version="0" opcode="0" channel="16" level="4" task="304" keywords="0x8000000000000000" message="Task Scheduler sent &quot;%1&quot; task to Task Engine &quot;%2&quot;. The task instance ID is &quot;%3&quot; .">
+    </event>
+    <event value="305" version="0" opcode="104" channel="16" level="2" task="305" keywords="0x8000000000000000" message="Task Scheduler did not send &quot;%1&quot; task to Task Engine &quot;%2&quot;. Additional Data: Error Value: %3.">
+    </event>
+    <event value="306" version="0" opcode="104" channel="16" level="2" task="306" keywords="0x8000000000000000" message="For Task Scheduler Task Engine &quot;%1&quot; , the thread pool failed to process the message. Additional Data: Error Value: %2.">
+    </event>
+    <event value="307" version="0" opcode="104" channel="16" level="2" task="307" keywords="0x8000000000000000" message="Task Scheduler service failed to connect to the Task Engine &quot;%1&quot; process. Additional Data: Error Value: %2.">
+    </event>
+    <event value="308" version="0" opcode="0" channel="16" level="4" task="308" keywords="0x8000000000000000" message="Task Scheduler connected to the Task Engine &quot;%1&quot; process.">
+    </event>
+    <event value="309" version="0" opcode="0" channel="16" level="2" task="309" keywords="0x8000000000000000" message="Task Scheduler %1 tasks orphaned during Task Engine &quot;%2&quot; shut-down. User Action: Find the process run by this task in the Task Manager and kill it manually.">
+    </event>
+    <event value="310" version="0" opcode="0" channel="16" level="4" task="310" keywords="0x8000000000000000" message="Task Scheduler started Task Engine &quot;%1&quot; process. Command=&quot;%2&quot;, ProcessID=%3, ThreadID=%4">
+    </event>
+    <event value="311" version="0" opcode="101" channel="16" level="2" task="311" keywords="0x8000000000000000" message="Task Scheduler failed to start Task Engine &quot;%1&quot; process due to an error occurring in &quot;%3&quot;. Command=&quot;%2&quot;. Additional Data: Error Value: %4.">
+    </event>
+    <event value="312" version="0" opcode="0" channel="16" level="4" task="312" keywords="0x8000000000000000" message="Task Scheduler created the Win32 job object for Task Engine &quot;%1&quot;.">
+    </event>
+    <event value="313" version="0" opcode="0" channel="16" level="4" task="313" keywords="0x8000000000000000" message="Task Scheduler channel with Task Engine &quot;%1&quot; is ready to send and receive messages.">
+    </event>
+    <event value="314" version="0" opcode="0" channel="16" level="4" task="314" keywords="0x8000000000000000" message="Task Scheduler has no tasks running for Task Engine &quot;%1&quot; and the idle timer has started.">
+    </event>
+    <event value="315" version="0" opcode="104" channel="16" level="2" task="315" keywords="0x8000000000000000" message="Task Engine &quot;%1&quot; process failed to connect to the Task Scheduler service. Additional Data: Error Value: %2.">
+    </event>
+    <event value="316" version="0" opcode="104" channel="16" level="2" task="316" keywords="0x8000000000000000" message="Task Engine &quot;%1&quot; failed to send a message to the Task Scheduler service. Additional Data: Error Value: %2.">
+    </event>
+    <event value="317" version="0" opcode="1" channel="16" level="4" task="317" keywords="0x8000000000000000" message="Task Scheduler started Task Engine &quot;%1&quot; process.">
+    </event>
+    <event value="318" version="0" opcode="2" channel="16" level="4" task="318" keywords="0x8000000000000000" message="Task Scheduler shut-down Task Engine &quot;%1&quot; process.">
+    </event>
+    <event value="319" version="0" opcode="1" channel="16" level="4" task="319" keywords="0x8000000000000000" message="Task Engine &quot;%1&quot; received a message from Task Scheduler service requesting to launch task &quot;%2&quot; .">
+    </event>
+    <event value="320" version="0" opcode="2" channel="16" level="4" task="320" keywords="0x8000000000000000" message="Task Engine &quot;%1&quot;  received a message from Task Scheduler service requesting to stop task instance &quot;%2&quot; .">
+    </event>
+    <event value="322" version="0" opcode="0" channel="16" level="3" task="322" keywords="0x8000000000000000" message="Task Scheduler did not launch task &quot;%1&quot; because instance &quot;%2&quot; of the same task is already running.">
+    </event>
+    <event value="323" version="0" opcode="0" channel="16" level="3" task="323" keywords="0x8000000000000000" message="Task Scheduler stopped instance &quot;%2&quot; of task &quot;%1&quot; in order to launch new instance &quot;%3&quot; .">
+    </event>
+    <event value="324" version="0" opcode="0" channel="16" level="3" task="324" keywords="0x8000000000000000" message="Task Scheduler queued instance &quot;%2&quot; of task &quot;%1&quot; and will launch it as soon as instance &quot;%3&quot; completes.">
+    </event>
+    <event value="325" version="0" opcode="0" channel="16" level="3" task="325" keywords="0x8000000000000000" message="Task Scheduler queued instance &quot;%2&quot;  of task &quot;%1&quot;.">
+    </event>
+    <event value="326" version="0" opcode="0" channel="16" level="3" task="326" keywords="0x8000000000000000" message="Task Scheduler did not launch task &quot;%1&quot; because computer is running on batteries. User Action: If launching the task on batteries is required, change the respective flag in the task configuration.">
+    </event>
+    <event value="327" version="0" opcode="0" channel="16" level="4" task="327" keywords="0x8000000000000000" message="Task Scheduler stopped instance &quot;%2&quot; of task &quot;%1&quot; because the computer is switching to battery power.">
+    </event>
+    <event value="328" version="0" opcode="0" channel="16" level="4" task="328" keywords="0x8000000000000000" message="Task Scheduler stopped instance &quot;%2&quot; of task &quot;%1&quot; because computer is no longer idle.">
+    </event>
+    <event value="329" version="0" opcode="0" channel="16" level="4" task="329" keywords="0x8000000000000000" message="Task Scheduler terminated &quot;%2&quot; instance of the &quot;%1&quot; task due to exceeding the time allocated for execution, as configured in the task definition. User Action: Increase the configured task timeout or investigate external reasons for the delay.">
+    </event>
+    <event value="330" version="0" opcode="0" channel="16" level="4" task="330" keywords="0x8000000000000000" message="Task Scheduler stopped instance &quot;%2&quot; of task &quot;%1&quot; as requested by user &quot;%3&quot; .">
+    </event>
+    <event value="331" version="0" opcode="0" channel="16" level="3" task="331" keywords="0x8000000000000000" message="Task Scheduler will continue to execute Instance &quot;%2&quot; of task &quot;%1&quot; even after the designated timeout, due to a failure to create the timeout mechanism. Additional Data: Error Value: %3.">
+    </event>
+    <event value="332" version="0" opcode="0" channel="16" level="3" task="332" keywords="0x8000000000000000" message="Task Scheduler did not launch task &quot;%1&quot; because user &quot;%2&quot; was not logged on when the launching conditions were met. User Action: Ensure user is logged on or change the task definition to allow launching when user is logged off.">
+    </event>
+    <event value="333" version="0" opcode="0" channel="16" level="3" task="333" keywords="0x8000000000000000" message="Task Scheduler did not launch task &quot;%1&quot; because target session is RemoteApp session. User Action: If launching the task on RemoteApp sessions is required, change the respective flag in the task configuration.">
+    </event>
+    <event value="334" version="0" opcode="0" channel="16" level="3" task="334" keywords="0x8000000000000000" message="Task Scheduler did not launch task �%1�  because target session is a WORKER session.">
+    </event>
+    <event value="400" version="0" opcode="1" channel="16" level="4" task="400" keywords="0x8000000000000000" message="Task Scheduler service has started.">
+    </event>
+    <event value="401" version="0" opcode="101" channel="8" level="1" task="401" keywords="0x4000000000000000" message="Task Scheduler service failed to start due to an error in &quot;%1&quot; . Additional Data: Error Value: %2.">
+    </event>
+    <event value="402" version="0" opcode="2" channel="16" level="4" task="402" keywords="0x8000000000000000" message="Task Scheduler service is shutting down.">
+    </event>
+    <event value="403" version="0" opcode="104" channel="16" level="2" task="403" keywords="0x8000000000000000" message="Task Scheduler service has encountered an error in &quot;%1&quot; . Additional Data: Error Value: %2.">
+    </event>
+    <event value="404" version="0" opcode="0" channel="8" level="3" task="404" keywords="0x4000000000000000" message="Task Scheduler service has encountered RPC initialisation error in &quot;%1&quot;. Additional Data: Error Value: %2.">
+    </event>
+    <event value="405" version="0" opcode="0" channel="8" level="1" task="405" keywords="0x4000000000000000" message="Task Scheduler service has failed to initialise COM. Additional Data: Error Value: %1.">
+    </event>
+    <event value="406" version="0" opcode="0" channel="8" level="1" task="406" keywords="0x4000000000000000" message="Task Scheduler service failed to initialise credentials store. Additional Data: Error Value: %1.">
+    </event>
+    <event value="407" version="0" opcode="0" channel="8" level="1" task="407" keywords="0x4000000000000000" message="Task Scheduler service failed to initialise LSA. Additional Data: Error Value: %1.">
+    </event>
+    <event value="408" version="0" opcode="0" channel="8" level="2" task="408" keywords="0x4000000000000000" message="Task Scheduler service failed to initialise idle state detection module. Idle tasks may not be started as required. Additional Data: Error Value: %1.">
+    </event>
+    <event value="409" version="0" opcode="0" channel="8" level="1" task="409" keywords="0x4000000000000000" message="Task Scheduler service failed to initialise time change notification. System time updates may not be picked by the service and task schedules may not be updated. Additional Data: Error Value: %1.">
+    </event>
+    <event value="410" version="0" opcode="0" channel="16" level="2" task="410" keywords="0x8000000000000000" message="Task Scheduler service failed to set a wake-up timer. As a result, some scheduled tasks may not run while the system is suspended. Additional Data: Error Value: %1.">
+    </event>
+    <event value="411" version="0" opcode="0" channel="16" level="4" task="411" keywords="0x8000000000000000" message="Task Scheduler service received a time system change notification.">
+    </event>
+    <event value="412" version="0" opcode="0" channel="8" level="2" task="403" keywords="0x4000000000000000" message="Task Scheduler service failed to launch tasks triggered by computer start-up. Additional Data: Error Value: %1.">
+    </event>
+    <event value="413" version="0" opcode="0" channel="8" level="2" task="403" keywords="0x4000000000000000" message="Task Scheduler service failed to load tasks at service start-up. Additional Data: Error Value: %1.">
+    </event>
+    <event value="414" version="0" opcode="0" channel="8" level="3" task="414" keywords="0x4000000000000000" message="Task Scheduler service found a misconfiguration in the %1 definition. Additional Data: Error Value: %2.">
+    </event>
+    <event value="500" version="0" opcode="0" channel="18" level="4" task="500" keywords="0x1000000000000001" message="Process ID %2 has registered idle task ID %1.">
+    </event>
+    <event value="501" version="0" opcode="0" channel="18" level="4" task="501" keywords="0x1000000000000001" message="Process ID %2 has completed idle task ID %1.">
+    </event>
+    <event value="502" version="0" opcode="1" channel="18" level="4" task="502" keywords="0x1000000000000001" message="Execution of idle task ID %1 has started.">
+    </event>
+    <event value="503" version="0" opcode="2" channel="18" level="4" task="502" keywords="0x1000000000000001" message="Execution of idle task ID %1 has ended.">
+    </event>
+    <event value="504" version="0" opcode="1" channel="18" level="4" task="504" keywords="0x1000000000000001" message="Idle task ID %1 has been notified that explicit processing has been requested.">
+    </event>
+    <event value="505" version="0" opcode="2" channel="18" level="4" task="504" keywords="0x1000000000000001" message="Idle task ID %1 has returned from its explicit processing notification.">
+    </event>
+    <event value="506" version="0" opcode="1" channel="18" level="4" task="506" keywords="0x1000000000000001" message="Explicit execution of all idle tasks has been requested.">
+    </event>
+    <event value="507" version="0" opcode="2" channel="18" level="4" task="506" keywords="0x1000000000000001" message="Explicit execution of all idle tasks has completed.">
+    </event>
+    <event value="508" version="0" opcode="0" channel="18" level="4" task="508" keywords="0x1000000000000001" message="Explicit execution of all idle tasks is in progress.">
+    </event>
+    <event value="509" version="0" opcode="0" channel="18" level="4" task="509" keywords="0x1000000000000001" message="Idle Task Power Notification Received: %1 (%2)">
+    </event>
+    <event value="510" version="0" opcode="0" channel="18" level="4" task="510" keywords="0x1001000000000001" message="">
+    </event>
+    <event value="511" version="0" opcode="0" channel="18" level="4" task="511" keywords="0x1001000000000001" message="">
+    </event>
+    <event value="512" version="0" opcode="0" channel="18" level="4" task="512" keywords="0x1000000000000001" message="Idle check point: State %1, Reason %2.">
+    </event>
+    <event value="700" version="0" opcode="0" channel="16" level="4" task="700" keywords="0x8000000000000000" message="Task Scheduler service started Task Compatibility module.">
+    </event>
+    <event value="701" version="0" opcode="0" channel="8" level="2" task="701" keywords="0x4000000000000000" message="Task Scheduler service failed to start Task Compatibility module. Tasks may not be able to register on previous Window versions. Additional Data: Error Value: %1.">
+    </event>
+    <event value="702" version="0" opcode="0" channel="8" level="2" task="702" keywords="0x4000000000000000" message="Task Scheduler failed to initialise the RPC server for starting the Task Compatibility module. Tasks may not be able to register on previous Window versions. Additional Data: Error Value: %1.">
+    </event>
+    <event value="703" version="0" opcode="0" channel="8" level="2" task="703" keywords="0x4000000000000000" message="Task Scheduler failed to initialise Net Schedule API for starting the Task Compatibility module. Tasks may not be able to register on previous Window versions. Additional Data: Error Value: %1.">
+    </event>
+    <event value="704" version="0" opcode="0" channel="8" level="2" task="704" keywords="0x4000000000000000" message="Task Scheduler failed to initialise LSA for starting the Task Compatibility module. Tasks may not be able to register on previous Window versions. Additional Data: Error Value: %1.">
+    </event>
+    <event value="705" version="0" opcode="0" channel="8" level="2" task="705" keywords="0x4000000000000000" message="Task Scheduler failed to start directory monitoring for the Task Compatibility module. Additional Data: Error Value: %1.">
+    </event>
+    <event value="706" version="0" opcode="0" channel="16" level="2" task="706" keywords="0x8000000000000000" message="Task Compatibility module failed to update task &quot;%1&quot; to the required status %2. Additional Data: Error Value: %3.">
+    </event>
+    <event value="707" version="0" opcode="0" channel="16" level="2" task="707" keywords="0x8000000000000000" message="Task Compatibility module failed to delete task &quot;%1&quot; . Additional Data: Error Value: %2.">
+    </event>
+    <event value="708" version="0" opcode="0" channel="16" level="2" task="708" keywords="0x8000000000000000" message="Task Compatibility module failed to set security descriptor &quot;%1&quot;  for task &quot;%2&quot; . Additional Data: Error Value: %3.">
+    </event>
+    <event value="709" version="0" opcode="0" channel="16" level="2" task="709" keywords="0x8000000000000000" message="Task Compatibility module failed to update task &quot;%1&quot; . Additional Data: Error Value: %2.">
+    </event>
+    <event value="710" version="0" opcode="0" channel="16" level="2" task="710" keywords="0x8000000000000000" message="Task Compatibility module failed to upgrade existing tasks. Upgrade will be attempted again next time &apos;Task Scheduler&apos; service starts. Additional Data: Error Value: %1.">
+    </event>
+    <event value="711" version="0" opcode="0" channel="16" level="2" task="710" keywords="0x8000000000000000" message="Task Compatibility module failed to upgrade NetSchedule account &quot;%1&quot; . Additional Data: Error Value: %2.">
+    </event>
+    <event value="712" version="0" opcode="0" channel="16" level="2" task="710" keywords="0x8000000000000000" message="Task Compatibility module failed to read existing store to upgrade tasks. Additional Data: Error Value: %1.">
+    </event>
+    <event value="713" version="0" opcode="0" channel="16" level="2" task="710" keywords="0x8000000000000000" message="Task Compatibility module failed to load task &quot;%1&quot; for upgrade. Additional Data: Error Value: %2.">
+    </event>
+    <event value="714" version="0" opcode="0" channel="16" level="2" task="710" keywords="0x8000000000000000" message="Task Compatibility module failed to register task &quot;%1&quot; for upgrade. Additional Data: Error Value: %2.">
+    </event>
+    <event value="715" version="0" opcode="0" channel="16" level="2" task="710" keywords="0x8000000000000000" message="Task Compatibility module failed to delete LSA store for upgrade. Additional Data: Error Value: %1.">
+    </event>
+    <event value="716" version="0" opcode="0" channel="8" level="2" task="710" keywords="0x4000000000000000" message="Task Compatibility module failed to upgrade existing scheduled tasks. Additional Data: Error Value: %1.">
+    </event>
+    <event value="717" version="0" opcode="0" channel="16" level="2" task="711" keywords="0x8000000000000000" message="Task Compatibility module failed to determine if upgrade is needed. Additional Data: Error Value: %1.">
+    </event>
+    <event value="718" version="0" opcode="0" channel="8" level="2" task="712" keywords="0x4000000000000000" message="Task scheduler was unable to upgrade the credential store from the Beta 2 version. You may need to re-register any tasks that require passwords. Additional Data: Error Value: %1.">
+    </event>
+    <event value="719" version="0" opcode="0" channel="8" level="4" task="719" keywords="0x4000000000000000" message="To help optimise for performance, Task Scheduler has automatically disabled logging. To re-enable logging, please use Event Viewer.">
+    </event>
+    <event value="800" version="0" opcode="0" channel="19" level="4" task="800" keywords="0x800000000000000" message="Maintenance state changed to %1 (Last Run: %2).">
+    </event>
+    <event value="801" version="0" opcode="0" channel="19" level="2" task="801" keywords="0x800000000000000" message="Maintenance launch operation failed. Additional error info: %1.">
+    </event>
+    <event value="802" version="0" opcode="0" channel="19" level="2" task="802" keywords="0x800000000000000" message="Maintenance reconfiguration failed. Additional error info: %1.">
+    </event>
+    <event value="803" version="0" opcode="0" channel="19" level="2" task="803" keywords="0x800000000000000" message="Maintenance Scheduler engine task &quot;%1&quot; cannot be accessed. Additional error info: %2.">
+    </event>
+    <event value="804" version="0" opcode="0" channel="19" level="2" task="804" keywords="0x800000000000000" message="Maintenance Scheduler has detected cyclic dependency for the following maintenance tasks: %1.">
+    </event>
+    <event value="805" version="0" opcode="0" channel="19" level="3" task="805" keywords="0x800000000000000" message="Maintenance Task &quot;%1&quot; is behind deadline.">
+    </event>
+    <event value="806" version="0" opcode="0" channel="19" level="2" task="806" keywords="0x800000000000000" message="Maintenance task &quot;%1&quot; processing error. Additional error info %2.">
+    </event>
+    <event value="807" version="0" opcode="0" channel="19" level="4" task="807" keywords="0x800000000000000" message="Maintenance complete (launch type %1).">
+    </event>
+    <event value="808" version="0" opcode="0" channel="19" level="3" task="808" keywords="0x800000000000000" message="Maintenance Task &quot;%1&quot; requests computer wake-up during next regular maintenance run.">
+    </event>
+    <event value="809" version="0" opcode="0" channel="8" level="2" task="809" keywords="0x4000000000000000" message="Maintenance Scheduler Group Policy Settings are not properly specified for &quot;%1&quot;. Default settings are being used.">
+    </event>
+    <event value="998" version="0" opcode="104" channel="17" level="5" task="998" keywords="0x2000000000000000" message="DEBUG! (%3:%4) &quot;%1&quot; failed. (%2).">
+    </event>
+    <event value="999" version="0" opcode="0" channel="17" level="5" task="999" keywords="0x2000000000000000" message="DEBUG! &quot;%1&quot;.">
+    </event>
+  </events>
+</provider>

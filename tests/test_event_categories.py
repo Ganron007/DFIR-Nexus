@@ -35,14 +35,19 @@ def test_committed_table_is_the_generator_output():
 
 def test_sources_are_pinned_to_the_reviewed_digests():
     doc = yaml.safe_load(TABLE.read_text(encoding="utf-8"))
-    pins = {(s["package"], s["version"]): s["sha256"] for s in doc["sources"]}
+    pins = {(s["package"], s["version"], s.get("provider", "")): s["sha256"] for s in doc["sources"]}
     assert pins == {
-        ("pysigma-pipeline-windows", "2.0.1"):
+        ("pysigma-pipeline-windows", "2.0.1", ""):
             "f62d1d5be64379dcb1584ea89cf3765732a25470b249f7ffac1fb9e2e2e19d80",
-        ("pysigma-pipeline-sysmon", "2.0.0"):
+        ("pysigma-pipeline-sysmon", "2.0.0", ""):
             "84575bbde5dd891882306ca1f6ce16bdc592da2e511ac8960012af2efb9d120b",
-        ("elastic-integrations-windows-security", "59aa0e9"):
+        ("elastic-integrations-windows-security", "59aa0e9", ""):
             "4c9aef7c941fde2b684e0db6442972545600d6a9e35b524d04bd7d0ff40f7831",
+        # D95: the two channels no pinned pipeline categorises, from Windows' own manifests.
+        ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-WinRM"):
+            "29ba1637e2e9cc3084627d054192888b23b9f8f85bcd2ef0b8929ae5eab8d4a6",
+        ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-TaskScheduler"):
+            "ac59aa58adced97397db925a333763b979a7f03a0c816e744605a27366d5b417",
     }
     elastic = next(s for s in doc["sources"] if s["package"].startswith("elastic"))
     assert elastic["licence"] == "Elastic-2.0"

@@ -1,0 +1,2 @@
+# Pinned sources are checked by SHA-256: keep their bytes exactly as exported (D95).
+devtools/knowledge/pinned/** -text

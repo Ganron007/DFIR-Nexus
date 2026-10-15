@@ -96,6 +96,33 @@ winlog_event_data:
       # WO-CS1c item 3: restored (was dropped); both xpaths are in the pinned map.
       QueryName: ecs.dns.question.name
       Image: ecs.process.executable
+  # D95 (operator 2026-10-15): the EventData names are those of Windows' own provider manifests
+  # (devtools/knowledge/pinned/manifests/), checked against real rows (tests/fixtures/winrm_taskscheduler_rows.json).
+  Microsoft-Windows-WinRM/Operational:
+    "6":
+      # "Creating WSMan Session. The connection string is: %1" (host.example.com/wsman?PSVersion=5.1).
+      connection: ecs.destination.domain
+    "91":
+      # "Creating WSMan shell on server with ResourceUri: %1"; WinRM writes the requesting user and the
+      # client address after the URI: "<uri> (<domain\user> clientIP: <address>)".
+      resourceUri: __winrm_shell_request__
+  Microsoft-Windows-TaskScheduler/Operational:
+    "100":
+      UserContext: ecs.user.name
+    "102":
+      UserContext: ecs.user.name
+    "106":
+      UserContext: ecs.user.name
+    "129":
+      # "Task Scheduler launch task %1, instance %2 with process ID %3": the process the task started.
+      Path: ecs.process.executable
+      ProcessID: ecs.process.pid
+    "140":
+      UserName: ecs.user.name
+    "141":
+      UserName: ecs.user.name
+    "142":
+      UserName: ecs.user.name
 
 # ── Column -> ECS field, per tool family (from the operator's ES-Mapping) ──
 # `transform` (optional): path_split | hash_list | lower.

@@ -1,0 +1,756 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<provider name="Microsoft-Windows-WinRM" guid="a7975c8f-ac13-49f1-87da-5a984a4ab417" helpLink="" resourceFileName="%windir%\system32\wsmres.dll" parameterFileName="%windir%\system32\wsmres.dll" messageFileName="%windir%\system32\wsmres.dll" message="Microsoft-Windows-Windows Remote Management" xmlns="http://schemas.microsoft.com/win/2004/08/events">
+  <channels>
+    <channel name="Microsoft-Windows-WinRM/Debug" id="16" flags="0" message="">
+    </channel>
+    <channel name="Microsoft-Windows-WinRM/Operational" id="17" flags="0" message="Microsoft-Windows-WinRM/Operational">
+    </channel>
+    <channel name="Microsoft-Windows-WinRM/Analytic" id="18" flags="0" message="Microsoft-Windows-WinRM/Analytic">
+    </channel>
+  </channels>
+  <levels>
+    <level name="win:Error" value="2" message="Error">
+    </level>
+    <level name="win:Warning" value="3" message="Warning">
+    </level>
+    <level name="win:Informational" value="4" message="Information">
+    </level>
+  </levels>
+  <opcodes>
+    <opcode name="win:Start" value="65536" message="Start">
+    </opcode>
+    <opcode name="win:Stop" value="131072" message="Stop">
+    </opcode>
+  </opcodes>
+  <tasks>
+    <task name="Task.ApiInitialize" value="1" eventGUID="00000000-0000-0000-0000-000000000000" message="WSMan API Initialize">
+    </task>
+    <task name="Task.ApiDeinitialize" value="2" eventGUID="00000000-0000-0000-0000-000000000000" message="WSMan API Deinitialize">
+    </task>
+    <task name="Task.SessionInitialize" value="3" eventGUID="00000000-0000-0000-0000-000000000000" message="WSMan Session initialize">
+    </task>
+    <task name="Task.SessionDeinitialize" value="4" eventGUID="00000000-0000-0000-0000-000000000000" message="WSMan Session deinitialize">
+    </task>
+    <task name="Task.ApiCall" value="5" eventGUID="00000000-0000-0000-0000-000000000000" message="WSMan API call">
+    </task>
+    <task name="Task.Proxy" value="6" eventGUID="00000000-0000-0000-0000-000000000000" message="Auto-detecting proxy settings">
+    </task>
+    <task name="Task.Authentication" value="7" eventGUID="00000000-0000-0000-0000-000000000000" message="User authentication">
+    </task>
+    <task name="Task.Authorization" value="8" eventGUID="00000000-0000-0000-0000-000000000000" message="User authorization">
+    </task>
+    <task name="Task.RequestHandling" value="9" eventGUID="00000000-0000-0000-0000-000000000000" message="Request handling">
+    </task>
+    <task name="Task.ResponseHandling" value="10" eventGUID="00000000-0000-0000-0000-000000000000" message="Response handling">
+    </task>
+    <task name="Task.ServiceMain" value="11" eventGUID="00000000-0000-0000-0000-000000000000" message="Winrm service start/stop">
+    </task>
+    <task name="Task.Config" value="12" eventGUID="00000000-0000-0000-0000-000000000000" message="Winrm configuration">
+    </task>
+    <task name="Task.Operation" value="13" eventGUID="00000000-0000-0000-0000-000000000000" message="Winrm Operation">
+    </task>
+    <task name="Task.WinRM_Application" value="14" eventGUID="00000000-0000-0000-0000-000000000000" message="WinRM MI Protocol Handler">
+    </task>
+    <task name="Task.WinRM_Session" value="15" eventGUID="00000000-0000-0000-0000-000000000000" message="WinRM MI Session">
+    </task>
+    <task name="Task.WinRM_Operation" value="16" eventGUID="00000000-0000-0000-0000-000000000000" message="WinRM MI Operation">
+    </task>
+    <task name="Task.Verbose_Message" value="17" eventGUID="00000000-0000-0000-0000-000000000000" message="Winrm Verbose Message">
+    </task>
+  </tasks>
+  <keywords>
+    <keyword name="Keyword.SoapTrace" mask="1" message="Soap Trace">
+    </keyword>
+    <keyword name="Keyword.Client" mask="2" message="Client">
+    </keyword>
+    <keyword name="Keyword.Server" mask="4" message="Server">
+    </keyword>
+    <keyword name="Keyword.Security" mask="8" message="Security">
+    </keyword>
+    <keyword name="Keyword.QuotaViolation" mask="10" message="QuotaViolation">
+    </keyword>
+    <keyword name="Keyword.Transfer" mask="20" message="Activity Transfer">
+    </keyword>
+    <keyword name="Keyword.Error" mask="40" message="Error">
+    </keyword>
+    <keyword name="win:EventlogClassic" mask="80000000000000" message="Classic">
+    </keyword>
+  </keywords>
+  <events>
+    <event value="2" version="0" opcode="1" channel="17" level="4" task="1" keywords="0x4000000000000002" message="Initializing WSMan API">
+    </event>
+    <event value="3" version="0" opcode="2" channel="17" level="2" task="1" keywords="0x4000000000000002" message="Initialization of WSMan API failed, error code %1">
+    </event>
+    <event value="4" version="0" opcode="1" channel="17" level="4" task="2" keywords="0x4000000000000002" message="Deinitializing WSMan API">
+    </event>
+    <event value="5" version="0" opcode="2" channel="17" level="2" task="2" keywords="0x4000000000000002" message="Deinitialization of WSMan API failed, error code %1">
+    </event>
+    <event value="6" version="0" opcode="1" channel="17" level="4" task="3" keywords="0x4000000000000002" message="Creating WSMan Session. The connection string is: %1">
+    </event>
+    <event value="7" version="0" opcode="2" channel="17" level="2" task="3" keywords="0x4000000000000002" message="WSMan Create Session operation failed, error code %1">
+    </event>
+    <event value="8" version="0" opcode="1" channel="17" level="4" task="4" keywords="0x4000000000000002" message="Closing WSMan Session">
+    </event>
+    <event value="9" version="0" opcode="2" channel="17" level="2" task="4" keywords="0x4000000000000002" message="Closing WSMan Session failed, error code %1">
+    </event>
+    <event value="10" version="0" opcode="0" channel="17" level="4" task="5" keywords="0x4000000000000002" message="Setting WSMan Session Option (%1) - %2 with value (%3) completed successfully.">
+    </event>
+    <event value="11" version="0" opcode="1" channel="17" level="4" task="5" keywords="0x4000000000000002" message="Creating WSMan shell with the ResourceUri: %1 and ShellId: %2">
+    </event>
+    <event value="12" version="0" opcode="2" channel="17" level="2" task="5" keywords="0x4000000000000002" message="WSMan shell creation failed, error code %1">
+    </event>
+    <event value="13" version="0" opcode="1" channel="17" level="4" task="5" keywords="0x4000000000000002" message="Running WSMan command with CommandId: %1">
+    </event>
+    <event value="14" version="0" opcode="2" channel="17" level="2" task="5" keywords="0x4000000000000002" message="Running WSMan command failed, error code %1">
+    </event>
+    <event value="15" version="0" opcode="1" channel="17" level="4" task="5" keywords="0x4000000000000002" message="Closing WSMan command">
+    </event>
+    <event value="16" version="0" opcode="1" channel="17" level="4" task="5" keywords="0x4000000000000002" message="Closing WSMan shell">
+    </event>
+    <event value="28" version="0" opcode="2" channel="17" level="4" task="5" keywords="0x4000000000000002" message="Access Denied error: the %1 API caller does not match the creator of the application object">
+    </event>
+    <event value="29" version="0" opcode="2" channel="17" level="4" task="1" keywords="0x4000000000000002" message="Initialization of WSMan API completed successfuly">
+    </event>
+    <event value="30" version="0" opcode="2" channel="17" level="4" task="2" keywords="0x4000000000000002" message="Deinitialization of WSMan API completed successfuly">
+    </event>
+    <event value="31" version="0" opcode="2" channel="17" level="4" task="3" keywords="0x4000000000000002" message="WSMan Create Session operation completed successfuly">
+    </event>
+    <event value="32" version="0" opcode="0" channel="17" level="2" task="5" keywords="0x4000000000000002" message="Setting WSMan Session Option (%1) - %2 failed, error code %3.">
+    </event>
+    <event value="33" version="0" opcode="2" channel="17" level="4" task="4" keywords="0x4000000000000002" message="Closing WSMan Session completed successfuly">
+    </event>
+    <event value="37" version="0" opcode="2" channel="17" level="2" task="5" keywords="0x4000000000000002" message="Closing WSMan shell failed, error code %1">
+    </event>
+    <event value="38" version="0" opcode="2" channel="17" level="2" task="5" keywords="0x4000000000000002" message="Closing WSMan command failed, error code %1">
+    </event>
+    <event value="40" version="0" opcode="2" channel="17" level="2" task="5" keywords="0x4000000000000002" message="Closing WSMan %1 operation failed, error code %2">
+    </event>
+    <event value="41" version="0" opcode="1" channel="17" level="4" task="14" keywords="0x4000000000000002" message="The WinRM protocol handler has began loading for application %1.">
+    </event>
+    <event value="42" version="0" opcode="2" channel="17" level="4" task="14" keywords="0x4000000000000002" message="The WinRM protocol handler completed unloading.">
+    </event>
+    <event value="43" version="0" opcode="2" channel="17" level="2" task="14" keywords="0x4000000000000002" message="The WinRM protocol handler unloaded prematurely due to the following error: %2.">
+    </event>
+    <event value="44" version="0" opcode="1" channel="17" level="4" task="15" keywords="0x4000000000000002" message="The WinRM protocol handler started to create a session at the following destination: %1.">
+    </event>
+    <event value="45" version="0" opcode="2" channel="17" level="4" task="15" keywords="0x4000000000000002" message="The WinRM protocol handler closed the session.">
+    </event>
+    <event value="46" version="0" opcode="2" channel="17" level="2" task="15" keywords="0x4000000000000002" message="The WinRM protocol session closed prematurely due to the following error: %2.">
+    </event>
+    <event value="47" version="0" opcode="1" channel="17" level="4" task="16" keywords="0x4000000000000002" message="The WinRM protocol session began an operation of type %1 to the server. The operation accesses class %3 under the %2 namespace.">
+    </event>
+    <event value="48" version="0" opcode="2" channel="17" level="4" task="16" keywords="0x4000000000000002" message="The WinRM protocol session successfully completed the operation.">
+    </event>
+    <event value="49" version="0" opcode="2" channel="17" level="2" task="16" keywords="0x4000000000000002" message="The WinRM protocol operation failed due to the following error: %2.">
+    </event>
+    <event value="84" version="0" opcode="0" channel="17" level="2" task="9" keywords="0x4000000000000014" message="The maximum number of users (%1) executing shell operations has been exceeded.
+Retry after sometime or raise the quota for concurrent shell users.">
+    </event>
+    <event value="85" version="0" opcode="0" channel="17" level="2" task="9" keywords="0x4000000000000014" message="The %1 user is allowed a maximum number of %2 concurrent shells, which has been exceeded.
+Close existing shells or raise the quota for this user.">
+    </event>
+    <event value="86" version="0" opcode="0" channel="17" level="2" task="9" keywords="0x4000000000000004" message="The WSMan service could not launch a host process to process the given request. Make sure the WSMan provider host server and proxy are properly registered. Error code %1">
+    </event>
+    <event value="87" version="0" opcode="0" channel="17" level="2" task="9" keywords="0x4000000000000004" message="The WSMan host process was unexpectedly terminated. Error code %1">
+    </event>
+    <event value="90" version="0" opcode="0" channel="17" level="4" task="9" keywords="0x4000000000000004" message="RunAs was disabled by Group Policy; WSMan service has erased all RunAs credentials.">
+    </event>
+    <event value="91" version="0" opcode="0" channel="17" level="4" task="9" keywords="0x4000000000000004" message="Creating WSMan shell on server with ResourceUri: %1">
+    </event>
+    <event value="131" version="0" opcode="0" channel="17" level="2" task="10" keywords="0x4000000000000002" message="Received redirect status code from Network layer; status: 302 (HTTP_STATUS_REDIRECT); location: %1">
+    </event>
+    <event value="132" version="0" opcode="2" channel="17" level="4" task="10" keywords="0x4000000000000002" message="WSMan operation %1 completed successfully">
+    </event>
+    <event value="135" version="0" opcode="0" channel="17" level="2" task="10" keywords="0x4000000000000002" message="Re-sending the request as a result of ERROR_WINHTTP_CANNOT_CONNECT, using next proxy">
+    </event>
+    <event value="136" version="0" opcode="0" channel="17" level="2" task="10" keywords="0x4000000000000002" message="Re-sending the request as a result of ERROR_WINHTTP_NAME_NOT_RESOLVED, using next proxy">
+    </event>
+    <event value="137" version="0" opcode="0" channel="17" level="2" task="10" keywords="0x4000000000000002" message="Network layer returned ERROR_WINHTTP_NAME_NOT_RESOLVED - The server name cannot be resolved. Aborting the operation">
+    </event>
+    <event value="138" version="0" opcode="0" channel="17" level="2" task="10" keywords="0x4000000000000002" message="The client got a timeout from the network layer (ERROR_WINHTTP_TIMEOUT)">
+    </event>
+    <event value="139" version="0" opcode="0" channel="17" level="2" task="10" keywords="0x4000000000000002" message="The client got a login failure from the network layer (ERROR_WINHTTP_LOGIN_FAILURE)">
+    </event>
+    <event value="142" version="0" opcode="2" channel="17" level="2" task="10" keywords="0x4000000000000002" message="WSMan operation %1 failed, error code %2">
+    </event>
+    <event value="145" version="0" opcode="1" channel="17" level="4" task="5" keywords="0x4000000000000002" message="WSMan operation %1 started with resourceUri %2">
+    </event>
+    <event value="161" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="%1">
+    </event>
+    <event value="162" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="Authenticating the user failed. The credentials didn&apos;t work.">
+    </event>
+    <event value="163" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="The authentication mechanism (%1) requested by the client is not supported by the server.
+Possible authentication mechanisms reported by server: %2 %3 %4 %5 %6">
+    </event>
+    <event value="164" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="The destination computer (%1) returned an &apos;access denied&apos; error. Verify your credentials are correct.">
+    </event>
+    <event value="165" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="The authentication mechanism requested by the proxy is not supported by the client. The only proxy authentication mechanism supported are Negotiate, Basic or Digest. 
+Possible authentication mechanisms reported by proxy: %1 %2 %3 %4 %5">
+    </event>
+    <event value="171" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="Authenticating the user with the proxy failed. The credentials didn&apos;t work.">
+    </event>
+    <event value="172" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x400000000000000a" message="The server certificate on the destination computer (%1:%2) has the following errors: %3 %4 %5 %6 %7 %8 %9 %10. Fix the server certificate and try again.">
+    </event>
+    <event value="173" version="0" opcode="0" channel="17" level="2" task="7" keywords="0x4000000000000048" message="The WinRM service has terminated %1 unauthenticated connections over the past %2 minutes to maintain healthy system state. This will likely happen if the service is overloaded or if the service is under an authentication based attack. 
+
+ Action: 
+Enable and observe Windows Remote Management Analytic log and look for warning events with Id 1843. These include additional information about the clients that got abruptly terminated.">
+    </event>
+    <event value="192" version="0" opcode="0" channel="17" level="4" task="8" keywords="0x400000000000000c" message="The authorization of the user failed with error %1">
+    </event>
+    <event value="193" version="0" opcode="0" channel="17" level="4" task="8" keywords="0x400000000000000c" message="Request for user %1 (%2) will be executed using WinRM virtual account %3 (%4)">
+    </event>
+    <event value="208" version="0" opcode="1" channel="17" level="4" task="11" keywords="0x4000000000000004" message="The Winrm service is starting">
+    </event>
+    <event value="209" version="0" opcode="0" channel="17" level="4" task="11" keywords="0x4000000000000004" message="The Winrm service started successfully">
+    </event>
+    <event value="210" version="0" opcode="2" channel="17" level="2" task="11" keywords="0x4000000000000004" message="The WinRM service is unable to start because of a failure during initialization. The error code is %1">
+    </event>
+    <event value="211" version="0" opcode="0" channel="17" level="4" task="11" keywords="0x4000000000000004" message="The Winrm service is stopping">
+    </event>
+    <event value="212" version="0" opcode="2" channel="17" level="4" task="11" keywords="0x4000000000000004" message="The Winrm service was stopped successfully">
+    </event>
+    <event value="213" version="0" opcode="0" channel="17" level="2" task="11" keywords="0x400000000000000c" message="The WSMan service could not load current configuration settings as the settings are corrupted. The service is started with default settings instead. 
+
+ User Action 
+ Use the following command to restore defaults: 
+
+ winrm invoke Restore winrm/config @{} ">
+    </event>
+    <event value="214" version="0" opcode="0" channel="17" level="2" task="11" keywords="0x400000000000000a" message="The WSMan client could not load current configuration settings as the settings are corrupted. The client is operating with default settings instead. 
+
+ User Action 
+ Start the WinRM service and use the following command to restore defaults: 
+
+ winrm invoke Restore winrm/config @{} ">
+    </event>
+    <event value="215" version="0" opcode="0" channel="17" level="2" task="11" keywords="0x400000000000000c" message="The WSMan service failed to read configuration of the following plugin: 
+ %1. 
+
+The error received was %2: %%%2 
+ %3.
+
+ User Action 
+ Make sure this plugin configuration is valid.">
+    </event>
+    <event value="216" version="0" opcode="0" channel="17" level="2" task="11" keywords="0x4000000000000004" message="The WSMan service failed to restart the plugins marked for AutoRestart. The error code received was %1.">
+    </event>
+    <event value="217" version="0" opcode="0" channel="17" level="2" task="11" keywords="0x4000000000000004" message="The WSMan service failed to restart the %1 plugin on service startup. The error code received was %2.">
+    </event>
+    <event value="218" version="0" opcode="0" channel="17" level="4" task="11" keywords="0x4000000000000004" message="The WSMan service successfully restarted the following plugin on service startup: %1.">
+    </event>
+    <event value="219" version="0" opcode="0" channel="17" level="2" task="11" keywords="0x4000000000000004" message="The WSMan shell instance %1 will no longer support disconnect reconnect functionality because a non-supported request was sent by the client.">
+    </event>
+    <event value="224" version="0" opcode="0" channel="17" level="4" task="12" keywords="0x4000000000000004" message="%1">
+    </event>
+    <event value="229" version="0" opcode="0" channel="17" level="4" task="12" keywords="0x4000000000000006" message="The WinRM %1 failed to register for group policy change notifications. The error code is %2.">
+    </event>
+    <event value="230" version="0" opcode="0" channel="17" level="3" task="12" keywords="0x4000000000000004" message="Deletion of registry key %1 resulted in access denied. If this registry entry is not marked specifically as read only, this seems like a potential issue.">
+    </event>
+    <event value="254" version="0" opcode="0" channel="17" level="4" task="0" keywords="0x4000000000000026" message="Activity Transfer">
+    </event>
+    <event value="255" version="0" opcode="0" channel="18" level="4" task="0" keywords="0x2000000000000026" message="Activity Transfer">
+    </event>
+    <event value="283" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting context for operation %1">
+    </event>
+    <event value="284" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting data object for operation %1">
+    </event>
+    <event value="285" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting data object and EPR for operation %1">
+    </event>
+    <event value="286" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting data object and bookmark for operation %1">
+    </event>
+    <event value="287" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting data for operation Receive">
+    </event>
+    <event value="288" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting operation complete for %1">
+    </event>
+    <event value="289" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in getting operational information for parameter %1 and operation %2">
+    </event>
+    <event value="290" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting the authorization for user %1 completed with error code %2">
+    </event>
+    <event value="291" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Plug-in reporting the authorization operation completed with error %1 for operation %2 and ResourceUri %3">
+    </event>
+    <event value="292" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="Updating the quota for the user %1 with error code %2
+ maxAllowedConcurrentShells=%3
+ maxAllowedConcurrentOperations=%4
+ timeslotSize=%5
+ maxAllowedOperationsPerTimeslot=%6">
+    </event>
+    <event value="306" version="1" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000004" message="The WinRM service loaded the following plugin: %1 (%2)">
+    </event>
+    <event value="307" version="1" opcode="2" channel="18" level="4" task="5" keywords="0x2000000000000004" message="The WinRM service unloaded the following plugin: %1 (%2)">
+    </event>
+    <event value="308" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="The plugin called WSManPluginGetConfiguration with the parameter %1 and obtained a return value of %2.">
+    </event>
+    <event value="309" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="The plugin called WSManPluginReportCompletion with the parameter %1 and obtained a return value of %2.">
+    </event>
+    <event value="310" version="0" opcode="0" channel="18" level="4" task="5" keywords="0x2000000000000004" message="The plugin %1 is being shut down because it was idle for longer than the configured HostIdleTimeoutSecs quota.">
+    </event>
+    <event value="311" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Signaling WSMan command failed, error code %1">
+    </event>
+    <event value="312" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Signaling WSMan command">
+    </event>
+    <event value="313" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Sending input to the command">
+    </event>
+    <event value="314" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Sending input to the shell">
+    </event>
+    <event value="315" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Sending input operation failed, error code %1">
+    </event>
+    <event value="316" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Calling into WSMan to receive output from the shell">
+    </event>
+    <event value="317" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="WSMan receive operation failed, error code %1">
+    </event>
+    <event value="318" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Calling into WSMan to receive output from the command">
+    </event>
+    <event value="319" version="0" opcode="2" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Getting message for error code %1 completed successfully. The languageCode parameter was: %2">
+    </event>
+    <event value="320" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Getting WSMan Session Option (%1) - %2.">
+    </event>
+    <event value="321" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Signaling WSMan shell">
+    </event>
+    <event value="322" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Signaling WSMan shell, error code %1">
+    </event>
+    <event value="323" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Closing WSMan operation">
+    </event>
+    <event value="324" version="0" opcode="2" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Closing WSMan %1 operation completed successfully">
+    </event>
+    <event value="325" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Disconnecting shell with Id : %1">
+    </event>
+    <event value="326" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Disconnecting shell failed, error code %1">
+    </event>
+    <event value="327" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Reconnecting shell  with Id : %1">
+    </event>
+    <event value="328" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Reconnecting shell failed, error code %1">
+    </event>
+    <event value="329" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Connecting shell  with Id : %1">
+    </event>
+    <event value="330" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Connecting shell failed, error code %1">
+    </event>
+    <event value="331" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Reconnecting shell command  with Id : %1">
+    </event>
+    <event value="332" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Reconnecting shell command failed, error code %1">
+    </event>
+    <event value="333" version="0" opcode="1" channel="18" level="4" task="5" keywords="0x2000000000000002" message="Connecting shell command  with Id : %1">
+    </event>
+    <event value="334" version="0" opcode="2" channel="18" level="2" task="5" keywords="0x2000000000000002" message="Connecting shell command failed, error code %1">
+    </event>
+    <event value="512" version="0" opcode="1" channel="18" level="4" task="6" keywords="0x2000000000000002" message="Auto-detecting proxy settings">
+    </event>
+    <event value="513" version="0" opcode="2" channel="18" level="4" task="6" keywords="0x2000000000000002" message="Proxy AutoDetect done.
+Proxy list: %1 
+Bypass list: %2 ">
+    </event>
+    <event value="514" version="0" opcode="0" channel="18" level="4" task="6" keywords="0x2000000000000002" message="Setting proxy info 
+ Proxy list: %1 
+ Bypass list: %2 ">
+    </event>
+    <event value="771" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000003" message="SOAP [client sending index %1 of %2 total chunks (%3 bytes)] %4">
+    </event>
+    <event value="772" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000005" message="SOAP [listener receiving index %1 of %2 total chunks (%3 bytes)] %4">
+    </event>
+    <event value="774" version="0" opcode="0" channel="18" level="2" task="9" keywords="0x2000000000000014" message="The %1 user is allowed a maximum number of %2 concurrent operations, which has been exceeded.
+Close existing operations for this user, or raise the quota for this user.">
+    </event>
+    <event value="775" version="0" opcode="0" channel="18" level="2" task="9" keywords="0x2000000000000014" message="The user load quota of %1 requests per %2 seconds has been exceeded.
+Send future requests at a slower rate or raise the quota for the %3 user.
+The next request from this user will not be approved for at least %4 milliseconds.">
+    </event>
+    <event value="776" version="0" opcode="0" channel="18" level="2" task="9" keywords="0x2000000000000014" message="The system load quota of %1 requests per %2 seconds has been exceeded.
+Send future requests at a slower rate or raise the system quota.
+The next request from the user %3 will not be approved for at least %4 milliseconds.">
+    </event>
+    <event value="779" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000003" message="SOAP [client sending index %1 of %2 total chunks (%3 bytes)] %4">
+    </event>
+    <event value="780" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000006" message="The WinRM %1 has encountered network connectivity issues.">
+    </event>
+    <event value="781" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000002" message="The WinRM Client is attempting to re-establish a network connection.">
+    </event>
+    <event value="782" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000004" message="The WinRM Service has detected a new network connection from the client.">
+    </event>
+    <event value="783" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000006" message="The WinRM %1 has successfully re-established a network connection.">
+    </event>
+    <event value="784" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000006" message="The WinRM %1 failed to re-establish a network connection and is reporting a failure.">
+    </event>
+    <event value="785" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000004" message="The WSMan host process was started for user %1.">
+    </event>
+    <event value="786" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000004" message="The WSMan host process was terminated for user %1.">
+    </event>
+    <event value="787" version="0" opcode="1" channel="18" level="4" task="9" keywords="0x2000000000000002" message="Sending the request for operation %1 to destination machine and port %2:%3">
+    </event>
+    <event value="788" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000004" message="Processing client request for operation %1">
+    </event>
+    <event value="789" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000004" message="Entering the plugin for operation %1 with a ResourceURI of &lt;%2&gt;">
+    </event>
+    <event value="790" version="0" opcode="2" channel="18" level="4" task="9" keywords="0x2000000000000004" message="Leaving the plugin for operation %1">
+    </event>
+    <event value="791" version="0" opcode="0" channel="18" level="4" task="9" keywords="0x2000000000000004" message="The WinRM service failed to enumerate DASH/SMASH specifications with MI error: %1.">
+    </event>
+    <event value="1025" version="0" opcode="0" channel="18" level="2" task="10" keywords="0x2000000000000004" message="Sending response error packet for ActionURI: %1">
+    </event>
+    <event value="1026" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000003" message="SOAP [client receiving index %1 of %2 total chunks (%3 bytes)] %4">
+    </event>
+    <event value="1027" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000005" message="SOAP [listener sending index %1 of %2 total chunks (%3 bytes)] %4">
+    </event>
+    <event value="1041" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000004" message="Enumeration is shutting down">
+    </event>
+    <event value="1043" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000004" message="Subscription is shutting down">
+    </event>
+    <event value="1044" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000005" message="SOAP [listener sending index %1 of %2 total chunks (%3 bytes)] %4">
+    </event>
+    <event value="1045" version="0" opcode="1" channel="18" level="4" task="10" keywords="0x2000000000000002" message="Received the response from Network layer; status: 200 (HTTP_STATUS_OK)">
+    </event>
+    <event value="1046" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000004" message="An extended semantics callback timed out for the %1 operation.">
+    </event>
+    <event value="1047" version="0" opcode="1" channel="18" level="2" task="10" keywords="0x2000000000000002" message="Received the response from Network layer; status: %1">
+    </event>
+    <event value="1048" version="0" opcode="0" channel="18" level="2" task="10" keywords="0x2000000000000004" message="Sending HTTP error back to the client due to a transport failure.
+The HTTP status code is %1
+The error code is %2">
+    </event>
+    <event value="1049" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000004" message="Sending timeout response for operation: %1">
+    </event>
+    <event value="1050" version="0" opcode="0" channel="18" level="4" task="10" keywords="0x2000000000000004" message="Sending response for operation %1">
+    </event>
+    <event value="1051" version="0" opcode="0" channel="18" level="2" task="10" keywords="0x2000000000000002" message="Received the response from Network layer; status: %1">
+    </event>
+    <event value="1052" version="0" opcode="2" channel="18" level="4" task="10" keywords="0x2000000000000002" message="WSMan operation %1 completed successfully">
+    </event>
+    <event value="1053" version="0" opcode="2" channel="18" level="4" task="13" keywords="0x2000000000000002" message="WSMan operation %1 got suspended because of WSMan Shell disconnection.">
+    </event>
+    <event value="1054" version="0" opcode="2" channel="18" level="4" task="13" keywords="0x2000000000000002" message="WSMan operation %1 resuming because of WSMan Shell reconnection.">
+    </event>
+    <event value="1291" version="0" opcode="0" channel="18" level="4" task="7" keywords="0x200000000000000a" message="Network layer AutoLogon policy was set to Low as a result of a HTTP 401 response from Network layer">
+    </event>
+    <event value="1292" version="0" opcode="0" channel="18" level="4" task="7" keywords="0x200000000000000a" message="Network layer AutoLogon policy was set to High">
+    </event>
+    <event value="1293" version="0" opcode="0" channel="18" level="4" task="7" keywords="0x200000000000000a" message="The chosen authentication mechanism is %1">
+    </event>
+    <event value="1294" version="0" opcode="0" channel="18" level="2" task="7" keywords="0x200000000000000c" message="Sending HTTP 401 response to the client and disconnect the connection after sending the response">
+    </event>
+    <event value="1295" version="0" opcode="0" channel="18" level="4" task="7" keywords="0x200000000000000c" message="User %1 authenticated successfully using %2 authentication">
+    </event>
+    <event value="1296" version="0" opcode="0" channel="18" level="4" task="7" keywords="0x200000000000000c" message="The authentication using client certificate with subject %1 done successfully">
+    </event>
+    <event value="1297" version="0" opcode="0" channel="18" level="4" task="7" keywords="0x200000000000000a" message="Authenticating the user using %1 mechanism">
+    </event>
+    <event value="1536" version="0" opcode="0" channel="18" level="4" task="8" keywords="0x200000000000000c" message="Authorizing the user">
+    </event>
+    <event value="1537" version="0" opcode="0" channel="18" level="4" task="8" keywords="0x200000000000000c" message="The authorization of the user was done successfully">
+    </event>
+    <event value="1840" version="0" opcode="0" channel="18" level="2" task="13" keywords="0x2000000000000040" message="An error was encountered while processing an operation.
+Error Code: %1
+Error String:%2">
+    </event>
+    <event value="1841" version="0" opcode="0" channel="18" level="2" task="13" keywords="0x2000000000000040" message="An error was encountered while processing an operation.
+Error Code: %1">
+    </event>
+    <event value="1842" version="0" opcode="0" channel="18" level="4" task="13" keywords="0x2000000000000040" message="Extra information.  Refer to the XML parameters for more details.">
+    </event>
+    <event value="1843" version="0" opcode="0" channel="18" level="3" task="7" keywords="0x2000000000000048" message="An unauthenticated connection from client %1 is terminated.">
+    </event>
+    <event value="2048" version="0" opcode="0" channel="16" level="4" task="17" keywords="0x8000000000000006" message="[Filename:- %1; Line:- %2; Function:- %3;] %4">
+    </event>
+    <event value="2049" version="0" opcode="0" channel="16" level="2" task="17" keywords="0x8000000000000040" message="[Filename:- %1; Line:- %2; Function:- %3; ErrorCode:- %4] %5">
+    </event>
+    <event value="468853" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is not listening for requests since it failed to listen on at least one address and port. 
+
+ Remote management using WinRM will fail. 
+
+ User Action 
+ Configure listeners by enabling GPO policy for Auto Configuration of listeners or manually create a listener using WinRM command line tool.">
+    </event>
+    <event value="468854" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is not listening for %1 requests because there was a failure binding to the URL (%2) in HTTP.SYS. 
+
+ Another process is registered to listen on the WinRM service URL prefix. 
+
+ User Action 
+ Correct this problem by stopping the other process, changing its URL prefix, or by changing the configuration for the WS-Management listening address.">
+    </event>
+    <event value="468855" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WS-Management client is not listening for pushed events because there was a failure binding to the URL (%1) in HTTP.SYS. 
+
+ Another process is registered to listen on the WinRM client URL prefix. 
+
+ User Action 
+ Correct this problem by stopping the other process, changing its URL prefix, or by changing the configuration for the WS-Management listening address.">
+    </event>
+    <event value="468856" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is not listening for HTTPS requests because there was a failure binding to the URL (%1) in HTTP.SYS.  
+
+ No remote requests will be serviced on that URL. 
+
+ User Action 
+ Please use &quot;netsh http&quot; to check if ACL for URL (%1) is set to Network Service. 
+
+ Additional Data 
+ The error code received from HTTP.sys is %2: %%%2">
+    </event>
+    <event value="468857" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WS-Management client is not listening for pushed events because there was a failure binding to the URL (%1) in HTTP.SYS. 
+
+ User Action 
+ Please use &quot;netsh http&quot; to check if ACL for URL (%1) is set to Network Service. 
+
+ Additional Data 
+ The error code received from HTTP.sys was %2: %%%2">
+    </event>
+    <event value="468862" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot validate the client certificate because the revocation status of the certificate or one of the certificates in the certificate chain is either offline or stale. 
+
+ User Action 
+ Please ensure that the Certificate Revocation List is accessible and up-to-date.">
+    </event>
+    <event value="468863" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="User authentication using Basic authentication scheme failed. 
+
+ Additional Data 
+ Unexpected error received from LogonUser %1: %%%1.">
+    </event>
+    <event value="468864" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The client certificate exceeded the maximum size allowed by the WinRM service.
+
+ User Action 
+ Please use a different client certificate or a different authentication mechanism.">
+    </event>
+    <event value="468865" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="Request processing failed because the WinRM service cannot load data or event source: DLL=&quot;%1&quot; 
+
+ User Action 
+ Please check if &quot;%1&quot; exists. 
+
+ Additional Data 
+ Loading %1 failed with error=&quot;%2&quot; (%%%2).">
+    </event>
+    <event value="468866" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The SSL configuration for IP %1 and port %2 is shared with another service, such as Internet Information Services (IIS).">
+    </event>
+    <event value="468871" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is unable to start because of a failure during initialization. 
+
+ Additional Data 
+ The error code is %1.">
+    </event>
+    <event value="468872" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service has received an unsecure HTTP connection from %1. 
+
+ This is not a secure configuration. 
+
+ User Action 
+ Set AllowUnencrypted to False in WinRM configuration to ensure packets are encrypted on the wire.">
+    </event>
+    <event value="468873" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service has been configured to accept basic authentication for unsecure HTTP connections. 
+
+ This is not a secure configuration. 
+
+ User Action 
+ Set AllowUnencrypted to False in WinRM configuration to ensure packets are encrypted on the wire.">
+    </event>
+    <event value="468880" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is not listening for HTTP requests because there was a failure binding to the URL (%1) in HTTP.SYS. 
+
+ No remote requests will be serviced on that URL. 
+
+ User Action 
+ Please use &quot;netsh http&quot; to check if ACL for URL (%1) is set to Network Service. 
+
+ Additional Data 
+ The error code received from HTTP.sys is %2: %%%2">
+    </event>
+    <event value="468881" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WS-Management client is not listening for pushed events because there was a failure binding to the URL (%1) in HTTP.SYS. 
+
+ User Action 
+ Please use &quot;netsh http&quot; to check if ACL for URL (%1) is set to Network Service. 
+
+ Additional Data 
+ The error code received from HTTP.sys was %2: %%%2">
+    </event>
+    <event value="468882" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="IP Filter %1 specified in the GPO policy for Auto Configuration of listeners is invalid and it will be ignored. Due to this issue, the WinRM service cannot use the autoconfigured listener. 
+
+ &quot;*&quot; is used to indicate that the service should listen on all available IPs on the machine. When &quot;*&quot; is used, other ranges cannot be specified in the filter. 
+
+ User Action 
+ Remove other IP ranges if &quot;*&quot; needs to be included in the IP Filter.">
+    </event>
+    <event value="468883" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The IP Range %1 is invalid and it will be ignored.  
+
+ Ranges are specified using the syntax IP1-IP2. Multiple ranges are separated using &quot;,&quot; as delimiter. 
+ Example IPv4 ranges:  2.0.0.1-2.0.0.20, 24.0.0.1-24.0.0.22 
+Example IPv6 ranges:  3FFE:FFFF:7654:FEDA:1245:BA98:0000:0000-3FFE:FFFF:7654:FEDA:1245:BA98:3210:4562 
+
+ User Action 
+ Correct the IP filter %1 using the syntax described above.">
+    </event>
+    <event value="468884" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is not listening for policy changes because there was a failure registering for changes to the contents of the WS-Management policy key. 
+
+ No group policy change will be serviced. 
+
+ User Action 
+ Stop and restart the WinRM service. 
+
+ Additional Data 
+ The error code was %1.">
+    </event>
+    <event value="468888" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service encountered a catastrophic security failure. The service can no longer run under its security context. 
+
+ User Action 
+ Stop and restart the WinRM service. 
+
+ Additional Data 
+ The error code is %1.">
+    </event>
+    <event value="468889" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot migrate the listener with IP address %1 and Port %2 because the IP address does not exist on the destination computer. This listener was ignored during migration. 
+
+ User Action 
+ Create the listener again with the correct IP address.">
+    </event>
+    <event value="468890" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot migrate the listener with Address %1 and Transport %2 because the IP address %3 does not exist on the destination computer. This listener was ignored during migration. 
+
+ User Action 
+ Create the listener again with the correct IP address.">
+    </event>
+    <event value="468891" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot migrate the listener with IP address %1 and Port %2 because the MAC address %3 does not exist on the destination computer. This listener was ignored during migration. 
+
+ User Action 
+ Create the listener again with the correct MAC address.">
+    </event>
+    <event value="468892" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot migrate the listener with Address %1 and Transport %2 because the MAC address %3 does not exist on the destination machine. This listener was ignored during migration. 
+
+ User Action 
+ Create the listener again with the correct MAC address.">
+    </event>
+    <event value="468893" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot migrate the listener with IP address %1, Port %2 and Transport %3. A listener that has Address=%4 and Transport=%5 configuration already exists.">
+    </event>
+    <event value="468894" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service cannot migrate the listener with Address %1 and Transport %2. A listener that has the same Address and Transport configuration already exists.">
+    </event>
+    <event value="468895" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service had a failure during migration. 
+
+ User Action 
+ Create the configuration again using the WinRM command line tool. 
+
+ Additional Data 
+ The error code is: %1 %%%1">
+    </event>
+    <event value="468896" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service had a failure reading the current configuration and is stopping. 
+
+ User Action 
+ Use the following command to restore defaults: 
+
+ winrm invoke Restore winrm/config @{} 
+
+ Then add any custom configuration settings and restart the service. 
+
+ Additional Data 
+ The error code is: %1 %%%1">
+    </event>
+    <event value="468897" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service had a failure applying the current configuration and is stopping. 
+
+ User Action 
+ Check for previous event log messages and restart the service.">
+    </event>
+    <event value="468898" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service had a failure reading the current configuration and is stopping. 
+
+ User Action 
+ Use the following command to restore defaults: 
+
+ winrm invoke Restore winrm/config @{} 
+
+ Then add any custom configuration settings and restart the service. 
+
+ Additional Data 
+ The error code is: %1 %%%1">
+    </event>
+    <event value="468899" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The host name pattern &quot;%1&quot; is invalid and it will be ignored. Host name patterns must not be empty and they can contain at most one wildcard (&quot;*&quot;). &quot;*&quot; pattern can be used to indicate all hosts; if this pattern is used, no other pattern can show up in the list. Special string &quot;&lt;local&gt;&quot; can be used to indicate all host names that do not have a &apos;.&apos;
+
+ User Action 
+ Correct the host name pattern using the syntax described above.">
+    </event>
+    <event value="468900" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is listening for WS-Management requests. 
+
+ User Action 
+ Use the following command to see the specific IPs on which WinRM is listening: 
+
+ winrm enumerate winrm/config/listener">
+    </event>
+    <event value="468901" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is not listening for WS-Management requests. 
+
+ User Action 
+ If you did not intentionally stop the service, use the following command to see the WinRM configuration: 
+
+ winrm enumerate winrm/config/listener">
+    </event>
+    <event value="468902" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service could not use the following listener to receive WS-Management requests.  The listener is enabled but the listener does not have an IP address configured. 
+
+ User Action 
+ Check the underlying network configuration to determine if this listener has at least one valid IP. If the IP is valid, ensure that WinRM configuration does not exclude that IP address by using the following command: 
+
+ winrm get winrm/config/service 
+
+ Additional Data 
+ Listener transport: %1 
+ Listener address: %2">
+    </event>
+    <event value="468903" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service had a failure (%1) reading configuration during ip address change notification. 
+
+ Service will continue running with old configuration.
+
+ User Action 
+ If immediae changes are required manually restart the service">
+    </event>
+    <event value="468904" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service successfully processed an address change notification.">
+    </event>
+    <event value="468905" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WSMan IIS module failed to read configuration. The error received was %1: %%%1 
+ %2.
+
+ User Action 
+ Make sure both the schema and validation files are present and valid.">
+    </event>
+    <event value="468906" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service failed to create the following SPNs: %1; %2. 
+
+ Additional Data 
+ The error received was %3: %%%3.
+
+ User Action 
+ The SPNs can be created by an administrator using setspn.exe utility.">
+    </event>
+    <event value="468907" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WSMan service failed to read configuration of the following plugin: 
+ %1. 
+
+The error received was %2: %%%2 
+ %3.
+
+ User Action 
+ Make sure this plugin configuration is valid.">
+    </event>
+    <event value="468908" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service failed to initialize CredSSP. 
+
+ Additional Data 
+ The error received was %1.
+
+ User Action 
+ Configure CertificateThumbprint setting under the WinRM configuration for the service. Use the thumbprint of a valid certificate and make sure that Network Service has access to the private key of the certificate.">
+    </event>
+    <event value="468909" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service received an error while trying to unloading a data or event source: DLL=&quot;%1&quot; 
+
+ User Action 
+ Please check if there is an updated version of this file available: &quot;%1&quot;. 
+
+ Additional Data 
+ Shutting down %1 failed with error=&quot;%2&quot; (%%%2).">
+    </event>
+    <event value="468910" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is listening on the default %1 port %2 and on %1 (Compatibility) port %3 for WS-Management requests. %1 port %3 is no longer the default port for the WinRM service.
+
+ If you want to disable the listener on the (Compatibility) port %3, run the following command:
+
+ Winrm set winrm/config/service @{%4=&quot;False&quot;}">
+    </event>
+    <event value="468911" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service has terminated %1 unauthenticated connections over the past %2 minutes to maintain healthy system state. This will likely happen if the service is overloaded or if the service is under an authentication based attack. 
+
+ Action: 
+Enable and observe Windows Remote Management Analytic log and look for warning events with Id 1843. These include additional information about the clients that got abruptly terminated.">
+    </event>
+    <event value="3221734403" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is stopping because there was a failure registering for changes to the IP addresses. 
+
+ User Action 
+ Restart the WinRM service. 
+
+ Additional Data 
+ The error code was %1.">
+    </event>
+    <event value="3221734404" version="0" opcode="0" channel="0" level="0" task="0" keywords="0x80000000000000" message="The WinRM service is stopping because there was a failure registering for changes to the configuration. 
+
+ User Action 
+ Restart the WinRM service. 
+
+ Additional Data 
+ The error code was %1.">
+    </event>
+  </events>
+</provider>
