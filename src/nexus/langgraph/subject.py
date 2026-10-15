@@ -75,6 +75,10 @@ ORDER_BY_GROUP = {
 FAMILY_SUBJECT_COLUMNS = {
     "pecmd": (("process", "ExecutableName"),),
     "prefetch": (("process", "Process"),),
+    # MemProcFS's output is one family (D210). Its `Process` column names the process a row is about in
+    # every file that has one: the memory image's prefetch, the modules a process loaded (and unloaded),
+    # and the connections it owns (CASE-C5B04D31, 2026-10-15: 9,283 rows in four files).
+    "memprocfs": (("process", "Process"),),
     "srumecmd": (("process", "ExeInfo"), ("account", "user")),
     # D112 (2026-10-13): AppCompatCache's Path is the executable each row names. A RECmd batch row carries its
     # key as BatchKeyPath when it has no KeyPath (the ECS map reads KeyPath).

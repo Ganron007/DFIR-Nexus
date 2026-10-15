@@ -37,6 +37,15 @@ def test_a_prefetch_row_with_a_process_column_is_about_that_process():
     }
 
 
+def test_a_memprocfs_row_with_a_process_column_is_about_that_process():
+    """D210: MemProcFS's output is one family; its prefetch, module and connection rows name their process."""
+    for fields in ({"Process": "SVCHOST.EXE", "RunCount": "3"},
+                   {"PID": "692", "Process": "lsass.exe", "Module": "samsrv.dll"},
+                   {"PID": "2376", "Process": "svchost.exe", "Protocol": "TCPv4", "State": "ESTABLISHED"}):
+        doc = {**_doc("memprocfs", fields), "file": "memprocfs/rd01-memory.img/forensic/csv/net.csv"}
+        assert _entity(doc) == {"type": "process", "value": fields["Process"].lower()}
+
+
 def test_a_prefetch_timeline_row_names_no_subject_because_its_program_is_free_text():
     doc = _doc("prefetch", {"Type": "PREF", "Text": "SVCHOST.EXE                      - run_count:3675 file:[x.pf]"})
     assert _entity(doc) == {}
