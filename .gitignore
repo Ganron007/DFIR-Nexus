@@ -226,3 +226,7 @@ full_suite.err
 
 # Raw ELv2 pipeline cached by import_event_categories.py --fetch; the table keeps only derived rows
 devtools/knowledge/pinned/cache/
+
+# Agent/developer git worktrees: a second checkout for work that must not touch the files a live
+# run imports. Kept inside the repo, never beside it (`git worktree add .worktrees/<name> -b <name>`).
+.worktrees/
