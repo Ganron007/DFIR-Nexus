@@ -504,20 +504,96 @@ def _claim_subjects(finding: dict[str, Any]) -> list[str]:
     return uniq
 
 
+#: Event data fields whose value is content the event carries rather than a thing it records: a
+#: script's text (PowerShell 4104 ScriptBlockText), a pipeline's output and the block describing its
+#: host (4103 Payload, ContextInfo), and a classic event's unnamed `Data` (System Restore 8194 lists
+#: the applications of a restore point there). A subject inside one is a mention: the event carries
+#: the name, it does not record the thing (D226).
+_CONTENT_FIELDS = frozenset({"scriptblocktext", "payload", "contextinfo", "data"})
+#: What an evidence row records of its own (the index's normalised keys), read for every row.
+_ROW_KEYS = ("host", "user", "account", "process", "channel", "provider", "artifact", "source", "event_id",
+             "title", "rule", "rule_title")
+#: `Label: value` inside a rendered column (EvtxECmd's PayloadData, Hayabusa's Details).
+_LABELLED = re.compile(r"^\s*([A-Za-z][\w .()/-]{0,48}?)\s*:\s(.*)$", re.S)
+
+
+def _labelled_pairs(name: str, text: str, *, rendered_row: bool = False) -> list[tuple[str, str]]:
+    """A rendered value as (field, value) pairs: Hayabusa joins its fields with `¦`, and each piece
+    may carry its own label. ` · ` joins the fields of a row's own `detail` only; inside a parser's
+    column it is text, and splitting there would cut a script into unlabelled pieces."""
+    pairs: list[tuple[str, str]] = []
+    separators = r"\s*¦\s*|\s+·\s+" if rendered_row else r"\s*¦\s*"
+    for piece in re.split(separators, text):
+        if not piece.strip():
+            continue
+        match = _LABELLED.match(piece)
+        pairs.append((match.group(1), match.group(2)) if match else (name, piece))
+    return pairs
+
+
+def _event_data_pairs(payload: str) -> list[tuple[str, str]]:
+    """EvtxECmd's Payload column is the event's own EventData: one pair per named field."""
+    try:
+        data = ((json.loads(payload).get("EventData") or {}).get("Data")) or []
+    except (ValueError, AttributeError):
+        return [("Payload", payload)]  # cut or not JSON: no names to read, so it counts as content
+    if isinstance(data, dict):
+        data = [data]
+    return [(str(item.get("@Name") or "Data"), str(item.get("#text") or ""))
+            for item in data if isinstance(item, dict) and item.get("#text")]
+
+
+def _row_named_values(row: dict[str, Any]) -> list[tuple[str, str]]:
+    """Every value a cited row records, with the field it is recorded in: the row's own keys, its
+    parser columns (EvtxECmd's Payload read as the event's named data) and its rendered `detail`,
+    whose pieces carry their labels (`Payload: {...}` there is the same event data, cut short)."""
+    pairs = [(key, str(row.get(key))) for key in _ROW_KEYS if str(row.get(key) or "").strip()]
+    fields = row.get("fields")
+    if isinstance(fields, dict):
+        for name, value in fields.items():
+            text = str(value or "")
+            if not text.strip():
+                continue
+            if str(name) == "Payload" and text.lstrip().startswith("{"):
+                pairs += _event_data_pairs(text)
+            else:
+                pairs += _labelled_pairs(str(name), text)
+    return pairs + _labelled_pairs("detail", str(row.get("detail") or ""), rendered_row=True)
+
+
+def _row_corroboration(row: dict[str, Any], subjects: list[str]) -> str:
+    """``instance`` when a field of the row records a subject, ``mention`` when a subject appears only
+    inside content (a script's text), ``context`` when the row names no subject, ``blank`` when the
+    row carries nothing to read."""
+    pairs = _row_named_values(row)
+    if not pairs:
+        return "blank"
+    mentioned = False
+    for name, value in pairs:
+        low = value.lower()
+        if not any(s in low for s in subjects):
+            continue
+        if name.replace(" ", "").lower() in _CONTENT_FIELDS:
+            mentioned = True
+            continue
+        return "instance"
+    return "mention" if mentioned else "context"
+
+
 def _l1_10(finding, res, **_kw) -> None:
-    """Does each cited row *corroborate* the claim, or merely mention the entity?
+    """Does a cited row *record* the claim's subject, or merely mention it?
 
-    The Mode 1 needle scan matches a substring anywhere in a row, including
-    inside an unstructured data blob. The corpus has a real case: a `sdelete`
-    needle matched a System Restore event (EventID 8194, "Restore point created
-    successfully") whose Data field merely *lists* sdelete among the applications
-    registered for the restore point. The row mentions the entity; it does not
-    evidence it. "Signal: sdelete - 1 hit(s)" reads as though it did.
+    The Mode 1 needle scan matches a substring anywhere in a row. A `sdelete` needle once matched
+    a System Restore event whose data merely *listed* sdelete among the applications registered
+    for the restore point: the row mentions the entity, it does not evidence it.
 
-    So: the subject of the claim must appear in a descriptor field (detail,
-    title, source, provider, artifact) rather than only in a free-text blob.
-    A row with no descriptor fields at all cannot be judged either way, so it is
-    skipped rather than counted as corroboration.
+    Each value of a cited row is read with the field that holds it: the parser's columns, the
+    event's own named data (EvtxECmd's Payload), the labelled pieces of a rendered column
+    (Hayabusa's Details, EvtxECmd's PayloadData). A subject recorded in a field corroborates; one
+    that appears only in content (a script's text) is a mention; a row naming no subject is context
+    for the claim and counts neither way (D226). It used to read a short list of descriptor fields,
+    so a Defender detection naming the file in its own Path field read as a mention, and a context
+    row read as one too: all five findings approved on 2026-10-15 failed it.
     """
     rows = finding.get("evidence")
     if not isinstance(rows, list) or not rows:
@@ -528,39 +604,33 @@ def _l1_10(finding, res, **_kw) -> None:
         _check(res, "L1.10", "skipped", "no claim subject to corroborate")
         return
 
-    descriptor_fields = ("detail", "title", "source", "provider", "artifact",
-                         "event_id", "mapdescription", "rule", "rule_title")
+    instances: list[str] = []
     mention_only: list[str] = []
     judged = 0
     for i, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
-        fields = row.get("fields")
-        blob = " ".join(str(row.get(k) or "") for k in descriptor_fields)
-        if isinstance(fields, dict):
-            blob += " " + " ".join(
-                str(fields.get(k) or "")
-                for k in ("MapDescription", "RuleTitle", "Provider", "EventId", "Task")
-            )
-        blob_low = blob.lower()
-        if not blob_low.strip():
-            continue
-        judged += 1
-        if not any(s in blob_low for s in subjects):
-            mention_only.append(
-                f"row[{i}] {str(row.get('loc') or row.get('source') or '')[:60]}"
-            )
+        where = f"row[{i}] {str(row.get('loc') or row.get('source') or '')[:60]}"
+        verdict = _row_corroboration(row, subjects)
+        judged += verdict != "blank"
+        if verdict == "instance":
+            instances.append(where)
+        elif verdict == "mention":
+            mention_only.append(where)
     if mention_only:
         _check(res, "L1.10", "fail",
-               f"{len(mention_only)} cited row(s) name the subject only in an "
-               f"unstructured data field - a mention, not an instance",
+               f"{len(mention_only)} cited row(s) name the subject only inside content "
+               f"(a script's text, unnamed event data) - a mention, not an instance",
                evidence=mention_only[:8])
         return
     if not judged:
-        _check(res, "L1.10", "skipped",
-               "no cited row carries descriptor fields, so corroboration is unknown")
+        _check(res, "L1.10", "skipped", "no cited row carries values to read, so corroboration is unknown")
         return
-    _check(res, "L1.10", "pass", f"{judged} cited row(s) corroborate the claim subject")
+    if not instances:
+        _check(res, "L1.10", "fail",
+               f"no cited row records the claim subject ({', '.join(subjects[:4])})")
+        return
+    _check(res, "L1.10", "pass", f"{len(instances)} cited row(s) record the claim subject")
 
 
 def verify_claim(
