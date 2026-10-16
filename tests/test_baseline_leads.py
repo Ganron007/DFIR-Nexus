@@ -77,6 +77,9 @@ def test_an_unknown_program_in_the_windows_directory_is_crit_and_windows_own_tas
     # A kernel driver there is routine for hardware and vendor packages: high, not crit.
     driver = leads["\\SystemRoot\\System32\\drivers\\ena.sys"]
     assert driver.score == 0.9 and driver.extra["crit_high"] is False
+    # IC-5: a task is ATT&CK's Scheduled Task, a service its Windows Service (by ATT&CK's own names).
+    assert stun.extra["attack_ids"] == ["T1053.005"]
+    assert leads["C:\\windows\\subject_srv.exe"].extra["attack_ids"] == ["T1543.003"]
     # The lead can be read again: its query names the rows as the index holds them.
     assert {"term": {"ecs.winlog.event_data.Path": "C:\\Windows\\System32\\STUN.exe"}} in (
         stun.extra["query"]["bool"]["should"])
@@ -128,6 +131,22 @@ class _Probe:
 
     def memory_hits(self):
         return _docs("yara_stun"), _docs("findevil_stun_yara", "findevil_msedge_thread")
+
+
+def test_a_detection_naming_a_known_tool_carries_its_attack_software():
+    """IC-5: the YARA lead's Threat_name and a Defender threat rendered in an engine's row map to ATT&CK's
+    software entry, whose techniques are the hunt list the seats get. Kekeo is not in ATT&CK: nothing."""
+    from nexus.analysis.leads import Lead, _with_software
+
+    yara = memory_verdict_leads_from(_docs("yara_stun"), [])[0]
+    assert _with_software(yara).extra["software"] == [{"id": "S0154", "name": "Cobalt Strike"}]
+    defender = Lead(kind="rule_engine", subject="Antivirus - Exploitation Framework Signature", family="hayabusa",
+                    detail="Hayabusa crit detection", score=1.0,
+                    rows=({"details": "Threat: Behavior:Win32/CobaltStrike.E!sms ¦ Severity: Severe"},))
+    assert [s["id"] for s in _with_software(defender).extra["software"]] == ["S0154"]
+    kekeo = Lead(kind="rule_engine", subject="Defender Alert (Severe)", family="hayabusa", detail="", score=1.0,
+                 rows=({"details": "Threat: VirTool:Win32/Kekeo.B ¦ Severity: Severe"},))
+    assert "software" not in (_with_software(kekeo).extra or {})
 
 
 def test_build_leads_puts_crit_baseline_leads_before_lesser_detections(tmp_path):

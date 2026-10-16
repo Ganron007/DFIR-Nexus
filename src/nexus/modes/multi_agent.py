@@ -36,6 +36,7 @@ from nexus.modes.multi_role import (
     _question_keywords,
     _retrieve_skill_refs,
     _skill_procedure_block,
+    attack_method_block,
     new_event,
     stage_run_candidates,
 )
@@ -954,13 +955,18 @@ def _seat_with_model(
         techniques=techniques,
         limit=8,
     )
-    skill_block = _skill_procedure_block(WorkOrder(
+    seat_order = WorkOrder(
         order_id="seat",
         role=seat_kind,
         task=objective or "investigate",
         family=family,
         skill_refs=skill_refs,
-    ))
+        # IC-5: ATT&CK's method for the lead's techniques and the hunt list of the software it detected.
+        techniques=tuple(techniques),
+        software=tuple(str(s.get("id")) for s in (lead_extra.get("software") or [])
+                       if isinstance(s, dict) and s.get("id")),
+    )
+    skill_block = _skill_procedure_block(seat_order) + attack_method_block(seat_order, case_dir)
     # WO-R1F-M3 item 2: the verifier seat returns `verdicts`, not `claims`.
     # Use the right terminal key, or the loop never recognises the reply and
     # the verdicts are lost (the original defect in this seat path).

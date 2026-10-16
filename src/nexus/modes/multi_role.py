@@ -1130,6 +1130,10 @@ class WorkOrder:
     #: crit/high leads, which no plan may cut.
     lead_subjects: tuple[str, ...] = ()
     crit_high: bool = False
+    #: IC-5: the ATT&CK techniques and software (ids) the order's leads name; the seat gets ATT&CK's method
+    #: for them (`attack_method_block`).
+    techniques: tuple[str, ...] = ()
+    software: tuple[str, ...] = ()
     hypothesis: str = ""
     benign_alternative: str = ""
     refutation: str = ""
@@ -1387,6 +1391,29 @@ def _record_skill_steps(
     return out
 
 
+def attack_method_block(order: WorkOrder, case_dir: Path | None) -> str:
+    """ATT&CK's method for the order's techniques, and the hunt list of the software its leads detected (IC-5).
+
+    From the pinned registry (ATT&CK v20.0): each technique's analytics on the case's platform (what to look
+    for, which log sources and event codes, what makes an instance suspicious), and for detected software the
+    techniques ATT&CK records it using. Empty when the order's leads name neither.
+    """
+    if not order.techniques and not order.software:
+        return ""
+    try:
+        from nexus.knowledge.attack_method import (
+            case_platforms_cached,
+            method_block,
+            software_block,
+        )
+
+        platforms = list(case_platforms_cached(str(case_dir))) if case_dir is not None else []
+        return method_block(list(order.techniques), platforms=platforms) + software_block(list(order.software))
+    except Exception as exc:  # noqa: BLE001 - an order without the method still runs
+        log.warning("ATT&CK method block unavailable: %s", exc)
+        return ""
+
+
 def _skill_procedure_block(order: WorkOrder) -> str:
     """Render the procedure steps attached to a work order (M3.2).
 
@@ -1518,7 +1545,7 @@ def run_work_order(
     # WO-R1F item 7c: the digest summary this run built reaches every worker.
     work_context_digest = _pack(str(context.get("digest_summary") or "")
                                 if isinstance(context, dict) else "", case_dir)
-    skill_block = _pack(_skill_procedure_block(order), case_dir)
+    skill_block = _pack(_skill_procedure_block(order) + attack_method_block(order, case_dir), case_dir)
     shared = mode2_loop_budget(case_dir)
     budget = LoopBudget(
         rounds=order.max_rounds or shared.rounds,
@@ -1730,6 +1757,8 @@ def plan_work_orders(
             lead_kind=str(item.get("lead_kind") or ""),
             lead_subjects=tuple(str(s) for s in (item.get("lead_subjects") or ()) if s),
             crit_high=bool(item.get("crit_high")),
+            techniques=tuple(str(t) for t in (item.get("techniques") or ()) if t),
+            software=tuple(str(s) for s in (item.get("software") or ()) if s),
             hypothesis=str(item.get("hypothesis") or ""),
             benign_alternative=str(item.get("benign_alternative") or ""),
             refutation=str(item.get("refutation") or ""),

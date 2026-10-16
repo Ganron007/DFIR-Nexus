@@ -236,6 +236,7 @@ def orders_from_leads(
             "audit_ids": lead.get("audit_ids") or [],
             "score": float(lead.get("score") or 0.0),
             "lead_subjects": [str(lead.get("subject") or "")],
+            **_attack_context([lead]),
             "task": (
                 f"Test this hypothesis for the case question "
                 f"{question or '(no examiner question)'}: {hypothesis}"
@@ -269,6 +270,20 @@ def orders_from_leads(
 #: Crit/high leads one order examines together: enough to keep the plan short on a case with many
 #: detections, few enough that a seat can test each within one order's budget.
 CRIT_LEADS_PER_ORDER = 6
+
+
+def _attack_context(leads: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """The ATT&CK techniques and software the leads name (IC-5), for the method the order's seat gets."""
+    techniques: dict[str, None] = {}
+    software: dict[str, None] = {}
+    for lead in leads:
+        extra = lead.get("extra") or {}
+        for tid in extra.get("attack_ids") or extra.get("techniques") or []:
+            techniques.setdefault(str(tid), None)
+        for item in extra.get("software") or []:
+            if isinstance(item, dict) and item.get("id"):
+                software.setdefault(str(item["id"]), None)
+    return {"techniques": list(techniques), "software": list(software)}
 
 
 def _crit_high(lead: dict[str, Any]) -> bool:
@@ -310,6 +325,7 @@ def _crit_orders(crit: list[dict[str, Any]], known: set[str], question: str) -> 
                 "audit_ids": [a for lead in chunk for a in (lead.get("audit_ids") or [])],
                 "score": max(float(lead.get("score") or 0.0) for lead in chunk),
                 "lead_subjects": [str(lead.get("subject") or "") for lead in chunk],
+                **_attack_context(chunk),
                 "task": (
                     f"Test each of these crit/high leads for the case question "
                     f"{question or '(no examiner question)'}; every one needs an answer:\n{listed}"

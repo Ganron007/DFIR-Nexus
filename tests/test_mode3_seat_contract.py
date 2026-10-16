@@ -239,6 +239,20 @@ def test_the_seat_is_asked_to_rate_its_claims(tmp_path, monkeypatch):
     assert '"severity":"LOW|MEDIUM|HIGH|CRITICAL"' in user
 
 
+def test_a_lead_seat_reads_attacks_method_for_its_lead(tmp_path, monkeypatch):
+    """IC-5: a lead seat gets ATT&CK's analytic for the lead's technique and the hunt list of the software it
+    detected (v20 registry), not only the skills retrieved for them."""
+    monkeypatch.setattr("nexus.knowledge.attack_method.case_platforms_cached", lambda _c: ("Windows",))
+    _entry, model = _seat(tmp_path, monkeypatch, {
+        "role": "evidence", "family": "evtxecmd", "why": "unexplained crit lead", "question": "Compromise suspected.",
+        "lead": r"C:\Windows\System32\STUN.exe",
+        "lead_extra": {"attack_ids": ["T1053.005"], "software": [{"id": "S0154", "name": "Cobalt Strike"}]}},
+        json.dumps({"claims": [], "lead_disposition": {"lead": "x", "status": "unexplained"}}))
+    _system, user = _messages(model.sent[0])
+    assert "ATT&CK v20 METHOD" in user and "EventCode=4698 (Scheduled Job Creation)" in user
+    assert "S0154 Cobalt Strike" in user
+
+
 def test_a_seat_spawned_for_several_questions_settles_each(tmp_path, monkeypatch):
     """D222: a question seat holds a share of the open questions; each one it leaves unsettled is closed
     as investigated, as a single question was."""

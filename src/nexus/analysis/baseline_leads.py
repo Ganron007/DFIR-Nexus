@@ -206,6 +206,11 @@ def persistence_leads_from(entries: Iterable[_Entry], baseline: Any) -> list[Lea
             if entry.first:
                 item["first"] = min(filter(None, [item["first"], entry.first]))
             item["last"] = max(item["last"], entry.last)
+    from nexus.knowledge.attack_method import technique_by_name
+
+    # IC-5: the ATT&CK technique each kind of entry is, by ATT&CK's own names (looked up, not typed as ids).
+    kind_technique = {"task": technique_by_name("Scheduled Task", parent="Scheduled Task/Job"),
+                      "service": technique_by_name("Windows Service", parent="Create or Modify System Process")}
     leads: list[Lead] = []
     for normalized, item in by_exe.items():
         entries_here = sorted(item["entries"], key=lambda e: (e.kind, e.name.lower()))
@@ -244,6 +249,7 @@ def persistence_leads_from(entries: Iterable[_Entry], baseline: Any) -> list[Lea
                 "last": item["last"],
                 "count": item["count"],
                 "query": _sample_query(item["raw"]),
+                "attack_ids": sorted({kind_technique[e.kind] for e in entries_here if kind_technique.get(e.kind)}),
             },
         ))
     leads.sort(key=lambda lead: (-lead.score, lead.subject.lower()))

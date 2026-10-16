@@ -258,6 +258,9 @@ def top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
                 "audit_ids": [str(a) for a in (lead.get("audit_ids") or []) if a],
                 "attack_ids": [str(t) for t in ((lead.get("extra") or {}).get("attack_ids")
                                                 or (lead.get("extra") or {}).get("techniques") or []) if t],
+                # IC-5: the ATT&CK software the lead's detection names (its hunt list reaches the prompt).
+                "software": [str(s.get("id")) for s in ((lead.get("extra") or {}).get("software") or [])
+                             if isinstance(s, dict) and s.get("id")],
             })
             if len(out) >= limit:
                 break

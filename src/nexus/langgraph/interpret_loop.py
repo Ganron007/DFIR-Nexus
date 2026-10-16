@@ -659,6 +659,7 @@ async def run_interpret_loop(
             WorkOrder,
             _retrieve_skill_refs,
             _skill_procedure_block,
+            attack_method_block,
         )
 
         families = []
@@ -685,12 +686,21 @@ async def run_interpret_loop(
             limit=8,
             techniques=techniques[:12] or None,
         )
-        if refs:
-            block = _skill_procedure_block(WorkOrder(
-                order_id="interpret", role="evidence", task="", skill_refs=refs,
-            ))
-            if block:
-                skill_block = "\n" + block + "\n"
+        # IC-5: ATT&CK's method for the crit/high leads' techniques, and the hunt list of the software
+        # the leads detected, as Mode 2's orders and Mode 3's lead seats get them.
+        crit_techniques: list[str] = []
+        software: list[str] = []
+        for lead in digest.get("top_leads") or []:
+            if not isinstance(lead, dict):
+                continue
+            if lead.get("crit_high"):
+                crit_techniques += [str(t) for t in lead.get("attack_ids") or [] if str(t) not in crit_techniques]
+            software += [str(s) for s in lead.get("software") or [] if str(s) not in software]
+        order = WorkOrder(order_id="interpret", role="evidence", task="", skill_refs=refs or [],
+                          techniques=tuple(crit_techniques), software=tuple(software))
+        block = (_skill_procedure_block(order) if refs else "") + attack_method_block(order, case_dir)
+        if block:
+            skill_block = "\n" + block + "\n"
     except Exception:  # noqa: BLE001
         skill_block = ""
     # Every stage that writes ES queries gets the case's columns and the query protocol. Verify

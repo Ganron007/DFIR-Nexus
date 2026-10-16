@@ -463,6 +463,33 @@ def _rule_engine_leads(case_dir: Path) -> list[Lead]:
     return rule_engine_leads(case_dir)
 
 
+def _with_software(lead: Lead) -> Lead:
+    """The lead with the ATT&CK software its detection names (IC-5), when ATT&CK records it.
+
+    A threat name in the lead - a YARA rule's ``Threat_name`` or a Defender threat in an engine's rendered
+    detail - is read by its family; a family ATT&CK records gives its software entry, whose techniques are
+    the hunt list the seats get. Never raises: a lead without one is returned as it was.
+    """
+    try:
+        from nexus.knowledge.attack_method import software_for, threats_in
+
+        extra = dict(lead.extra or {})
+        text = " ".join([lead.detail, *(str(r.get("details") or r.get("detail") or "") for r in lead.rows
+                                        if isinstance(r, dict))])
+        found: dict[str, str] = {}
+        for threat in [*(extra.get("threats") or []), *threats_in(text)]:
+            software = software_for(str(threat))
+            if software:
+                found.setdefault(str(software["id"]), str(software["name"]))
+        if not found:
+            return lead
+        extra["software"] = [{"id": sid, "name": name} for sid, name in sorted(found.items())]
+        return replace(lead, extra=extra)
+    except Exception as exc:  # noqa: BLE001 - a lead without software is still a lead
+        log.debug("lead software lookup failed: %s", exc)
+        return lead
+
+
 def _memory_verdict_leads(case_dir: Path, probe: Any) -> list[Lead]:
     """The memory scanner's detections (D245), imported lazily for the same reason."""
     from nexus.analysis.baseline_leads import memory_verdict_leads
@@ -797,6 +824,7 @@ def build_leads(
             log.error("lead builder failed: %s: %s", type(exc).__name__, exc)
             failed.append(f"{type(exc).__name__}: {exc}")
 
+    leads = [_with_software(lead) for lead in leads]
     # Stable order: crit/high leads first, rule-engine detections first among them and among the rest,
     # then strongest score, then kind and subject so two runs over the same index produce byte-identical
     # output. A crit/high detection must never be outranked by a heuristic lead (WO-R1F item 1) — the

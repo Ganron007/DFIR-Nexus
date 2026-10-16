@@ -258,6 +258,42 @@ def compile_matrix(path: Path, matrix: str, techniques: dict[str, dict]) -> dict
     return counts
 
 
+def compile_software(path: Path) -> list[dict]:
+    """ATT&CK's software (malware and tools) with the techniques ATT&CK records each one using (IC-5).
+
+    A detection that names a malware family (a YARA ``Threat_name``, a Defender threat) maps to its
+    software entry here, and the entry's techniques are the hunt list ATT&CK gives for it.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    objects = data.get("objects") or []
+    by_stix = {str(o.get("id")): o for o in objects}
+    uses: dict[str, set[str]] = defaultdict(set)
+    for rel in objects:
+        if rel.get("type") != "relationship" or rel.get("relationship_type") != "uses" or rel.get("revoked"):
+            continue
+        src, dst = by_stix.get(str(rel.get("source_ref"))), by_stix.get(str(rel.get("target_ref")))
+        if src and dst and src.get("type") in ("malware", "tool") and dst.get("type") == "attack-pattern":
+            tid = _ext_id(dst)
+            if tid and not dst.get("revoked") and not dst.get("x_mitre_deprecated"):
+                uses[str(src.get("id"))].add(tid)
+    software = []
+    for obj in objects:
+        if obj.get("type") not in ("malware", "tool") or obj.get("revoked") or obj.get("x_mitre_deprecated"):
+            continue
+        sid = _ext_id(obj)
+        if not sid:
+            continue
+        software.append({
+            "id": sid,
+            "name": str(obj.get("name") or "").strip(),
+            "type": str(obj.get("type")),
+            "aliases": [str(a) for a in (obj.get("x_mitre_aliases") or []) if a],
+            "platforms": [str(p) for p in (obj.get("x_mitre_platforms") or [])],
+            "techniques": sorted(uses.get(str(obj.get("id")), set())),
+        })
+    return sorted(software, key=lambda s: s["id"])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fetch", action="store_true", help="force re-download")
@@ -295,7 +331,9 @@ def main() -> int:
             "per_matrix": per_matrix,
         },
         "techniques": sorted(techniques.values(), key=lambda t: t["id"]),
+        "software": compile_software(ATTACK_DIR / "enterprise-attack.json"),
     }
+    registry["counts"]["software"] = len(registry["software"])
 
     import yaml
 
