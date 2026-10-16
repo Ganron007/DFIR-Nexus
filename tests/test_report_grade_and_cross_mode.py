@@ -495,6 +495,28 @@ def _mk_case(root, name, mode, findings):
     return case
 
 
+def test_d243_a_finding_counts_for_the_modes_that_produced_it(tmp_path):
+    """One case runs all three modes (D5 = C): a finding is labelled by its own lineage, not by the
+    mode CASE.yaml records. Run 4's Mode 3 DRAFTs read as Mode 1 claims on CASE-C5B04D31."""
+    from nexus.analysis.cross_mode import collect_mode_claims
+
+    row = [{"loc": "evtx.csv:1", "detail": "a connection", "provider": "Microsoft-Windows-Sysmon",
+            "event_id": "3", "destination_ip": "ghosthost.example.com"}]
+    case = _mk_case(tmp_path, "CASE-D2430001", "1", [
+        {"id": "F-m3", "title": "beacon observed", "modes": [3], "provenance": {"mode": 3}, "evidence": row},
+        {"id": "F-m13", "title": "beacon seen twice", "modes": [1, 3], "evidence": row},
+        {"id": "F-prov2", "title": "beacon by provenance", "provenance": {"mode": 2}, "evidence": row},
+        {"id": "F-legacy", "title": "beacon before lineage", "evidence": row},
+    ])
+    by_mode = collect_mode_claims(case)
+    ids = {mode: sorted(r["source"] for r in rows) for mode, rows in by_mode.items()}
+    assert ids == {
+        "1": ["finding:F-legacy", "finding:F-m13"],
+        "2": ["finding:F-prov2"],
+        "3": ["finding:F-m13", "finding:F-m3"],
+    }
+
+
 def test_wo12_group_check_compares_siblings(tmp_path, monkeypatch):
     from nexus.config import settings
 

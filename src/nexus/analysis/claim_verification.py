@@ -18,6 +18,8 @@ L1.8  no contradiction with another mode or with the raw rows
 L1.9  coverage is declared (tools / sources / needles)
 L1.10 a cited row corroborates the claim, rather than merely naming the
        entity somewhere in an unstructured data blob
+L1.11 every event the claim names ("Sysmon 10", "EID 4688") was returned by
+       a call it cites (D238)
 =====  ==========================================================
 
 Claim verdict:
@@ -73,6 +75,7 @@ CHECKS = {
     "L1.8": "no contradiction with another mode or the raw rows",
     "L1.9": "coverage is declared",
     "L1.10": "cited row corroborates the claim (not just a mention in a data blob)",
+    "L1.11": "every event the claim names was returned by a call it cites",
 }
 
 _TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.I)
@@ -633,6 +636,52 @@ def _l1_10(finding, res, **_kw) -> None:
     _check(res, "L1.10", "pass", f"{len(instances)} cited row(s) record the claim subject")
 
 
+#: What a finding states it observed. Its interpretation and rationale reason about the observation and may
+#: name events to say what would also be expected, so they are not read as assertions.
+_STATED_KEYS = ("title", "observation", "description", "claim")
+
+
+def _l1_11(finding, res, case_dir=None, event_replay=None, **_kw) -> None:
+    """Did a call the claim cites return each event the claim's own words name? (D238)
+
+    Run 4 staged "30 Sysmon 10 events showing processes opening handles to lsass.exe" on 30 Security 4688
+    rows of lsass.exe starting; the case has no Sysmon log, and every other check passed. A call stores at
+    most 12 rows, so an event missing from them is looked for by running the cited query again with the event
+    added (``named_events.event_grounding``); a call that cannot be run again leaves the check unverifiable.
+    """
+    from nexus.langgraph.evidence_rows import cited_calls
+    from nexus.langgraph.named_events import (
+        es_replay,
+        event_grounding,
+        named_events,
+        recorded_events,
+    )
+
+    text = "\n".join(str(finding.get(k) or "") for k in _STATED_KEYS)
+    if not named_events(text):
+        _check(res, "L1.11", "skipped", "the claim names no event")
+        return
+    calls = cited_calls(case_dir, _cited_ids(finding)) if case_dir is not None else {}
+    replay = event_replay if event_replay is not None else (
+        es_replay(Path(case_dir).name) if case_dir is not None else None)
+    rows = [r for r in finding.get("evidence") or [] if isinstance(r, dict)]
+    grounding = event_grounding(text, calls, rows=rows, replay=replay)
+    if grounding["unrecorded"]:
+        returned = recorded_events(rows + [r for c in calls.values() for r in c.get("rows") or []
+                                           if isinstance(r, dict)])
+        _check(res, "L1.11", "fail",
+               f"the claim names {', '.join(grounding['unrecorded'])} but no call it cites returned it"
+               + (f" (the cited rows are {', '.join(returned[:4])})" if returned else ""),
+               evidence=grounding["unrecorded"])
+        return
+    if grounding["unknown"]:
+        _check(res, "L1.11", "unverifiable",
+               f"{', '.join(grounding['unknown'])} not among the stored rows, and the cited calls could not "
+               "be run again")
+        return
+    _check(res, "L1.11", "pass", f"{len(grounding['recorded'])} named event(s) returned by the cited calls")
+
+
 def verify_claim(
     finding: dict[str, Any],
     *,
@@ -645,6 +694,7 @@ def verify_claim(
     family_count=None,
     search=None,
     now=None,
+    event_replay=None,
 ) -> dict[str, Any]:
     """Verify one claim against every check.
 
@@ -653,6 +703,8 @@ def verify_claim(
     because "I could not check this" and "this is clean" are different answers.
     ``search(term) -> int | None`` answers "how many indexed rows mention this"
     and drives L1.3; ``family_count(family) -> int | None`` drives L1.7.
+    ``event_replay(query, event) -> int | None`` runs a cited query again with
+    one event added for L1.11; without it the case index is used.
     """
     res: dict[str, dict[str, Any]] = {}
     _l1_1(finding, known_ids, res)
@@ -665,6 +717,7 @@ def verify_claim(
     _l1_8(finding, res, cross_mode=cross_mode)
     _l1_9(res, coverage=coverage)
     _l1_10(finding, res)
+    _l1_11(finding, res, case_dir=case_dir, event_replay=event_replay)
 
     counts = {"pass": 0, "fail": 0, "unverifiable": 0, "skipped": 0}
     for entry in res.values():

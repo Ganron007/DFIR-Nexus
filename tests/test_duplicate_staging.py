@@ -231,6 +231,45 @@ def test_an_entity_is_not_matched_against_a_title_without_one(tmp_path: Path):
     assert len(mgr._load_findings(case)) == 2
 
 
+def test_a_merged_draft_keeps_a_seal_that_holds(tmp_path: Path):
+    """D239: the lineage a merge appends is the pipeline's own write. The DRAFT is sealed again as the
+    next revision, so the approval desk does not read it as edited after staging."""
+    from nexus.analysis.integrity import verify_seal
+
+    case = _case(tmp_path)
+    mgr = _mgr(tmp_path)
+    mgr.record_finding(_draft(run_id="M3-run-1", input_call_ids=["call-1"]), case_dir=case)
+    first_digest = mgr._load_findings(case)[0]["seal"]["digest"]
+    mgr.record_finding(_draft(run_id="M3-run-2", input_call_ids=["call-2"]), case_dir=case)
+
+    stored = mgr._load_findings(case)[0]
+    assert stored["run_ids"] == ["M3-run-1", "M3-run-2"]
+    assert stored["input_call_ids"] == ["call-1", "call-2"]
+    assert verify_seal(stored) == (True, "seal intact"), stored["seal"]
+    assert stored["seal"]["revision"] == 2
+    assert stored["seal"]["history"][0]["digest"] == first_digest
+    assert "M3-run-2" in stored["seal"]["reason"]
+
+
+def test_a_merge_does_not_bless_an_edit_made_outside_the_pipeline(tmp_path: Path):
+    """D239: a DRAFT whose seal no longer holds keeps failing after a merge, so the edit reaches a human."""
+    from nexus.analysis.integrity import verify_seal
+
+    case = _case(tmp_path)
+    mgr = _mgr(tmp_path)
+    mgr.record_finding(_draft(run_id="M3-run-1"), case_dir=case)
+    stored = mgr._load_findings(case)
+    stored[0]["observation"] = "edited by hand after staging"
+    mgr._save_findings(case, stored)
+    edited = _draft(run_id="M3-run-2", observation="edited by hand after staging")
+    mgr.record_finding(edited, case_dir=case)
+
+    after = mgr._load_findings(case)
+    assert len(after) == 1 and after[0]["run_ids"] == ["M3-run-1", "M3-run-2"]
+    assert verify_seal(after[0])[0] is False
+    assert after[0]["seal"]["revision"] == 1
+
+
 def test_entity_key_is_case_and_separator_blind_on_the_type(tmp_path: Path):
     from nexus.discipline import entity_key
 

@@ -103,16 +103,19 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return evidence_rows
 
 
-def stored_rows_by_audit_id(case_dir: Path, audit_ids: list[str]) -> dict[str, list[Any]]:
-    """The rows each cited audit entry stored when its call ran, read once for all the ids (D70).
+def cited_calls(case_dir: Path | None, audit_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """What each cited audit entry recorded of its call, read once for all the ids.
 
-    An id with no stored rows (a call that returned none, or a non-search tool) is absent from the result.
+    ``{audit_id: {"tool", "params", "total", "rows"}}``: the tool and its arguments, the total the call
+    reported (None when it reported none) and the rows it stored, which are at most ``EVIDENCE_ROW_CAP``
+    of them (D238: a check that reads the rows must know when they are all of them). ``rows`` is None
+    for an entry that stored no rows (a non-search tool).
     """
     wanted = {a for a in audit_ids if a}
-    path = Path(case_dir) / "audit" / "nexus.jsonl"
-    stored: dict[str, list[Any]] = {}
-    if not wanted or not path.is_file():
-        return stored
+    path = Path(case_dir) / "audit" / "nexus.jsonl" if case_dir is not None else None
+    calls: dict[str, dict[str, Any]] = {}
+    if not wanted or path is None or not path.is_file():
+        return calls
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
@@ -120,11 +123,35 @@ def stored_rows_by_audit_id(case_dir: Path, audit_ids: list[str]) -> dict[str, l
             rec = json.loads(line)
         except ValueError:
             continue
-        rows = (rec.get("result_summary") or {}).get("evidence_rows")
         aid = rec.get("audit_id")
-        if aid in wanted and isinstance(rows, list):
-            stored[aid] = rows
-    return stored
+        if aid not in wanted:
+            continue
+        summary = rec.get("result_summary") if isinstance(rec.get("result_summary"), dict) else {}
+        rows = summary.get("evidence_rows")
+        try:
+            total = int(summary["total"]) if summary.get("total") is not None else None
+        except (TypeError, ValueError):
+            total = None
+        calls[aid] = {
+            "tool": str(rec.get("tool") or ""),
+            "params": rec.get("params") if isinstance(rec.get("params"), dict) else {},
+            "total": total,
+            "rows": rows if isinstance(rows, list) else None,
+        }
+    return calls
+
+
+def stored_rows_by_audit_id(case_dir: Path, audit_ids: list[str]) -> dict[str, list[Any]]:
+    """The rows each cited audit entry stored when its call ran, read once for all the ids (D70).
+
+    An id with no stored rows (a call that returned none, or a non-search tool) is absent from the result.
+    """
+    return rows_of_calls(cited_calls(case_dir, audit_ids))
+
+
+def rows_of_calls(calls: dict[str, dict[str, Any]]) -> dict[str, list[Any]]:
+    """``{audit_id: stored rows}`` of the calls that stored rows."""
+    return {aid: call["rows"] for aid, call in calls.items() if isinstance(call.get("rows"), list)}
 
 
 def unique_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict[str, Any]]:

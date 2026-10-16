@@ -302,15 +302,27 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
     The claim gets ``subject = {type, value, category}`` derived from the rows its audit calls stored,
     by the rule staging uses. A claim whose rows give no subject gets ``{}``: it cannot be compared with
     another claim on the board. A time_order claim also gets ``other_subject``: its second entity, kept
-    only when a cited row carries it (``ground_other_entity``, D87). The audit trail is read once.
+    only when a cited row carries it (``ground_other_entity``, D87). An affirmed claim that names an event
+    its cited calls did not return gets ``unrecorded_events`` (D238). The audit trail is read once.
     """
-    from nexus.langgraph.evidence_rows import stored_rows_by_audit_id, unique_rows
+    from nexus.langgraph.evidence_rows import cited_calls, rows_of_calls, unique_rows
+    from nexus.langgraph.named_events import es_replay, event_grounding
 
     ids = sorted({aid for c in claims if isinstance(c, dict) for aid in _claim_audit_ids(c)})
-    stored = stored_rows_by_audit_id(case_dir, ids) if case_dir is not None and ids else {}
+    calls = cited_calls(case_dir, ids) if case_dir is not None and ids else {}
+    stored = rows_of_calls(calls)
+    replay = es_replay(case_dir.name) if case_dir is not None else None
     for claim in claims:
         if not isinstance(claim, dict):
             continue
+        claim.pop("unrecorded_events", None)
+        if str(claim.get("polarity") or "affirm").strip().lower() != "deny":
+            # The value is what the claim asserts. Its entity label names what it is about, which for an
+            # absence is the event looked for ("EID-140 (Task Scheduler task executed)").
+            own = {aid: calls[aid] for aid in _claim_audit_ids(claim) if aid in calls}
+            unrecorded = event_grounding(claim.get("value"), own, replay=replay)["unrecorded"] if own else []
+            if unrecorded:
+                claim["unrecorded_events"] = unrecorded
         rows = unique_rows(stored, _claim_audit_ids(claim))
         subject = derive_subject(rows)
         entity = subject["entity"]

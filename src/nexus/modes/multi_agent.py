@@ -411,6 +411,10 @@ def accept_claim(claim: dict[str, Any]) -> str:
     """FD-001..007 on one board claim, and TO-1/TO-2 on a time_order claim. Empty string means keep."""
     if not _audit_ids(claim):
         return "FD-001: claim has no audit_id"
+    if claim.get("unrecorded_events"):
+        # D238: the claim says its rows are events the calls it cites did not return (attach_subjects).
+        return ("EV-1: the claim names " + ", ".join(map(str, claim["unrecorded_events"]))
+                + " but no call it cites returned that event")
     if str(claim.get("claim_kind") or "") == "attribution":
         return "FD-003: agents do not attribute"
     if not str(claim.get("confidence_justification") or "").strip():
@@ -975,6 +979,8 @@ def _seat_with_model(
             '"class":"confirmed|inferred|refuted","basis":"one clause",'
             '"audit_ids":["..."]}]}. '
             "A refuted verdict must name the counter-evidence (audit_ids required). "
+            # D238: run 4's verifier confirmed lsass.exe on "30 Sysmon EventID-10" events its calls never returned.
+            "A confirmed verdict's basis names only events (a log and event id) its audit_ids returned. "
             "Do not attribute an actor."
         )
     else:
@@ -996,6 +1002,10 @@ def _seat_with_model(
             'cannot rate it. ',
             'A time_order claim sets value to "before" or "after" (the entity happened before or after the '
             'other_entity) and names that other entity, which the cited rows must contain. ',
+            # D238: run 4 described 30 Security 4688 rows as "30 Sysmon 10 events", and other seats repeated it.
+            'An event the value names (a log and event id, such as Security 4688) is one a call in its '
+            'audit_ids returned; to state an event another seat found, cite that seat\'s audit_ids. A claim '
+            'that names an event its calls did not return is refused. ',
             # D208: an open question is work for another seat, so it is only one this case's evidence can
             # answer; seats used to list what no seat could ever answer (a live host, other hosts,
             # artifacts never collected) and repeat questions already open, and the run could not settle.
@@ -1297,6 +1307,19 @@ _QUESTION_ID = re.compile(r"\bQ[0-9a-f]{6}\b", re.IGNORECASE)
 def question_id(text: Any) -> str:
     """An open question's id on the board: the same in every superstep, resume and board order."""
     return "Q" + hashlib.sha1(_norm_key(text).encode("utf-8")).hexdigest()[:6]
+
+
+def _ground_confirmed_verdicts(entry: dict[str, Any], case_dir: Path | None, *, run_id: str, sink: Any) -> None:
+    """A verifier seat's confirmation whose basis names an event its cited calls did not return is
+    downgraded to unverifiable, so it adds no "Verifier:" basis to a candidate (D238)."""
+    from nexus.langgraph.named_events import downgrade_ungrounded_confirmations
+
+    for verdict in downgrade_ungrounded_confirmations(entry.get("verdicts") or [], case_dir):
+        sink.emit(new_event(
+            run_id, "verify.downgraded", actor="verifier", agent_id=str(entry.get("agent_id") or ""),
+            detail=str(verdict.get("subject") or verdict.get("title") or "")[:160],
+            data={"audit_ids": verdict.get("audit_ids") or [], "from": "confirmed"},
+        ))
 
 
 def _seat_settles(entry: Mapping[str, Any]) -> bool:
@@ -2139,15 +2162,32 @@ def run_mode3(
                 run_id, "board.entry", actor="agent", agent_id=entry["agent_id"],
                 detail="deterministic seat",
             ))
-        kept = []
-        for claim in entry.get("claims") or []:
-            if isinstance(claim, dict) and not accept_claim(claim):
-                kept.append(claim)
-        entry["claims"] = kept
         # Operator decision 2026-10-12: every seat's claims enter the board here (the model seat, an injected
         # seat and the deterministic seat alike), so each claim's subject is attached from the rows it cites,
-        # never from the seat's entity labels (see _claim_key).
-        attach_subjects(kept, case_dir)
+        # never from the seat's entity labels (see _claim_key). The rows are read before the claim is
+        # accepted: a claim that names an event its calls did not return is refused (D238).
+        claims = [claim for claim in entry.get("claims") or [] if isinstance(claim, dict)]
+        attach_subjects(claims, case_dir)
+        kept = []
+        refused = []
+        for claim in claims:
+            reason = accept_claim(claim)
+            if reason:
+                refused.append({"entity": str(claim.get("entity_value") or "")[:200],
+                                "value": str(claim.get("value") or "")[:300],
+                                "reason": reason, "audit_ids": _audit_ids(claim)})
+            else:
+                kept.append(claim)
+        entry["claims"] = kept
+        if refused:
+            # Kept on the board's entry, so the run record says what the seat claimed and why it was refused.
+            entry["refused_claims"] = refused
+            for item in refused:
+                sink.emit(new_event(
+                    run_id, "claim.refused", actor="agent", agent_id=str(entry.get("agent_id") or ""),
+                    detail=f"{item['reason']} | {item['value'][:160]}", data={"audit_ids": item["audit_ids"]},
+                ))
+        _ground_confirmed_verdicts(entry, case_dir, run_id=run_id, sink=sink)
         # WO-R1F-M3 item 3: record which lead this seat was spawned for, so a
         # seat that returns no claims still disposes its lead (the disposition
         # is the fact that it was investigated, even when it found nothing).
@@ -2593,15 +2633,16 @@ def resume_mode3(
 
 
 def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
-    """Examiner action. Copies candidates onto a record shape stage_run_candidates reads."""
+    """Examiner action. Stages the run's candidates through the shared staging path.
+
+    The record is handed to ``stage_run_candidates`` in memory. It used to be copied into
+    ``analysis/mode2_runs`` for that function to read, and every reader of that directory then
+    took the Mode 3 run for a Mode 2 one: the cross-mode check counted run 4's 103 candidates
+    as Mode 2 claims (D243).
+    """
     record = read_run_record(case_dir, run_id)
     if record is None:
         return {"error": "run not found", "run_id": run_id, "staged": [], "skipped": []}
-    from nexus.modes.multi_role import _MODE2_DIR
-
-    bridge = Path(case_dir) / _MODE2_DIR
-    bridge.mkdir(parents=True, exist_ok=True)
-    path = bridge / f"{run_id}.json"
     rows = list(record.get("candidates") or [])
     provenance = [
         {"skill": u["skill"], "version": u.get("version"), "role": u.get("role")}
@@ -2619,9 +2660,7 @@ def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
         "verdicts": [],
         "results": [],
     }
-    path.write_text(json.dumps(payload, default=str), encoding="utf-8")
-    result = stage_run_candidates(case_dir, run_id, candidates=record.get("candidates") or [])
-    return result
+    return stage_run_candidates(case_dir, run_id, candidates=rows, record=payload)
 
 
 # Re-export stop helper name used by the CLI. The Mode 3 sidecar is not used.

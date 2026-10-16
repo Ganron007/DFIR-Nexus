@@ -505,7 +505,9 @@ _PATTERN_BRIEF = (
 )
 _VERIFIER_BRIEF = (
     "You are the verifier. Re-check each claim you are given with tools and classify "
-    "it confirmed, inferred or refuted. A refuted claim must state the counter-evidence."
+    "it confirmed, inferred or refuted. A refuted claim must state the counter-evidence. "
+    # D238: a confirmation is grounded as a refutation is (D42).
+    "A confirmed claim's basis names only events (a log and event id) its audit_ids returned."
 )
 
 ROLES: dict[str, AgentRole] = {
@@ -931,6 +933,7 @@ def stage_run_candidates(
     run_id: str,
     *,
     candidates: list[dict[str, Any]] | None = None,
+    record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stage a run's verified candidates as DRAFT findings (examiner action).
 
@@ -940,13 +943,17 @@ def stage_run_candidates(
     with reasons. Every staged finding keeps ``run_id`` / ``input_call_ids``
     lineage so the run event stream is the provenance. Approval remains
     password-gated and examiner-only — nothing here approves or promotes.
+
+    ``record`` is the run record when the caller holds it: Mode 3's lives in
+    ``analysis/mode3_runs``, which this module does not read (D243).
     """
     from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
     from nexus.langgraph.subject import derive_subject
     from nexus.modes.llm_desk import save_draft_finding
 
     case_dir = Path(case_dir)
-    record = read_run_record(case_dir, run_id)
+    if record is None:
+        record = read_run_record(case_dir, run_id)
     if record is None:
         return {"error": "run not found", "run_id": run_id,
                 "staged": [], "skipped": []}
@@ -2314,6 +2321,16 @@ def run_mode2(
                 run_id, "verify.downgraded", actor="verifier",
                 detail=str(verdict.get("title") or "")[:160],
                 data={"audit_ids": ids},
+            ))
+        # D238: a confirmation needs its basis to be what its cited calls returned, as a refutation needs a
+        # positive control (above).
+        from nexus.langgraph.named_events import downgrade_ungrounded_confirmations
+
+        for verdict in downgrade_ungrounded_confirmations(state.get("verdicts") or [], case_dir):
+            sink.emit(new_event(
+                run_id, "verify.downgraded", actor="verifier",
+                detail=str(verdict.get("title") or "")[:160],
+                data={"audit_ids": _candidate_audit_ids(verdict), "from": "confirmed"},
             ))
         state["status"] = "verified"
         _persist_state(case_dir, run_id, state)

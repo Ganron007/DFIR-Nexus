@@ -396,8 +396,8 @@ def test_model_supervisor_bad_output_falls_back(tmp_path):
 
 def test_stage_mode3_labels_drafts_and_keeps_event_stream(tmp_path):
     """Multi-agent staging: DRAFTs are labeled mode3, the finding.staged event
-    stays on the Mode 3 stream the board tails, and the staging bridge in
-    mode2_runs must not hijack the multi-role latest-run pointer."""
+    stays on the Mode 3 stream the board tails, and nothing of the run is
+    written to mode2_runs (D243: a copy there read as a Mode 2 run)."""
     from nexus.audit import AuditWriter
     from nexus.modes.multi_agent import _persist, read_run_events, stage_mode3
     from nexus.modes.multi_role import latest_run_id as mode2_latest
@@ -433,4 +433,5 @@ def test_stage_mode3_labels_drafts_and_keeps_event_stream(tmp_path):
     assert any(e["event_type"] == "finding.staged"
                for e in read_run_events(case, run_id))
     assert not (case / "analysis" / "mode2_runs" / f"{run_id}.jsonl").exists()
+    assert not (case / "analysis" / "mode2_runs" / f"{run_id}.json").exists()
     assert mode2_latest(case) == ""

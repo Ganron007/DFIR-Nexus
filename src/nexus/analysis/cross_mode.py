@@ -60,6 +60,8 @@ _FILE_EXTENSIONS = frozenset({
     "db", "dat", "sqlite", "edb", "bin", "pf", "lnk", "etl", "reg", "hve",
     "doc", "docx", "xls", "xlsx", "pdf", "png", "jpg", "gif", "zip", "7z",
     "bak", "tmp", "ini", "cfg", "conf", "htm", "html", "md", "py", "pl",
+    # Evidence containers: disk and memory images, mailboxes. `rd01-memory-39e55fe9.img` was read as a host (D241).
+    "img", "raw", "mem", "vmem", "dmp", "e01", "aff4", "vmdk", "vhd", "vhdx", "iso", "ost", "pst",
 })
 
 # Private-lab / internal TLDs that are not public suffixes. The CADRE lab runs
@@ -91,7 +93,9 @@ _WIN_PATH = re.compile(
 )
 _ENTITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("process", re.compile(r"\b([A-Za-z0-9_.\-]{3,}\.exe)\b", re.I)),
-    ("domain", re.compile(r"\b((?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,})\b", re.I)),
+    # A host name does not begin inside a longer token: in `SRL_Evidence-rd01-memory-39e55fe9.img` the word
+    # boundary after `-` started one at `rd01` (D241).
+    ("domain", re.compile(r"(?<![\w.\-])((?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,})\b", re.I)),
     ("ipv4", re.compile(r"\b((?:\d{1,3}\.){3}\d{1,3})\b")),
     ("sha256", re.compile(r"\b([0-9a-f]{64})\b", re.I)),
     ("sha1", re.compile(r"\b([0-9a-f]{40})\b", re.I)),
@@ -331,12 +335,34 @@ def _stored_mode(case_dir: Path) -> str:
     return str(resolved) if resolved in (1, 2, 3) else "1"
 
 
+def _finding_modes(finding: dict[str, Any], stored: str) -> list[str]:
+    """The modes that produced a staged finding (D243).
+
+    One case runs all three modes (D5 = C), so a finding is labelled by its own lineage: the
+    ``modes`` staging records (a claim several modes proposed is one finding with each of them
+    behind it), else its ``provenance.mode``. Only a finding that names neither, staged before
+    the lineage existed, takes the case's stored mode. Labelling every finding with the stored
+    mode made run 4's Mode 3 DRAFTs read as Mode 1 claims, shared with themselves.
+    """
+    modes: list[str] = []
+    for raw in finding.get("modes") or ():
+        mode = str(raw).strip()
+        if mode in ("1", "2", "3") and mode not in modes:
+            modes.append(mode)
+    if not modes:
+        provenance = finding.get("provenance") if isinstance(finding.get("provenance"), dict) else {}
+        mode = str(provenance.get("mode") or "").strip()
+        if mode in ("1", "2", "3"):
+            modes.append(mode)
+    return modes or [stored]
+
+
 def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
     """Gather claim rows per product mode from a case's own artifacts.
 
-    Reads what the case actually produced: ``findings.json`` for the mode the
-    case was created in (CASE.yaml; WO-12), and the ``analysis/mode2_runs`` /
-    ``analysis/mode3_runs`` records for agent runs. A mode with no artifact
+    Reads what the case actually produced: ``findings.json``, each finding under
+    the modes that produced it (``_finding_modes``), and the ``analysis/mode2_runs``
+    / ``analysis/mode3_runs`` records for agent runs. A mode with no artifact
     contributes nothing and is reported as ``unknown``.
     """
     case_dir = Path(case_dir)
@@ -352,13 +378,19 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
             stored = _stored_mode(case_dir)
             for f in findings:
                 if isinstance(f, dict):
-                    by_mode[stored].extend(_claim_from_finding(stored, f, case_dir))
+                    for mode in _finding_modes(f, stored):
+                        by_mode[mode].extend(_claim_from_finding(mode, f, case_dir))
 
-    for mode, sub in (("2", "mode2_runs"), ("3", "mode3_runs")):
+    # A mode's directory holds that mode's runs, named by their run id (as busy_runs and the family
+    # ledger read it): not a run's control sidecar, and not a Mode 3 record the old staging bridge
+    # copied into mode2_runs (D243).
+    for mode, sub, prefix in (("2", "mode2_runs", "M2-"), ("3", "mode3_runs", "M3-")):
         d = case_dir / "analysis" / sub
         if not d.is_dir():
             continue
-        for rec in sorted(d.glob("*.json")):
+        for rec in sorted(d.glob(f"{prefix}*.json")):
+            if rec.name.endswith(".control.json"):
+                continue
             try:
                 loaded = json.loads(rec.read_text(encoding="utf-8"))
             except (OSError, ValueError):

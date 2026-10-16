@@ -261,6 +261,36 @@ def _append_lineage(existing: dict, finding: dict) -> None:
         existing["input_call_ids"] = calls
 
 
+def _reseal_after_lineage(existing: dict, run_id: str, *, sealed: bool) -> None:
+    """Seal the DRAFT again after this path appended a re-proposal to its lineage (D239).
+
+    The lineage (``run_ids``, ``modes``, the re-proposal's ``input_call_ids``) is written into a DRAFT
+    that was sealed when it was staged, so every merged DRAFT read "content changed after staging":
+    20 findings of CASE-C5B04D31 on 2026-10-16, each restored to its seal by taking the lineage back
+    out. The staging path made the change, so it seals the result as the next revision and keeps the
+    digest it replaces. A seal that did not hold before the merge is left as it is: an edit made
+    outside the pipeline must still reach the examiner.
+    """
+    if not sealed:
+        return
+    from nexus.analysis.integrity import SEAL_ALGO, seal_digest
+
+    seal = dict(existing.get("seal") or {})
+    history = list(seal.get("history") or [])
+    history.append({key: seal.get(key) for key in ("digest", "revision", "sealed_at", "reason")
+                    if seal.get(key) is not None})
+    if existing.get("content_hash"):
+        existing["content_hash"] = _compute_content_hash(existing)
+    existing["seal"] = {
+        "algo": SEAL_ALGO,
+        "digest": seal_digest(existing),
+        "sealed_at": datetime.now(UTC).isoformat(),
+        "revision": int(seal.get("revision") or 1) + 1,
+        "reason": f"lineage: {run_id or 'a run'} proposed the same claim",
+        "history": history,
+    }
+
+
 def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> int:
     pattern = f"{prefix}-{examiner}-"
     max_num = 0
@@ -551,7 +581,11 @@ class CaseManager:
                          "shared evidence); not staged again (D223)"),
             }
         if same is not None:
+            from nexus.analysis.integrity import verify_seal
+
+            sealed = bool(same.get("seal")) and verify_seal(same)[0]
             _append_lineage(same, finding)
+            _reseal_after_lineage(same, str(finding.get("run_id") or ""), sealed=sealed)
             finding_id = str(same.get("id") or "")
             self._save_findings(case_dir, findings)
             return {

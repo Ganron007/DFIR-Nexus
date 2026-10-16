@@ -18,15 +18,22 @@ def cite_rows(
     *,
     tool: str = "es_search",
     audit_id: str | None = None,
+    total: int | None = None,
+    query: dict[str, Any] | None = None,
 ) -> str:
     """Log one call that stored ``rows`` as its evidence, and return the audit id it was written under.
 
     ``audit_id`` names the entry, for a test whose claims cite ids it chose; the writer mints one otherwise.
+    ``total`` is the number of rows the call reported (a search reports it; ``rows`` are those it kept), and
+    ``query`` the search it ran, for a test that runs a cited query again.
     """
+    summary: dict[str, Any] = {"evidence_rows": rows}
+    if total is not None:
+        summary["total"] = total
     written = AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").log(
         tool=tool,
-        params={"query": tool},
-        result_summary={"evidence_rows": rows},
+        params={"query": query if query is not None else tool},
+        result_summary=summary,
         audit_id=audit_id,
     )
     assert written, "the audit writer did not log the call"
