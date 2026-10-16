@@ -428,6 +428,102 @@ def accept_claim(claim: dict[str, Any]) -> str:
     return ""
 
 
+#: What the synthesis seat composes besides findings (IC-10): the case an examiner reads.
+CASE_PARTS = ("timeline", "attack_chain", "entities", "open_questions")
+
+
+def compose_case(
+    case_dir: Path,
+    run_id: str,
+    question: str,
+    settled: list[dict[str, Any]],
+    disputes: list[dict[str, Any]],
+    *,
+    model: Any,
+    sink: Any,
+) -> dict[str, Any]:
+    """The case Mode 3's settled board makes, composed by the synthesis seat Mode 2 uses (IC-10, D237).
+
+    Mode 3 used to stage every settled claim and end on a count ("103 settled claim(s)"): run 4 staged 63
+    DRAFTs, of which the examiner could approve none (18 absences, 10 inventories, 15 context, 5 duplicates).
+    The settled claims are now the synthesis seat's material: it writes the narrative, the timeline, the
+    attack chain, the entities and the open questions, and composes the findings, naming in `merges` the
+    claims each is built from so their calls and tests follow (D225). An absence is never a finding: it
+    stays on the record as what was looked for. No synthesis (no model, a failed or unparsed reply) means
+    no finding; the settled claims stay on the record and the reason is a gap, never a fallback that
+    stages them.
+    """
+    from nexus.modes.multi_role import (
+        _backfill_audit_ids,
+        _candidate_audit_ids,
+        _carry_claim_tests,
+        _pack,
+        _zero_hit_citation,
+        run_work_order,
+    )
+
+    absences = [c for c in settled if str(c.get("claim_kind") or "") == "absence"]
+    claims = [{**c, "candidate_id": f"C{n}"}
+              for n, c in enumerate((c for c in settled if str(c.get("claim_kind") or "") != "absence"), 1)]
+    out: dict[str, Any] = {
+        "findings": [], "narrative": "", "case": {}, "gaps": [],
+        "absences": [{"title": str(c.get("title") or ""), "audit_ids": _candidate_audit_ids(c)}
+                     for c in absences],
+    }
+    if not claims:
+        out["gaps"].append("no settled claim to compose the case from")
+        return out
+    if model is None:
+        out["gaps"].append("the case was not composed: no model for the synthesis seat; the settled claims are "
+                           "on the record and none is staged")
+        return out
+    order = WorkOrder(
+        order_id=WorkOrder.new_id(),
+        role="synthesis",
+        task=("Compose the case from the settled claims of the board: the narrative, the timeline, the attack "
+              "chain, the entities, the open questions, and the findings each built from the claims it names "
+              "in `merges`:\n" + _pack(json.dumps({
+                  "question": question,
+                  "claims": claims,
+                  "absences": [a["title"] for a in out["absences"]],
+                  "disputes": disputes,
+              }, default=str), case_dir)),
+        why="The case from the settled board (IC-10)",
+        acceptance="narrative, timeline, attack chain, entities, open questions; findings with audit_ids",
+    )
+    result = run_work_order(order, case_dir=case_dir, model=model, run_id=run_id, sink=sink, context={})
+    parsed = result.parsed or {}
+    if result.status in {"failed", "error", "invalid", "unparsed", "fallback"} or not parsed:
+        out["gaps"].append(f"the case was not composed: the synthesis seat {result.status or 'failed'}"
+                           + (f" ({result.error[:160]})" if result.error else "")
+                           + "; the settled claims are on the record and none is staged")
+        return out
+    finals = [f for f in parsed.get("findings") or [] if isinstance(f, dict)]
+    _carry_claim_tests(finals, claims)
+    _backfill_audit_ids(finals, claims)
+    from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+    from nexus.langgraph.subject import derive_subject
+
+    for final in finals:
+        ids = _candidate_audit_ids(final)
+        if ids and _zero_hit_citation(case_dir, ids):
+            out["gaps"].append(f"composed finding not staged: {str(final.get('title') or '')[:160]} "
+                               "(every call it cites returned 0 rows)")
+            continue
+        # The subject is the one its cited rows give, by the rule every mode uses (operator, 2026-10-12).
+        subject = derive_subject(evidence_rows_for_audit_ids(case_dir, ids)) if ids else {}
+        if subject and not final.get("entity"):
+            final["entity"], final["category"] = subject.get("entity"), subject.get("category")
+        out["findings"].append(final)
+    out["narrative"] = str(parsed.get("narrative") or "")
+    out["case"] = {part: parsed.get(part) or [] for part in CASE_PARTS}
+    out["gaps"].extend(str(g) for g in parsed.get("gaps") or [] if str(g).strip())
+    sink.emit(new_event(run_id, "synthesis.composed", actor="synthesis",
+                        detail=f"{len(out['findings'])} finding(s) from {len(claims)} settled claim(s); "
+                               f"{len(absences)} absence(s) kept on the record"))
+    return out
+
+
 def settled_candidates(
     board: list[dict[str, Any]],
     disputes: list[dict[str, Any]],
@@ -556,6 +652,7 @@ def settled_candidates(
                 "severity": str(claim.get("severity") or "").strip().upper(),
                 "audit_ids": _audit_ids(claim),
                 "agent_id": entry.get("agent_id"),
+                "claim_kind": kind,
                 **time_order,
             })
     return candidates, gaps
@@ -1223,6 +1320,11 @@ class Mode3State(TypedDict, total=False):
     family_ledger: dict[str, Any]
     candidates: list[dict[str, Any]]
     candidate_gaps: list[str]
+    # IC-10: the settled claims the case was composed from, and the composed case.
+    settled: list[dict[str, Any]]
+    narrative: str
+    case: dict[str, Any]
+    absences: list[dict[str, Any]]
     # Why join paused the run when the model stopped answering (D209).
     pause_reason: str
 
@@ -2357,7 +2459,10 @@ def run_mode3(
             run_id, "synthesis.candidates", actor="synthesis",
             detail=f"{len(candidates)} candidate(s)",
         ))
-        return {"candidates": candidates, "candidate_gaps": candidate_gaps}
+        composed = compose_case(case_dir, run_id, question, candidates, list(disputes), model=model, sink=sink)
+        return {"candidates": composed["findings"], "settled": candidates,
+                "candidate_gaps": candidate_gaps + composed["gaps"], "narrative": composed["narrative"],
+                "case": composed["case"], "absences": composed["absences"]}
 
     from langgraph.graph import END, START, StateGraph
 
@@ -2580,12 +2685,20 @@ def run_mode3(
     if "candidates" in final:
         candidates = list(final.get("candidates") or [])
         candidate_gaps = list(final.get("candidate_gaps") or [])
+        settled = list(final.get("settled") or [])
     else:
-        candidates, candidate_gaps = settled_candidates(
+        # The graph ended before synthesis (paused or stopped): the settled claims go on the record, and
+        # nothing is composed or staged from them (IC-10).
+        candidates = []
+        settled, candidate_gaps = settled_candidates(
             list(record.get("board") or []), list(record.get("disputes") or []),
             case_dir=case_dir,
         )
+        candidate_gaps = [*candidate_gaps, "the run ended before synthesis: the case was not composed"]
     record["candidates"] = candidates
+    record["settled_claims"] = settled
+    record["case"] = dict(final.get("case") or {})
+    record["absences"] = list(final.get("absences") or [])
     # The run's own gaps (unexamined families, roles that never contributed) and the
     # candidates' gaps are both kept; the second used to overwrite the first (D129).
     merged_gaps: list[str] = []
@@ -2593,8 +2706,10 @@ def run_mode3(
         if gap and gap not in merged_gaps:
             merged_gaps.append(str(gap))
     record["gaps"] = merged_gaps
-    record["narrative"] = (
-        f"{len(candidates)} settled claim(s); "
+    # IC-10: the narrative is the synthesis seat's; the counts are the summary, never the narrative.
+    record["narrative"] = str(final.get("narrative") or "")
+    record["summary"] = (
+        f"{len(settled)} settled claim(s), {len(candidates)} composed finding(s); "
         f"{len(record.get('disputes') or [])} unresolved dispute(s)."
     )
     steering = read_mode3_steering(case_dir, run_id)

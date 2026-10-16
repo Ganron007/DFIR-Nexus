@@ -16,6 +16,7 @@ graph mechanics are exercised without a model.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -263,6 +264,14 @@ class _ScriptedSeatModel:
 
     def invoke(self, messages):
         blob = "\n".join(str(m.get("content") or "") for m in messages)
+        if "You are the synthesis agent" in blob:
+            # IC-10: the synthesis seat composes one finding from every settled claim it is handed, so a
+            # claim that should never reach it (a refuted one) would show in the run's findings.
+            merges = sorted(set(re.findall(r'"candidate_id": "(C\d+)"', blob)))
+            return _Content(json.dumps({"narrative": "composed from the settled claims", "findings": [{
+                "title": "composed finding", "observation": "the settled claims", "interpretation": "as named",
+                "confidence": "MEDIUM", "confidence_justification": "merged claims", "audit_ids": [],
+                "merges": merges}], "gaps": []}))
         if "verifier seat" in blob or "Re-check these claims" in blob:
             body = {
                 "verdicts": [
@@ -532,6 +541,9 @@ def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     assert any("open question" in str(e.get("note") or "") for e in record["board"]) or questions
     roles = {e.get("role") for e in record["board"]}
     assert "verifier" in roles
+    # The refuted claim never reaches the synthesis seat; the composed finding stands on the beacon rows.
+    settled = json.dumps(record["settled_claims"])
+    assert "beacon.exe" in settled and "notepad.exe" not in settled
     blob = json.dumps(record["candidates"])
     assert "beacon.exe" in blob
     assert "notepad.exe" not in blob
@@ -598,7 +610,10 @@ def test_a_model_that_stops_answering_mid_run_pauses_the_run_with_its_reason(tmp
     assert record["status"] == "paused"
     assert record["superstep"] == 2
     assert record["stop_reason"].startswith("model unavailable from superstep 2: Error code: 429")
-    assert record["candidates"], "what the first superstep found is kept"
+    # IC-10: what the first superstep found is kept as settled claims; a paused run composes nothing until
+    # it completes, so nothing is staged from it.
+    assert record["settled_claims"], "what the first superstep found is kept"
+    assert record["candidates"] == []
 
 
 def test_a_model_that_never_answers_fails_the_run_at_once(tmp_path, monkeypatch):

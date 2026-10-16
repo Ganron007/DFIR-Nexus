@@ -591,7 +591,14 @@ ROLES: dict[str, AgentRole] = {
             "\"merges\":[\"<candidate_id>\"],"
             "\"attack_ids\":[\"...\"],\"itm_stage\":\"...\","
             "\"itm_objects\":\"...\"}],\"gaps\":[\"...\"],"
-            "\"coverage\":{...}}. A finding is a claim about the evidence: a benign "
+            "\"timeline\":[{\"ts\":\"...\",\"event\":\"...\",\"audit_ids\":[\"...\"]}],"
+            "\"attack_chain\":[{\"tactic\":\"...\",\"technique\":\"T....\",\"what\":\"...\","
+            "\"audit_ids\":[\"...\"]}],\"entities\":[{\"type\":\"...\",\"value\":\"...\","
+            "\"role\":\"...\"}],\"open_questions\":[\"...\"],"
+            "\"coverage\":{...}}. Compose the case an examiner reads: the timeline in time order, the attack "
+            "chain stage by stage, who and what acted, and what the evidence has not answered. An absence, an "
+            "inventory or a row count is context for the narrative, never a finding. A finding is a claim "
+            "about the evidence: a benign "
             "alternative or a refutation test belongs in its interpretation, never "
             "in a finding of its own. `merges` names the candidate_id of every "
             "candidate the finding is built from. Never approve anything."
@@ -2584,6 +2591,9 @@ def run_mode2(
             state.setdefault("results", []).append(result.to_dict())
             parsed = result.parsed or {}
             state["narrative"] = str(parsed.get("narrative") or "")
+            # IC-10: the case the synthesis composed (timeline, attack chain, entities, open questions).
+            state["case"] = {part: parsed.get(part) or []
+                             for part in ("timeline", "attack_chain", "entities", "open_questions")}
             state["candidates"] = parsed.get("findings") or candidates
             # Same carry-forward at the last hop: synthesis findings that came
             # back without audit_ids inherit them from the verifying verdict and
@@ -2672,7 +2682,7 @@ def run_mode2(
                         {"skill": u["skill"], "version": u["version"], "role": u["role"]}
                         for u in used
                     ]
-            state["gaps"] = parsed.get("gaps") or []
+            state["gaps"] = list(dict.fromkeys([*(state.get("gaps") or []), *(parsed.get("gaps") or [])]))
             state["coverage"] = parsed.get("coverage") or {}
         else:
             state["candidates"] = []

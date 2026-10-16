@@ -92,9 +92,13 @@ def test_two_seats_publish_without_clobber(tmp_path):
     assert "correlation" in roles
     assert "pattern" in roles
     assert record["status"] == "completed"
-    assert record["candidates"]
-    assert record["candidates"][0]["audit_ids"] == [logon]
-    assert record["candidates"][0]["interpretation"]
+    # IC-10: the settled claims are the synthesis seat's material; with no model the case is not composed
+    # and nothing is staged (tests/test_mode3_compose.py drives the composition).
+    assert record["settled_claims"]
+    assert record["settled_claims"][0]["audit_ids"] == [logon]
+    assert record["settled_claims"][0]["interpretation"]
+    assert record["candidates"] == []
+    assert any("was not composed" in gap for gap in record["gaps"])
 
 
 def test_dispute_is_not_a_candidate(tmp_path, monkeypatch):

@@ -216,6 +216,10 @@ def test_one_case_modes_one_two_three_then_cross_mode(case, monkeypatch):
             return json.dumps({"spawns": [{"role": "evidence", "family": "evtxecmd", "why": "event logs"}]})
         if "You are the verifier" in text:
             return json.dumps({"verdicts": []})
+        if "You are the synthesis agent" in text:
+            # IC-10: Mode 3 composes its case through the synthesis seat Mode 2 uses, from its settled claims.
+            return json.dumps({"narrative": SHARED_TITLE, "findings": [{
+                **_candidate(_audit_ids(case, "es_search")[-1]), "merges": ["C1"]}], "gaps": []})
         if not _has_search_result(text):
             return json.dumps({"tool_calls": [{"tool": "es_search", "why": "1004 rows",
                                                "args": {"query": ES_QUERY}}]})
