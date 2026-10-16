@@ -106,10 +106,10 @@ def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def cited_calls(case_dir: Path | None, audit_ids: list[str]) -> dict[str, dict[str, Any]]:
     """What each cited audit entry recorded of its call, read once for all the ids.
 
-    ``{audit_id: {"tool", "params", "total", "rows"}}``: the tool and its arguments, the total the call
-    reported (None when it reported none) and the rows it stored, which are at most ``EVIDENCE_ROW_CAP``
+    ``{audit_id: {"tool", "params", "total", "rows", "verdict"}}``: the tool and its arguments, the total the
+    call reported (None when it reported none) and the rows it stored, which are at most ``EVIDENCE_ROW_CAP``
     of them (D238: a check that reads the rows must know when they are all of them). ``rows`` is None
-    for an entry that stored no rows (a non-search tool).
+    for an entry that stored no rows (a non-search tool). ``verdict`` is a baseline check's answer, else "".
     """
     wanted = {a for a in audit_ids if a}
     path = Path(case_dir) / "audit" / "nexus.jsonl" if case_dir is not None else None
@@ -137,6 +137,8 @@ def cited_calls(case_dir: Path | None, audit_ids: list[str]) -> dict[str, dict[s
             "params": rec.get("params") if isinstance(rec.get("params"), dict) else {},
             "total": total,
             "rows": rows if isinstance(rows, list) else None,
+            # What a baseline check answered (D258): a claim that credits a check is held to it.
+            "verdict": str(summary.get("verdict") or ""),
         }
     return calls
 

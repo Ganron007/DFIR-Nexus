@@ -4,7 +4,7 @@ The gate question is not "did the pipeline finish" but "is every claim it made
 true". This module answers that one claim at a time, mechanically, so a human
 reviews exceptions rather than re-deriving the whole case.
 
-Nine checks, from the debug-mode plan:
+Twelve checks, from the debug-mode plan:
 
 =====  ==========================================================
 L1.1  every cited ``audit_id`` exists in **this case's** audit log
@@ -20,6 +20,8 @@ L1.10 a cited row corroborates the claim, rather than merely naming the
        entity somewhere in an unstructured data blob
 L1.11 every event the claim names ("Sysmon 10", "EID 4688") was returned by
        a call it cites (D238)
+L1.12 every baseline check the claim credits ("check_file EXPECTED") is one
+       it cites, and returned what the claim says (D258)
 =====  ==========================================================
 
 Claim verdict:
@@ -76,6 +78,7 @@ CHECKS = {
     "L1.9": "coverage is declared",
     "L1.10": "cited row corroborates the claim (not just a mention in a data blob)",
     "L1.11": "every event the claim names was returned by a call it cites",
+    "L1.12": "every baseline check the claim credits is cited and returned what the claim says",
 }
 
 _TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.I)
@@ -682,6 +685,35 @@ def _l1_11(finding, res, case_dir=None, event_replay=None, **_kw) -> None:
     _check(res, "L1.11", "pass", f"{len(grounding['recorded'])} named event(s) returned by the cited calls")
 
 
+#: Where a claim states what a check answered: its own words, and the reasoning it gives for them.
+_VERDICT_KEYS = _STATED_KEYS + ("interpretation", "confidence_justification")
+
+
+def _l1_12(finding, res, case_dir=None, **_kw) -> None:
+    """Did a call the claim cites return what the claim says a baseline check answered? (D258)
+
+    A Mode 2 work order wrote that check_file and check_lolbin "confirm STUN.exe is a legitimate Windows
+    component" while citing one memory search; no check_file call on STUN.exe had run, and the one that ran
+    later answered UNKNOWN. Two candidates then called the implant a legitimate Defender component.
+    """
+    from nexus.langgraph.evidence_rows import cited_calls
+    from nexus.langgraph.named_verdicts import named_verdicts, verdict_grounding
+
+    text = "\n".join(str(finding.get(k) or "") for k in _VERDICT_KEYS)
+    if not named_verdicts(text):
+        _check(res, "L1.12", "skipped", "the claim credits no baseline check")
+        return
+    if case_dir is None:
+        _check(res, "L1.12", "unverifiable", "no case audit log to read the cited calls from")
+        return
+    grounding = verdict_grounding(text, cited_calls(case_dir, _cited_ids(finding)))
+    if grounding["ungrounded"]:
+        _check(res, "L1.12", "fail", "the claim credits " + "; ".join(grounding["ungrounded"]),
+               evidence=grounding["ungrounded"])
+        return
+    _check(res, "L1.12", "pass", f"{len(grounding['grounded'])} credited check(s) cited and returned as stated")
+
+
 def verify_claim(
     finding: dict[str, Any],
     *,
@@ -718,6 +750,7 @@ def verify_claim(
     _l1_9(res, coverage=coverage)
     _l1_10(finding, res)
     _l1_11(finding, res, case_dir=case_dir, event_replay=event_replay)
+    _l1_12(finding, res, case_dir=case_dir)
 
     counts = {"pass": 0, "fail": 0, "unverifiable": 0, "skipped": 0}
     for entry in res.values():

@@ -1,0 +1,95 @@
+{
+ "_source": "CASE-C5B04D31, Mode 2 run M2-20261016T210141-b9e203: work order wo-25a662adfb65's note and candidate 7, verbatim",
+ "note": {
+  "audit_ids": [
+   "nexus-claudebot-20261016-1470"
+  ],
+  "evidence": [
+   "check_file STUN.exe verdict context",
+   "case digest: STUN.exe path \\Device\\HarddiskVolume1\\Windows\\System32\\STUN.exe"
+  ],
+  "statement": "check_file on STUN.exe path (Windows\\System32\\STUN.exe) and check_lolbin on standard system binaries confirm STUN.exe is a legitimate Windows component (Windows Defender Update service). Its presence in YARA hits with Cobalt Strike signature indicates in-memory injection into a trusted process rather than a dropped binary."
+ },
+ "candidate_7": {
+  "attack_ids": [
+   "T1053.005"
+  ],
+  "audit_ids": [
+   "nexus-claudebot-20261016-1475",
+   "nexus-claudebot-20261016-1476",
+   "nexus-claudebot-20261016-1477",
+   "nexus-claudebot-20261016-1834",
+   "nexus-claudebot-20261016-1835",
+   "nexus-claudebot-20261016-1836",
+   "nexus-claudebot-20261016-1886",
+   "nexus-claudebot-20261016-1887",
+   "nexus-claudebot-20261016-1807",
+   "nexus-claudebot-20261016-1859",
+   "nexus-claudebot-20261016-1470",
+   "nexus-claudebot-20261016-1755"
+  ],
+  "confidence": "MEDIUM",
+  "confidence_justification": "The \\SRL Update Service task was directly retrieved (audit 1834/1886) and confirmed. The \\Install Office 2019 task was directly retrieved (audit 1835) with ts_synthesized=true. The \\SRL User Maintenance task returned 0 indexed rows (audit 1836); its existence is inferred from the evtxecmd TaskScheduler references but the specific task row was not confirmed. The UNKNOWN check_scheduled_task and check_file verdicts (FD-004: not in baseline) are context, not confirmation of maliciousness.",
+  "interpretation": "These tasks provide scheduled re-launch of the beacon host process (STUN.exe) and a short-lived persistence mechanism (SRLUpdate.exe) active during the main exploitation phase. The '\\Install Office 2019' task is a disguise: no Windows build ships an Office installer as a .bat in the Windows root directory; legitimate Office deployments use msiexec with .msi/.ccp files. The first execution (2022-10-14) is ~2 days after the first SROC bootstrap (2022-10-12), strongly suggesting the same offensive operation. The 'SRL' prefix matches the operator's naming convention (also seen in the SROC framework and the SRL_Evidence case naming). The ts_synthesized=true flag on the Install Office 2019 row means the timestamp was reconstructed, reducing confidence in the exact execution window but not in the task's existence.",
+  "itm_objects": "STUN.exe, SRLUpdate.exe, InstallOffice2019.bat, \\SRL Update Service, \\SRL User Maintenance, \\Install Office 2019",
+  "itm_stage": "Persistence",
+  "merges": [
+   "C17",
+   "C18",
+   "C19",
+   "C26"
+  ],
+  "observation": "Three non-standard scheduled tasks on rd01.shieldbase.com: (1) '\\SRL Update Service' → C:\\Windows\\System32\\STUN.exe, by shieldbase\\wacsvc, execution window 2023-01-17 to 2023-01-25, T1053.005; (2) '\\SRL User Maintenance' → C:\\Windows\\System32\\SRLUpdate.exe, execution window 2023-01-17 to 2023-01-25; (3) '\\Install Office 2019' → C:\\Windows\\InstallOffice2019.bat, by shieldbase\\rsydow-a, first execution 2022-10-14, ts_synthesized=true. check_scheduled_task returned UNKNOWN for all three (not in any Windows build baseline). check_file on SRLUpdate.exe and InstallOffice2019.bat returned UNKNOWN. STUN.exe is a legitimate Windows Defender Update component (check_file EXPECTED), but the task that triggers it is non-standard. The '\\SRL User Maintenance' task search returned 0 indexed rows; its exact row is unconfirmed. The 8-day execution window of the SRL tasks overlaps the C2 service install (Jan 24) and memory capture (Jan 25).",
+  "severity": "HIGH",
+  "title": "Non-standard scheduled-task persistence: \\SRL Update Service, \\SRL User Maintenance, and \\Install Office 2019",
+  "benign_alternative": "An IT admin manually placed an Office 2019 deployment script in C:\\Windows\\ and created a scheduled task to run it periodically (e.g., to ensure Office is installed for users who haven't run it yet). The .bat invokes the Office installer from a network share. The task name is informal but functional.\nA third-party application vendor (whose product is abbreviated 'SRL') placed an update service in System32 and registered a scheduled task for user-profile maintenance (e.g., clearing temp files, updating user settings). The task name 'SRL User Maintenance' reflects the vendor's internal naming.\nSTUN.exe is a legitimate Windows Defender Update component; the task '\\SRL Update Service' is simply how this organization named their Defender Update maintenance task (perhaps 'SRL' is an internal team/project abbreviation). The task periodically triggers STUN.exe for security updates, which is its normal function.",
+  "refutation": "If the .bat content (via check_file or MFT data) shows it invokes a legitimate Office installer (setup.exe from a network path like \\\\fileserver\\office2019\\setup.exe) AND the task was created by a known admin account with a documented purpose in the change-management log, the benign reading holds. The fact that the file is UNKNOWN in the Windows baseline, sits in the Windows root directory (non-standard for installers), and the host is in the confirmed-compromise window makes this unlikely. Audit_id nexus-claudebot-20261016-1475 carries the lead row.\nIf check_file returned EXPECTED (SRLUpdate.exe is in the enterprise software-inventory baseline) OR the MFT/USN data shows the file was installed by a known vendor MSI/EXE with a matching publisher signature, the benign reading holds. The UNKNOWN verdict, the non-standard task name, and the temporal alignment with the Cobalt Strike cluster and C2 service install make the benign reading unlikely. Audit_id nexus-claudebot-20261016-1476 carries the lead row.\nThe benign reading is refuted by: (1) check_scheduled_task returning UNKNOWN (not in any Windows baseline); (2) MemProcFS YARA confirming 3 Cobalt Strike rules in STUN.exe VAD (audit nexus-claudebot-20261016-1470); (3) the 'SRL' prefix matching the attacker's naming convention (same as Lead 3's SRLUpdate.exe and the SRL_Evidence case naming); (4) the task's execution window (Jan 17-25) overlapping the main AV detection cluster and C2 service install. If the YARA matches were proven to be false positives on legitimate Defender update DLLs (module list check in the memory image) AND the task were in a documented enterprise baseline, the benign reading could hold. Audit_ids nexus-claudebot-20261016-1477 (lead row), nexus-claudebot-20261016-1470 (YARA), nexus-claudebot-20261016-1755 (YARA CSV context).",
+  "skill_provenance": [
+   {
+    "skill": "ir_scoping_and_leads",
+    "version": "5bd9a9b47e69",
+    "role": "correlation"
+   },
+   {
+    "skill": "windows_event_log_analysis",
+    "version": "3806dba208bd",
+    "role": "evidence"
+   },
+   {
+    "skill": "execution_artifact_analysis",
+    "version": "51f3c5cb39ee",
+    "role": "evidence"
+   },
+   {
+    "skill": "execution_anomaly",
+    "version": "c7c8f5c8cec8",
+    "role": "pattern"
+   },
+   {
+    "skill": "browser_artifact_analysis",
+    "version": "f60942e339ac",
+    "role": "evidence"
+   },
+   {
+    "skill": "deleted_file_recovery",
+    "version": "264b87e2dada",
+    "role": "evidence"
+   },
+   {
+    "skill": "email_phishing",
+    "version": "cab0ceee7b26",
+    "role": "evidence"
+   },
+   {
+    "skill": "initial_access",
+    "version": "8d5953972af8",
+    "role": "pattern"
+   },
+   {
+    "skill": "lnk_jumplist_analysis",
+    "version": "4655b9c734a7",
+    "role": "evidence"
+   }
+  ]
+ }
+}

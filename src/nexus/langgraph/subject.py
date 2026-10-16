@@ -303,10 +303,13 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
     by the rule staging uses. A claim whose rows give no subject gets ``{}``: it cannot be compared with
     another claim on the board. A time_order claim also gets ``other_subject``: its second entity, kept
     only when a cited row carries it (``ground_other_entity``, D87). An affirmed claim that names an event
-    its cited calls did not return gets ``unrecorded_events`` (D238). The audit trail is read once.
+    its cited calls did not return gets ``unrecorded_events`` (D238), and a claim that credits a baseline check
+    it does not cite, or with an answer its cited call did not give, ``ungrounded_verdicts`` (D258). The
+    audit trail is read once.
     """
     from nexus.langgraph.evidence_rows import cited_calls, rows_of_calls, unique_rows
     from nexus.langgraph.named_events import es_replay, event_grounding
+    from nexus.langgraph.named_verdicts import verdict_grounding
 
     ids = sorted({aid for c in claims if isinstance(c, dict) for aid in _claim_audit_ids(c)})
     calls = cited_calls(case_dir, ids) if case_dir is not None and ids else {}
@@ -316,13 +319,20 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
         if not isinstance(claim, dict):
             continue
         claim.pop("unrecorded_events", None)
+        claim.pop("ungrounded_verdicts", None)
+        own = {aid: calls[aid] for aid in _claim_audit_ids(claim) if aid in calls}
         if str(claim.get("polarity") or "affirm").strip().lower() != "deny":
             # The value is what the claim asserts. Its entity label names what it is about, which for an
             # absence is the event looked for ("EID-140 (Task Scheduler task executed)").
-            own = {aid: calls[aid] for aid in _claim_audit_ids(claim) if aid in calls}
             unrecorded = event_grounding(claim.get("value"), own, replay=replay)["unrecorded"] if own else []
             if unrecorded:
                 claim["unrecorded_events"] = unrecorded
+        # D258: a baseline check the claim credits, in what it asserts or in why it is confident, is one it
+        # cites and answered as the claim says.
+        stated = f"{claim.get('value') or ''}\n{claim.get('confidence_justification') or ''}"
+        ungrounded = verdict_grounding(stated, own)["ungrounded"]
+        if ungrounded:
+            claim["ungrounded_verdicts"] = ungrounded
         rows = unique_rows(stored, _claim_audit_ids(claim))
         subject = derive_subject(rows)
         entity = subject["entity"]

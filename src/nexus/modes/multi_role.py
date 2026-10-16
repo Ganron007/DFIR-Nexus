@@ -755,6 +755,38 @@ def _candidate_audit_ids(candidate: dict[str, Any]) -> list[str]:
     return out
 
 
+#: Where a seat's note or candidate states what a check answered.
+_STATED_FIELDS = ("statement", "title", "observation", "interpretation", "confidence_justification")
+
+
+def _mark_ungrounded(parsed: dict[str, Any], case_dir: Path) -> int:
+    """Mark each note and candidate that credits a baseline check it does not cite, or with an answer the call
+    did not give (D258); return how many.
+
+    The mark (``ungrounded``) travels with the item into the earlier results every later seat reads. A work
+    order wrote that check_file and check_lolbin "confirm STUN.exe is a legitimate Windows component", citing
+    one memory search; later orders read it as "check_file prior WO confirmed" and "check_file EXPECTED", and
+    two candidates called the implant a legitimate Defender component. The call that did run answered UNKNOWN.
+    """
+    from nexus.langgraph.evidence_rows import cited_calls
+    from nexus.langgraph.named_verdicts import verdict_grounding
+
+    items = [item for key in ("notes", "candidate_findings") for item in (parsed.get(key) or [])
+             if isinstance(item, dict)]
+    ids = sorted({a for item in items for a in _candidate_audit_ids(item)})
+    calls = cited_calls(case_dir, ids) if ids else {}
+    marked = 0
+    for item in items:
+        item.pop("ungrounded", None)
+        text = "\n".join(str(item.get(k) or "") for k in _STATED_FIELDS)
+        own = {a: calls[a] for a in _candidate_audit_ids(item) if a in calls}
+        ungrounded = verdict_grounding(text, own)["ungrounded"]
+        if ungrounded:
+            item["ungrounded"] = [f"credits {u}" for u in ungrounded]
+            marked += 1
+    return marked
+
+
 def _title_key(item: dict[str, Any]) -> str:
     return json.dumps(["title", " ".join(str(item.get("title") or "").split()).lower()])
 
@@ -1683,6 +1715,13 @@ def run_work_order(
                 run_id, "agent.formatted", actor="agent", turn_id=turn_id,
                 agent_id=agent_id,
                 detail="prose answer restructured into the role JSON envelope",
+            ))
+    if isinstance(parsed, dict):
+        marked = _mark_ungrounded(parsed, case_dir)
+        if marked:
+            sink.emit(new_event(
+                run_id, "agent.ungrounded", actor="agent", turn_id=turn_id, agent_id=agent_id,
+                detail=f"{marked} note(s) or candidate(s) credit a check their cited calls did not return",
             ))
     result = AgentResult(
         order_id=order.order_id,

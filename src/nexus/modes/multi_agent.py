@@ -416,6 +416,9 @@ def accept_claim(claim: dict[str, Any]) -> str:
         # D238: the claim says its rows are events the calls it cites did not return (attach_subjects).
         return ("EV-1: the claim names " + ", ".join(map(str, claim["unrecorded_events"]))
                 + " but no call it cites returned that event")
+    if claim.get("ungrounded_verdicts"):
+        # D258: the claim credits a baseline check it does not cite, or with an answer the call did not give.
+        return "TV-1: the claim credits " + "; ".join(map(str, claim["ungrounded_verdicts"]))
     if str(claim.get("claim_kind") or "") == "attribution":
         return "FD-003: agents do not attribute"
     if not str(claim.get("confidence_justification") or "").strip():

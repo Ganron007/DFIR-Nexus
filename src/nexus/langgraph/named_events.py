@@ -298,12 +298,14 @@ def downgrade_ungrounded_confirmations(verdicts: list[Any], case_dir: Any) -> li
 
     Run 4's verifier confirmed lsass.exe on "30 Sysmon EventID-10 process-access events" while the rows it
     cited were Security 4688 (D238). As a refutation needs a positive control (D42), a confirmation needs
-    its basis to be what its calls returned. The verdict becomes ``unverifiable`` with the reason in its
-    basis, and is returned so the caller records the change.
+    its basis to be what its calls returned: the events it names, and the baseline checks it credits (D258).
+    The verdict becomes ``unverifiable`` with the reason in its basis, and is returned so the caller records
+    the change.
     """
     from pathlib import Path
 
     from nexus.langgraph.evidence_rows import cited_calls
+    from nexus.langgraph.named_verdicts import verdict_grounding
 
     confirmed = [v for v in verdicts or []
                  if isinstance(v, dict) and str(v.get("class") or "").strip().lower() == "confirmed"]
@@ -321,13 +323,15 @@ def downgrade_ungrounded_confirmations(verdicts: list[Any], case_dir: Any) -> li
     for verdict in confirmed:
         own = {a: calls[a] for a in ids_of(verdict) if a in calls}
         unrecorded = event_grounding(verdict.get("basis"), own, replay=replay)["unrecorded"] if own else []
-        if not unrecorded:
+        ungrounded = verdict_grounding(verdict.get("basis"), own)["ungrounded"]
+        if not unrecorded and not ungrounded:
             continue
+        reasons = ([f"the basis names {', '.join(unrecorded)}, which no cited call returned"] if unrecorded
+                   else []) + ([f"the basis credits {'; '.join(ungrounded)}"] if ungrounded else [])
         verdict["class"] = "unverifiable"
         verdict["downgraded_from"] = "confirmed"
         verdict["basis"] = (str(verdict.get("basis") or "").strip()
-                            + f" [downgraded: the basis names {', '.join(unrecorded)}, which no cited call "
-                            "returned]").strip()
+                            + f" [downgraded: {'; '.join(reasons)}]").strip()
         changed.append(verdict)
     return changed
 
