@@ -758,6 +758,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     ]
 
     # --- alerts: severity rows from detection families ---
+    from nexus.langgraph.evidence_rows import row_time
+
     alerts: list[dict[str, Any]] = []
     alert_hits: list[dict[str, Any]] = []
     for h in hits:
@@ -783,10 +785,9 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
                     or fields.get("rule")
                     or ""
                 )[:160],
-                "time": str(
-                    fields.get("TimeCreated") or fields.get("Timestamp")
-                    or fields.get("timestamp") or fields.get("ts") or ""
-                )[:40],
+                # The row's time in UTC by the index's rule (D257): Hayabusa's Timestamp is written in the
+                # lane host's zone, and the alert list sorts on this value.
+                "time": row_time(h)[:40],
                 "host": str(h.get("host") or fields.get("Computer") or "")[:60],
                 "file": str(h.get("file") or ""),
                 "line": str(h.get("line") or ""),
@@ -847,15 +848,9 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
 
     # --- hosts + time range ---
     hosts = sorted({str(h.get("host") or "") for h in hits if h.get("host")})
-    times: list[str] = []
-    for h in hits:
-        f = h.get("fields") or {}
-        ts = str(
-            f.get("TimeCreated") or f.get("Timestamp") or f.get("LastRun")
-            or f.get("LastVisitTime") or h.get("ts") or ""
-        )
-        if ts:
-            times.append(ts)
+    # Each row's time in UTC by the index's rule (D257): min/max over the tools' own columns compared
+    # Hayabusa's lane-host times with EvtxECmd's UTC ones as strings.
+    times = [t for t in (row_time(h) for h in hits) if t]
     time_range = {"start": min(times) if times else "", "end": max(times) if times else ""}
 
     # --- index census fallback ---

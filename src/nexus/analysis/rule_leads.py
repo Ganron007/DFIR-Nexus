@@ -380,6 +380,18 @@ def attack_technique_names(ids: list[str] | tuple[str, ...] | None) -> list[str]
     return out
 
 
+def _utc_time(raw: str) -> str:
+    """A detection's time in UTC, by the rule the index computes `ts` with (D257).
+
+    Hayabusa writes its Timestamp in the lane host's zone with the offset (`2023-01-25 06:11:57.077 +05:30`);
+    taken as written, a lead's first/last and rows read five and a half hours off the same event's EvtxECmd
+    row, and the modes wrote those times as UTC. A value that does not parse is kept as written.
+    """
+    from nexus.langgraph.evidence_rows import row_time
+
+    return (row_time({"fields": {"Timestamp": raw}}) or raw) if raw else ""
+
+
 def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> list[Lead]:
     """One lead per Hayabusa RULE (aggregated), strongest first.
 
@@ -430,7 +442,7 @@ def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                         if rule_id:
                             rule["rule_id"] = rule_id
                 rule["count"] += 1
-                ts = _trim(row.get("Timestamp"), 40)
+                ts = _utc_time(_trim(row.get("Timestamp"), 40))
                 if ts:
                     if not rule["first"] or ts < rule["first"]:
                         rule["first"] = ts
@@ -496,7 +508,7 @@ def chainsaw_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                     rule["count"] += int(_trim(row.get("count"), 12) or 1)
                 except ValueError:
                     rule["count"] += 1
-                ts = _trim(row.get("timestamp"), 40)
+                ts = _utc_time(_trim(row.get("timestamp"), 40))
                 if ts:
                     if not rule["first"] or ts < rule["first"]:
                         rule["first"] = ts
