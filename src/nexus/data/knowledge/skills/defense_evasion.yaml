@@ -1,7 +1,7 @@
 skill: defense_evasion
 title: Defense evasion — AV disable, timestomp, masquerading, process injection
-description: Detect defense-evasion techniques — disabling security tools, timestomping,
-  masquerading binaries, process injection, AMSI/ETW tampering.
+description: Detect defense-evasion techniques — disabling security tools, timestomping, masquerading binaries,
+  process injection, AMSI/ETW tampering.
 trigger:
   families:
   - evtx
@@ -20,201 +20,810 @@ trigger:
   - amsi
   - evade
   techniques:
-  - T1562.001
+  - T1685
   - T1070.006
   - T1036
   - T1055
-  - T1562.006
 steps:
 - name: defender_disable
   query: Set-MpPreference -DisableRealtimeMonitoring OR sc stop windefend OR DisableAntiSpyware
-  look_for: Defender real-time monitoring disabled via cmdlet, service stop, or registry
-    DisableAntiSpyware.
+  look_for: Defender real-time monitoring disabled via cmdlet, service stop, or registry DisableAntiSpyware.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '13'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Windows Defender/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '5001'
+                  - '5007'
+          minimum_should_match: 1
+  source: Sysmon 1, 13; Security 4688; PowerShell/Operational 4104; Defender/Operational 5001, 5007
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    - attack:DET0455
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+      - '13'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    - channel: Microsoft-Windows-Windows Defender/Operational
+      codes:
+      - '5001'
+      - '5007'
+    any:
+    - field: event_id
+      is:
+      - '5001'
+    - field: ecs.process.command_line
+      contains:
+      - DisableRealtimeMonitoring
+      - DisableAntiSpyware
+      - DisableBehaviorMonitoring
+      - DisableIOAVProtection
+      - Add-MpPreference
+      - Set-MpPreference
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - DisableRealtimeMonitoring
+      - DisableAntiSpyware
+      - DisableBehaviorMonitoring
+      - Add-MpPreference
+    - field: ecs.registry.path
+      contains:
+      - \Windows Defender\DisableAntiSpyware
+      - \Real-Time Protection\Disable
+      - \Windows Defender\Exclusions\
+    - field: text
+      contains:
+      - DisableAntiSpyware
+      - DisableRealtimeMonitoring
+      - \Windows Defender\Exclusions\
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*Set-MpPreference -DisableRealtimeMonitoring*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*sc stop windefend*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*DisableAntiSpyware*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - evtx
-    - sysmon
-    - powershell
-    - prefetch
-    - mft
-    - registry
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '13'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Windows Defender/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '5001'
+                  - '5007'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - term:
+              event_id: '5001'
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*DisableRealtimeMonitoring*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*DisableAntiSpyware*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*DisableBehaviorMonitoring*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*DisableIOAVProtection*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Add-MpPreference*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Set-MpPreference*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*DisableRealtimeMonitoring*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*DisableAntiSpyware*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*DisableBehaviorMonitoring*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Add-MpPreference*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.registry.path.wc:
+                    value: '*\\Windows Defender\\DisableAntiSpyware*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.registry.path.wc:
+                    value: '*\\Real-Time Protection\\Disable*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.registry.path.wc:
+                    value: '*\\Windows Defender\\Exclusions\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  text.wc:
+                    value: '*DisableAntiSpyware*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*DisableRealtimeMonitoring*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*\\Windows Defender\\Exclusions\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: timestomp
   query: timestomp OR -M " OR Copy-Item -Destination
-  look_for: 'Timestomp tool runs or timestamp manipulation — detect via the FOR508
-    4-check method on the suspect file: (1) $SI creation time EARLIER than $FN creation
-    time (copied timestamps only hit $SI); (2) all-zero fractional seconds on $SI
-    times (manual stamps lack sub-second precision); (3) PE compile time AFTER file
-    creation/mod times; (4) ShimCache last-modified AFTER file mod time.'
+  look_for: 'Timestomp tool runs or timestamp manipulation — detect via the FOR508 4-check method on the suspect
+    file: (1) $SI creation time EARLIER than $FN creation time (copied timestamps only hit $SI); (2) all-zero fractional
+    seconds on $SI times (manual stamps lack sub-second precision); (3) PE compile time AFTER file creation/mod
+    times; (4) ShimCache last-modified AFTER file mod time.'
   pivot: FileName
-  corroborate: MFT record number far outside the range of legitimate same-dir files
-    (masqueraded files get created later → distant record numbers — sort MFTECmd output
-    by record number, not just time)
+  corroborate: MFT record number far outside the range of legitimate same-dir files (masqueraded files get created
+    later → distant record numbers — sort MFTECmd output by record number, not just time)
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '2'
+  source: Sysmon 2
+  search:
+    basis:
+    - attack:DET0591
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '2'
+    all:
+    - field: ecs.winlog.event_data.TargetFilename
+      endswith:
+      - .exe
+      - .dll
+      - .sys
+      - .ps1
+      - .bat
+      - .vbs
+      - .js
+      - .hta
+      - .scr
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*timestomp*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*-M*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Copy-Item -Destination*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'timestomp: file-path pivot; no populated ecs.file.path, searched in text'
-  - '-M: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'Copy-Item -Destination: file-path pivot; no populated ecs.file.path, searched
-    in text'
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '2'
+      - bool:
+          should:
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.dll'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.sys'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.ps1'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.bat'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.vbs'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.js'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.hta'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*.scr'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: masquerading
   query: svchost.exe OR smss.exe OR csrss.exe OR lsass.exe
-  look_for: System process names in non-standard paths (%TEMP%, user dirs, wrong parentage)
-    — masquerading.
+  look_for: System process names in non-standard paths (%TEMP%, user dirs, wrong parentage) — masquerading.
   pivot: Image
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0127
+    - attack:DET0347
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \svchost.exe
+      - \smss.exe
+      - \csrss.exe
+      - \lsass.exe
+      - \services.exe
+      - \wininit.exe
+      - \winlogon.exe
+      - \taskhostw.exe
+      - \spoolsv.exe
+    none:
+    - field: ecs.process.executable
+      contains:
+      - \Windows\System32\
+      - \Windows\SysWOW64\
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*svchost.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*smss.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*csrss.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*lsass.exe*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'svchost.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'smss.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'csrss.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'lsass.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\svchost.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\smss.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\csrss.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\lsass.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\services.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\wininit.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\winlogon.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\taskhostw.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\spoolsv.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\Windows\\System32\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\Windows\\SysWOW64\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: process_injection
   query: CreateRemoteThread OR VirtualAllocEx OR WriteProcessMemory OR inject
   look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
   pivot: SourceImage
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '8'
+  source: Sysmon 8
+  search:
+    basis:
+    - attack:DET0508
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '8'
   es:
     bool:
-      should:
-      - wildcard:
-          fields.process_name.kw:
-            value: '*CreateRemoteThread*'
-            case_insensitive: true
-      - wildcard:
-          fields.process_name.kw:
-            value: '*VirtualAllocEx*'
-            case_insensitive: true
-      - wildcard:
-          fields.process_name.kw:
-            value: '*WriteProcessMemory*'
-            case_insensitive: true
-      - wildcard:
-          fields.process_name.kw:
-            value: '*inject*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '8'
 - name: etw_tamper
   query: EtwEventWrite OR EtwUnregister OR logman delete
   look_for: ETW provider tampering — unregister/delete or patch.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '13'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1, 13; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0455
+    - evtx-map
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+      - '13'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - EtwEventWrite
+      - Remove-EtwTraceProvider
+      - Set-EtwTraceProvider
+    - field: ecs.process.command_line
+      contains:
+      - Remove-EtwTraceProvider
+      - Set-EtwTraceProvider
+    - field: ecs.process.command_line
+      phrase:
+      - logman stop
+      - logman delete
+      - logman update trace
+    - field: ecs.registry.path
+      contains:
+      - \Control\WMI\Autologger\
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*EtwEventWrite*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*EtwUnregister*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*logman delete*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '13'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*EtwEventWrite*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Remove-EtwTraceProvider*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Set-EtwTraceProvider*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Remove-EtwTraceProvider*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Set-EtwTraceProvider*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - match_phrase:
+                  ecs.process.command_line.text: logman stop
+              - match_phrase:
+                  ecs.process.command_line.text: logman delete
+              - match_phrase:
+                  ecs.process.command_line.text: logman update trace
+              minimum_should_match: 1
+          - wildcard:
+              ecs.registry.path.wc:
+                value: '*\\Control\\WMI\\Autologger\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: amsi_patch
   query: amsi.dll patch OR AmsiScanBuffer OR amsiInitFailed
   look_for: In-memory AMSI patching — patch bytes in PowerShell process memory.
   corroborate: suspicious script block follows
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: PowerShell/Operational 4104; Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0455
+    - manifest
+    events:
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - AmsiScanBuffer
+      - amsiInitFailed
+      - AmsiUtils
+      - amsiContext
+    - field: ecs.process.command_line
+      contains:
+      - AmsiScanBuffer
+      - amsiInitFailed
+      - AmsiUtils
   es:
     bool:
-      should:
+      filter:
       - bool:
-          must:
-          - wildcard:
-              text.wc:
-                value: '*amsi.dll*'
-                case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*patch*'
-                case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*AmsiScanBuffer*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*amsiInitFailed*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'amsi.dll: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'patch: free phrase; the step''s pivot names no registry column'
-  - 'AmsiScanBuffer: free phrase; the step''s pivot names no registry column'
-  - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'
-negative: No security-tool tampering or masquerading → defense evasion not evident;
-  check for LOLBin-only approach or signed-tool abuse.
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*AmsiScanBuffer*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*amsiInitFailed*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*AmsiUtils*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*amsiContext*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*AmsiScanBuffer*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*amsiInitFailed*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*AmsiUtils*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+negative: No security-tool tampering or masquerading → defense evasion not evident; check for LOLBin-only approach
+  or signed-tool abuse.
 confidence_rules:
   high: Defender disabled + injection artifact + suspicious process tree
   medium: masquerading binary in non-standard path
   low: single EDR service stop (may be maintenance)
 mitre:
-- T1562.001
+- T1685
 - T1036
 - T1055
 - T1070.006

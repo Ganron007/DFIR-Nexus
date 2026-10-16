@@ -41,6 +41,20 @@ def test_the_method_block_carries_the_analytic_its_event_codes_and_what_to_tune(
     assert method_block(["T9999"]) == ""
 
 
+def test_a_revoked_tag_reads_the_technique_that_replaced_it():
+    """ATT&CK v20 revoked T1070.001 for T1685.005; rule engines still tag the old id. The revoked entry has no
+    analytics, so the lead must read its successor's (Security 1102), once."""
+    from nexus.knowledge.attack_method import current_technique
+
+    assert current_technique("T1070.001") == "T1685.005"
+    assert current_technique("T1003.001") == "T1003.001"
+    block = method_block(["T1070.001", "T1685.005"], platforms=["Windows"])
+    assert "T1685.005" in block and "tagged T1070.001, revoked in ATT&CK v20" in block
+    assert "EventCode=1102" in block
+    assert "no ATT&CK analytic" not in block
+    assert block.count("- T1685.005") == 1
+
+
 def test_the_software_block_is_attacks_hunt_list_for_the_detected_tool():
     block = software_block(["S0154"])
     assert "S0154 Cobalt Strike (malware)" in block

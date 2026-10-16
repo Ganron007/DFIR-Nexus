@@ -82,7 +82,9 @@ class WiresharkImporter(Importer):
                 except json.JSONDecodeError:
                     skipped += 1
                     continue
-                if isinstance(packet, dict):
+                # `-T ek` writes an Elasticsearch bulk header (`{"index": ...}`) before each packet; it is
+                # not a packet, and reading it as one made an empty row per packet (D249).
+                if isinstance(packet, dict) and self._layers(packet):
                     yield self._packet_to_artifact(packet)
             if skipped:
                 log.warning(
@@ -102,35 +104,61 @@ class WiresharkImporter(Importer):
                 return [data]
         return []
 
+    @staticmethod
+    def _layers(packet: dict[str, Any]) -> dict[str, Any]:
+        """The dissection tree: `-T json` nests it under `_source.layers`, `-T ek` puts `layers` on top."""
+        source = packet.get("_source")
+        if isinstance(source, dict) and isinstance(source.get("layers"), dict):
+            return source["layers"]
+        layers = packet.get("layers")
+        return layers if isinstance(layers, dict) else {}
+
+    @staticmethod
+    def _field(layer: Any, proto: str, name: str) -> Any:
+        """A dissector field by its name (`ip.src`, `-T json`) or by `-T ek`'s flattened key (`ip_ip_src`).
+
+        EH-14 moved the pcap path to `-T ek`, whose keys are `<protocol>_<field with dots as underscores>`;
+        read only as `ip.src`, every address, port and time of an imported capture was empty (D249).
+        """
+        if not isinstance(layer, dict):
+            return None
+        if name in layer:
+            return layer[name]
+        return layer.get(f"{proto}_{name.replace('.', '_')}")
+
     def _packet_to_artifact(self, packet: dict[str, Any]) -> Artifact:
         """Map a Wireshark packet to an Artifact."""
-        layers = packet.get("_source", {}).get("layers", {})
+        layers = self._layers(packet)
 
-        # Frame / timestamp
+        # Frame / timestamp (`-T ek` also carries the capture time, in ms, as the packet's `timestamp`)
         frame = layers.get("frame", {})
-        ts_str = frame.get("frame.time_epoch") or frame.get("frame.time_relative")
+        ts_str = (self._field(frame, "frame", "frame.time_epoch") or packet.get("timestamp")
+                  or self._field(frame, "frame", "frame.time_relative"))
         ts = self.normalize_timestamp(ts_str)
         ts_synthesized = ts is None
         if ts is None:
             ts = datetime.now(UTC)
 
         # IP layer
-        ip = layers.get("ip", {}) or layers.get("ipv6", {})
-        src_ip = ip.get("ip.src") or ip.get("ipv6.src")
-        dst_ip = ip.get("ip.dst") or ip.get("ipv6.dst")
+        ip, ip6 = layers.get("ip", {}), layers.get("ipv6", {})
+        src_ip = self._field(ip, "ip", "ip.src") or self._field(ip6, "ipv6", "ipv6.src")
+        dst_ip = self._field(ip, "ip", "ip.dst") or self._field(ip6, "ipv6", "ipv6.dst")
 
         # TCP / UDP
         tcp = layers.get("tcp", {})
         udp = layers.get("udp", {})
         if tcp:
             protocol = NetworkProtocol.TCP
-            src_port = self._safe_int(tcp.get("tcp.srcport"))
-            dst_port = self._safe_int(tcp.get("tcp.dstport"))
-            flags = tcp.get("tcp.flags", "")
+            src_port = self._safe_int(self._field(tcp, "tcp", "tcp.srcport"))
+            dst_port = self._safe_int(self._field(tcp, "tcp", "tcp.dstport"))
+            # `tcp.flags` is a hex mask; `tcp.flags.str` ("·······A··S·") names the set flags in both shapes.
+            shown = str(self._field(tcp, "tcp", "tcp.flags.str") or "")
+            flags = " ".join(name for letter, name in (("S", "SYN"), ("A", "ACK"), ("P", "PSH"), ("R", "RST"),
+                                                        ("F", "FIN")) if letter in shown)
         elif udp:
             protocol = NetworkProtocol.UDP
-            src_port = self._safe_int(udp.get("udp.srcport"))
-            dst_port = self._safe_int(udp.get("udp.dstport"))
+            src_port = self._safe_int(self._field(udp, "udp", "udp.srcport"))
+            dst_port = self._safe_int(self._field(udp, "udp", "udp.dstport"))
             flags = ""
         else:
             protocol = None

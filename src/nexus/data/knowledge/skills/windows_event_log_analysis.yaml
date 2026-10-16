@@ -1,10 +1,9 @@
 skill: windows_event_log_analysis
 title: Windows event-log triage — Security/System/Sysmon by hypothesis
 kind: methodology
-description: 'Systematic event-log examination: inventory the logs present, map the
-  hypothesis to the event IDs that prove it, then correlate across channels. Security.evtx
-  answers who/when; Sysmon answers what-ran-where; System and Application answer install/driver/service
-  context.'
+description: 'Systematic event-log examination: inventory the logs present, map the hypothesis to the event IDs
+  that prove it, then correlate across channels. Security.evtx answers who/when; Sysmon answers what-ran-where;
+  System and Application answer install/driver/service context.'
 trigger:
   families:
   - evtx
@@ -33,199 +32,559 @@ trigger:
   - T1078
   - T1021
   - T1059
-  - T1562
+  - T1685
 steps:
 - name: process_creation
   query: 4688 OR event:1 family:evtx
-  look_for: Security 4688 (audited process creation) and Sysmon EID 1 — full command
-    line, parent process, user. The primary execution ledger when prefetch is absent.
-    NewProcessName + CommandLine + ParentProcessName.
+  look_for: Security 4688 (audited process creation) and Sysmon EID 1 — full command line, parent process, user.
+    The primary execution ledger when prefetch is absent. NewProcessName + CommandLine + ParentProcessName.
   pivot: CommandLine
-  corroborate: creator-process trees reveal the launch chain (who spawned the suspicious
-    child)
-  es:
-    bool:
-      should:
-      - term:
-          event_id: '4688'
-      - bool:
-          must:
-          - term:
-              event_id: '1'
-          - terms:
-              family:
-              - chainsaw
-              - deepbluecli
-              - evtx
-              - evtxecmd
-              - hayabusa
-              - ingest-evtx
-              - ingest-hayabusa
-              - ingest-kape
-              - powershell
-              - security
-              - sysmon
-              - system
-              - zircolite
-      minimum_should_match: 1
+  corroborate: creator-process trees reveal the launch chain (who spawned the suspicious child)
   requires:
-    families: &id001
-    - evtx
+    families:
     - evtxecmd
     - hayabusa
-    - chainsaw
-    - suzaku
-    - security
-    - sysmon
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0378
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+  aggregate:
+    field: ecs.process.executable
+    size: 50
+  es:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  es_aggs:
+    by:
+      terms:
+        field: ecs.process.executable
+        size: 50
 - name: logon_sessions
   query: 4624 OR 4625
-  look_for: '4624 logons with LogonType: 2 interactive, 3 network, 7 unlock, 10 remote-interactive
-    (RDP), 11 cached-interactive. 4625 failures in bursts indicate brute force or
-    password spray. Pair with 4634/4647 logoffs to bound session duration.'
+  look_for: '4624 logons with LogonType: 2 interactive, 3 network, 7 unlock, 10 remote-interactive (RDP), 11 cached-interactive.
+    4625 failures in bursts indicate brute force or password spray. Pair with 4634/4647 logoffs to bound session
+    duration.'
   pivot: IpAddress
   corroborate: type-3/type-10 logons from unexpected sources precede lateral movement
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
+              - '4625'
+  source: Security 4624, 4625
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0560
+    events:
+    - channel: Security
+      codes:
+      - '4624'
+      - '4625'
+  aggregate:
+    field: ecs.winlog.logon.type
+    size: 20
   es:
     bool:
-      should:
-      - term:
-          event_id: '4624'
-      - term:
-          event_id: '4625'
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
+              - '4625'
+  es_aggs:
+    by:
+      terms:
+        field: ecs.winlog.logon.type
+        size: 20
 - name: explicit_credentials
   query: '4648'
-  look_for: 4648 explicit-credential logons (RunAs, net use /user:, scheduled-task
-    principal) — attacker moving between accounts. Source process + target account
-    + source host identify the pivot direction.
+  look_for: 4648 explicit-credential logons (RunAs, net use /user:, scheduled-task principal) — attacker moving
+    between accounts. Source process + target account + source host identify the pivot direction.
   pivot: AccountName
-  es:
-    term:
-      event_id: '4648'
   requires:
-    families: *id001
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4648'
+  source: Security 4648
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0269
+    events:
+    - channel: Security
+      codes:
+      - '4648'
+  aggregate:
+    field: ecs.winlog.event_data.TargetUserName
+    size: 50
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4648'
+  es_aggs:
+    by:
+      terms:
+        field: ecs.winlog.event_data.TargetUserName
+        size: 50
 - name: kerberos_activity
   query: 4768 OR 4769 OR 4771 OR 4776
-  look_for: Kerberos 4768 TGT requests, 4769 service tickets (RC4-encrypted service
-    tickets on user accounts = Kerberoasting shape), 4771 pre-auth failures, 4776
-    NTLM validation on the DC.
+  look_for: Kerberos 4768 TGT requests, 4769 service tickets (RC4-encrypted service tickets on user accounts = Kerberoasting
+    shape), 4771 pre-auth failures, 4776 NTLM validation on the DC.
   pivot: ServiceName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4768'
+              - '4769'
+              - '4771'
+              - '4776'
+  source: Security 4768, 4769, 4771, 4776
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0157
+    - attack:DET0113
+    - attack:DET0560
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '4768'
+      - '4769'
+      - '4771'
+      - '4776'
+  aggregate:
+    field: event_id
+    size: 10
   es:
     bool:
-      should:
-      - term:
-          event_id: '4768'
-      - term:
-          event_id: '4769'
-      - term:
-          event_id: '4771'
-      - term:
-          event_id: '4776'
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4768'
+              - '4769'
+              - '4771'
+              - '4776'
+  es_aggs:
+    by:
+      terms:
+        field: event_id
+        size: 10
 - name: share_access
   query: 5140 OR 5145
-  look_for: 5140/5145 network-share access — ADMIN$/C$/IPC$ reads followed by file
-    writes is the classic remote-copy + remote-exec staging pattern. SourceAddress
-    identifies the lateral origin.
+  look_for: 5140/5145 network-share access — ADMIN$/C$/IPC$ reads followed by file writes is the classic remote-copy
+    + remote-exec staging pattern. SourceAddress identifies the lateral origin.
   pivot: ShareName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '5140'
+              - '5145'
+  source: Security 5140, 5145
+  kind: aggregate
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '5140'
+      - '5145'
+  aggregate:
+    field: ecs.winlog.event_data.ShareName
+    size: 50
   es:
     bool:
-      should:
-      - term:
-          event_id: '5140'
-      - term:
-          event_id: '5145'
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '5140'
+              - '5145'
+  es_aggs:
+    by:
+      terms:
+        field: ecs.winlog.event_data.ShareName
+        size: 50
 - name: task_and_service
   query: 4698 OR 4702 OR 7045 OR 7036
-  look_for: 4698/4702 scheduled-task create/update (System Security channel on the
-    host) and System 7045 service install + 7036 state changes — attacker persistence
-    or remote-exec scaffolding.
+  look_for: 4698/4702 scheduled-task create/update (System Security channel on the host) and System 7045 service
+    install + 7036 state changes — attacker persistence or remote-exec scaffolding.
   pivot: ServiceName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4698'
+                  - '4702'
+                  - '4697'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          minimum_should_match: 1
+  source: Security 4698, 4702, 4697; System 7045
+  search:
+    basis:
+    - attack:DET0441
+    - attack:DET0552
+    - attack:DET0127
+    events:
+    - channel: Security
+      codes:
+      - '4698'
+      - '4702'
+      - '4697'
+    - channel: System
+      codes:
+      - '7045'
   es:
     bool:
-      should:
-      - term:
-          event_id: '4698'
-      - term:
-          event_id: '4702'
-      - term:
-          event_id: '7045'
-      - term:
-          event_id: '7036'
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4698'
+                  - '4702'
+                  - '4697'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          minimum_should_match: 1
 - name: audit_tampering
   query: 1102 OR 104
-  look_for: Security 1102 (log cleared) and System 104 (event log cleared, including
-    non-Security logs) — anti-forensics; the clearing event itself records the account
-    that ran it.
+  look_for: Security 1102 (log cleared) and System 104 (event log cleared, including non-Security logs) — anti-forensics;
+    the clearing event itself records the account that ran it.
   pivot: Channel
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1102'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '104'
+          minimum_should_match: 1
+  source: Security 1102; System 104
+  search:
+    basis:
+    - attack:DET0184
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '1102'
+    - channel: System
+      codes:
+      - '104'
   es:
     bool:
-      should:
-      - term:
-          event_id: '1102'
-      - wildcard:
-          fields.Channel.kw:
-            value: '*104*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1102'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '104'
+          minimum_should_match: 1
 - name: account_management
   query: 4720 OR 4722 OR 4726 OR 4732 OR 4738
-  look_for: 4720 account created, 4722 enabled, 4726 deleted, 4732 added to privileged
-    group, 4738 changed — attacker account scaffolding and privilege escalation.
+  look_for: 4720 account created, 4722 enabled, 4726 deleted, 4732 added to privileged group, 4738 changed — attacker
+    account scaffolding and privilege escalation.
   pivot: TargetUserName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4720'
+              - '4722'
+              - '4726'
+              - '4732'
+              - '4728'
+              - '4738'
+  source: Security 4720, 4722, 4726, 4732, 4728, 4738
+  search:
+    basis:
+    - attack:DET0447
+    - attack:DET0096
+    - manifest
+    events:
+    - channel: Security
+      codes:
+      - '4720'
+      - '4722'
+      - '4726'
+      - '4732'
+      - '4728'
+      - '4738'
   es:
     bool:
-      should:
-      - term:
-          event_id: '4720'
-      - term:
-          event_id: '4722'
-      - term:
-          event_id: '4726'
-      - term:
-          event_id: '4732'
-      - term:
-          event_id: '4738'
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4720'
+              - '4722'
+              - '4726'
+              - '4732'
+              - '4728'
+              - '4738'
 - name: sysmon_core
   query: family:sysmon
-  look_for: Sysmon operational log — EID 1 process create, 3 network connect, 7 image
-    load, 8 CreateRemoteThread, 10 ProcessAccess, 11 file create, 12/13/14 registry,
-    22 DNS query. Coverage depends on the deployed config — check which IDs are actually
-    present.
+  look_for: Sysmon operational log — EID 1 process create, 3 network connect, 7 image load, 8 CreateRemoteThread,
+    10 ProcessAccess, 11 file create, 12/13/14 registry, 22 DNS query. Coverage depends on the deployed config —
+    check which IDs are actually present.
   pivot: EventID
-  es:
-    terms:
-      family:
-      - evtx
-      - evtxecmd
-      - hayabusa
-      - ingest-hayabusa
-      - ingest-kape
-      - ingest-sysmon
-      - sysmon
   requires:
-    families: *id001
-negative: Empty event-log windows mean either no activity or a logging/collection
-  gap — verify auditing was enabled (4688 is off by default on many builds) and that
-  collection captured Security.evtx, not just forwarded channels. Hayabusa/Chainsaw
-  silence is not proof of clean.
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+  source: Sysmon (any event)
+  kind: aggregate
+  search:
+    basis:
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes: []
+  aggregate:
+    field: event_id
+    size: 30
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+  es_aggs:
+    by:
+      terms:
+        field: event_id
+        size: 30
+negative: Empty event-log windows mean either no activity or a logging/collection gap — verify auditing was enabled
+  (4688 is off by default on many builds) and that collection captured Security.evtx, not just forwarded channels.
+  Hayabusa/Chainsaw silence is not proof of clean.
 confidence_rules:
-  high: corroborated across two channels (e.g. 4624 type-10 + RDP session in TerminalServices
-    log)
+  high: corroborated across two channels (e.g. 4624 type-10 + RDP session in TerminalServices log)
   medium: single-channel event with attacker-shaped attributes (count, parent, source)
   low: event plausible in routine admin activity — needs host context
 mitre:
@@ -233,13 +592,11 @@ mitre:
 - T1078
 - T1021
 - T1059
-- T1562
+- T1685
 caveats:
-- Security 4688 and Sysmon are config-dependent — absence of process rows is a coverage
-  gap before it is evidence of absence (FD-004 analogue).
-- Event IDs mean different things by channel and version — a 4625 on the DC (4776
-  path) differs from a workstation lockout; always read LogonType/Status subcodes.
-- Forwarded/collected logs may have deduplication or time-skew — normalize to UTC
-  before cross-host correlation.
-- wevtutil clear emits its own 1102 — the absence of a 1102 does not prove logs were
-  not deleted at the file level.
+- Security 4688 and Sysmon are config-dependent — absence of process rows is a coverage gap before it is evidence
+  of absence (FD-004 analogue).
+- Event IDs mean different things by channel and version — a 4625 on the DC (4776 path) differs from a workstation
+  lockout; always read LogonType/Status subcodes.
+- Forwarded/collected logs may have deduplication or time-skew — normalize to UTC before cross-host correlation.
+- wevtutil clear emits its own 1102 — the absence of a 1102 does not prove logs were not deleted at the file level.

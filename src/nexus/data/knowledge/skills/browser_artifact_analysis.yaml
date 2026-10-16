@@ -1,9 +1,8 @@
 skill: browser_artifact_analysis
 title: Browser-artifact analysis — history, downloads, cache, sessions, searches
-description: 'Browser artifacts corroborate initial access (what was downloaded, from
-  where, when) and user intent (searches, webmail, cloud drives). Work the profile
-  layout: History SQLite for visits, downloads table for file lineage, cache for content,
-  Sessions for open tabs, Preferences for config.'
+description: 'Browser artifacts corroborate initial access (what was downloaded, from where, when) and user intent
+  (searches, webmail, cloud drives). Work the profile layout: History SQLite for visits, downloads table for file
+  lineage, cache for content, Sessions for open tabs, Preferences for config.'
 trigger:
   families:
   - browser
@@ -34,178 +33,395 @@ trigger:
 steps:
 - name: history_visits
   query: file:history
-  look_for: 'History SQLite (Chrome/Edge: User Data\Default\History; Firefox: places.sqlite)
-    — url, title, visit_count, visit time. Download URLs, C2-looking domains, admin
-    panels, and searches in the window.'
+  look_for: 'History SQLite (Chrome/Edge: User Data\Default\History; Firefox: places.sqlite) — url, title, visit_count,
+    visit time. Download URLs, C2-looking domains, admin panels, and searches in the window.'
   pivot: URL
-  es:
-    wildcard:
-      file:
-        value: '*history*'
-        case_insensitive: true
   requires:
-    families: &id001
-    - browser
-    - wxtcmd
-    - lecmd
-    - mftecmd
-    - evtx
-    - powershell
+    families:
+    - sqlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+  source: families sqlecmd
+  kind: aggregate
+  search:
+    families:
+    - sqlecmd
+    all:
+    - field: ecs.url.full
+      exists: true
+  aggregate:
+    field: ecs.url.full
+    size: 200
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+      - exists:
+          field: ecs.url.full
+  es_aggs:
+    by:
+      terms:
+        field: ecs.url.full
+        size: 200
 - name: download_lineage
   query: download
-  look_for: 'Downloads table — source URL + target path + received time per file.
-    The direct lineage: which URL delivered the payload, and where it landed. Pairs
-    with Zone.Identifier MOTW on the file.'
+  look_for: 'Downloads table — source URL + target path + received time per file. The direct lineage: which URL
+    delivered the payload, and where it landed. Pairs with Zone.Identifier MOTW on the file.'
   pivot: TargetPath
   corroborate: download time → MFT create time for the payload
-  es:
-    wildcard:
-      ecs.file.path:
-        value: '*download*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - sqlecmd
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - hindsight
+  source: families sqlecmd, hindsight
+  search:
+    families:
+    - sqlecmd
+    - hindsight
+    any:
+    - field: fields.TargetPath
+      exists: true
+    - field: fields.data_type
+      is:
+      - chrome:history:file_downloaded
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - hindsight
+      - bool:
+          should:
+          - exists:
+              field: fields.TargetPath
+          - term:
+              fields.data_type.kw:
+                value: chrome:history:file_downloaded
+                case_insensitive: true
+          minimum_should_match: 1
 - name: typed_searches
   query: search terms OR keyword_search_terms OR wordwheelquery
-  look_for: 'Typed queries into browsers/search engines and Explorer WordWheelQuery
-    — intent evidence: researching tooling, looking for files, checking detection.
-    Rarely attacker-produced by automation.'
+  look_for: 'Typed queries into browsers/search engines and Explorer WordWheelQuery — intent evidence: researching
+    tooling, looking for files, checking detection. Rarely attacker-produced by automation.'
   pivot: Term
+  requires:
+    families:
+    - sqlecmd
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - recmd
+  source: families sqlecmd, recmd
+  search:
+    families:
+    - sqlecmd
+    - recmd
+    any:
+    - field: fields.KeywordSearchTerm
+      exists: true
+    - field: ecs.registry.path
+      contains:
+      - \Explorer\WordWheelQuery
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*search terms*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*keyword_search_terms*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*wordwheelquery*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'search terms: free phrase; the step''s pivot names no registry column'
-  - 'keyword_search_terms: free phrase; the step''s pivot names no registry column'
-  - 'wordwheelquery: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - recmd
+      - bool:
+          should:
+          - exists:
+              field: fields.KeywordSearchTerm
+          - wildcard:
+              ecs.registry.path.wc:
+                value: '*\\Explorer\\WordWheelQuery*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: cookies_and_auth
   query: file:cookies
-  look_for: Network\Cookies SQLite — visited domains + session-cookie presence; proves
-    account usage on webmail/cloud consoles even without history.
-  es:
-    wildcard:
-      file:
-        value: '*cookies*'
-        case_insensitive: true
+  look_for: Network\Cookies SQLite — visited domains + session-cookie presence; proves account usage on webmail/cloud
+    consoles even without history.
   requires:
-    families: *id001
+    families:
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - hindsight
+  source: families hindsight
+  kind: aggregate
+  search:
+    families:
+    - hindsight
+    all:
+    - field: fields.data_type
+      is:
+      - chrome:cookie:entry
+  aggregate:
+    field: fields.url
+    size: 100
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - hindsight
+      - term:
+          fields.data_type.kw:
+            value: chrome:cookie:entry
+            case_insensitive: true
+  es_aggs:
+    by:
+      terms:
+        field: fields.url.kw
+        size: 100
 - name: cache_content
   query: file:cache
-  look_for: Cache directories — recover page content/images/scripts the user actually
-    rendered; fetches the artifacts (phishing page, payload script) after URLs alone
-    are stale.
-  es:
-    wildcard:
-      file:
-        value: '*cache*'
-        case_insensitive: true
-  requires:
-    families: *id001
+  look_for: Cache directories — recover page content/images/scripts the user actually rendered; fetches the artifacts
+    (phishing page, payload script) after URLs alone are stale.
+  kind: procedure
+  procedure_reason: rendered page content is recovered from the browser cache with a cache parser on the evidence;
+    the index holds no cache bodies.
 - name: sessions_open_tabs
   query: file:sessions
-  look_for: 'Sessions files — tabs open at capture: what the user/attacker was mid-task
-    on; frequently retains pages already cleared from history.'
-  es:
-    wildcard:
-      file:
-        value: '*sessions*'
-        case_insensitive: true
+  look_for: 'Sessions files — tabs open at capture: what the user/attacker was mid-task on; frequently retains pages
+    already cleared from history.'
   requires:
-    families: *id001
+    families:
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - hindsight
+  source: families hindsight
+  search:
+    families:
+    - hindsight
+    all:
+    - field: fields.data_type
+      is:
+      - chrome:session:navigation
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - hindsight
+      - term:
+          fields.data_type.kw:
+            value: chrome:session:navigation
+            case_insensitive: true
 - name: webmail_cloud
   query: mail. OR outlook OR gmail OR drive.google OR dropbox OR mega.nz OR wetransfer
-  look_for: Webmail and file-sharing domains — exfil-by-upload and phish-delivery
-    vectors; match visits to the exfil/delivery window.
+  look_for: Webmail and file-sharing domains — exfil-by-upload and phish-delivery vectors; match visits to the exfil/delivery
+    window.
   pivot: URL
+  requires:
+    families:
+    - sqlecmd
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - hindsight
+  source: families sqlecmd, hindsight
+  search:
+    families:
+    - sqlecmd
+    - hindsight
+    any:
+    - field: ecs.url.full
+      contains:
+      - mail.google.
+      - outlook.live.
+      - outlook.office.
+      - mail.yahoo.
+      - drive.google.
+      - dropbox.com
+      - mega.nz
+      - wetransfer.com
+      - onedrive.live.
+    - field: fields.url
+      contains:
+      - mail.google.
+      - outlook.live.
+      - outlook.office.
+      - mail.yahoo.
+      - drive.google.
+      - dropbox.com
+      - mega.nz
+      - wetransfer.com
+      - onedrive.live.
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*mail.*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*outlook*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*gmail*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*drive.google*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*dropbox*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*mega.nz*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*wetransfer*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'mail.: free phrase; the step''s pivot names no registry column'
-  - 'outlook: free phrase; the step''s pivot names no registry column'
-  - 'gmail: free phrase; the step''s pivot names no registry column'
-  - 'drive.google: free phrase; the step''s pivot names no registry column'
-  - 'dropbox: free phrase; the step''s pivot names no registry column'
-  - 'mega.nz: free phrase; the step''s pivot names no registry column'
-  - 'wetransfer: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - hindsight
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*mail.google.*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*outlook.live.*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*outlook.office.*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*mail.yahoo.*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*drive.google.*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*dropbox.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*mega.nz*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*wetransfer.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*onedrive.live.*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  fields.url.kw:
+                    value: '*mail.google.*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*outlook.live.*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*outlook.office.*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*mail.yahoo.*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*drive.google.*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*dropbox.com*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*mega.nz*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*wetransfer.com*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*onedrive.live.*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: thumbs_media
   query: file:thumbcache OR thumbs.db
-  look_for: Thumbcache/thumbs.db — thumbnail residue proves image/media files existed
-    in browsed folders even after deletion.
+  look_for: Thumbcache/thumbs.db — thumbnail residue proves image/media files existed in browsed folders even after
+    deletion.
+  requires:
+    families:
+    - thumbcache_viewer
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - thumbcache_viewer
+  source: families thumbcache_viewer
+  search:
+    families:
+    - thumbcache_viewer
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*thumbcache*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*thumbs.db*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - thumbcache_viewer
 - name: autoplay_browserless
   query: file:preferences
-  look_for: Preferences JSON — homepage/search-engine hijacks, extension install state,
-    and per-site permissions attackers alter for persistence.
-  es:
-    wildcard:
-      file:
-        value: '*preferences*'
-        case_insensitive: true
+  look_for: Preferences JSON — homepage/search-engine hijacks, extension install state, and per-site permissions
+    attackers alter for persistence.
   requires:
-    families: *id001
-negative: No browser rows usually means no interactive browsing or profiles not collected
-  — server-class hosts legitimately have none. A wiped history with surviving cache/sessions
-  is itself suspicious; state which layer was examined.
+    families:
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - hindsight
+  source: families hindsight
+  search:
+    families:
+    - hindsight
+    all:
+    - field: fields.data_type
+      is:
+      - chrome:preferences:entry
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - hindsight
+      - term:
+          fields.data_type.kw:
+            value: chrome:preferences:entry
+            case_insensitive: true
+negative: No browser rows usually means no interactive browsing or profiles not collected — server-class hosts legitimately
+  have none. A wiped history with surviving cache/sessions is itself suspicious; state which layer was examined.
 confidence_rules:
   high: download URL + target path + file MFT/MOTW agreement (full delivery lineage)
   medium: history/session hits for the domain without file linkage
@@ -215,11 +431,10 @@ mitre:
 - T1105
 - T1071.001
 caveats:
-- History databases only show what was retained — InPrivate/Incognito and history-clearing
-  leave cache/cookies/session residue instead.
-- Chrome/Edge timestamps are WebKit microseconds since 1601; Firefox is Unix µs —
-  normalize before timeline merge.
-- Sync'd profiles (signed-in Chrome/Edge) can import history from OTHER devices —
-  attribute the device field, not just the URL.
-- Downloads table rows persist after the file is deleted — the download event is provable
-  even when the payload is gone.
+- History databases only show what was retained — InPrivate/Incognito and history-clearing leave cache/cookies/session
+  residue instead.
+- Chrome/Edge timestamps are WebKit microseconds since 1601; Firefox is Unix µs — normalize before timeline merge.
+- Sync'd profiles (signed-in Chrome/Edge) can import history from OTHER devices — attribute the device field, not
+  just the URL.
+- Downloads table rows persist after the file is deleted — the download event is provable even when the payload
+  is gone.

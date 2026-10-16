@@ -17,9 +17,9 @@
 # tests - a stale field name would make the analytic silently match nothing,
 # which reads as "no such behaviour" rather than "broken analytic".
 version: 1
-description: 'Behavioural analytics for the artifact families the rule engines do
-  not cover. Typed queries over registry columns, each citing a CAR analytic or ATT&CK
-  technique, so a lead can travel from a hit back to published detection logic.
+description: 'Behavioural analytics for the artifact families the rule engines do not cover. Typed queries over
+  registry columns, each citing a CAR analytic or ATT&CK technique, so a lead can travel from a hit back to published
+  detection logic.
 
   '
 source: MITRE CAR (car.mitre.org) as held in needles/car_analytics.yaml; ATT&CK Enterprise
@@ -29,159 +29,444 @@ packs:
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
-  - prefetch
-  - pecmd
-  - amcache
   citation:
     type: authored
     id: authored:ba-exec-user-writable
     ref: ''
-    rationale: 'Authored for this product: expresses T1204.002, T1059 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1204.002, T1059 in this pack''s logic. Not derived from an
+      external source.'
   techniques:
   - T1204.002
   - T1059
-  rationale: User-writable locations are where a downloaded payload lands. The DSL
-    has NO typed-field negation (`not path:\Windows` parses as a POSITIVE filter,
-    so it would invert the analytic), so this is deliberately a single positive term
-    and the system-tree exclusion is the examiner's next filter.
+  rationale: User-writable locations are where a downloaded payload lands. The DSL has NO typed-field negation (`not
+    path:\Windows` parses as a POSITIVE filter, so it would invert the analytic), so this is deliberately a single
+    positive term and the system-tree exclusion is the examiner's next filter.
+  search:
+    basis:
+    - attack:DET0294
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.executable
+      contains:
+      - \Users\Public\
+      - \AppData\Local\Temp\
+      - \AppData\Roaming\
+      - \Downloads\
+      - \Windows\Temp\
+      - \PerfLogs\
   es:
     bool:
       filter:
-      - wildcard:
-          ecs.file.path:
-            value: '*AppData*'
-            case_insensitive: true
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\Users\\Public\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\AppData\\Local\\Temp\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\AppData\\Roaming\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\Downloads\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\Windows\\Temp\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\PerfLogs\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-exec-temp
   name: Execution from a temporary directory
   families:
-  - prefetch
-  - pecmd
-  - amcache
   - evtxecmd
-  - sysmon
+  - hayabusa
   citation:
     type: authored
     id: authored:ba-exec-temp
     ref: ''
-    rationale: 'Authored for this product: expresses T1059, T1204.002 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1059, T1204.002 in this pack''s logic. Not derived from an
+      external source.'
   techniques:
   - T1059
   - T1204.002
   rationale: A binary whose first execution is from a temp path had no install step.
+  search:
+    basis:
+    - attack:DET0294
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.executable
+      contains:
+      - \AppData\Local\Temp\
+      - \Windows\Temp\
   es:
     bool:
       filter:
-      - wildcard:
-          ecs.file.path:
-            value: '*Temp*'
-            case_insensitive: true
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\AppData\\Local\\Temp\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\Windows\\Temp\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-exec-programdata
   name: Execution from ProgramData
   families:
-  - prefetch
-  - pecmd
-  - amcache
-  - sysmon
+  - evtxecmd
+  - hayabusa
   citation:
     type: authored
     id: authored:ba-exec-programdata
     ref: ''
-    rationale: 'Authored for this product: expresses T1059 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1059 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1059
-  rationale: ProgramData is world-writable and survives cleanup, so it is a common
-    staging root.
+  rationale: ProgramData is world-writable and survives cleanup, so it is a common staging root.
+  search:
+    basis:
+    - attack:DET0294
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      contains:
+      - \ProgramData\
+    none:
+    - field: ecs.process.executable
+      contains:
+      - \ProgramData\Microsoft\Windows Defender\
+      - \ProgramData\Microsoft\Windows Defender Advanced Threat Protection\
   es:
     bool:
       filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          fields.file_path.kw:
-            value: '*ProgramData*'
+          ecs.process.executable.wc:
+            value: '*\\ProgramData\\*'
             case_insensitive: true
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\ProgramData\\Microsoft\\Windows Defender\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-exec-script-host
   name: Script host executing a script
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
-  - prefetch
   citation:
     type: authored
     id: authored:ba-exec-script-host
     ref: ''
-    rationale: 'Authored for this product: expresses T1059.005, T1218.005 in this
-      pack''s logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1059.005, T1218.005 in this pack''s logic. Not derived from
+      an external source.'
   techniques:
   - T1059.005
   - T1218.005
-  rationale: A script host is normal; a script host pointed at a loose file is the
-    interesting shape.
+  rationale: A script host is normal; a script host pointed at a loose file is the interesting shape.
+  search:
+    basis:
+    - attack:DET0506
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \wscript.exe
+      - \cscript.exe
+      - \mshta.exe
+    - field: ecs.process.command_line
+      contains:
+      - .js
+      - .jse
+      - .vbs
+      - .vbe
+      - .hta
+      - .wsf
+      - 'http:'
+      - 'https:'
+      - 'javascript:'
   es:
     bool:
       filter:
       - bool:
           should:
-          - term:
-              fields.process_name.kw:
-                value: wscript.exe
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\wscript.exe'
                 case_insensitive: true
-          - term:
-              fields.process_name.kw:
-                value: cscript.exe
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cscript.exe'
                 case_insensitive: true
-          - term:
-              fields.process_name.kw:
-                value: mshta.exe
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\mshta.exe'
                 case_insensitive: true
           minimum_should_match: 1
-      - wildcard:
-          ecs.process.command_line:
-            value: '*.js*'
-            case_insensitive: true
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*.js*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*.jse*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*.vbs*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*.vbe*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*.hta*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*.wsf*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*http:*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*https:*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*javascript:*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-exec-encoded-command
   name: Encoded or hidden command line
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: authored
     id: authored:ba-exec-encoded-command
     ref: ''
-    rationale: 'Authored for this product: expresses T1059.001, T1027 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1059.001, T1027 in this pack''s logic. Not derived from an
+      external source.'
   techniques:
   - T1059.001
   - T1027
-  rationale: Encoding exists to defeat string inspection; pair with the decoded text,
-    not the flag alone.
+  rationale: Encoding exists to defeat string inspection; pair with the decoded text, not the flag alone.
+  search:
+    basis:
+    - attack:DET0455
+    - attack:DET0378
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \powershell.exe
+      - \pwsh.exe
+    - field: ecs.process.command_line
+      contains:
+      - ' -enc'
+      - ' -e '
+      - ' -ec '
+      - -EncodedCommand
+      - ' -en '
   es:
     bool:
       filter:
       - bool:
           should:
-          - term:
-              ecs.process.command_line:
-                value: -enc
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\powershell.exe'
                 case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: -EncodedCommand
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\pwsh.exe'
                 case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: -nop
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* -enc*'
                 case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: -noprofile
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* -e *'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* -ec *'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*-EncodedCommand*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* -en *'
                 case_insensitive: true
           minimum_should_match: 1
 - id: ba-exec-lolbin-download
@@ -189,53 +474,88 @@ packs:
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: authored
     id: authored:ba-exec-lolbin-download
     ref: ''
-    rationale: 'Authored for this product: expresses T1105, T1218 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1105, T1218 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1105
   - T1218
-  rationale: A signed system binary reaching the network is the canonical ingress
-    primitive.
+  rationale: A signed system binary reaching the network is the canonical ingress primitive.
+  search:
+    basis:
+    - attack:DET0060
+    - attack:DET0081
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - -urlcache
+      - /urlcache
+      - bitsadmin /transfer
+      - /i:http
+      - -verifyctl
   es:
     bool:
       filter:
       - bool:
           should:
-          - term:
-              fields.process_name.kw:
-                value: certutil.exe
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*-urlcache*'
                 case_insensitive: true
-          - term:
-              fields.process_name.kw:
-                value: bitsadmin.exe
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*/urlcache*'
                 case_insensitive: true
-          - term:
-              fields.process_name.kw:
-                value: curl.exe
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*bitsadmin /transfer*'
                 case_insensitive: true
-          - term:
-              fields.process_name.kw:
-                value: msiexec.exe
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*/i:http*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*-verifyctl*'
                 case_insensitive: true
           minimum_should_match: 1
-      - wildcard:
-          ecs.process.command_line:
-            value: '*http*'
-            case_insensitive: true
 - id: ba-persist-service-temp
   name: Service binary in a user-writable path
   families:
-  - registry
-  - recmd
   - evtxecmd
   - hayabusa
-  - security
   citation:
     type: car
     id: CAR-2014-02-001
@@ -243,109 +563,293 @@ packs:
     title: Service Binary Modifications
   techniques:
   - T1543.003
-  rationale: A service is the strongest persistence on Windows; its ImagePath should
-    be a system or Program Files path.
-  es:
-    bool:
-      filter:
-      - wildcard:
-          ecs.registry.path:
-            value: '*Services*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*AppData*'
-            case_insensitive: true
-- id: ba-persist-service-new
-  name: Service created or its ImagePath changed
-  families:
-  - evtxecmd
-  - hayabusa
-  - security
-  - registry
-  - recmd
-  citation:
-    type: authored
-    id: authored:ba-persist-service-new
-    ref: ''
-    rationale: 'Authored for this product: expresses T1543.003 in this pack''s logic.
-      Not derived from an external source.'
-  techniques:
-  - T1543.003
-  rationale: 7045 and 4697 are the service-install records; the path and signer decide
-    whether it matters.
+  rationale: A service is the strongest persistence on Windows; its ImagePath should be a system or Program Files
+    path.
+  search:
+    basis:
+    - attack:DET0552
+    - attack:DET0127
+    events:
+    - channel: System
+      codes:
+      - '7045'
+    - channel: Security
+      codes:
+      - '4697'
+    any:
+    - field: ecs.process.executable
+      contains:
+      - \Users\
+      - \AppData\
+      - \Temp\
+      - \ProgramData\
+      - \PerfLogs\
+    - field: ecs.winlog.event_data.ServiceFileName
+      contains:
+      - \Users\
+      - \AppData\
+      - \Temp\
+      - \ProgramData\
+      - \PerfLogs\
   es:
     bool:
       filter:
       - bool:
           should:
-          - term:
-              event_id:
-                value: '7045'
-                case_insensitive: true
-          - term:
-              event_id:
-                value: '4697'
-                case_insensitive: true
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\Users\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\AppData\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\Temp\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\ProgramData\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\PerfLogs\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\Users\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\AppData\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\Temp\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\ProgramData\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\PerfLogs\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+- id: ba-persist-service-new
+  name: Service created or its ImagePath changed
+  families:
+  - evtxecmd
+  - hayabusa
+  citation:
+    type: authored
+    id: authored:ba-persist-service-new
+    ref: ''
+    rationale: 'Authored for this product: expresses T1543.003 in this pack''s logic. Not derived from an external
+      source.'
+  techniques:
+  - T1543.003
+  rationale: 7045 and 4697 are the service-install records; the path and signer decide whether it matters.
+  search:
+    basis:
+    - attack:DET0552
+    - attack:DET0127
+    events:
+    - channel: System
+      codes:
+      - '7045'
+    - channel: Security
+      codes:
+      - '4697'
+  es:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
           minimum_should_match: 1
 - id: ba-persist-run-usbable
   name: Run key pointing at a user-writable path
   families:
-  - registry
-  - recmd
-  - NTUSER
   - evtxecmd
+  - hayabusa
+  - recmd
   citation:
     type: authored
     id: authored:ba-persist-run-usbable
     ref: ''
-    rationale: 'Authored for this product: expresses T1547.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1547.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1547.001
-  rationale: The Run key is expected; a Run value whose target lives under AppData
-    is the anomaly.
+  rationale: The Run key is expected; a Run value whose target lives under AppData is the anomaly.
+  search:
+    basis:
+    - attack:DET0365
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '13'
+    families:
+    - recmd
+    all:
+    - field: ecs.registry.path
+      contains:
+      - \CurrentVersion\Run
+    any:
+    - field: ecs.registry.data.strings
+      contains:
+      - \Users\
+      - \AppData\
+      - \Temp\
+      - \ProgramData\
+      - \PerfLogs\
   es:
     bool:
       filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '13'
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
       - wildcard:
-          ecs.registry.path:
-            value: '*Run*'
+          ecs.registry.path.wc:
+            value: '*\\CurrentVersion\\Run*'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*AppData*'
-            case_insensitive: true
+      - bool:
+          should:
+          - wildcard:
+              ecs.registry.data.strings.wc:
+                value: '*\\Users\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.registry.data.strings.wc:
+                value: '*\\AppData\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.registry.data.strings.wc:
+                value: '*\\Temp\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.registry.data.strings.wc:
+                value: '*\\ProgramData\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.registry.data.strings.wc:
+                value: '*\\PerfLogs\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-persist-runonce
   name: RunOnce key written
   families:
-  - registry
-  - recmd
-  - NTUSER
   - evtxecmd
+  - hayabusa
+  - recmd
   citation:
     type: authored
     id: authored:ba-persist-runonce
     ref: ''
-    rationale: 'Authored for this product: expresses T1547.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1547.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1547.001
   rationale: RunOnce is usually installer traffic; correlate with the writing process.
+  search:
+    basis:
+    - attack:DET0365
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '13'
+    families:
+    - recmd
+    all:
+    - field: ecs.registry.path
+      contains:
+      - \CurrentVersion\RunOnce
   es:
     bool:
       filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '13'
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
       - wildcard:
-          ecs.registry.path:
-            value: '*RunOnce*'
+          ecs.registry.path.wc:
+            value: '*\\CurrentVersion\\RunOnce*'
             case_insensitive: true
 - id: ba-persist-task-script-host
   name: Scheduled task running a script host or encoded command
   families:
-  - tasks
   - evtxecmd
   - hayabusa
-  - security
+  - scheduled_tasks
   citation:
     type: car
     id: CAR-2020-09-001
@@ -354,40 +858,155 @@ packs:
   techniques:
   - T1053.005
   - T1059.001
-  rationale: A task is the cheapest durable execution; the action it runs is what
-    distinguishes it from Windows' own.
+  rationale: A task is the cheapest durable execution; the action it runs is what distinguishes it from Windows'
+    own.
+  search:
+    basis:
+    - attack:DET0441
+    events:
+    - channel: Security
+      codes:
+      - '4698'
+      - '4702'
+    families:
+    - scheduled_tasks
+    any:
+    - field: fields.action_command
+      contains:
+      - powershell
+      - pwsh
+      - wscript
+      - cscript
+      - mshta
+    - field: ecs.process.command_line
+      contains:
+      - ' -enc'
+      - -EncodedCommand
+      - FromBase64String
+    - field: ecs.winlog.event_data.TaskContent
+      contains:
+      - powershell
+      - wscript
+      - cscript
+      - mshta
+      - ' -enc'
+    - field: ecs.winlog.event_data.TaskContentNew
+      contains:
+      - powershell
+      - wscript
+      - cscript
+      - mshta
+      - ' -enc'
   es:
     bool:
       filter:
-      - exists:
-          field: fields.task_uri.kw
       - bool:
           should:
-          - term:
-              ecs.process.command_line:
-                value: powershell
-                case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: wscript
-                case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: cscript
-                case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: mshta
-                case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: -enc
-                case_insensitive: true
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4698'
+                  - '4702'
+          - terms:
+              family:
+              - scheduled_tasks
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  fields.action_command.kw:
+                    value: '*powershell*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.action_command.kw:
+                    value: '*pwsh*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.action_command.kw:
+                    value: '*wscript*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.action_command.kw:
+                    value: '*cscript*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.action_command.kw:
+                    value: '*mshta*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '* -enc*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*-EncodedCommand*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*FromBase64String*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.TaskContent.wc:
+                    value: '*powershell*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContent.wc:
+                    value: '*wscript*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContent.wc:
+                    value: '*cscript*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContent.wc:
+                    value: '*mshta*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContent.wc:
+                    value: '* -enc*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.TaskContentNew.wc:
+                    value: '*powershell*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContentNew.wc:
+                    value: '*wscript*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContentNew.wc:
+                    value: '*cscript*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContentNew.wc:
+                    value: '*mshta*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.TaskContentNew.wc:
+                    value: '* -enc*'
+                    case_insensitive: true
+              minimum_should_match: 1
           minimum_should_match: 1
 - id: ba-persist-task-hidden
   name: Scheduled task hidden or authored out of band
   families:
-  - tasks
+  - scheduled_tasks
   citation:
     type: car
     id: CAR-2015-04-002
@@ -395,45 +1014,107 @@ packs:
     title: Remotely Scheduled Tasks via Schtasks
   techniques:
   - T1053.005
-  rationale: Hidden tasks do not appear in the console - a deliberate choice by whoever
-    made them.
+  rationale: Hidden tasks do not appear in the console - a deliberate choice by whoever made them.
+  search:
+    basis:
+    - attack:DET0441
+    families:
+    - scheduled_tasks
+    all:
+    - field: fields.task_hidden
+      is:
+      - 'True'
+      - 'true'
+    none:
+    - field: fields.task_uri
+      startswith:
+      - \Microsoft\
   es:
     bool:
       filter:
+      - terms:
+          family:
+          - scheduled_tasks
+      - bool:
+          should:
+          - term:
+              fields.task_hidden: 'true'
+          - term:
+              fields.task_hidden: 'true'
+          minimum_should_match: 1
+      must_not:
       - wildcard:
-          fields.registry_key.kw:
-            value: '*TaskCache*'
+          fields.task_uri.kw:
+            value: \\Microsoft\\*
             case_insensitive: true
 - id: ba-persist-wmi-subscription
   name: WMI event subscription persistence
   families:
-  - wmi
   - evtxecmd
   - hayabusa
-  - sysmon
-  - registry
+  - wmi_parser
   citation:
     type: authored
     id: authored:ba-persist-wmi-subscription
     ref: ''
-    rationale: 'Authored for this product: expresses T1546.003 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1546.003 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1546.003
   rationale: WMI subscriptions survive reboot, leave no task, and are fileless.
+  search:
+    basis:
+    - attack:DET0086
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '19'
+      - '20'
+      - '21'
+    - channel: Microsoft-Windows-WMI-Activity/Operational
+      codes:
+      - '5861'
+    families:
+    - wmi_parser
   es:
     bool:
       filter:
-      - wildcard:
-          ecs.registry.path:
-            value: '*Subscription*'
-            case_insensitive: true
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '19'
+                      - '20'
+                      - '21'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-WMI-Activity/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '5861'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - wmi_parser
+          minimum_should_match: 1
 - id: ba-persist-startup-folder
   name: Startup folder executable
   families:
-  - lnk
-  - lecmd
   - evtxecmd
+  - hayabusa
+  - mftecmd
   citation:
     type: car
     id: CAR-2021-12-002
@@ -442,46 +1123,183 @@ packs:
   techniques:
   - T1547.001
   rationale: Anything in Startup runs at logon; the folder is user-writable by design.
+  search:
+    basis:
+    - attack:DET0365
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '11'
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.path
+      contains:
+      - \Start Menu\Programs\Startup\
+    - field: ecs.file.extension
+      is:
+      - exe
+      - lnk
+      - bat
+      - cmd
+      - vbs
+      - js
+      - ps1
+      - hta
+      - scr
   es:
     bool:
       filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
       - wildcard:
-          ecs.file.path:
-            value: '*Startup*'
+          ecs.file.path.wc:
+            value: '*\\Start Menu\\Programs\\Startup\\*'
             case_insensitive: true
+      - bool:
+          should:
+          - term:
+              ecs.file.extension:
+                value: exe
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: lnk
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: bat
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: cmd
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: vbs
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: js
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: ps1
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: hta
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: scr
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-cred-lsass-nonsystem
   name: Non-system process accessing lsass
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: authored
     id: authored:ba-cred-lsass-nonsystem
     ref: ''
-    rationale: 'Authored for this product: expresses T1003.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1003.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1003.001
-  rationale: lsass is protected; any process referring to it outside the system image
-    is worth a look. Kept as a positive term because the DSL does not negate typed
-    fields - the non-system narrowing is a follow-on filter, not part of this query.
+  rationale: lsass is protected; any process referring to it outside the system image is worth a look. Kept as a
+    positive term because the DSL does not negate typed fields - the non-system narrowing is a follow-on filter,
+    not part of this query.
+  search:
+    basis:
+    - attack:DET0363
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '10'
+    all:
+    - field: ecs.winlog.event_data.TargetImage
+      endswith:
+      - \lsass.exe
+    none:
+    - field: ecs.winlog.event_data.SourceImage
+      endswith:
+      - \MsMpEng.exe
+      - \csrss.exe
+      - \wininit.exe
+      - \services.exe
+      - \lsass.exe
+      - \wmiprvse.exe
+      - \svchost.exe
   es:
     bool:
       filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '10'
       - wildcard:
-          ecs.process.command_line:
-            value: '*lsass*'
+          ecs.winlog.event_data.TargetImage.wc:
+            value: '*\\lsass.exe'
             case_insensitive: true
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\MsMpEng.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\csrss.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\wininit.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\services.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\lsass.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\wmiprvse.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.SourceImage.wc:
+                value: '*\\svchost.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-cred-lsass-path
   name: lsass referenced from a user-writable path
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
-  - prefetch
+  - mftecmd
   citation:
     type: car
     id: CAR-2019-07-002
@@ -489,460 +1307,1193 @@ packs:
     title: Lsass Process Dump via Procdump
   techniques:
   - T1003.001
-  rationale: Credential-dump tooling runs from staging directories; the reference
-    is the tell, not the tool name.
+  rationale: Credential-dump tooling runs from staging directories; the reference is the tell, not the tool name.
+  search:
+    basis:
+    - attack:DET0363
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '11'
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.name
+      contains:
+      - lsass
+    none:
+    - field: ecs.file.path
+      contains:
+      - \Windows\System32\
+      - \Windows\SysWOW64\
+      - \Windows\WinSxS\
+      - \Windows\servicing\
+      - \Windows\Prefetch\
   es:
     bool:
       filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
       - wildcard:
-          ecs.process.command_line:
+          ecs.file.name.wc:
             value: '*lsass*'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*AppData*'
-            case_insensitive: true
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\System32\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\SysWOW64\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\WinSxS\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\servicing\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\Prefetch\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-cred-dcsync-nondc
   name: Replication rights used off a domain controller
   families:
-  - security
   - evtxecmd
   - hayabusa
   citation:
     type: authored
     id: authored:ba-cred-dcsync-nondc
     ref: ''
-    rationale: 'Authored for this product: expresses T1003.006 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1003.006 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1003.006
-  rationale: 4662 with the replication GUID from a non-DC subject is the canonical
-    DCSync shape.
+  rationale: 4662 with the replication GUID from a non-DC subject is the canonical DCSync shape.
+  search:
+    basis:
+    - attack:DET0594
+    events:
+    - channel: Security
+      codes:
+      - '4662'
+    any:
+    - field: text
+      contains:
+      - 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2
+      - 1131f6ad-9c07-11d1-f79f-00c04fc2dcd2
+    none:
+    - field: ecs.winlog.event_data.SubjectUserName
+      endswith:
+      - $
   es:
     bool:
       filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4662'
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*1131f6aa-9c07-11d1-f79f-00c04fc2dcd2*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*1131f6ad-9c07-11d1-f79f-00c04fc2dcd2*'
+                case_insensitive: true
+          minimum_should_match: 1
+      must_not:
       - wildcard:
-          event_id:
-            value: '*4662*'
+          ecs.winlog.event_data.SubjectUserName.wc:
+            value: '*$'
             case_insensitive: true
-      - exists:
-          field: fields.user.kw
 - id: ba-cred-new-local-admin
   name: Account added to the local administrators group
   families:
-  - security
   - evtxecmd
   - hayabusa
   citation:
     type: authored
     id: authored:ba-cred-new-local-admin
     ref: ''
-    rationale: 'Authored for this product: expresses T1098, T1078.003 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1098, T1078.003 in this pack''s logic. Not derived from an
+      external source.'
   techniques:
   - T1098
   - T1078.003
   rationale: Privilege that did not exist before; compare against a change record.
+  search:
+    basis:
+    - attack:DET0096
+    - manifest
+    events:
+    - channel: Security
+      codes:
+      - '4732'
+    all:
+    - field: ecs.winlog.event_data.TargetSid
+      is:
+      - S-1-5-32-544
   es:
     bool:
       filter:
-      - wildcard:
-          event_id:
-            value: '*4732*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.command_line:
-            value: '*Administrators*'
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4732'
+      - term:
+          ecs.winlog.event_data.TargetSid:
+            value: S-1-5-32-544
             case_insensitive: true
 - id: ba-cred-logon-type3
   name: Network logon to a workstation
   families:
-  - security
   - evtxecmd
   - hayabusa
-  - evtx
   citation:
     type: authored
     id: authored:ba-cred-logon-type3
     ref: ''
-    rationale: 'Authored for this product: expresses T1021, T1078 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1021, T1078 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1021
   - T1078
-  rationale: Type 3 is normal for admin work and for lateral movement; the source
-    decides.
+  rationale: Type 3 is normal for admin work and for lateral movement; the source decides.
+  search:
+    basis:
+    - attack:DET0560
+    - attack:DET0269
+    events:
+    - channel: Security
+      codes:
+      - '4624'
+    all:
+    - field: ecs.winlog.logon.type
+      is:
+      - '3'
+    - field: ecs.winlog.event_data.AuthenticationPackageName
+      is:
+      - NTLM
+    none:
+    - field: ecs.user.target.name
+      endswith:
+      - $
+    - field: ecs.user.target.name
+      is:
+      - ANONYMOUS LOGON
+    - field: ecs.source.ip
+      is:
+      - 127.0.0.1
+      - ::1
+      - '-'
   es:
     bool:
       filter:
-      - wildcard:
-          event_id:
-            value: '*4624*'
-            case_insensitive: true
-      - wildcard:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
+      - term:
           ecs.winlog.logon.type:
-            value: '*3*'
+            value: '3'
             case_insensitive: true
+      - term:
+          ecs.winlog.event_data.AuthenticationPackageName:
+            value: NTLM
+            case_insensitive: true
+      must_not:
+      - wildcard:
+          ecs.user.target.name.wc:
+            value: '*$'
+            case_insensitive: true
+      - term:
+          ecs.user.target.name:
+            value: ANONYMOUS LOGON
+            case_insensitive: true
+      - bool:
+          should:
+          - term:
+              ecs.source.ip:
+                value: 127.0.0.1
+                case_insensitive: true
+          - term:
+              ecs.source.ip:
+                value: ::1
+                case_insensitive: true
+          - term:
+              ecs.source.ip:
+                value: '-'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-cred-rdp-firstseen
   name: RDP session from a source not seen before
   families:
-  - security
   - evtxecmd
   - hayabusa
-  - evtx
   citation:
     type: authored
     id: authored:ba-cred-rdp-firstseen
     ref: ''
-    rationale: 'Authored for this product: expresses T1021.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1021.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1021.001
-  rationale: The first sighting of a source is the anomaly; the session itself may
-    be routine.
+  rationale: The first sighting of a source is the anomaly; the session itself may be routine.
+  search:
+    basis:
+    - attack:DET0327
+    events:
+    - channel: Security
+      codes:
+      - '4624'
+    all:
+    - field: ecs.winlog.logon.type
+      is:
+      - '10'
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
+      - term:
+          ecs.winlog.logon.type:
+            value: '10'
+            case_insensitive: true
+- id: ba-cred-kerberoast
+  name: Service ticket requested with RC4
+  families:
+  - evtxecmd
+  - hayabusa
+  citation:
+    type: authored
+    id: authored:ba-cred-kerberoast
+    ref: ''
+    rationale: 'Authored for this product: expresses T1558.003 in this pack''s logic. Not derived from an external
+      source.'
+  techniques:
+  - T1558.003
+  rationale: RC4 service-ticket encryption is the roastable default; one request is noise, many are not.
+  search:
+    basis:
+    - attack:DET0157
+    events:
+    - channel: Security
+      codes:
+      - '4769'
+    all:
+    - field: ecs.winlog.event_data.TicketEncryptionType
+      is:
+      - '0x17'
+    none:
+    - field: ecs.winlog.event_data.ServiceName
+      endswith:
+      - $
+    - field: ecs.winlog.event_data.ServiceName
+      is:
+      - krbtgt
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4769'
+      - term:
+          ecs.winlog.event_data.TicketEncryptionType:
+            value: '0x17'
+            case_insensitive: true
+      must_not:
+      - wildcard:
+          ecs.winlog.event_data.ServiceName.wc:
+            value: '*$'
+            case_insensitive: true
+      - term:
+          ecs.winlog.event_data.ServiceName:
+            value: krbtgt
+            case_insensitive: true
+- id: ba-eva-log-cleared
+  name: Security log cleared
+  families:
+  - evtxecmd
+  - hayabusa
+  citation:
+    type: authored
+    id: authored:ba-eva-log-cleared
+    ref: ''
+    rationale: 'Authored for this product: expresses T1070.001 in this pack''s logic. Not derived from an external
+      source.'
+  techniques:
+  - T1685.005
+  rationale: 1102 is never routine on a server; it is the single highest-signal event in this pack.
+  search:
+    basis:
+    - attack:DET0184
+    - attack:DET0532
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '1102'
+    - channel: System
+      codes:
+      - '104'
   es:
     bool:
       filter:
       - bool:
           should:
-          - term:
-              event_id:
-                value: '4624'
-                case_insensitive: true
-          - term:
-              event_id:
-                value: '4778'
-                case_insensitive: true
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1102'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '104'
           minimum_should_match: 1
-      - wildcard:
-          ecs.winlog.logon.type:
-            value: '*10*'
-            case_insensitive: true
-      - exists:
-          field: fields.source_ip.kw
-- id: ba-cred-kerberoast
-  name: Service ticket requested with RC4
-  families:
-  - security
-  - evtxecmd
-  - hayabusa
-  - evtx
-  citation:
-    type: authored
-    id: authored:ba-cred-kerberoast
-    ref: ''
-    rationale: 'Authored for this product: expresses T1558.003 in this pack''s logic.
-      Not derived from an external source.'
-  techniques:
-  - T1558.003
-  rationale: RC4 service-ticket encryption is the roastable default; one request is
-    noise, many are not.
-  es:
-    bool:
-      filter:
-      - wildcard:
-          event_id:
-            value: '*4769*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.command_line:
-            value: '*0x17*'
-            case_insensitive: true
-- id: ba-eva-log-cleared
-  name: Security log cleared
-  families:
-  - security
-  - evtxecmd
-  - hayabusa
-  - evtx
-  citation:
-    type: authored
-    id: authored:ba-eva-log-cleared
-    ref: ''
-    rationale: 'Authored for this product: expresses T1070.001 in this pack''s logic.
-      Not derived from an external source.'
-  techniques:
-  - T1070.001
-  rationale: 1102 is never routine on a server; it is the single highest-signal event
-    in this pack.
-  es:
-    bool:
-      filter:
-      - wildcard:
-          event_id:
-            value: '*1102*'
-            case_insensitive: true
 - id: ba-eva-audit-policy
   name: Audit policy changed
   families:
-  - security
   - evtxecmd
   - hayabusa
-  - evtx
   citation:
     type: authored
     id: authored:ba-eva-audit-policy
     ref: ''
-    rationale: 'Authored for this product: expresses T1562.002 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1562.002 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
-  - T1562.002
+  - T1685.001
   rationale: Turning auditing down is how a cleared log is made to stay quiet.
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '4719'
   es:
     bool:
       filter:
-      - wildcard:
-          event_id:
-            value: '*4719*'
-            case_insensitive: true
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4719'
 - id: ba-eva-defender-exclusion
   name: Defender protection disabled or exclusions added
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - registry
   - recmd
   citation:
     type: authored
     id: authored:ba-eva-defender-exclusion
     ref: ''
-    rationale: 'Authored for this product: expresses T1562.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1562.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
-  - T1562.001
-  rationale: 'Exclusions are the tidier version of disabling: the product still runs
-    and still reports healthy.'
+  - T1685
+  rationale: 'Exclusions are the tidier version of disabling: the product still runs and still reports healthy.'
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Windows Defender/Operational
+      codes:
+      - '5001'
+      - '5007'
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '13'
+    families:
+    - recmd
+    any:
+    - field: event_id
+      is:
+      - '5001'
+    - field: text
+      contains:
+      - \Windows Defender\Exclusions\
+      - DisableAntiSpyware
+      - DisableRealtimeMonitoring
   es:
     bool:
-      should:
+      filter:
       - bool:
           should:
-          - match_phrase:
-              text: Defender
-          - wildcard:
-              text.wc:
-                value: '*defender*'
-                case_insensitive: true
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Windows Defender/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '5001'
+                      - '5007'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '13'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - recmd
           minimum_should_match: 1
-      minimum_should_match: 1
-      filter:
-      - wildcard:
-          ecs.registry.path:
-            value: '*Windows*'
-            case_insensitive: true
+      - bool:
+          should:
+          - term:
+              event_id: '5001'
+          - bool:
+              should:
+              - wildcard:
+                  text.wc:
+                    value: '*\\Windows Defender\\Exclusions\\*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*DisableAntiSpyware*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*DisableRealtimeMonitoring*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - id: ba-eva-service-stopped
   name: Security service stopped
   families:
-  - system
   - evtxecmd
   - hayabusa
-  - evtx
   citation:
     type: authored
     id: authored:ba-eva-service-stopped
     ref: ''
-    rationale: 'Authored for this product: expresses T1562.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1562.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
-  - T1562.001
+  - T1685
   rationale: Services stop for patching too - the reason and the timing matter.
+  search:
+    basis:
+    - attack:DET0021
+    - evtx-map
+    events:
+    - channel: System
+      codes:
+      - '7036'
+    all:
+    - field: ecs.winlog.event_data.param2
+      is:
+      - stopped
+    any:
+    - field: ecs.winlog.event_data.param1
+      contains:
+      - Defender
+      - Sysmon
+      - Firewall
+      - Antimalware
+    - field: ecs.winlog.event_data.param1
+      phrase:
+      - Event Log
+      - Security Center
   es:
     bool:
       filter:
-      - wildcard:
-          event_id:
-            value: '*7036*'
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: System
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '7036'
+      - term:
+          ecs.winlog.event_data.param2:
+            value: stopped
             case_insensitive: true
-      - wildcard:
-          ecs.process.command_line:
-            value: '*stopped*'
-            case_insensitive: true
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.param1.wc:
+                    value: '*Defender*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.param1.wc:
+                    value: '*Sysmon*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.param1.wc:
+                    value: '*Firewall*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.param1.wc:
+                    value: '*Antimalware*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.param1.wc:
+                    value: '*Event Log*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.param1.wc:
+                    value: '*Security Center*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - id: ba-eva-timestomp
-  name: File timestamps inconsistent with the directory
+  name: Executable whose $SI creation predates its $FN creation, set to whole seconds
   families:
-  - mft
   - mftecmd
-  - ntfs
   citation:
     type: authored
     id: authored:ba-eva-timestomp
     ref: ''
-    rationale: 'Authored for this product: expresses T1070.006 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1070.006 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1070.006
-  rationale: A payload older than the directory that contains it was back-dated.
+  rationale: ATT&CK DET0591 reads timestomping as $SI and $FN timestamps mismatched or reverted. MFTECmd states
+    both facts per record (SI<FN, uSecZeros). Narrowed to executables outside the Windows servicing stores; SI<FN
+    alone is normal for copied or extracted files.
+  search:
+    basis:
+    - attack:DET0591
+    families:
+    - mftecmd
+    all:
+    - field: fields.SI<FN
+      is:
+      - 'True'
+    - field: fields.uSecZeros
+      is:
+      - 'True'
+    - field: ecs.file.extension
+      is:
+      - exe
+      - dll
+      - sys
+      - ps1
+      - bat
+      - vbs
+      - js
+      - scr
+      - hta
+    none:
+    - field: ecs.file.path
+      contains:
+      - \Windows\WinSxS\
+      - \Windows\servicing\
+      - \Windows\SoftwareDistribution\
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - mftecmd
       - term:
-          fields.SI<FN.kw: 'True'
-      - term:
-          fields.SI<FN.kw: 'true'
-      - exists:
-          field: fields.LastModified0x10
-      - wildcard:
-          text.wc:
-            value: '*timestomp*'
+          fields.SI<FN.kw:
+            value: 'True'
             case_insensitive: true
-      minimum_should_match: 1
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.targetmodified.kw' (column 'targetmodified') does not exist for
-    declared families ['fls', 'ingest-kape', 'ingest-mft', 'ingest-mftecmd', 'ingest-ntfs',
-    'mft', 'mftecmd', 'mftecmd-i30', 'mftecmd-usn', 'ntfs'] (column exists for ['jlecmd',
-    'lecmd'])); reviewed and kept by hand
+      - term:
+          fields.uSecZeros.kw:
+            value: 'True'
+            case_insensitive: true
+      - bool:
+          should:
+          - term:
+              ecs.file.extension:
+                value: exe
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: dll
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: sys
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: ps1
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: bat
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: vbs
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: js
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: scr
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: hta
+                case_insensitive: true
+          minimum_should_match: 1
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\WinSxS\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\servicing\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\SoftwareDistribution\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-lat-smb-admin-share
   name: Administrative share accessed remotely
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: authored
     id: authored:ba-lat-smb-admin-share
     ref: ''
-    rationale: 'Authored for this product: expresses T1021.002 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1021.002 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1021.002
-  rationale: Admin shares are the lateral-movement transport; normal for management
-    tooling.
+  rationale: Admin shares are the lateral-movement transport; normal for management tooling.
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '5140'
+      - '5145'
+    any:
+    - field: ecs.winlog.event_data.ShareName
+      endswith:
+      - ADMIN$
+      - C$
   es:
     bool:
       filter:
-      - wildcard:
-          ecs.process.command_line:
-            value: '*ADMIN$*'
-            case_insensitive: true
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '5140'
+              - '5145'
+      - bool:
+          should:
+          - wildcard:
+              ecs.winlog.event_data.ShareName.wc:
+                value: '*ADMIN$'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ShareName.wc:
+                value: '*C$'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-lat-remote-service-create
   name: Service created by a remote logon
   families:
-  - system
   - evtxecmd
   - hayabusa
-  - evtx
   citation:
     type: authored
     id: authored:ba-lat-remote-service-create
     ref: ''
-    rationale: 'Authored for this product: expresses T1021.002, T1543.003 in this
-      pack''s logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1021.002, T1543.003 in this pack''s logic. Not derived from
+      an external source.'
   techniques:
   - T1021.002
   - T1543.003
-  rationale: 'psexec-shaped lateral movement: a service installed by something that
-    is not a patch cycle.'
+  rationale: 'psexec-shaped lateral movement: a service installed by something that is not a patch cycle.'
+  search:
+    basis:
+    - attack:DET0421
+    - attack:DET0127
+    events:
+    - channel: System
+      codes:
+      - '7045'
+    - channel: Security
+      codes:
+      - '4697'
+    any:
+    - field: ecs.service.name
+      contains:
+      - PSEXESVC
+      - RemCom
+    - field: ecs.winlog.event_data.ServiceName
+      contains:
+      - PSEXESVC
+      - RemCom
+    - field: ecs.process.executable
+      contains:
+      - '%COMSPEC%'
+      - \ADMIN$\
+      - \\127.0.0.1\
+    - field: ecs.winlog.event_data.ServiceFileName
+      contains:
+      - '%COMSPEC%'
+      - \ADMIN$\
+      - \\127.0.0.1\
   es:
     bool:
       filter:
-      - wildcard:
-          event_id:
-            value: '*7045*'
-            case_insensitive: true
-      - wildcard:
-          ecs.winlog.logon.type:
-            value: '*3*'
-            case_insensitive: true
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.service.name.wc:
+                    value: '*PSEXESVC*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.service.name.wc:
+                    value: '*RemCom*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ServiceName.wc:
+                    value: '*PSEXESVC*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceName.wc:
+                    value: '*RemCom*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*%COMSPEC%*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\ADMIN$\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\\\127.0.0.1\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*%COMSPEC%*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\ADMIN$\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\\\127.0.0.1\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - id: ba-lat-wmi-exec
   name: WMI used to start a process
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: authored
     id: authored:ba-lat-wmi-exec
     ref: ''
-    rationale: 'Authored for this product: expresses T1047 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1047 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1047
-  rationale: wmiprvse spawns children legitimately; the command line of the child
-    is what to read.
+  rationale: wmiprvse spawns children legitimately; the command line of the child is what to read.
+  search:
+    basis:
+    - attack:DET0364
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \cmd.exe
+      - \powershell.exe
+      - \pwsh.exe
+      - \mshta.exe
+      - \rundll32.exe
+      - \regsvr32.exe
+      - \wscript.exe
+      - \cscript.exe
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \WmiPrvSE.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \WmiPrvSE.exe
   es:
     bool:
       filter:
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*wmiprvse.exe*'
-            case_insensitive: true
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cmd.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\powershell.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\pwsh.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\mshta.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\rundll32.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\regsvr32.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\wscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cscript.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.parent.executable.wc:
+                value: '*\\WmiPrvSE.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ParentProcessName.wc:
+                value: '*\\WmiPrvSE.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-col-powershell-transcript
   name: PowerShell script block logging with a download or exec
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: authored
     id: authored:ba-col-powershell-transcript
     ref: ''
-    rationale: 'Authored for this product: expresses T1059.001, T1105 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1059.001, T1105 in this pack''s logic. Not derived from an
+      external source.'
   techniques:
   - T1059.001
   - T1105
-  rationale: 4104 carries the deobfuscated text, so this is often the clearest view
-    of intent.
+  rationale: 4104 carries the deobfuscated text, so this is often the clearest view of intent.
+  search:
+    basis:
+    - attack:DET0455
+    - attack:DET0060
+    events:
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - DownloadString
+      - DownloadFile
+      - Invoke-WebRequest
+      - Net.WebClient
+      - Start-BitsTransfer
+      - Invoke-RestMethod
   es:
     bool:
       filter:
-      - wildcard:
-          event_id:
-            value: '*4104*'
-            case_insensitive: true
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-PowerShell/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4104'
       - bool:
           should:
-          - term:
-              ecs.process.command_line:
-                value: DownloadString
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*DownloadString*'
                 case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: IEX
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*DownloadFile*'
                 case_insensitive: true
-          - term:
-              ecs.process.command_line:
-                value: FromBase64String
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*Invoke-WebRequest*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*Net.WebClient*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*Start-BitsTransfer*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*Invoke-RestMethod*'
                 case_insensitive: true
           minimum_should_match: 1
 - id: ba-col-archive-staging
   name: Archive created in a staging directory
   families:
-  - mft
-  - mftecmd
-  - ntfs
   - evtxecmd
+  - hayabusa
+  - mftecmd
   citation:
     type: authored
     id: authored:ba-col-archive-staging
     ref: ''
-    rationale: 'Authored for this product: expresses T1560.001 in this pack''s logic.
-      Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1560.001 in this pack''s logic. Not derived from an external
+      source.'
   techniques:
   - T1560.001
-  rationale: 'Collection ends in an archive. Positive only: the DSL parses `not path:`
-    as a positive filter, so a system-tree exclusion here would have done the reverse
-    of its intent.'
+  rationale: 'Collection ends in an archive. Positive only: the DSL parses `not path:` as a positive filter, so
+    a system-tree exclusion here would have done the reverse of its intent.'
+  search:
+    basis:
+    - attack:DET0298
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '11'
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.extension
+      is:
+      - zip
+      - rar
+      - 7z
+      - cab
+    any:
+    - field: ecs.file.path
+      contains:
+      - \Users\Public\
+      - \ProgramData\
+      - \Windows\Temp\
+      - \AppData\Local\Temp\
+      - \PerfLogs\
+      - \$Recycle.Bin\
   es:
     bool:
       filter:
       - bool:
           should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+      - bool:
+          should:
           - term:
-              ecs.file.path:
-                value: .zip
+              ecs.file.extension:
+                value: zip
                 case_insensitive: true
           - term:
-              ecs.file.path:
-                value: .7z
+              ecs.file.extension:
+                value: rar
                 case_insensitive: true
           - term:
-              ecs.file.path:
-                value: .rar
+              ecs.file.extension:
+                value: 7z
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: cab
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Users\\Public\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\ProgramData\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\Temp\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\AppData\\Local\\Temp\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\PerfLogs\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\$Recycle.Bin\\*'
                 case_insensitive: true
           minimum_should_match: 1
 - id: ba-lat-wmi-process-create
@@ -950,8 +2501,6 @@ packs:
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: car
     id: CAR-2016-03-002
@@ -959,30 +2508,55 @@ packs:
     title: Create Remote Process via WMIC
   techniques:
   - T1047
-  rationale: WMI process creation via wmic.exe process call create or WMI Win32_Process.Create;
-    telemetry follows CAR-2014-11-004 (process creation with command line) - the WMI-spawned
-    child is a process-creation record carrying the WMI command line.
+  rationale: WMI process creation via wmic.exe process call create or WMI Win32_Process.Create; telemetry follows
+    CAR-2014-11-004 (process creation with command line) - the WMI-spawned child is a process-creation record carrying
+    the WMI command line.
+  search:
+    basis:
+    - attack:DET0364
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.command_line
+      phrase:
+      - process call create
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*wmic*process*create*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Win32_Process*Create*'
-            case_insensitive: true
-      minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - match_phrase:
+          ecs.process.command_line.text: process call create
 - id: ba-pers-schtask-reg-mod
   name: Scheduled task creation or modification via registry or schtasks
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: car
     id: CAR-2015-04-002
@@ -990,69 +2564,223 @@ packs:
     title: Remotely Scheduled Tasks via Schtasks
   techniques:
   - T1053.005
-  rationale: Scheduled task persistence via schtasks.exe /create or modifications
-    under Tree/Tasks registry; telemetry follows CAR-2016-04-009 (scheduled task),
-    the same technique T1053.005.
+  rationale: Scheduled task persistence via schtasks.exe /create or modifications under Tree/Tasks registry; telemetry
+    follows CAR-2016-04-009 (scheduled task), the same technique T1053.005.
+  search:
+    basis:
+    - attack:DET0441
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+      - '13'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - schtasks /create
+      - schtasks.exe /create
+      - schtasks /change
+      - Register-ScheduledTask
+    - field: ecs.registry.path
+      contains:
+      - \Schedule\TaskCache\Tree\
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*schtasks*/create*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Software\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache*'
-            case_insensitive: true
-      minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '13'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*schtasks /create*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*schtasks.exe /create*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*schtasks /change*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Register-ScheduledTask*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - wildcard:
+              ecs.registry.path.wc:
+                value: '*\\Schedule\\TaskCache\\Tree\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-c2-living-off-trusted-sites
   name: C2 and payload transfer via living off trusted sites
   families:
   - evtxecmd
-  - sysmon
   - hayabusa
   citation:
     type: authored
     id: authored:ba-c2-living-off-trusted-sites
     ref: ''
-    rationale: 'Authored for this product: expresses T1102.002, T1105 in this pack''s
-      logic. Not derived from an external source.'
+    rationale: 'Authored for this product: expresses T1102.002, T1105 in this pack''s logic. Not derived from an
+      external source.'
   techniques:
   - T1102.002
   - T1105
-  rationale: Network connections or command lines referencing trusted sites abused
-    for C2 or payload transfer.
+  rationale: Network connections or command lines referencing trusted sites abused for C2 or payload transfer.
+  search:
+    basis:
+    - attack:DET0027
+    - attack:DET0400
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+      - '22'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.dns.question.name
+      contains:
+      - raw.githubusercontent.com
+      - pastebin.com
+      - cdn.discordapp.com
+      - transfer.sh
+      - api.telegram.org
+      - ngrok.io
+      - gist.githubusercontent.com
+    - field: ecs.process.command_line
+      contains:
+      - raw.githubusercontent.com
+      - pastebin.com
+      - cdn.discordapp.com
+      - transfer.sh
+      - api.telegram.org
+      - ngrok.io
+      - gist.githubusercontent.com
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*discordapp.com*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*api.telegram.org*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*webhook.site*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ngrok*'
-            case_insensitive: true
-      minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '22'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*raw.githubusercontent.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*pastebin.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*cdn.discordapp.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*transfer.sh*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*api.telegram.org*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*ngrok.io*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*gist.githubusercontent.com*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*raw.githubusercontent.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*pastebin.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*cdn.discordapp.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*transfer.sh*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*api.telegram.org*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*ngrok.io*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*gist.githubusercontent.com*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - id: ba-priv-printspooler-exploit
   name: Print Spooler driver exploitation (PrintNightmare)
   families:
   - evtxecmd
   - hayabusa
-  - security
-  - sysmon
   citation:
     type: car
     id: CAR-2021-01-004
@@ -1061,34 +2789,64 @@ packs:
   techniques:
   - T1068
   - T1547.012
-  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning
-    cmd/powershell; telemetry follows CAR-2016-04-006 (driver load), the same technique
-    T1068.
+  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning cmd/powershell; telemetry follows
+    CAR-2016-04-006 (driver load), the same technique T1068.
+  search:
+    basis:
+    - evtx-map
+    - manifest
+    events:
+    - channel: Microsoft-Windows-PrintService/Operational
+      codes:
+      - '316'
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '11'
+    any:
+    - field: event_id
+      is:
+      - '316'
+    - field: ecs.file.path
+      contains:
+      - \System32\spool\drivers\
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*spoolsv*cmd.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*spoolsv*powershell.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*spool\drivers*kernelbase.dll*'
-            case_insensitive: true
-      minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PrintService/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '316'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - term:
+              event_id: '316'
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\System32\\spool\\drivers\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-cred-lsass-minidump-write
   name: LSASS memory dumping via MiniDumpWriteDump or comsvcs
   families:
   - evtxecmd
-  - sysmon
   - hayabusa
-  - security
   citation:
     type: car
     id: CAR-2019-07-002
@@ -1096,23 +2854,171 @@ packs:
     title: Lsass Process Dump via Procdump
   techniques:
   - T1003.001
-  rationale: LSASS process memory dump via comsvcs.dll MiniDump, procdump, or rundll32;
-    telemetry follows CAR-2014-11-008 (process access), the parent technique T1003.
+  rationale: LSASS process memory dump via comsvcs.dll MiniDump, procdump, or rundll32; telemetry follows CAR-2014-11-008
+    (process access), the parent technique T1003.
+  search:
+    basis:
+    - attack:DET0363
+    - attack:DET0455
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - comsvcs
+      - MiniDump
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - MiniDumpWriteDump
+      - Out-Minidump
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*comsvcs*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*MiniDump*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*MiniDumpWriteDump*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Out-Minidump*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+- id: ba-eva-timestomp-usn
+  name: Timestamp change recorded on an executable (USN BasicInfoChange)
+  families:
+  - mftecmd
+  citation:
+    type: authored
+    id: authored:ba-eva-timestomp-usn
+    ref: ''
+    rationale: 'Authored for this product: expresses T1070.006 (ATT&CK DET0591, timestamps changed through the file
+      API) with the USN journal reason NTFS writes when a file''s basic information, its timestamps among them,
+      changes.'
+  techniques:
+  - T1070.006
+  rationale: A timestamp change through the file API is journaled as BasicInfoChange; on an executable outside the
+    servicing stores it is a candidate for backdating, read with the file's $SI/$FN times.
+  search:
+    basis:
+    - attack:DET0591
+    families:
+    - mftecmd
+    all:
+    - field: fields.UpdateReasons
+      contains:
+      - BasicInfoChange
+    - field: ecs.file.extension
+      is:
+      - exe
+      - dll
+      - sys
+      - ps1
+      - bat
+      - vbs
+      - js
+      - scr
+      - hta
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
       - wildcard:
-          text.wc:
-            value: '*comsvcs*MiniDump*'
+          fields.UpdateReasons.kw:
+            value: '*BasicInfoChange*'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*MiniDumpWriteDump*lsass*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*procdump*lsass*'
-            case_insensitive: true
-      minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+      - bool:
+          should:
+          - term:
+              ecs.file.extension:
+                value: exe
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: dll
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: sys
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: ps1
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: bat
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: vbs
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: js
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: scr
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: hta
+                case_insensitive: true
+          minimum_should_match: 1

@@ -1,8 +1,8 @@
 skill: email_phishing
 title: Phishing email analysis — headers, auth checks, payload chain
-description: 'Analyze a suspected phishing email: authenticate the sender (SPF/DKIM/DMARC
-  + Received-chain), extract and defang URLs/attachments, then pivot to host-side
-  delivery and execution artifacts — the email is the vector, the host is the scene.'
+description: 'Analyze a suspected phishing email: authenticate the sender (SPF/DKIM/DMARC + Received-chain), extract
+  and defang URLs/attachments, then pivot to host-side delivery and execution artifacts — the email is the vector,
+  the host is the scene.'
 trigger:
   families:
   - email
@@ -33,223 +33,407 @@ trigger:
 steps:
 - name: sender_authentication
   query: spf OR dkim OR dmarc OR received OR return-path
-  look_for: 'Authenticate first: SPF pass/fail on the connecting IP, DKIM signature
-    validity, DMARC alignment between From: and Return-Path/SPF domains. Failures
-    prove spoofing; passes on a lookalike/compromised domain still prove the infrastructure
-    used.'
+  look_for: 'Authenticate first: SPF pass/fail on the connecting IP, DKIM signature validity, DMARC alignment between
+    From: and Return-Path/SPF domains. Failures prove spoofing; passes on a lookalike/compromised domain still prove
+    the infrastructure used.'
   pivot: Received
+  requires:
+    families:
+    - email
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - email
+  source: families email
+  search:
+    families:
+    - email
+    any:
+    - field: text
+      contains:
+      - spf=fail
+      - spf=softfail
+      - dkim=fail
+      - dmarc=fail
+      - Received-SPF
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*spf*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*dkim*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*dmarc*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*received*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*return-path*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - email
-    - eml
-    - headers
-    - evtx
-    - sysmon
-    - prefetch
-    - lnk
-    - mft
-  es_text_only_reason:
-  - 'spf: free phrase; the step''s pivot names no registry column'
-  - 'dkim: free phrase; the step''s pivot names no registry column'
-  - 'dmarc: free phrase; the step''s pivot names no registry column'
-  - 'received: free phrase; the step''s pivot names no registry column'
-  - 'return-path: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - email
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*spf=fail*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*spf=softfail*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*dkim=fail*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*dmarc=fail*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*Received-SPF*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: header_chain
   query: 'Received: OR X-Originating OR message-id'
-  look_for: 'Walk the Received: chain bottom-up (originating MTA → hops → your gateway)
-    — the first untrusted hop reveals the true source IP. X-Originating-IP and mismatched
-    HELO/hostnames expose relays.'
+  look_for: 'Walk the Received: chain bottom-up (originating MTA → hops → your gateway) — the first untrusted hop
+    reveals the true source IP. X-Originating-IP and mismatched HELO/hostnames expose relays.'
   pivot: Received
+  requires:
+    families:
+    - email
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - email
+  source: families email
+  search:
+    families:
+    - email
+    any:
+    - field: text
+      contains:
+      - X-Originating-IP
+      - X-Sender-IP
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*X-Originating*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*message-id*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'X-Originating: free phrase; the step''s pivot names no registry column'
-  - 'message-id: free phrase; the step''s pivot names no registry column'
-  es_dropped:
-  - term: 'Received:'
-    reason: field filter with no value
+      filter:
+      - terms:
+          family:
+          - email
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*X-Originating-IP*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*X-Sender-IP*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: url_extraction
   query: http OR https OR click OR link
-  look_for: Extract every URL — display text vs href mismatches, punycode/ homoglyph
-    domains, URL shorteners, credential-harvest pages. The URL is evidence even when
-    the payload is gone.
+  look_for: Extract every URL — display text vs href mismatches, punycode/ homoglyph domains, URL shorteners, credential-harvest
+    pages. The URL is evidence even when the payload is gone.
   pivot: URL
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*http*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*https*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*click*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*link*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'http: free phrase; the step''s pivot names no registry column'
-  - 'https: free phrase; the step''s pivot names no registry column'
-  - 'click: free phrase; the step''s pivot names no registry column'
-  - 'link: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  procedure_reason: extracting every URL and comparing display text with the link target is read from each message
+    body; nearly every message holds a URL, so a search for one returns the mailbox.
 - name: attachment_triage
   query: attachment OR .iso OR .lnk OR .docm OR .html OR .zip
-  look_for: 'Attachment class decides the risk: ISO/IMG (MOTW bypass → mounts as drive),
-    LNK (double-click execution), Office macros (.docm/ .xlsm), HTML smuggling (.html
-    that writes the payload locally), archived EXEs. Hash the attachment, check VT/defang,
-    record the payload chain.'
+  look_for: 'Attachment class decides the risk: ISO/IMG (MOTW bypass → mounts as drive), LNK (double-click execution),
+    Office macros (.docm/ .xlsm), HTML smuggling (.html that writes the payload locally), archived EXEs. Hash the
+    attachment, check VT/defang, record the payload chain.'
   pivot: FileName
+  requires:
+    families:
+    - email
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - email
+  source: families email
+  search:
+    families:
+    - email
+    any:
+    - field: text
+      contains:
+      - .iso
+      - .img
+      - .lnk
+      - .docm
+      - .xlsm
+      - .hta
+      - .vbs
+      - .js
+      - .one
+      - .chm
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*attachment*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.iso*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.lnk*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.docm*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.html*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.zip*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'attachment: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.iso: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.lnk: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - '.docm: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.html: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.zip: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - terms:
+          family:
+          - email
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*.iso*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.img*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.lnk*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.docm*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.xlsm*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.hta*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.vbs*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.js*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.one*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*.chm*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: delivery_artifact
   query: Zone.Identifier OR downloads OR attachment
-  look_for: 'Host-side proof of delivery: Zone.Identifier ADS on the dropped file
-    (ZoneId=3 internet; note ISO/zip children may not inherit MOTW — the bypass),
-    file in Downloads/Temp/AppData via MFT/USN, Outlook temp-attachment paths.'
+  look_for: 'Host-side proof of delivery: Zone.Identifier ADS on the dropped file (ZoneId=3 internet; note ISO/zip
+    children may not inherit MOTW — the bypass), file in Downloads/Temp/AppData via MFT/USN, Outlook temp-attachment
+    paths.'
   pivot: FileName
-  corroborate: email-received time ↔ file-write time ↔ execution time = complete delivery
-    chain
+  corroborate: email-received time ↔ file-write time ↔ execution time = complete delivery chain
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.name
+      endswith:
+      - :Zone.Identifier
+    any:
+    - field: ecs.file.path
+      contains:
+      - \Downloads\
+      - \Content.Outlook\
+      - \INetCache\
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - mftecmd
       - wildcard:
-          text.wc:
-            value: '*Zone.Identifier*'
+          ecs.file.name.wc:
+            value: '*:Zone.Identifier'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*downloads*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*attachment*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'Zone.Identifier: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'downloads: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'attachment: file-path pivot; no populated ecs.file.path, searched in text'
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Downloads\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Content.Outlook\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\INetCache\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: execution_chain
   query: explorer.exe OR mshta OR rundll32 OR powershell
-  look_for: Did the user execute it? Child processes of explorer.exe (double- click)
-    or OUTLOOK.EXE/winword (attachment open) → script interpreters → payload. Prefetch/AmCache
-    confirm the binary ran.
+  look_for: Did the user execute it? Child processes of explorer.exe (double- click) or OUTLOOK.EXE/winword (attachment
+    open) → script interpreters → payload. Prefetch/AmCache confirm the binary ran.
   pivot: ParentImage
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0236
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \cmd.exe
+      - \powershell.exe
+      - \mshta.exe
+      - \rundll32.exe
+      - \wscript.exe
+      - \cscript.exe
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \outlook.exe
+      - \winword.exe
+      - \excel.exe
+      - \explorer.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \outlook.exe
+      - \winword.exe
+      - \excel.exe
+      - \explorer.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*explorer.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*mshta*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*rundll32*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*powershell*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
-  was filtered, or the payload was blocked — a delivered-but-unopened phish is still
-  reportable (user-awareness finding, not compromise).
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cmd.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\powershell.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\mshta.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\rundll32.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\wscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cscript.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\outlook.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\winword.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\excel.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\explorer.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\outlook.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\winword.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\excel.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\explorer.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+negative: No delivery artifact and no exec chain → the phish likely wasn't opened, was filtered, or the payload
+  was blocked — a delivered-but-unopened phish is still reportable (user-awareness finding, not compromise).
 confidence_rules:
-  high: auth-fail or lookalike + payload attachment + MOTW/delivery artifact + exec
-    chain
+  high: auth-fail or lookalike + payload attachment + MOTW/delivery artifact + exec chain
   medium: authenticated-but-malicious link + click evidence without exec proof
   low: suspicious email with no delivery artifact (filtered/quarantined)
 mitre:
@@ -257,11 +441,11 @@ mitre:
 - T1566.002
 - T1204
 caveats:
-- SPF/DKIM pass does NOT mean legitimate — attackers own domains and infrastructure;
-  it means the mail came from where it claims.
-- ISO/IMG/container attachments defeat MOTW — the outer file may lack Zone.Identifier
-  while contents execute; check the mount/child artifacts.
-- A deleted email isn't gone — recover from OST/PST, mailbox dumpster, gateway quarantine,
-  or journaling before concluding 'not found'.
-- Report 'delivered but unopened' separately from 'executed' — they are different
-  findings with different response actions.
+- SPF/DKIM pass does NOT mean legitimate — attackers own domains and infrastructure; it means the mail came from
+  where it claims.
+- ISO/IMG/container attachments defeat MOTW — the outer file may lack Zone.Identifier while contents execute; check
+  the mount/child artifacts.
+- A deleted email isn't gone — recover from OST/PST, mailbox dumpster, gateway quarantine, or journaling before
+  concluding 'not found'.
+- Report 'delivered but unopened' separately from 'executed' — they are different findings with different response
+  actions.

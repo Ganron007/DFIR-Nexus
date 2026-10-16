@@ -1,7 +1,7 @@
 skill: exfiltration
 title: Exfiltration — staging archives, cloud uploads, DNS tunneling
-description: Detect data theft — archive creation, staging directories, cloud upload,
-  DNS tunneling, large outbound transfers.
+description: Detect data theft — archive creation, staging directories, cloud upload, DNS tunneling, large outbound
+  transfers.
 trigger:
   families:
   - evtx
@@ -31,246 +31,658 @@ steps:
   query: rar.exe OR 7z.exe OR Compress-Archive OR .rar OR .7z
   look_for: Archive tool runs with staging paths; large new archives in mft/usn.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '11'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1, 11; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0298
+    - attack:DET0455
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+      - '11'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.executable
+      endswith:
+      - \rar.exe
+      - \winrar.exe
+      - \7z.exe
+      - \7za.exe
+      - \7zr.exe
+      - \makecab.exe
+    - field: ecs.process.command_line
+      contains:
+      - Compress-Archive
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - Compress-Archive
+    - field: ecs.file.extension
+      is:
+      - rar
+      - 7z
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*rar.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*7z.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*Compress-Archive*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.rar*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.7z*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - evtx
-    - sysmon
-    - browser
-    - netstat
-    - powershell
-    - prefetch
-    - mft
-  es_text_only_reason:
-  - 'rar.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - '7z.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - '.rar: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - '.7z: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '11'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\rar.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\winrar.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\7z.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\7za.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\7zr.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\makecab.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*Compress-Archive*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*Compress-Archive*'
+                case_insensitive: true
+          - bool:
+              should:
+              - term:
+                  ecs.file.extension:
+                    value: rar
+                    case_insensitive: true
+              - term:
+                  ecs.file.extension:
+                    value: 7z
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: staging_dirs
   query: staging OR exfil OR collect OR loot
   look_for: New directories under %TEMP%/%ProgramData% collecting files.
   pivot: Path
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.path.kw:
-            value: '*staging*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*exfil*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*collect*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*loot*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: '"new directories collecting files" is a pattern across rows (a directory created, then many
+    files copied into it, then archived), read on the MFT/USN timeline around the archive; no single row states
+    it.'
 - name: cloud_upload
   query: mega.nz OR dropbox OR drive.google OR pastebin OR transfer.sh
   look_for: Browser hits / netstat flows to upload-friendly services.
   pivot: URL
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - sqlecmd
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '22'
+          - terms:
+              family:
+              - sqlecmd
+              - hindsight
+          minimum_should_match: 1
+  source: Sysmon 22; families sqlecmd, hindsight
+  search:
+    basis:
+    - attack:DET0400
+    - attack:DET0027
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '22'
+    families:
+    - sqlecmd
+    - hindsight
+    any:
+    - field: ecs.url.full
+      contains:
+      - mega.nz
+      - dropbox.com
+      - drive.google.com
+      - pastebin.com
+      - transfer.sh
+      - wetransfer.com
+    - field: fields.url
+      contains:
+      - mega.nz
+      - dropbox.com
+      - drive.google.com
+      - pastebin.com
+      - transfer.sh
+      - wetransfer.com
+    - field: ecs.dns.question.name
+      contains:
+      - mega.nz
+      - dropbox.com
+      - drive.google.com
+      - pastebin.com
+      - transfer.sh
+      - wetransfer.com
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*mega.nz*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*dropbox*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*drive.google*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*pastebin*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*transfer.sh*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'mega.nz: free phrase; the step''s pivot names no registry column'
-  - 'dropbox: free phrase; the step''s pivot names no registry column'
-  - 'drive.google: free phrase; the step''s pivot names no registry column'
-  - 'pastebin: free phrase; the step''s pivot names no registry column'
-  - 'transfer.sh: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '22'
+          - terms:
+              family:
+              - sqlecmd
+              - hindsight
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*mega.nz*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*dropbox.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*drive.google.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*pastebin.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*transfer.sh*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.url.full.wc:
+                    value: '*wetransfer.com*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  fields.url.kw:
+                    value: '*mega.nz*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*dropbox.com*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*drive.google.com*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*pastebin.com*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*transfer.sh*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*wetransfer.com*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*mega.nz*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*dropbox.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*drive.google.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*pastebin.com*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*transfer.sh*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.dns.question.name.wc:
+                    value: '*wetransfer.com*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: dns_tunneling
   query: nslookup OR dig OR TXT record OR dns
   look_for: High-volume DNS queries with long/random subdomains.
   pivot: QueryName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '22'
+  source: Sysmon 22
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0400
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '22'
+  aggregate:
+    field: ecs.dns.question.name
+    size: 100
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*nslookup*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*dig*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*TXT record*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*dns*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'nslookup: free phrase; the step''s pivot names no registry column'
-  - 'dig: free phrase; the step''s pivot names no registry column'
-  - 'TXT record: free phrase; the step''s pivot names no registry column'
-  - 'dns: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '22'
+  es_aggs:
+    by:
+      terms:
+        field: ecs.dns.question.name
+        size: 100
 - name: large_outbound
   query: netstat -an OR BytesSent
   look_for: SRUM/netstat showing large BytesSent from unusual processes.
   pivot: AppName
+  requires:
+    families:
+    - srumecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - srumecmd
+  source: families srumecmd
+  kind: aggregate
+  search:
+    families:
+    - srumecmd
+    all:
+    - field: fields.BytesSent
+      exists: true
+  aggregate:
+    field: fields.ExeInfo
+    size: 50
   es:
     bool:
-      should:
-      - wildcard:
-          fields.name.kw:
-            value: '*netstat -an*'
-            case_insensitive: true
-      - wildcard:
-          fields.name.kw:
-            value: '*BytesSent*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - srumecmd
+      - exists:
+          field: fields.BytesSent
+  es_aggs:
+    by:
+      terms:
+        field: fields.ExeInfo.kw
+        size: 50
 - name: ftp_exfil
   query: ftp.exe OR sftp OR scp.exe OR pscp
   look_for: FTP/SFTP command-line transfers to external IPs.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0131
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \ftp.exe
+      - \sftp.exe
+      - \scp.exe
+      - \pscp.exe
+      - \winscp.exe
+      - \rclone.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*ftp.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*sftp*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*scp.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*pscp*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'ftp.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'scp.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\ftp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\sftp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\scp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\pscp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\winscp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\rclone.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: bitsadmin_transfer
   query: bitsadmin OR Start-BitsTransfer
-  look_for: BITS transfers to external URLs — living-off-the-land exfil that bypasses
-    many proxy controls and survives reboots.
+  look_for: BITS transfers to external URLs — living-off-the-land exfil that bypasses many proxy controls and survives
+    reboots.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0098
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.executable
+      endswith:
+      - \bitsadmin.exe
+    - field: ecs.process.command_line
+      contains:
+      - Start-BitsTransfer
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - Start-BitsTransfer
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*bitsadmin*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*Start-BitsTransfer*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\bitsadmin.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*Start-BitsTransfer*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*Start-BitsTransfer*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: theft_sequence
   query: rar OR 7z OR zip OR copy
-  look_for: 'Answer "did the attacker steal data" as a SEQUENCE, not a single event:
-    collection (files copied to staging) → archive (rar/7z in prefetch + new archive
-    in MFT/USN) → transfer (large outbound flow, browser upload, BITS). Missing one
-    stage narrows the claim — archive without transfer may mean interrupted exfil.'
-  corroborate: archive creation timestamp vs outbound-flow window vs last file access
-    times
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*rar*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*7z*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*zip*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*copy*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'rar: free phrase; the step''s pivot names no registry column'
-  - '7z: free phrase; the step''s pivot names no registry column'
-  - 'zip: free phrase; the step''s pivot names no registry column'
-  - 'copy: free phrase; the step''s pivot names no registry column'
-negative: No archive creation, staging dirs, or large outbound flows → exfiltration
-  not evident; check for in-place destruction (ransomware) instead.
+  look_for: 'Answer "did the attacker steal data" as a SEQUENCE, not a single event: collection (files copied to
+    staging) → archive (rar/7z in prefetch + new archive in MFT/USN) → transfer (large outbound flow, browser upload,
+    BITS). Missing one stage narrows the claim — archive without transfer may mean interrupted exfil.'
+  corroborate: archive creation timestamp vs outbound-flow window vs last file access times
+  kind: procedure
+  procedure_reason: the theft question is a sequence (collection, archive, transfer) correlated across families;
+    each stage has its own search (archive_creation, cloud_upload, large_outbound, bitsadmin_transfer).
+negative: No archive creation, staging dirs, or large outbound flows → exfiltration not evident; check for in-place
+  destruction (ransomware) instead.
 confidence_rules:
   high: archive + staging dir + upload flow to external service
   medium: archive + external connection without confirmed transfer

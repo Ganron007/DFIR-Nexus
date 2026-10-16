@@ -1,9 +1,8 @@
 skill: ics_ot_forensics
 title: ICS/OT investigation — Modbus/DNP3 traffic, PLC/HMI/historian evidence
-description: 'Investigate an industrial control system incident: establish the zone/conduit
-  model and asset inventory, analyse control-protocol traffic (Modbus/DNP3/ S7/OPC)
-  for unauthorized writes, and collect evidence from PLCs, HMIs, engineering workstations,
-  and historians — where availability and safety outrank forensic completeness.'
+description: 'Investigate an industrial control system incident: establish the zone/conduit model and asset inventory,
+  analyse control-protocol traffic (Modbus/DNP3/ S7/OPC) for unauthorized writes, and collect evidence from PLCs,
+  HMIs, engineering workstations, and historians — where availability and safety outrank forensic completeness.'
 trigger:
   families:
   - wireshark
@@ -26,229 +25,133 @@ trigger:
   techniques:
   - T0816
   - T0836
-  - T0855
+  - T1692.001
   - T0882
-  - T0803
+  - T1691.001
   - T0828
 steps:
 - name: asset_and_zone_inventory
   query: Modbus OR DNP3 OR SCADA OR PLC OR historian OR Purdue
-  look_for: 'Build the asset/zone model before touching devices: which hosts are PLCs
-    (Level 1), HMIs/supervisory (Level 2), historians/site ops (Level 3), and IT (Level
-    4-5). Identify normal conversations per zone — control traffic crossing zone boundaries
-    (IT→PLC) is the anomaly to hunt.'
+  look_for: 'Build the asset/zone model before touching devices: which hosts are PLCs (Level 1), HMIs/supervisory
+    (Level 2), historians/site ops (Level 3), and IT (Level 4-5). Identify normal conversations per zone — control
+    traffic crossing zone boundaries (IT→PLC) is the anomaly to hunt.'
   pivot: DestinationIp
   corroborate: a new IT-side host talks directly to a PLC on the control port
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*Modbus*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*DNP3*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*SCADA*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*PLC*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*historian*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Purdue*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - wireshark
-    - zeek
-    - suricata
-    - syslog
-    - firewall
-  es_text_only_reason:
-  - 'Modbus: value of the wrong kind for dest_ip; searched in text'
-  - 'DNP3: value of the wrong kind for dest_ip; searched in text'
-  - 'SCADA: value of the wrong kind for dest_ip; searched in text'
-  - 'PLC: value of the wrong kind for dest_ip; searched in text'
-  - 'historian: value of the wrong kind for dest_ip; searched in text'
-  - 'Purdue: value of the wrong kind for dest_ip; searched in text'
+  kind: procedure
+  procedure_reason: the asset and zone model (Purdue levels, normal conversations) is built by the examiner from
+    the network's design and the flow records.
 - name: control_protocol_analysis
   query: Modbus OR function code OR write coil OR DNP3 OR S7comm
-  look_for: 'In the pcap, decode control protocols and look for WRITE operations:
-    Modbus function codes (5 write coil, 6/16 write registers — setpoint changes),
-    DNP3 control operations (operate/direct-operate), S7comm download (program modification).
-    Unauthorized writes to coils/registers are the ICS equivalent of lateral movement.'
+  look_for: 'In the pcap, decode control protocols and look for WRITE operations: Modbus function codes (5 write
+    coil, 6/16 write registers — setpoint changes), DNP3 control operations (operate/direct-operate), S7comm download
+    (program modification). Unauthorized writes to coils/registers are the ICS equivalent of lateral movement.'
   pivot: function_code
   corroborate: the write coincides with a physical process anomaly or operator alarm
+  requires:
+    families:
+    - zeek
+    - suricata
+    - network
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - network
+  source: families zeek, suricata, network
+  search:
+    families:
+    - zeek
+    - suricata
+    - network
+    any:
+    - field: ecs.network.protocol
+      is:
+      - modbus
+      - dnp3
+      - s7comm
+      - bacnet
+      - enip
+      - opcua
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*Modbus*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*function code*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*write coil*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*DNP3*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*S7comm*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'Modbus: free phrase; the step''s pivot names no registry column'
-  - 'function code: free phrase; the step''s pivot names no registry column'
-  - 'write coil: free phrase; the step''s pivot names no registry column'
-  - 'DNP3: free phrase; the step''s pivot names no registry column'
-  - 'S7comm: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - network
+      - bool:
+          should:
+          - term:
+              ecs.network.protocol:
+                value: modbus
+                case_insensitive: true
+          - term:
+              ecs.network.protocol:
+                value: dnp3
+                case_insensitive: true
+          - term:
+              ecs.network.protocol:
+                value: s7comm
+                case_insensitive: true
+          - term:
+              ecs.network.protocol:
+                value: bacnet
+                case_insensitive: true
+          - term:
+              ecs.network.protocol:
+                value: enip
+                case_insensitive: true
+          - term:
+              ecs.network.protocol:
+                value: opcua
+                case_insensitive: true
+          minimum_should_match: 1
 - name: engineering_workstation
   query: engineering workstation OR project file OR plc program OR download
-  look_for: 'The engineering workstation is the crown jewel: project files, PLC program
-    logic, and the download path to controllers. Check for unauthorized program downloads,
-    new/tampered project files, USB use, and remote access (VPN/RDP) into the OT network.'
+  look_for: 'The engineering workstation is the crown jewel: project files, PLC program logic, and the download
+    path to controllers. Check for unauthorized program downloads, new/tampered project files, USB use, and remote
+    access (VPN/RDP) into the OT network.'
   pivot: FileName
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*engineering workstation*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*project file*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*plc program*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*download*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'engineering workstation: file-path pivot; no populated ecs.file.path, searched
-    in text'
-  - 'project file: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'plc program: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'download: file-path pivot; no populated ecs.file.path, searched in text'
+  kind: procedure
+  procedure_reason: project files and PLC program downloads on the engineering workstation are read with the vendor's
+    tools.
 - name: plc_hmi_evidence
   query: PLC log OR HMI event OR alarm OR controller OR firmware
-  look_for: 'Collect from devices where possible: PLC program/hash and diagnostic
-    buffer, HMI alarm and operator-action logs, firmware version vs baseline, and
-    configuration backups. Note that some PLCs retain limited history — capture quickly
-    and document what is not recoverable.'
+  look_for: 'Collect from devices where possible: PLC program/hash and diagnostic buffer, HMI alarm and operator-action
+    logs, firmware version vs baseline, and configuration backups. Note that some PLCs retain limited history —
+    capture quickly and document what is not recoverable.'
   pivot: device
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*PLC log*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*HMI event*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*alarm*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*controller*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*firmware*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'PLC log: value of the wrong kind for host; searched in text'
-  - 'HMI event: value of the wrong kind for host; searched in text'
-  - 'alarm: value of the wrong kind for host; searched in text'
-  - 'controller: value of the wrong kind for host; searched in text'
-  - 'firmware: value of the wrong kind for host; searched in text'
+  kind: procedure
+  procedure_reason: PLC and HMI logs are collected from the devices; the lane has no parser for them.
 - name: historian_and_reports
   query: historian OR process data OR trend OR setpoint OR alarm history
-  look_for: The historian holds process data (setpoints, valve states, alarms) that
-    timestamps a process manipulation independent of the IT logs. Compare historian
-    trends against the protocol writes and physical reports.
+  look_for: The historian holds process data (setpoints, valve states, alarms) that timestamps a process manipulation
+    independent of the IT logs. Compare historian trends against the protocol writes and physical reports.
   pivot: tag
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.tags.kw:
-            value: '*historian*'
-            case_insensitive: true
-      - wildcard:
-          fields.tags.kw:
-            value: '*process data*'
-            case_insensitive: true
-      - wildcard:
-          fields.tags.kw:
-            value: '*trend*'
-            case_insensitive: true
-      - wildcard:
-          fields.tags.kw:
-            value: '*setpoint*'
-            case_insensitive: true
-      - wildcard:
-          fields.tags.kw:
-            value: '*alarm history*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-negative: No unauthorized control writes, no new assets across zones, PLC program
-  hashes match baseline, and historian shows no manipulated setpoints → no control-system
-  manipulation in the captured window. Passive capture misses encrypted/segmented
-  traffic, so state the monitoring coverage and any unmonitored conduits.
+  kind: procedure
+  procedure_reason: historian process data is queried in the historian, outside the case index.
+negative: No unauthorized control writes, no new assets across zones, PLC program hashes match baseline, and historian
+  shows no manipulated setpoints → no control-system manipulation in the captured window. Passive capture misses
+  encrypted/segmented traffic, so state the monitoring coverage and any unmonitored conduits.
 confidence_rules:
-  high: unauthorized Modbus/DNP3 write to operational tags + PLC program hash mismatch
-    + historian process change
-  medium: cross-zone control traffic or anomalous writes without confirmed physical
-    effect
-  low: an unusual but sanctioned engineering maintenance session (verify change tickets,
-    FD-004)
+  high: unauthorized Modbus/DNP3 write to operational tags + PLC program hash mismatch + historian process change
+  medium: cross-zone control traffic or anomalous writes without confirmed physical effect
+  low: an unusual but sanctioned engineering maintenance session (verify change tickets, FD-004)
 mitre:
 - T0816
 - T0836
-- T0855
+- T1692.001
 - T0882
-- T0803
+- T1691.001
 caveats:
-- Safety and availability outrank evidence — never actively query/mount a PLC in a
-  running process; passive capture and offline analysis only.
-- ICS protocols are often unauthenticated (Modbus/DNP3) — any host on the conduit
-  can write; authoritative validation is program/firmware hash vs baseline.
-- Device clocks drift and may lack NTP — normalise timestamps across IT/OT zones before
-  building a sequence.
-- Legitimate engineering/maintenance windows produce writes — verify against the change-management
-  record before flagging (FD-004).
+- Safety and availability outrank evidence — never actively query/mount a PLC in a running process; passive capture
+  and offline analysis only.
+- ICS protocols are often unauthenticated (Modbus/DNP3) — any host on the conduit can write; authoritative validation
+  is program/firmware hash vs baseline.
+- Device clocks drift and may lack NTP — normalise timestamps across IT/OT zones before building a sequence.
+- Legitimate engineering/maintenance windows produce writes — verify against the change-management record before
+  flagging (FD-004).

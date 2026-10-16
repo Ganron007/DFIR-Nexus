@@ -97,9 +97,11 @@ def test_every_skill_step_has_valid_es_query():
                 assert step.get("procedure_reason"), (
                     f"Skill {sf.name} step {step.get('name')} is a procedure with no "
                     "procedure_reason")
-                assert step.get("es_dropped"), (
-                    f"Skill {sf.name} step {step.get('name')} is a procedure with no "
-                    "es_dropped record")
+                # IC-6: `es_dropped` was the KR2b conversion's record of the free-text terms it did not turn
+                # into a query. Steps are now authored by meaning (`search:`), so a procedure says why in
+                # `procedure_reason` and holds no search at all.
+                assert "search" not in step, (
+                    f"Skill {sf.name} step {step.get('name')} is a procedure but holds a search")
                 continue
             assert "es" in step, f"Skill {sf.name} step {step.get('name')} missing 'es:'"
             assert isinstance(step["es"], dict), f"Skill {sf.name} step {step.get('name')} 'es:' must be a dict"

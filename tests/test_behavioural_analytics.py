@@ -19,9 +19,17 @@ from nexus.analysis.behavioural_analytics import (
     car_citation_ids,
     catalog_fields,
     load_pack,
-    matches_record,
     validate_pack,
 )
+
+#: IC-7: each analytic is proved on real rows by devtools/knowledge/prove_step_controls.py.
+CONTROLS = Path(__file__).resolve().parents[1] / "devtools" / "knowledge" / "step-controls.json"
+
+
+def _control(ident: str) -> dict:
+    import json
+
+    return json.loads(CONTROLS.read_text(encoding="utf-8"))["items"][f"analytic:{ident}"]
 
 
 def test_the_pack_is_valid_on_every_axis():
@@ -80,45 +88,30 @@ def test_every_analytic_declares_families_and_techniques():
 # ---------------------------------------------------------------------------
 
 def test_a_renamed_tool_is_caught_by_behaviour_and_not_by_its_name():
-    """The work order's fixture: mimikatz renamed, so no string matches.
+    """The work order's case: mimikatz renamed, so no tool string matches.
 
-    The record carries the behaviour - a credential dump run against lsass from a
-    non-system context - and never the string 'mimikatz'. A needle cannot see it;
-    the analytic can.
+    IC-7: the analytic reads the behaviour itself - a Sysmon 10 handle opened on lsass.exe by a process that
+    is not one of the system's own - and names no tool. It is proved on real rows: the public
+    EVTX-ATTACK-SAMPLES credential-access logs, parsed by the lane's EvtxECmd.
     """
     analytic = next(a for a in analytics() if a["id"] == "ba-cred-lsass-nonsystem")
-    renamed = {
-        "ecs": {
-            "user": {"name": r"CORP\alice"},
-            "process": {"command_line": r"C:\Users\alice\AppData\Local\Temp\svc32.exe --lsass"},
-        },
-    }
-    assert "mimikatz" not in str(renamed).lower()
-    assert matches_record(analytic, renamed) is True
+    search = analytic["search"]
+    assert search["events"] == [{"channel": "Microsoft-Windows-Sysmon/Operational", "codes": ["10"]}]
+    assert {c["field"] for c in search["all"]} == {"ecs.winlog.event_data.TargetImage"}
+    assert "mimikatz" not in str(analytic["es"]).lower()
+    control = _control("ba-cred-lsass-nonsystem")
+    assert control["control_total"] >= 1 and control["control_row"]["family"] == "evtxecmd"
 
 
-def test_the_negative_term_actually_excludes_the_system_case():
-    """The analytic must not match a system process just because it says lsass.
-
-    This is the regression the pack could not express: the DSL ignores typed
-    negation, so 'lsass and not user:SYSTEM' would have required lsass AND a
-    non-SYSTEM user *as two positives*. The pack now carries one positive term
-    and the narrowing is a follow-on filter, so a system record still matches the
-    broad term - which is exactly why the rationale says so.
-    """
+def test_the_system_processes_are_excluded_by_the_query_itself():
+    """The old pack could not negate (the Mode 1 DSL read `not field:` as a positive), so a system process
+    touching lsass matched and the narrowing was left to the examiner. The compiled query excludes the
+    system's own lsass clients with `must_not`."""
     analytic = next(a for a in analytics() if a["id"] == "ba-cred-lsass-nonsystem")
-    assert "not " not in str(analytic.get("es")), analytic.get("es")
-    system = {
-        "ecs": {
-            "user": {"name": r"NT AUTHORITY\SYSTEM"},
-            "process": {"command_line": r"C:\Windows\System32\svchost.exe --lsass"},
-        },
-    }
-    # It matches on the behaviour (a reference to lsass); narrowing by user is the
-    # next filter, deliberately not folded into a term the DSL cannot negate.
-    assert matches_record(analytic, system) is True
-    assert "follow-on filter" in analytic["rationale"]
-    assert "non-system" in analytic["rationale"]
+    excluded = analytic["search"]["none"][0]
+    assert excluded["field"] == "ecs.winlog.event_data.SourceImage"
+    assert "\\csrss.exe" in excluded["endswith"]
+    assert analytic["es"]["bool"]["must_not"], analytic["es"]
 
 
 def test_the_validator_refuses_a_negated_typed_filter():
@@ -134,14 +127,14 @@ def test_the_validator_refuses_a_negated_typed_filter():
 
 
 def test_a_user_writable_execution_matches_without_any_tool_name():
+    """IC-7: process creation (Sysmon 1, Security 4688) from a user-writable directory, by path, never by a
+    tool's name. The old query searched every family's text and matched 251,827 rows of CASE-C5B04D31."""
     analytic = next(a for a in analytics() if a["id"] == "ba-exec-user-writable")
-    # WO-CS1b: the analytic now queries the common `ecs.file.path` (a real index
-    # row carries ecs as a nested document).
-    assert matches_record(analytic, {
-        "ecs": {"file": {"path": r"C:\Users\bob\AppData\Roaming\task.exe"}},
-    })
-    # No system-tree term is folded in (see the validator test above).
-    assert "not " not in str(analytic.get("es"))
+    assert analytic["search"]["events"]
+    assert {c["field"] for c in analytic["search"]["any"]} == {"ecs.process.executable"}
+    control = _control("ba-exec-user-writable")
+    assert control["control_total"] >= 1
+    assert control["case_total"] < 100_000
 
 
 def test_no_analytic_depends_on_a_tool_name_string():
@@ -187,10 +180,12 @@ def test_citations_are_external_and_no_term_comes_from_a_sample():
 # ---------------------------------------------------------------------------
 
 def test_analytics_route_by_family():
-    security = analytics_for(["security"])
-    assert security, "security is the richest family; it must have analytics"
-    assert len(security) < len(analytics()), "routing must actually narrow"
-    assert analytics_for(["prefetch"]), "prefetch has no rule-engine coverage"
+    # IC-7: an analytic's families are the index's own names for what its search reads (the lead builder
+    # compares them with the families the case's lane produced).
+    events = analytics_for(["evtxecmd"])
+    assert events, "the event logs are the richest family; they must have analytics"
+    assert len(events) < len(analytics()), "routing must actually narrow"
+    assert analytics_for(["mftecmd"]), "the MFT has its own analytics (timestomp, staging)"
     assert analytics_for(["no-such-family"]) == []
     assert analytics_for(None) == analytics(), "no family list means everything"
 

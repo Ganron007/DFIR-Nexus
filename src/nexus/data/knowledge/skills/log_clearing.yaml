@@ -1,7 +1,7 @@
 skill: log_clearing
 title: Event log clearing and audit tampering
-description: Detect clearing of Security/System/Application logs, audit-policy changes,
-  and Sysmon service tampering — anti-forensics.
+description: Detect clearing of Security/System/Application logs, audit-policy changes, and Sysmon service tampering
+  — anti-forensics.
 trigger:
   families:
   - evtx
@@ -17,181 +17,513 @@ trigger:
   - anti-forensic
   - sysmon
   techniques:
-  - T1070.001
+  - T1685.005
   - T1070
-  - T1562.002
+  - T1685.001
 steps:
 - name: security_log_cleared
   query: '1102'
-  look_for: Security EventID 1102 (audit log cleared) — check SubjectUserName and
-    the gap in preceding events.
+  look_for: Security EventID 1102 (audit log cleared) — check SubjectUserName and the gap in preceding events.
   pivot: SubjectUserName
-  es:
-    term:
-      event_id: '1102'
   requires:
-    families: &id001
-    - evtx
-    - sysmon
-    - security
+    families:
+    - evtxecmd
     - hayabusa
-    - services
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '1102'
+  source: Security 1102
+  search:
+    basis:
+    - attack:DET0184
+    events:
+    - channel: Security
+      codes:
+      - '1102'
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '1102'
 - name: system_log_cleared
   query: '104'
   look_for: System EventID 104 (event log cleared) by an interactive user.
   pivot: SubjectUserName
-  es:
-    wildcard:
-      text.wc:
-        value: '*104*'
-        case_insensitive: true
   requires:
-    families: *id001
-  es_text_only_reason:
-  - '104: free phrase; the step''s pivot is an identity column'
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: System
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '104'
+  source: System 104
+  search:
+    basis:
+    - evtx-map
+    events:
+    - channel: System
+      codes:
+      - '104'
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: System
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '104'
 - name: wevtutil_execution
   query: wevtutil cl OR wevtutil clear-log
   look_for: wevtutil cl <log> executions in process creation / prefetch.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0532
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \wevtutil.exe
+    any:
+    - field: ecs.process.command_line
+      phrase:
+      - cl
+      - clear-log
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          fields.command_line.kw:
-            value: '*wevtutil cl*'
+          ecs.process.executable.wc:
+            value: '*\\wevtutil.exe'
             case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*wevtutil clear-log*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      - bool:
+          should:
+          - match_phrase:
+              ecs.process.command_line.text: cl
+          - match_phrase:
+              ecs.process.command_line.text: clear-log
+          minimum_should_match: 1
 - name: audit_policy_change
   query: auditpol /clear OR auditpol /set OR 4719
   look_for: auditpol clearing or 4719 audit-policy change events.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4719'
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          minimum_should_match: 1
+  source: Security 4719, 4688; Sysmon 1
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '4719'
+      - '4688'
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    any:
+    - field: event_id
+      is:
+      - '4719'
+    - field: ecs.process.executable
+      endswith:
+      - \auditpol.exe
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*auditpol /clear*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*auditpol /set*'
-            case_insensitive: true
-      - term:
-          event_id: '4719'
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4719'
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - term:
+              event_id: '4719'
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\auditpol.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: sysmon_tamper
   query: Sysmon service stopped OR sysmon.exe delete OR sc stop sysmon
   look_for: Sysmon service stop/delete — blinds telemetry collection.
   corroborate: gap in Sysmon event sequence
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '4'
+                  - '16'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1, 4, 16; Security 4688
+  search:
+    basis:
+    - evtx-map
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+      - '4'
+      - '16'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: event_id
+      is:
+      - '4'
+      - '16'
+    - field: ecs.process.command_line
+      contains:
+      - SysmonDrv
+    - field: ecs.process.command_line
+      phrase:
+      - sysmon -u
+      - sysmon64 -u
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*Sysmon service stopped*'
-            case_insensitive: true
+      filter:
       - bool:
-          must:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '4'
+                  - '16'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - term:
+                  event_id: '4'
+              - term:
+                  event_id: '16'
+              minimum_should_match: 1
           - wildcard:
-              text.wc:
-                value: '*sysmon.exe*'
+              ecs.process.command_line.wc:
+                value: '*SysmonDrv*'
                 case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*delete*'
-                case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*sc stop sysmon*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'Sysmon service stopped: free phrase; the step''s pivot names no registry column'
-  - 'sysmon.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'delete: free phrase; the step''s pivot names no registry column'
-  - 'sc stop sysmon: free phrase; the step''s pivot names no registry column'
+          - bool:
+              should:
+              - match_phrase:
+                  ecs.process.command_line.text: sysmon -u
+              - match_phrase:
+                  ecs.process.command_line.text: sysmon64 -u
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: usn_journal_delete
   query: fsutil usn deletejournal OR usn delete
   look_for: USN journal deletion (destroys file-change history).
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0329
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.command_line
+      contains:
+      - deletejournal
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          text.wc:
-            value: '*fsutil usn deletejournal*'
+          ecs.process.command_line.wc:
+            value: '*deletejournal*'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*usn delete*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'fsutil usn deletejournal: free phrase; the step''s pivot names no registry column'
-  - 'usn delete: free phrase; the step''s pivot names no registry column'
 - name: surviving_artifacts
   query: prefetch OR shimcache OR amcache OR $LogFile
-  look_for: Anti-forensics cannot fully destroy all references — after a log clear,
-    execution evidence survives in prefetch, ShimCache, AmCache, BAM, $LogFile/$UsnJrnl
-    residue, SRUM, and memory. A single surviving artifact still proves the compromise
-    happened.
-  corroborate: activity window visible in surviving artifacts but absent from cleared
-    logs = targeted clearing
+  look_for: Anti-forensics cannot fully destroy all references — after a log clear, execution evidence survives
+    in prefetch, ShimCache, AmCache, BAM, $LogFile/$UsnJrnl residue, SRUM, and memory. A single surviving artifact
+    still proves the compromise happened.
+  corroborate: activity window visible in surviving artifacts but absent from cleared logs = targeted clearing
   pivot: FileName
+  requires:
+    families:
+    - pecmd
+    - appcompat
+    - amcache
+    - srum
+    - mftecmd-usn
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - pecmd
+          - appcompat
+          - amcache
+          - srum
+          - mftecmd-usn
+          - mftecmd
+  source: families pecmd, appcompat, amcache, srum, mftecmd-usn, mftecmd
+  kind: aggregate
+  search:
+    families:
+    - pecmd
+    - appcompat
+    - amcache
+    - srum
+    - mftecmd-usn
+    - mftecmd
+  aggregate:
+    field: family
+    size: 20
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*prefetch*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*shimcache*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*amcache*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*$LogFile*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'prefetch: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'shimcache: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'amcache: file-path pivot; no populated ecs.file.path, searched in text'
-  - '$LogFile: file-path pivot; no populated ecs.file.path, searched in text'
-negative: No 1102/104 events and no wevtutil/auditpol execution → logs were not cleared
-  on this host; look for logging-gap explanations instead (service stop, forwarding
-  failure).
+      filter:
+      - terms:
+          family:
+          - pecmd
+          - appcompat
+          - amcache
+          - srum
+          - mftecmd-usn
+          - mftecmd
+  es_aggs:
+    by:
+      terms:
+        field: family
+        size: 20
+negative: No 1102/104 events and no wevtutil/auditpol execution → logs were not cleared on this host; look for logging-gap
+  explanations instead (service stop, forwarding failure).
 confidence_rules:
   high: 1102 + wevtutil cl execution + preceding log gap
   medium: single log-clear event with non-system subject
   low: auditpol /set during patch windows (check maintenance context)
 mitre:
-- T1070.001
-- T1562.002
+- T1685.005
+- T1685.001
 caveats:
-- Some SOCs clear logs during maintenance — check SubjectUserName against admin accounts
-  and change windows.
-- A missing Sysmon sequence may mean the service was never running — check install
-  state before claiming tamper.
-- Anti-forensics effectiveness is a race against response time — months-old intrusions
-  may be fully covered; hours-old rarely are. Check residual artifact stores before
-  concluding 'wiped clean'.
+- Some SOCs clear logs during maintenance — check SubjectUserName against admin accounts and change windows.
+- A missing Sysmon sequence may mean the service was never running — check install state before claiming tamper.
+- Anti-forensics effectiveness is a race against response time — months-old intrusions may be fully covered; hours-old
+  rarely are. Check residual artifact stores before concluding 'wiped clean'.

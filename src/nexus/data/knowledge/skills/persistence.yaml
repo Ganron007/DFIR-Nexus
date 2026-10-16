@@ -1,7 +1,7 @@
 skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
-description: Detect mechanisms that survive reboot — autostart registry keys, new
-  services, scheduled tasks, WMI event subscriptions.
+description: Detect mechanisms that survive reboot — autostart registry keys, new services, scheduled tasks, WMI
+  event subscriptions.
 primary_families:
 - scheduled_tasks
 trigger:
@@ -28,232 +28,661 @@ trigger:
 steps:
 - name: run_keys
   query: \Run OR \RunOnce OR \RunOnceEx CurrentVersion\Run
-  look_for: Writes to HKLM/HKCU Run/RunOnce keys, especially values pointing into
-    user-writable or temp paths.
+  look_for: Writes to HKLM/HKCU Run/RunOnce keys, especially values pointing into user-writable or temp paths.
   pivot: ValueName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '13'
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
+  source: Sysmon 13; families recmd
+  search:
+    basis:
+    - attack:DET0365
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '13'
+    families:
+    - recmd
+    any:
+    - field: ecs.registry.path
+      contains:
+      - \CurrentVersion\Run
+      - \Policies\Explorer\Run
   es:
     bool:
-      should:
-      - wildcard:
-          fields.ValueName.kw:
-            value: '*\Run*'
-            case_insensitive: true
-      - wildcard:
-          fields.ValueName.kw:
-            value: '*\RunOnce*'
-            case_insensitive: true
-      - wildcard:
-          fields.ValueName.kw:
-            value: '*\RunOnceEx CurrentVersion\Run*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - registry
-    - evtx
-    - sysmon
-    - services
-    - scheduled_tasks
-    - security
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '13'
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.registry.path.wc:
+                value: '*\\CurrentVersion\\Run*'
+                case_insensitive: true
+          - wildcard:
+              ecs.registry.path.wc:
+                value: '*\\Policies\\Explorer\\Run*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: new_services
   query: 7045 OR sc create OR sc.exe create
-  look_for: Service installs with ImagePath under %TEMP%, %APPDATA%, %ProgramData%,
-    or with non-standard binaries.
+  look_for: Service installs with ImagePath under %TEMP%, %APPDATA%, %ProgramData%, or with non-standard binaries.
   pivot: ImagePath
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
+  source: System 7045; Security 4697
+  search:
+    basis:
+    - attack:DET0552
+    - attack:DET0127
+    events:
+    - channel: System
+      codes:
+      - '7045'
+    - channel: Security
+      codes:
+      - '4697'
   es:
     bool:
-      should:
-      - term:
-          event_id: '7045'
-      - wildcard:
-          text.wc:
-            value: '*sc create*'
-            case_insensitive: true
+      filter:
       - bool:
-          must:
-          - wildcard:
-              text.wc:
-                value: '*sc.exe*'
-                case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*create*'
-                case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'sc create: free phrase; the step''s pivot names no registry column'
-  - 'sc.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'create: free phrase; the step''s pivot names no registry column'
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
 - name: scheduled_tasks
   query: schtasks /create OR 106 OR TaskScheduler
-  look_for: Task registrations running as SYSTEM or on logon, especially with remote
-    or hidden actions.
+  look_for: Task registrations running as SYSTEM or on logon, especially with remote or hidden actions.
   pivot: TaskName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - tasks
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Security
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '4698'
+                      - '4702'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-TaskScheduler/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '106'
+                      - '140'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - tasks
+          minimum_should_match: 1
+  source: Security 4698, 4702; TaskScheduler/Operational 106, 140; families tasks
+  search:
+    basis:
+    - attack:DET0441
+    - manifest
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '4698'
+      - '4702'
+    - channel: Microsoft-Windows-TaskScheduler/Operational
+      codes:
+      - '106'
+      - '140'
+    families:
+    - tasks
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*schtasks /create*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*106*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*TaskScheduler*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'schtasks /create: free phrase; the step''s pivot names no registry column'
-  - '106: free phrase; the step''s pivot names no registry column'
-  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Security
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '4698'
+                      - '4702'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-TaskScheduler/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '106'
+                      - '140'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - tasks
+          minimum_should_match: 1
 - name: wmi_subscription
   query: EventFilter CommandLineEventConsumer wmi
-  look_for: 'WMI permanent event subscriptions: a __EventFilter + a consumer class
-    bound by __FilterToConsumerBinding. The consumer is the payload — CommandLineEventConsumer
-    runs a command, ActiveScriptEventConsumer runs script, and both fire on the filter''s
-    trigger (often a timer or logon). Sysmon Events 19/20/21 (WmiEventFilter/WmiEventConsumer/
-    WmiEventConsumerToFilter) and the case''s WMI-subscription artifacts capture the
-    chain; Autoruns'' WMI tab shows it in one view.'
+  look_for: 'WMI permanent event subscriptions: a __EventFilter + a consumer class bound by __FilterToConsumerBinding.
+    The consumer is the payload — CommandLineEventConsumer runs a command, ActiveScriptEventConsumer runs script,
+    and both fire on the filter''s trigger (often a timer or logon). Sysmon Events 19/20/21 (WmiEventFilter/WmiEventConsumer/
+    WmiEventConsumerToFilter) and the case''s WMI-subscription artifacts capture the chain; Autoruns'' WMI tab shows
+    it in one view.'
   pivot: CommandLine
-  corroborate: the consumer's command/script path also appears in prefetch/MFT or
-    Sysmon process-create
-  es:
-    wildcard:
-      ecs.process.command_line:
-        value: '*EventFilter CommandLineEventConsumer wmi*'
-        case_insensitive: true
+  corroborate: the consumer's command/script path also appears in prefetch/MFT or Sysmon process-create
   requires:
-    families: *id001
+    families:
+    - evtxecmd
+    - hayabusa
+    - wmi_parser
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '19'
+                      - '20'
+                      - '21'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-WMI-Activity/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '5861'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - wmi_parser
+          minimum_should_match: 1
+  source: Sysmon 19, 20, 21; WMI-Activity/Operational 5861; families wmi_parser
+  search:
+    basis:
+    - attack:DET0086
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '19'
+      - '20'
+      - '21'
+    - channel: Microsoft-Windows-WMI-Activity/Operational
+      codes:
+      - '5861'
+    families:
+    - wmi_parser
+  es:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '19'
+                      - '20'
+                      - '21'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-WMI-Activity/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '5861'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - wmi_parser
+          minimum_should_match: 1
 - name: image_file_execution_options
   query: Image File Execution Options OR IFEO OR SilentProcessExit
   look_for: Debugger hijacks on common binaries (sethc, utilman, osk).
   pivot: KeyPath
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '12'
+                      - '13'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Security
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '4657'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
+  source: Sysmon 12, 13; Security 4657; families recmd
+  search:
+    basis:
+    - attack:DET0422
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '12'
+      - '13'
+    - channel: Security
+      codes:
+      - '4657'
+    families:
+    - recmd
+    any:
+    - field: ecs.registry.path
+      contains:
+      - \Image File Execution Options\
+      - \SilentProcessExit\
+    - field: ecs.winlog.event_data.ObjectName
+      contains:
+      - \Image File Execution Options\
+      - \SilentProcessExit\
   es:
     bool:
-      should:
-      - wildcard:
-          fields.KeyPath.kw:
-            value: '*Image File Execution Options*'
-            case_insensitive: true
-      - wildcard:
-          fields.KeyPath.kw:
-            value: '*IFEO*'
-            case_insensitive: true
-      - wildcard:
-          fields.KeyPath.kw:
-            value: '*SilentProcessExit*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '12'
+                      - '13'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Security
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '4657'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.registry.path.wc:
+                    value: '*\\Image File Execution Options\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.registry.path.wc:
+                    value: '*\\SilentProcessExit\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ObjectName.wc:
+                    value: '*\\Image File Execution Options\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ObjectName.wc:
+                    value: '*\\SilentProcessExit\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: startup_folder_lnk
   query: Startup OR Start Menu\Programs\Startup .lnk
   look_for: LNK files dropped into Startup folders (lnk family + mft/usn).
   pivot: FileName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - mftecmd
+    - lecmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+              - lecmd
+          minimum_should_match: 1
+  source: Sysmon 11; families mftecmd, lecmd
+  search:
+    basis:
+    - attack:DET0365
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '11'
+    families:
+    - mftecmd
+    - lecmd
+    all:
+    - field: ecs.file.path
+      contains:
+      - \Start Menu\Programs\Startup\
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*Startup*'
-            case_insensitive: true
+      filter:
       - bool:
-          must:
-          - wildcard:
-              text.wc:
-                value: '*.lnk*'
-                case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*Start Menu\Programs\Startup*'
-                case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'Startup: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.lnk: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'Start Menu\Programs\Startup: file-path pivot; no populated ecs.file.path, searched
-    in text'
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+              - lecmd
+          minimum_should_match: 1
+      - wildcard:
+          ecs.file.path.wc:
+            value: '*\\Start Menu\\Programs\\Startup\\*'
+            case_insensitive: true
 - name: dll_hijack
   query: fxsst.dll OR ntshrui.dll OR side-loading OR WinSxS
-  look_for: 'DLL-hijack persistence classes: search-order hijack (malicious DLL ahead
-    in load order — classic ntshrui.dll beside explorer.exe); phantom DLL (app loads
-    a name that doesn''t exist — e.g. Fax Service fxsst.dll); side-loading via WinSxS
-    (PlugX, NetTraveler, Sakula, Poison Ivy); relative-path hijack (susceptible exe
-    + bad dll copied together to an attacker-chosen dir).'
+  look_for: 'DLL-hijack persistence classes: search-order hijack (malicious DLL ahead in load order — classic ntshrui.dll
+    beside explorer.exe); phantom DLL (app loads a name that doesn''t exist — e.g. Fax Service fxsst.dll); side-loading
+    via WinSxS (PlugX, NetTraveler, Sakula, Poison Ivy); relative-path hijack (susceptible exe + bad dll copied
+    together to an attacker-chosen dir).'
   pivot: ImagePath
-  corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard
-    dir
+  corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard dir
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+  source: Sysmon 7; families mftecmd
+  search:
+    basis:
+    - attack:DET0201
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '7'
+    families:
+    - mftecmd
+    any:
+    - field: ecs.winlog.event_data.ImageLoaded
+      endswith:
+      - \fxsst.dll
+      - \ntshrui.dll
+    - field: ecs.file.name
+      is:
+      - fxsst.dll
+      - ntshrui.dll
+    none:
+    - field: ecs.winlog.event_data.ImageLoaded
+      contains:
+      - \Windows\System32\
+      - \Windows\SysWOW64\
+      - \Windows\WinSxS\
+    - field: ecs.file.path
+      contains:
+      - \Windows\System32\
+      - \Windows\SysWOW64\
+      - \Windows\WinSxS\
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*fxsst.dll*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ntshrui.dll*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*side-loading*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*WinSxS*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'fxsst.dll: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'ntshrui.dll: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'side-loading: free phrase; the step''s pivot names no registry column'
-  - 'WinSxS: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ImageLoaded.wc:
+                    value: '*\\fxsst.dll'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ImageLoaded.wc:
+                    value: '*\\ntshrui.dll'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - term:
+                  ecs.file.name:
+                    value: fxsst.dll
+                    case_insensitive: true
+              - term:
+                  ecs.file.name:
+                    value: ntshrui.dll
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.winlog.event_data.ImageLoaded.wc:
+                value: '*\\Windows\\System32\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ImageLoaded.wc:
+                value: '*\\Windows\\SysWOW64\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ImageLoaded.wc:
+                value: '*\\Windows\\WinSxS\\*'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\System32\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\SysWOW64\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\WinSxS\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: task_persistence_case
   query: schtasks OR at.exe OR TaskScheduler
-  look_for: Scheduled-task persistence stays dominant even in advanced intrusions
-    — SolarWinds SUNSPOT ran via a boot-time scheduled task. Autoruns-class enumeration
-    + TaskScheduler operational logs catch what registry-only sweeps miss.
+  look_for: Scheduled-task persistence stays dominant even in advanced intrusions — SolarWinds SUNSPOT ran via a
+    boot-time scheduled task. Autoruns-class enumeration + TaskScheduler operational logs catch what registry-only
+    sweeps miss.
   pivot: TaskName
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*schtasks*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*at.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*TaskScheduler*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'schtasks: free phrase; the step''s pivot names no registry column'
-  - 'at.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
-negative: No autostart writes, service installs, or task registrations → the attacker
-  may rely on existing persistence or volatile-only presence.
+  kind: procedure
+  procedure_reason: an order of method (enumerate tasks autoruns-style and read the TaskScheduler log, not only
+    the registry); the searches are scheduled_tasks above and the triage-baseline task leads (IC-2).
+negative: No autostart writes, service installs, or task registrations → the attacker may rely on existing persistence
+  or volatile-only presence.
 confidence_rules:
   high: new autostart entry + the referenced binary present in prefetch/mft
   medium: autostart write without execution artifact (may be pre-trigger)
@@ -266,5 +695,4 @@ mitre:
 - T1053
 caveats:
 - Installers constantly create services/tasks — filter by signer and path before flagging.
-- Run-key writes by AV/management tools are normal — check the value target, not just
-  the key.
+- Run-key writes by AV/management tools are normal — check the value target, not just the key.

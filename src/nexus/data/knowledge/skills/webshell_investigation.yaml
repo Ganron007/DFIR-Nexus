@@ -1,8 +1,7 @@
 skill: webshell_investigation
 title: Webshell investigation — IIS/Apache exec chains, web log correlation
-description: 'Hunt webshells: the web-server worker process spawning OS commands is
-  the canonical signature. Correlate access-log POSTs to rogue pages, file-write artifacts
-  in web roots, and the worker-process exec chain.'
+description: 'Hunt webshells: the web-server worker process spawning OS commands is the canonical signature. Correlate
+  access-log POSTs to rogue pages, file-write artifacts in web roots, and the worker-process exec chain.'
 trigger:
   families:
   - iis
@@ -30,212 +29,481 @@ trigger:
 steps:
 - name: worker_process_exec
   query: w3wp.exe OR httpd OR nginx OR php-cgi
-  look_for: 'THE canonical webshell signal: web worker process spawning OS commands
-    — w3wp.exe → cmd/net/whoami/ipconfig/sc; httpd/nginx/ php-cgi → sh/bash. Web workers
-    don''t run OS commands in normal operation; any child process is suspect.'
+  look_for: 'THE canonical webshell signal: web worker process spawning OS commands — w3wp.exe → cmd/net/whoami/ipconfig/sc;
+    httpd/nginx/ php-cgi → sh/bash. Web workers don''t run OS commands in normal operation; any child process is
+    suspect.'
   pivot: ParentImage
-  corroborate: child commands match recon/lateral patterns (net, whoami, ipconfig,
-    arp, sc)
+  corroborate: child commands match recon/lateral patterns (net, whoami, ipconfig, arp, sc)
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0394
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \w3wp.exe
+      - \httpd.exe
+      - \nginx.exe
+      - \php-cgi.exe
+      - \tomcat.exe
+      - \php.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \w3wp.exe
+      - \httpd.exe
+      - \nginx.exe
+      - \php-cgi.exe
+      - \tomcat.exe
+      - \php.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*w3wp.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*httpd*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*nginx*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*php-cgi*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - iis
-    - apache
-    - weblogs
-    - evtx
-    - sysmon
-    - mft
-    - usn
-    - memory
-  es_text_only_reason:
-  - 'w3wp.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\w3wp.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\httpd.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\nginx.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\php-cgi.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\tomcat.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\php.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\w3wp.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\httpd.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\nginx.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\php-cgi.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\tomcat.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\php.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: access_log_correlation
   query: POST OR .aspx OR .php OR 200 OR upload
-  look_for: 'IIS/Apache access logs: POSTs to a single page from one/few source IPs,
-    especially a page that was never requested before — webshell pages get hit only
-    by their operator. Check response sizes (command output), user agents, and timing
-    vs the exec chain.'
+  look_for: 'IIS/Apache access logs: POSTs to a single page from one/few source IPs, especially a page that was
+    never requested before — webshell pages get hit only by their operator. Check response sizes (command output),
+    user agents, and timing vs the exec chain.'
   pivot: URI
   corroborate: POST time to page X ↔ w3wp child-process time ± seconds
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.path.kw:
-            value: '*POST*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*.aspx*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*.php*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*200*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*upload*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: the web server's access log has no parser output with named columns in the index (no ECS map
+    and no real sample in the control corpus); read it directly for POSTs to one page from few sources.
 - name: webroot_file_writes
   query: inetpub OR wwwroot OR .aspx OR .ashx OR .jsp
-  look_for: New/modified script files in web roots (inetpub\wwwroot, site dirs) —
-    MFT/USN shows the drop time. Webshells are tiny (China Chopper = 1 line); look
-    for recently-written .aspx/.ashx/.php/.jsp that nobody deployed.
+  look_for: New/modified script files in web roots (inetpub\wwwroot, site dirs) — MFT/USN shows the drop time. Webshells
+    are tiny (China Chopper = 1 line); look for recently-written .aspx/.ashx/.php/.jsp that nobody deployed.
   pivot: FileName
-  corroborate: file creation ↔ first POST in access log ↔ first exec event = deployment
-    timeline
+  corroborate: file creation ↔ first POST in access log ↔ first exec event = deployment timeline
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+  source: Sysmon 11; families mftecmd
+  search:
+    basis:
+    - attack:DET0394
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '11'
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.extension
+      is:
+      - aspx
+      - ashx
+      - asmx
+      - asp
+      - php
+      - jsp
+      - jspx
+      - cfm
+    any:
+    - field: ecs.file.path
+      contains:
+      - \inetpub\
+      - \wwwroot\
+      - \htdocs\
+      - \webapps\
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*inetpub*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*wwwroot*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.aspx*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.ashx*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.jsp*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'inetpub: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'wwwroot: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.aspx: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.ashx: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.jsp: file-path pivot; no populated ecs.file.path, searched in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+      - bool:
+          should:
+          - term:
+              ecs.file.extension:
+                value: aspx
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: ashx
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: asmx
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: asp
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: php
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: jsp
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: jspx
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: cfm
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\inetpub\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\wwwroot\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\htdocs\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\webapps\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: upload_vector
   query: upload OR PUT OR MOVE OR filewrite
-  look_for: How did it get there? Exploited upload functionality, WebDAV PUT, vulnerable
-    plugin, or dropped via prior RCE. Check access logs for PUT/upload endpoints and
-    the app-vuln window before the file write.
+  look_for: How did it get there? Exploited upload functionality, WebDAV PUT, vulnerable plugin, or dropped via
+    prior RCE. Check access logs for PUT/upload endpoints and the app-vuln window before the file write.
   pivot: URI
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.path.kw:
-            value: '*upload*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*PUT*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*MOVE*'
-            case_insensitive: true
-      - wildcard:
-          fields.path.kw:
-            value: '*filewrite*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: how the shell arrived is read in the web access log and the application's own upload paths;
+    no parsed web-log columns exist in the index to search.
 - name: in_memory_detection
   query: w3wp OR aspx OR webshell
-  look_for: 'Memory-side: malfind/VAD anomalies inside w3wp, injected handlers, or
-    the exec chain visible in process memory — catches fileless/memory-resident webshells
-    that leave no webroot artifact.'
+  look_for: 'Memory-side: malfind/VAD anomalies inside w3wp, injected handlers, or the exec chain visible in process
+    memory — catches fileless/memory-resident webshells that leave no webroot artifact.'
   pivot: ProcessName
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*w3wp*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*aspx*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*webshell*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: memory-side web shells are found by the memory tools (malfind/VAD in w3wp, YARA); their detections
+    reach every mode as memory leads (IC-2).
 - name: post_exploit_chain
   query: net.exe OR whoami OR ipconfig OR sc.exe OR certutil
-  look_for: Post-webshell commands are noisy and predictable — net user/group, whoami,
-    ipconfig, arp, sc query, certutil downloads. The FOR508.3 Deep Panda chain (w3wp→net1/ipconfig/arp/whoami/sc)
-    is the textbook sequence.
+  look_for: Post-webshell commands are noisy and predictable — net user/group, whoami, ipconfig, arp, sc query,
+    certutil downloads. The FOR508.3 Deep Panda chain (w3wp→net1/ipconfig/arp/whoami/sc) is the textbook sequence.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0394
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \net.exe
+      - \net1.exe
+      - \whoami.exe
+      - \ipconfig.exe
+      - \sc.exe
+      - \certutil.exe
+      - \arp.exe
+      - \systeminfo.exe
+      - \cmd.exe
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \w3wp.exe
+      - \httpd.exe
+      - \nginx.exe
+      - \php-cgi.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \w3wp.exe
+      - \httpd.exe
+      - \nginx.exe
+      - \php-cgi.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*net.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*whoami*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*ipconfig*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*sc.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*certutil*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'net.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'sc.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-negative: 'Clean worker-process trees + no rogue-page POSTs + no webroot writes →
-  webshell unlikely on this server. Caveat: memory-only webshells and framework-integrated
-  backdoors (evil IIS modules, ISAPI filters) leave no page-file artifact — check
-  module/config artifacts too.'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net1.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\whoami.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\ipconfig.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\sc.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\certutil.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\arp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\systeminfo.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cmd.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\w3wp.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\httpd.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\nginx.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\php-cgi.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\w3wp.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\httpd.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\nginx.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\php-cgi.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+negative: 'Clean worker-process trees + no rogue-page POSTs + no webroot writes → webshell unlikely on this server.
+  Caveat: memory-only webshells and framework-integrated backdoors (evil IIS modules, ISAPI filters) leave no page-file
+  artifact — check module/config artifacts too.'
 confidence_rules:
   high: w3wp exec chain + matching POST-to-page + webroot write in the window
   medium: exec chain without confirmed page (in-memory shell) or page without exec
@@ -244,11 +512,8 @@ mitre:
 - T1505.003
 - T1106
 caveats:
-- IIS logs can lag or be disabled — missing access-log evidence doesn't clear the
-  exec chain evidence.
-- Some admin tools and health checks POST to endpoints — verify the page path isn't
-  a legitimate handler.
-- A cleaned webroot doesn't mean no webshell — check USN journal + memory for the
-  deleted file.
-- China Chopper-class shells are single-line eval stubs — size-based hunting misses
-  them; behavioral (exec chain) hunting catches them.
+- IIS logs can lag or be disabled — missing access-log evidence doesn't clear the exec chain evidence.
+- Some admin tools and health checks POST to endpoints — verify the page path isn't a legitimate handler.
+- A cleaned webroot doesn't mean no webshell — check USN journal + memory for the deleted file.
+- China Chopper-class shells are single-line eval stubs — size-based hunting misses them; behavioral (exec chain)
+  hunting catches them.

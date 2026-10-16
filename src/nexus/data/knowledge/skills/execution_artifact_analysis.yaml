@@ -1,10 +1,8 @@
 skill: execution_artifact_analysis
-title: Evidence-of-execution stack — Prefetch → ShimCache → AmCache → BAM → UserAssist
-  → SRUM → PCA
-description: 'Establish whether a binary actually ran using the layered execution
-  artifacts. The examiner reads them in order of evidentiary strength: Prefetch proves
-  execution, ShimCache proves existence only, AmCache records installed-program lineage,
-  BAM/UserAssist/PCA/SRUM corroborate per-user execution and network volume.'
+title: Evidence-of-execution stack — Prefetch → ShimCache → AmCache → BAM → UserAssist → SRUM → PCA
+description: 'Establish whether a binary actually ran using the layered execution artifacts. The examiner reads
+  them in order of evidentiary strength: Prefetch proves execution, ShimCache proves existence only, AmCache records
+  installed-program lineage, BAM/UserAssist/PCA/SRUM corroborate per-user execution and network volume.'
 trigger:
   families:
   - pecmd
@@ -39,245 +37,399 @@ trigger:
 steps:
 - name: prefetch_all
   query: file:prefetch
-  look_for: A .pf file exists only because the binary ran at least once — the file
-    is created on first launch. Read run count and last-run times (up to 8 on Win10+).
-    The .pf creation timestamp minus the ~10s prefetch-write delta approximates first
-    execution; its modified timestamp tracks the most recent run. Convert to UTC before
-    reporting.
+  look_for: A .pf file exists only because the binary ran at least once — the file is created on first launch. Read
+    run count and last-run times (up to 8 on Win10+). The .pf creation timestamp minus the ~10s prefetch-write delta
+    approximates first execution; its modified timestamp tracks the most recent run. Convert to UTC before reporting.
   pivot: ExecutableFileName
-  corroborate: referenced-file paths inside the .pf reveal staging dirs and loaded
-    modules
-  es:
-    wildcard:
-      file:
-        value: '*prefetch*'
-        case_insensitive: true
+  corroborate: referenced-file paths inside the .pf reveal staging dirs and loaded modules
   requires:
-    families: &id001
+    families:
     - pecmd
-    - prefetch
-    - amcache
-    - appcompat
-    - srum
-    - srumecmd
-    - recmd
-    - wxtcmd
-    - sysmon
-    - security
-    - evtx
-    - powershell
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - pecmd
+  source: families pecmd
+  kind: aggregate
+  search:
+    families:
+    - pecmd
+  aggregate:
+    field: ecs.process.name
+    size: 100
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - pecmd
+  es_aggs:
+    by:
+      terms:
+        field: ecs.process.name
+        size: 100
 - name: prefetch_lolbin
-  query: file:prefetch rundll32 OR mshta OR powershell OR regsvr32 OR cmd.exe OR wmic
-    OR bitsadmin OR certutil
-  look_for: Prefetch entries for living-off-the-land binaries with unusual parents
-    or user-profile/temp working paths — attackers repurpose trusted binaries; the
-    .pf proves they actually executed.
+  query: file:prefetch rundll32 OR mshta OR powershell OR regsvr32 OR cmd.exe OR wmic OR bitsadmin OR certutil
+  look_for: Prefetch entries for living-off-the-land binaries with unusual parents or user-profile/temp working
+    paths — attackers repurpose trusted binaries; the .pf proves they actually executed.
   pivot: ExecutableFileName
   corroborate: parent process from Sysmon EID 1 or Security 4688 in the same window
+  requires:
+    families:
+    - pecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - pecmd
+  source: families pecmd
+  search:
+    families:
+    - pecmd
+    all:
+    - field: ecs.process.name
+      is:
+      - RUNDLL32.EXE
+      - MSHTA.EXE
+      - POWERSHELL.EXE
+      - REGSVR32.EXE
+      - CMD.EXE
+      - WMIC.EXE
+      - BITSADMIN.EXE
+      - CERTUTIL.EXE
+      - WSCRIPT.EXE
+      - CSCRIPT.EXE
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - pecmd
       - bool:
-          must:
-          - wildcard:
-              file:
-                value: '*prefetch*'
+          should:
+          - term:
+              ecs.process.name:
+                value: RUNDLL32.EXE
                 case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*rundll32*'
+          - term:
+              ecs.process.name:
+                value: MSHTA.EXE
                 case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*mshta*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*powershell*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*regsvr32*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*cmd.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*wmic*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*bitsadmin*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*certutil*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'rundll32: free phrase; the step''s pivot names no registry column'
-  - 'mshta: free phrase; the step''s pivot names no registry column'
-  - 'powershell: free phrase; the step''s pivot names no registry column'
-  - 'regsvr32: free phrase; the step''s pivot names no registry column'
-  - 'wmic: free phrase; the step''s pivot names no registry column'
-  - 'bitsadmin: free phrase; the step''s pivot names no registry column'
-  - 'certutil: free phrase; the step''s pivot names no registry column'
+          - term:
+              ecs.process.name:
+                value: POWERSHELL.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: REGSVR32.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: CMD.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: WMIC.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: BITSADMIN.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: CERTUTIL.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: WSCRIPT.EXE
+                case_insensitive: true
+          - term:
+              ecs.process.name:
+                value: CSCRIPT.EXE
+                case_insensitive: true
+          minimum_should_match: 1
 - name: shimcache_existence
   query: file:shimcache OR file:appcompat
-  look_for: ShimCache (SYSTEM\ControlSet001\Control\Session Manager\AppCompatCache)
-    proves the file EXISTED on the system — NOT that it executed. Its timestamp is
-    literally the file's $SI modification time (M of MACB), never the execution time.
-    Treat presence as "attacker-staged binary", then prove execution elsewhere.
+  look_for: ShimCache (SYSTEM\ControlSet001\Control\Session Manager\AppCompatCache) proves the file EXISTED on the
+    system — NOT that it executed. Its timestamp is literally the file's $SI modification time (M of MACB), never
+    the execution time. Treat presence as "attacker-staged binary", then prove execution elsewhere.
   pivot: FilePath
   corroborate: M-time anomaly vs MFT $FN timestamps exposes timestomped binaries
+  requires:
+    families:
+    - appcompat
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - appcompat
+  source: families appcompat
+  kind: aggregate
+  search:
+    families:
+    - appcompat
+  aggregate:
+    field: ecs.file.path
+    size: 100
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*shimcache*'
-            case_insensitive: true
-      - wildcard:
-          file:
-            value: '*appcompat*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - appcompat
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.path
+        size: 100
 - name: amcache_lineage
   query: file:amcache
-  look_for: AmCache.hve (Windows\AppCompat\Programs) is populated by the Microsoft
-    Compatibility Appraiser scheduled task. InventoryApplication = installed programs
-    (name, version, publisher, path, uninstall string); file entries carry SHA1 hash
-    + timestamps — pivot the hash to reputation.
+  look_for: AmCache.hve (Windows\AppCompat\Programs) is populated by the Microsoft Compatibility Appraiser scheduled
+    task. InventoryApplication = installed programs (name, version, publisher, path, uninstall string); file entries
+    carry SHA1 hash + timestamps — pivot the hash to reputation.
   pivot: SHA1
-  corroborate: file-entry key last-write aligns with install/copy time, not necessarily
-    first run
-  es:
-    wildcard:
-      file:
-        value: '*amcache*'
-        case_insensitive: true
+  corroborate: file-entry key last-write aligns with install/copy time, not necessarily first run
   requires:
-    families: *id001
+    families:
+    - amcache
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - amcache
+  source: families amcache
+  search:
+    families:
+    - amcache
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - amcache
 - name: bam_per_user
   query: file:bam OR bam\State OR UserSettings
-  look_for: BAM (SYSTEM\Services\bam\State\UserSettings\<SID>, Win10 1709+) records
-    per-user last-execution time for background-active executables — key differentiator
-    for WHO ran it, because keys sit under the user's SID.
+  look_for: BAM (SYSTEM\Services\bam\State\UserSettings\<SID>, Win10 1709+) records per-user last-execution time
+    for background-active executables — key differentiator for WHO ran it, because keys sit under the user's SID.
   pivot: FullPath
   corroborate: map the SID to a username via ProfileList/SAM to attribute execution
+  requires:
+    families:
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - recmd
+  source: families recmd
+  search:
+    families:
+    - recmd
+    all:
+    - field: ecs.registry.path
+      contains:
+      - \bam\State\UserSettings\
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - recmd
       - wildcard:
-          file:
-            value: '*bam*'
+          ecs.registry.path.wc:
+            value: '*\\bam\\State\\UserSettings\\*'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*bam\State*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*UserSettings*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'bam\State: free phrase; the step''s pivot names no registry column'
-  - 'UserSettings: free phrase; the step''s pivot names no registry column'
 - name: userassist_gui
   query: userassist
-  look_for: NTUSER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist tracks
-    per-user GUI program launches — ROT13-encoded value names, run-count and last-run
-    time per GUID ({CEBFF5CD…} executables, {F4E57C4B…} shortcuts). GUI-only — CLI
-    invocations absent.
+  look_for: NTUSER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist tracks per-user GUI program launches
+    — ROT13-encoded value names, run-count and last-run time per GUID ({CEBFF5CD…} executables, {F4E57C4B…} shortcuts).
+    GUI-only — CLI invocations absent.
   pivot: ValueName
-  es:
-    wildcard:
-      fields.ValueName.kw:
-        value: '*userassist*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - recmd
+  source: families recmd
+  search:
+    families:
+    - recmd
+    all:
+    - field: ecs.registry.path
+      contains:
+      - \Explorer\UserAssist\
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - recmd
+      - wildcard:
+          ecs.registry.path.wc:
+            value: '*\\Explorer\\UserAssist\\*'
+            case_insensitive: true
 - name: srum_usage
   query: file:srum
-  look_for: SRUM (30–60 days) — the two app-usage CSVs corroborate execution; the
-    two network CSVs give per-application bytes sent/received per day, which also
-    bounds possible exfil volume by process.
+  look_for: SRUM (30–60 days) — the two app-usage CSVs corroborate execution; the two network CSVs give per-application
+    bytes sent/received per day, which also bounds possible exfil volume by process.
   pivot: AppId
   corroborate: network-table bytes confirm data-mover tools actually transferred
-  es:
-    wildcard:
-      file:
-        value: '*srum*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - srumecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - srumecmd
+  source: families srumecmd
+  kind: aggregate
+  search:
+    families:
+    - srumecmd
+    all:
+    - field: fields.ExeInfo
+      exists: true
+  aggregate:
+    field: fields.ExeInfo
+    size: 50
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - srumecmd
+      - exists:
+          field: fields.ExeInfo
+  es_aggs:
+    by:
+      terms:
+        field: fields.ExeInfo.kw
+        size: 50
 - name: pca_applaunch
   query: file:pca OR PCAAppLaunchDIC
-  look_for: Program Compatibility Assistant (Win11 22H2+) — PCAAppLaunchDIC.txt under
-    Windows\AppCompat\PCA records full path + last execution time in UTC, pipe-delimited,
-    for GUI-launched programs. New but reliable.
+  look_for: Program Compatibility Assistant (Win11 22H2+) — PCAAppLaunchDIC.txt under Windows\AppCompat\PCA records
+    full path + last execution time in UTC, pipe-delimited, for GUI-launched programs. New but reliable.
   pivot: FilePath
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.name
+      is:
+      - PcaAppLaunchDic.txt
+      - PcaGeneralDb0.txt
+      - PcaGeneralDb1.txt
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*pca*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*PCAAppLaunchDIC*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - bool:
+          should:
+          - term:
+              ecs.file.name:
+                value: PcaAppLaunchDic.txt
+                case_insensitive: true
+          - term:
+              ecs.file.name:
+                value: PcaGeneralDb0.txt
+                case_insensitive: true
+          - term:
+              ecs.file.name:
+                value: PcaGeneralDb1.txt
+                case_insensitive: true
+          minimum_should_match: 1
 - name: muicache_gui
   query: muicache
-  look_for: UsrClass MuiCache — per-user evidence of GUI execution; confirms the binary
-    ran but does NOT carry a timestamp. Use only as corroboration.
-  es:
-    wildcard:
-      text.wc:
-        value: '*muicache*'
-        case_insensitive: true
+  look_for: UsrClass MuiCache — per-user evidence of GUI execution; confirms the binary ran but does NOT carry a
+    timestamp. Use only as corroboration.
   requires:
-    families: *id001
-  es_text_only_reason:
-  - 'muicache: free phrase; the step''s pivot names no registry column'
-- name: windows_timeline
-  query: file:activit OR file:wxtcmd
-  look_for: Windows Timeline (ActivitiesCache.db via WxTCmd) — per-user app usage
-    with focus duration; bridges execution to what the user was doing.
+    families:
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - recmd
+  source: families recmd
+  search:
+    families:
+    - recmd
+    all:
+    - field: ecs.registry.path
+      contains:
+      - \MuiCache
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - recmd
       - wildcard:
-          file:
-            value: '*activit*'
+          ecs.registry.path.wc:
+            value: '*\\MuiCache*'
             case_insensitive: true
-      - wildcard:
-          file:
-            value: '*wxtcmd*'
-            case_insensitive: true
-      minimum_should_match: 1
+- name: windows_timeline
+  query: file:activit OR file:wxtcmd
+  look_for: Windows Timeline (ActivitiesCache.db via WxTCmd) — per-user app usage with focus duration; bridges execution
+    to what the user was doing.
   requires:
-    families: *id001
-negative: No execution artifacts for a binary does not prove it never ran — Prefetch
-  is often disabled on servers, BAM/SRUM have retention windows, and CLI-only execution
-  leaves no UserAssist/PCA trace. Compensate with Security 4688 / Sysmon EID 1 process-creation
-  rows for the same window.
+    families:
+    - wxtcmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - wxtcmd
+  source: families wxtcmd
+  kind: aggregate
+  search:
+    families:
+    - wxtcmd
+  aggregate:
+    field: ecs.process.executable
+    size: 50
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - wxtcmd
+  es_aggs:
+    by:
+      terms:
+        field: ecs.process.executable
+        size: 50
+negative: No execution artifacts for a binary does not prove it never ran — Prefetch is often disabled on servers,
+  BAM/SRUM have retention windows, and CLI-only execution leaves no UserAssist/PCA trace. Compensate with Security
+  4688 / Sysmon EID 1 process-creation rows for the same window.
 confidence_rules:
-  high: two or more independent artifacts agree (e.g. prefetch .pf + SRUM/PCA row
-    for same path)
+  high: two or more independent artifacts agree (e.g. prefetch .pf + SRUM/PCA row for same path)
   medium: a single execution artifact (prefetch or BAM alone)
   low: ShimCache-only presence — existence proven, execution not
 mitre:
@@ -286,11 +438,10 @@ mitre:
 - T1036
 - T1106
 caveats:
-- ShimCache timestamps are the file's $SI M-time — citing them as execution times
-  is a classic report error (13Cubed WE 13).
-- Prefetch is disabled by default on Windows Server and on some SSD-optimized installs
-  — empty Prefetch is a coverage gap, not absence.
-- UserAssist/PCA/MuiCache only see GUI launches — a netcat or python CLI run is invisible
-  to all three.
-- AmCache file-entry SHA1 is the exe hash at appraisal time — a replaced payload keeps
-  the path but changes the hash.
+- ShimCache timestamps are the file's $SI M-time — citing them as execution times is a classic report error (13Cubed
+  WE 13).
+- Prefetch is disabled by default on Windows Server and on some SSD-optimized installs — empty Prefetch is a coverage
+  gap, not absence.
+- UserAssist/PCA/MuiCache only see GUI launches — a netcat or python CLI run is invisible to all three.
+- AmCache file-entry SHA1 is the exe hash at appraisal time — a replaced payload keeps the path but changes the
+  hash.

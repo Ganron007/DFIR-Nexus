@@ -1,10 +1,9 @@
 skill: container_forensics
 title: Container & Kubernetes investigation — images, overlay layers, runtime
 platform: linux
-description: 'Investigate a compromised container or Kubernetes workload: enumerate
-  images and running containers from the host, read the container logs and overlay2
-  upper layers for changes, trace exec/entrypoint activity, and follow the host-side
-  runtime evidence (auditd, sysdig, kubelet/API audit logs).'
+description: 'Investigate a compromised container or Kubernetes workload: enumerate images and running containers
+  from the host, read the container logs and overlay2 upper layers for changes, trace exec/entrypoint activity,
+  and follow the host-side runtime evidence (auditd, sysdig, kubelet/API audit logs).'
 trigger:
   families:
   - sysdig
@@ -31,220 +30,132 @@ trigger:
 steps:
 - name: container_inventory
   query: docker ps OR docker image ls OR docker info OR crictl
-  look_for: 'Enumerate from the host: `docker ps -a` (running/stopped), `docker image
-    ls` (unexpected/tagged-latest images), `docker info` (Storage/Logging driver,
-    Docker Root Dir, runc/containerd versions — a host running an old runc is a container-escape
-    candidate). For K8s use crictl/ctr.'
+  look_for: 'Enumerate from the host: `docker ps -a` (running/stopped), `docker image ls` (unexpected/tagged-latest
+    images), `docker info` (Storage/Logging driver, Docker Root Dir, runc/containerd versions — a host running an
+    old runc is a container-escape candidate). For K8s use crictl/ctr.'
   pivot: Image
-  corroborate: a container image digest matches a pulled-from-unknown-registry image
-    in host history
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*docker ps*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*docker image ls*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*docker info*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*crictl*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - sysdig
-    - syslog
-    - csv
-    - jsonl
-  es_text_only_reason:
-  - 'docker ps: free phrase; the step''s pivot names no registry column'
-  - 'docker image ls: free phrase; the step''s pivot names no registry column'
-  - 'docker info: free phrase; the step''s pivot names no registry column'
-  - 'crictl: free phrase; the step''s pivot names no registry column'
+  corroborate: a container image digest matches a pulled-from-unknown-registry image in host history
+  kind: procedure
+  procedure_reason: the container inventory (docker ps -a, image ls, docker info) is collected from the live host
+    or the image store; the lane has no container parser whose rows the index holds.
 - name: overlay_layer_diff
   query: overlay2 OR upperdir OR diff OR lowerdir OR merged
-  look_for: A container's writes live in the overlay upperdir (diff/) under Docker
-    Root Dir/overlay2/<id>/diff — the container's writable layer. Read it read-only
-    to find dropped binaries, scripts, and config changes; compare against the image's
-    lower layers to isolate attacker changes.
+  look_for: A container's writes live in the overlay upperdir (diff/) under Docker Root Dir/overlay2/<id>/diff —
+    the container's writable layer. Read it read-only to find dropped binaries, scripts, and config changes; compare
+    against the image's lower layers to isolate attacker changes.
   pivot: FileName
-  corroborate: the same file hash appears in the image layer history or a network
-    download
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*overlay2*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*upperdir*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*diff*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*lowerdir*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*merged*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'overlay2: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'upperdir: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'diff: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'lowerdir: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'merged: file-path pivot; no populated ecs.file.path, searched in text'
+  corroborate: the same file hash appears in the image layer history or a network download
+  kind: procedure
+  procedure_reason: comparing a container's writable layer with its image layers is done on the overlay2 store of
+    the evidence, not in the index.
 - name: container_logs
   query: json-file OR docker logs OR stdout OR stderr OR journallog
-  look_for: 'Container logs (Logging Driver json-file → /var/lib/docker/containers/
-    <id>/<id>-json.log) capture stdout/stderr: web access, exploit attempts, and post-exploitation
-    commands run inside the container. Correlate with the host auditd/sysdig records
-    for exec and network syscalls.'
+  look_for: 'Container logs (Logging Driver json-file → /var/lib/docker/containers/ <id>/<id>-json.log) capture
+    stdout/stderr: web access, exploit attempts, and post-exploitation commands run inside the container. Correlate
+    with the host auditd/sysdig records for exec and network syscalls.'
   pivot: container_id
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*json-file*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*docker logs*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*stdout*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*stderr*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*journallog*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'json-file: free phrase; the step''s pivot names no registry column'
-  - 'docker logs: free phrase; the step''s pivot names no registry column'
-  - 'stdout: free phrase; the step''s pivot names no registry column'
-  - 'stderr: free phrase; the step''s pivot names no registry column'
-  - 'journallog: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  procedure_reason: the json-file container logs are not parsed by the lane; they are read from the evidence.
 - name: exec_and_escape
   query: docker exec OR kubectl exec OR privileged OR hostPath OR CAP_SYS_ADMIN
-  look_for: 'Trace `docker exec`/`kubectl exec` (host or K8s audit log) and look for
-    escape indicators: --privileged, hostPath mounts, docker.sock mounted into a pod,
-    CAP_SYS_ADMIN, /proc/sys writes, and nsenter/mount tricks. A container that spawned
-    a host process or touched host namespaces has escaped the workload boundary.'
+  look_for: 'Trace `docker exec`/`kubectl exec` (host or K8s audit log) and look for escape indicators: --privileged,
+    hostPath mounts, docker.sock mounted into a pod, CAP_SYS_ADMIN, /proc/sys writes, and nsenter/mount tricks.
+    A container that spawned a host process or touched host namespaces has escaped the workload boundary.'
   pivot: CommandLine
   corroborate: host auditd shows the process running outside the container cgroup
+  requires:
+    families:
+    - bash_history
+    - auditd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - bash_history
+          - auditd
+  source: families bash_history, auditd
+  search:
+    families:
+    - bash_history
+    - auditd
+    any:
+    - field: ecs.process.command_line
+      phrase:
+      - docker exec
+      - kubectl exec
+      - docker run
+    - field: ecs.process.command_line
+      contains:
+      - --privileged
+      - nsenter
+      - docker.sock
+      - CAP_SYS_ADMIN
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*docker exec*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*kubectl exec*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*privileged*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*hostPath*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*CAP_SYS_ADMIN*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - bash_history
+          - auditd
+      - bool:
+          should:
+          - bool:
+              should:
+              - match_phrase:
+                  ecs.process.command_line.text: docker exec
+              - match_phrase:
+                  ecs.process.command_line.text: kubectl exec
+              - match_phrase:
+                  ecs.process.command_line.text: docker run
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*--privileged*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*nsenter*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*docker.sock*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*CAP_SYS_ADMIN*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: k8s_api_audit
   query: kubelet OR audit.log OR serviceaccount OR secrets OR pod create
-  look_for: 'Kubernetes audit logs (kube-apiserver audit.log) show who did what: service-account
-    token use, secret reads, pod creation with privileged securityContext, cluster-admin
-    ClusterRoleBinding creation, and exec into pods. Map the actor (user/serviceaccount/IP)
-    and the RBAC change.'
+  look_for: 'Kubernetes audit logs (kube-apiserver audit.log) show who did what: service-account token use, secret
+    reads, pod creation with privileged securityContext, cluster-admin ClusterRoleBinding creation, and exec into
+    pods. Map the actor (user/serviceaccount/IP) and the RBAC change.'
   pivot: user.username
   corroborate: the service account token was used from an unexpected source IP
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*kubelet*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*audit.log*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*serviceaccount*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*secrets*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*pod create*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'kubelet: free phrase; the step''s pivot names no registry column'
-  - 'audit.log: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'serviceaccount: free phrase; the step''s pivot names no registry column'
-  - 'secrets: free phrase; the step''s pivot names no registry column'
-  - 'pod create: free phrase; the step''s pivot names no registry column'
-negative: No unexpected images, no privileged/hostPath workload, clean overlay diff,
-  and no auditd/audit-log escape events → the container boundary held for the captured
-  window. Containers are ephemeral — a removed container leaves only the host-side
-  runtime records; absence there is a real gap to state.
+  kind: procedure
+  procedure_reason: the Kubernetes API audit log has no importer; it is read from the evidence.
+negative: No unexpected images, no privileged/hostPath workload, clean overlay diff, and no auditd/audit-log escape
+  events → the container boundary held for the captured window. Containers are ephemeral — a removed container leaves
+  only the host-side runtime records; absence there is a real gap to state.
 confidence_rules:
-  high: privileged/hostPath workload or container escape event + overlay-dropped payload
-    confirmed on host
+  high: privileged/hostPath workload or container escape event + overlay-dropped payload confirmed on host
   medium: suspicious image or exec activity without confirmed escape or host impact
-  low: an unsigned image or unusual but sanctioned workload (platform team deployments
-    are common)
+  low: an unsigned image or unusual but sanctioned workload (platform team deployments are common)
 mitre:
 - T1610
 - T1611
 - T1613
 - T1525
 caveats:
-- Containers are ephemeral — `docker rm` destroys the writable layer; recovery depends
-  on the host overlay2 data surviving, so capture it before any prune.
-- Kubernetes audit logging must be enabled and retained; many clusters log only metadata
-  by default — missing request bodies is a coverage gap, not innocence.
-- Platform/CI systems pull and run many images legitimately — verify the registry,
-  digest, and service account before flagging (FD-004).
-- Host runtime telemetry (auditd/sysdig) is required to see inside containers; without
-  it, container behaviour is only visible through stdout logs.
+- Containers are ephemeral — `docker rm` destroys the writable layer; recovery depends on the host overlay2 data
+  surviving, so capture it before any prune.
+- Kubernetes audit logging must be enabled and retained; many clusters log only metadata by default — missing request
+  bodies is a coverage gap, not innocence.
+- Platform/CI systems pull and run many images legitimately — verify the registry, digest, and service account before
+  flagging (FD-004).
+- Host runtime telemetry (auditd/sysdig) is required to see inside containers; without it, container behaviour is
+  only visible through stdout logs.

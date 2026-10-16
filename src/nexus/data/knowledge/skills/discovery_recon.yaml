@@ -1,7 +1,6 @@
 skill: discovery_recon
 title: Discovery — recon commands and internal enumeration
-description: Detect internal reconnaissance — whoami, net commands, system info, domain
-  enumeration, network scanning.
+description: Detect internal reconnaissance — whoami, net commands, system info, domain enumeration, network scanning.
 trigger:
   families:
   - evtx
@@ -30,180 +29,649 @@ steps:
   query: whoami.exe OR whoami /all OR whoami /priv
   look_for: whoami runs by non-interactive processes or in quick succession.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0093
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \whoami.exe
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          text.wc:
-            value: '*whoami.exe*'
+          ecs.process.executable.wc:
+            value: '*\\whoami.exe'
             case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*whoami /all*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*whoami /priv*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - evtx
-    - sysmon
-    - powershell
-    - prefetch
-    - cmd
-  es_text_only_reason:
-  - 'whoami.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
 - name: net_commands
   query: net user OR net group OR net localgroup OR net view OR net share
   look_for: net user/group/localgroup/view/share — internal user and share enumeration.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0587
+    - attack:DET0182
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \net.exe
+      - \net1.exe
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - ' user'
+      - ' group'
+      - ' localgroup'
+      - ' view'
+      - ' share'
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net user*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net group*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net localgroup*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net view*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net share*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net1.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* user*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* group*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* localgroup*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* view*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '* share*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: system_info
   query: systeminfo OR hostname OR ver
   look_for: systeminfo/hostname — basic host recon.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0525
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \systeminfo.exe
+      - \hostname.exe
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*systeminfo*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*hostname*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*ver*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\systeminfo.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\hostname.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: ipconfig_route
   query: ipconfig /all OR route print OR arp -a
   look_for: Network config discovery — routing/ARP table dumps.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0195
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \ipconfig.exe
+      - \route.exe
+      - \arp.exe
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*ipconfig /all*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*route print*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*arp -a*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\ipconfig.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\route.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\arp.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: domain_enum
   query: nltest /dclist OR dsquery OR net group "Domain Admins"
   look_for: Domain-controller listing and privileged-group enumeration.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0129
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.executable
+      endswith:
+      - \nltest.exe
+      - \dsquery.exe
+    - field: ecs.process.command_line
+      phrase:
+      - domain admins
+      - domain controllers
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*nltest /dclist*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*dsquery*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net group Domain Admins*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\nltest.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\dsquery.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - match_phrase:
+                  ecs.process.command_line.text: domain admins
+              - match_phrase:
+                  ecs.process.command_line.text: domain controllers
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: session_file_enum
   query: net session OR net file OR quser OR qwinsta
-  look_for: 'Session/share enumeration — net session, net file, quser/qwinsta. EIR''s
-    recon set: attackers enumerate who is logged on and what files are open before
-    moving — these commands map live sessions and open handles, not just static config.'
+  look_for: 'Session/share enumeration — net session, net file, quser/qwinsta. EIR''s recon set: attackers enumerate
+    who is logged on and what files are open before moving — these commands map live sessions and open handles,
+    not just static config.'
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0587
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.executable
+      endswith:
+      - \quser.exe
+      - \qwinsta.exe
+    - field: ecs.process.command_line
+      phrase:
+      - net session
+      - net file
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net session*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*net file*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*quser*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*qwinsta*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\quser.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\qwinsta.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - match_phrase:
+                  ecs.process.command_line.text: net session
+              - match_phrase:
+                  ecs.process.command_line.text: net file
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: tasklist_scan
   query: tasklist OR tasklist /svc OR qprocess
   look_for: Process/service enumeration for target identification.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0034
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \tasklist.exe
+      - \qprocess.exe
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*tasklist*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*tasklist /svc*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*qprocess*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-negative: No recon-command artifacts → the attacker may have used a C2 implant with
-  built-in discovery (no shell commands) or skipped enumeration.
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\tasklist.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\qprocess.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+negative: No recon-command artifacts → the attacker may have used a C2 implant with built-in discovery (no shell
+  commands) or skipped enumeration.
 confidence_rules:
   high: multiple distinct recon commands in a short window from one process
   medium: single recon command by an unexpected parent
@@ -215,7 +683,5 @@ mitre:
 - T1018
 - T1069
 caveats:
-- Sysadmins run these commands daily — correlate with non-admin context and unusual
-  parentage.
-- Discovery may run inside a C2 implant (no shell commands) — check network artifacts
-  instead.
+- Sysadmins run these commands daily — correlate with non-admin context and unusual parentage.
+- Discovery may run inside a C2 implant (no shell commands) — check network artifacts instead.

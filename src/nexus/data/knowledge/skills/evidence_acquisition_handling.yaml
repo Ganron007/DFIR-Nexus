@@ -1,10 +1,9 @@
 skill: evidence_acquisition_handling
 title: Evidence acquisition & handling — volatility order, imaging, hashing, custody
 kind: methodology
-description: 'How evidence enters the case correctly: acquire in volatility order
-  (memory first, then triage, then disk), check encryption before pulling power, use
-  write-blockers for dead acquisition, hash the image immediately, and maintain chain
-  of custody from seizure to report.'
+description: 'How evidence enters the case correctly: acquire in volatility order (memory first, then triage, then
+  disk), check encryption before pulling power, use write-blockers for dead acquisition, hash the image immediately,
+  and maintain chain of custody from seizure to report.'
 trigger:
   families:
   - vol
@@ -26,219 +25,58 @@ trigger:
 steps:
 - name: order_of_volatility
   query: memory OR hiberfil OR pagefile OR crash
-  look_for: 'Acquire most-volatile first: RAM (running processes, connections, encryption
-    keys, fileless malware exists ONLY here), then hiberfil/pagefile/crash dumps for
-    powered-off machines, then disk. A clean shutdown destroys volatile evidence —
-    pull power, don''t shut down.'
+  look_for: 'Acquire most-volatile first: RAM (running processes, connections, encryption keys, fileless malware
+    exists ONLY here), then hiberfil/pagefile/crash dumps for powered-off machines, then disk. A clean shutdown
+    destroys volatile evidence — pull power, don''t shut down.'
   pivot: ImagePath
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*memory*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*hiberfil*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*pagefile*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*crash*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - vol
-    - kape
-    - ingest
-  es_text_only_reason:
-  - 'memory: free phrase; the step''s pivot names no registry column'
-  - 'hiberfil: free phrase; the step''s pivot names no registry column'
-  - 'pagefile: free phrase; the step''s pivot names no registry column'
-  - 'crash: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  procedure_reason: the order of acquisition is decided at collection, before the index exists.
 - name: encryption_check
   query: bitlocker OR encryption OR encrypted
-  look_for: Before pulling power, check for drive encryption — an encrypted disk acquired
-    dead is unreadable; an encrypted host acquired live (memory + logical triage)
-    preserves everything. Magnet Encrypted Disk Detector or manage-bde status answers
-    it.
+  look_for: Before pulling power, check for drive encryption — an encrypted disk acquired dead is unreadable; an
+    encrypted host acquired live (memory + logical triage) preserves everything. Magnet Encrypted Disk Detector
+    or manage-bde status answers it.
   corroborate: encrypted → live acquisition is mandatory, not optional
-  requires:
-    families: *id001
   kind: procedure
-  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
-    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
-    never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped:
-  - term: bitlocker
-    reason: 'procedure step: shown to agents, never executed'
-  - term: encryption
-    reason: 'procedure step: shown to agents, never executed'
-  - term: encrypted
-    reason: 'procedure step: shown to agents, never executed'
-  - &id002
-    term: sha256
-    reason: 'procedure verb, not evidence: hashing is what the examiner does, not
-      what is searched for'
-  - &id003
-    term: md5
-    reason: procedure verb, not evidence
-  - &id004
-    term: hash
-    reason: procedure verb, not evidence
-  - &id005
-    term: kape
-    reason: names a tool the examiner runs, not a field value to search for
-  - &id010
-    term: triage
-    reason: procedure verb, not evidence
-  - &id006
-    term: rdp
-    reason: an entry vector named in the procedure, not a column value
-  - &id007
-    term: phish
-    reason: an entry vector named in the procedure
-  - &id008
-    term: msiexec
-    reason: an entry vector named in the procedure, not a column value
-  - &id009
-    term: event_id 4624
-    reason: a real clue, but this step is the order of investigation, not a search
-      for it
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER (do X, then Y), not evidence to
+    search. It is shown to agents as a procedure and never executed, so it cannot fire on noise and cannot count
+    as coverage.'
 - name: triage_first
   query: file:kape OR triage
-  look_for: Triage image (KAPE targets) — the high-value artifact subset (registry
-    hives, $MFT, event logs, prefetch, browser profiles) collected in minutes when
-    a multi-terabyte disk image isn't feasible. Triage ≠ lesser evidence — it's prioritized
-    evidence.
+  look_for: Triage image (KAPE targets) — the high-value artifact subset (registry hives, $MFT, event logs, prefetch,
+    browser profiles) collected in minutes when a multi-terabyte disk image isn't feasible. Triage ≠ lesser evidence
+    — it's prioritized evidence.
   pivot: TargetPath
-  requires:
-    families: *id001
   kind: procedure
-  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
-    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
-    never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped:
-  - term: file:kape
-    reason: 'procedure step: shown to agents, never executed'
-  - term: triage
-    reason: 'procedure step: shown to agents, never executed'
-  - *id002
-  - *id003
-  - *id004
-  - *id005
-  - &id011
-    term: bitlocker
-    reason: a pre-acquisition decision, not a search over indexed evidence
-  - &id012
-    term: encryption
-    reason: procedure verb, not evidence
-  - &id013
-    term: encrypted
-    reason: procedure verb, not evidence
-  - *id006
-  - *id007
-  - *id008
-  - *id009
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER (do X, then Y), not evidence to
+    search. It is shown to agents as a procedure and never executed, so it cannot fire on noise and cannot count
+    as coverage.'
 - name: write_blocked_disk
   query: write block OR tableau OR e01 OR raw image
-  look_for: Dead-disk acquisition goes through a forensic write-blocker to E01/ raw
-    — the acquisition log (tool, settings, start/finish times) is part of the evidence
-    record, not an afterthought.
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*write block*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*tableau*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*e01*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*raw image*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'write block: free phrase; the step''s pivot names no registry column'
-  - 'tableau: free phrase; the step''s pivot names no registry column'
-  - 'e01: free phrase; the step''s pivot names no registry column'
-  - 'raw image: free phrase; the step''s pivot names no registry column'
+  look_for: Dead-disk acquisition goes through a forensic write-blocker to E01/ raw — the acquisition log (tool,
+    settings, start/finish times) is part of the evidence record, not an afterthought.
+  kind: procedure
+  procedure_reason: write-blocked acquisition and its log are collection handling, not a search over parsed evidence.
 - name: hash_on_acquire
   query: sha256 OR md5 OR hash
-  look_for: Hash the image immediately after acquisition (SHA-256 preferred) and again
-    at verification — acquisition hash vs verification hash proving the copy is intact
-    is what makes it a 'forensic copy'.
+  look_for: Hash the image immediately after acquisition (SHA-256 preferred) and again at verification — acquisition
+    hash vs verification hash proving the copy is intact is what makes it a 'forensic copy'.
   pivot: SHA256
-  requires:
-    families: *id001
   kind: procedure
-  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
-    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
-    never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped:
-  - term: sha256
-    reason: 'procedure step: shown to agents, never executed'
-  - term: md5
-    reason: 'procedure step: shown to agents, never executed'
-  - term: hash
-    reason: 'procedure step: shown to agents, never executed'
-  - *id005
-  - *id010
-  - *id011
-  - *id012
-  - *id013
-  - *id006
-  - *id007
-  - *id008
-  - *id009
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER (do X, then Y), not evidence to
+    search. It is shown to agents as a procedure and never executed, so it cannot fire on noise and cannot count
+    as coverage.'
 - name: chain_of_custody
   query: custody OR seized OR collected
-  look_for: 'Chain of custody from seizure onward — who collected, when, where, how
-    stored, every transfer. Courts and clients both ask the same question: can you
-    prove this evidence is the same bits you took?'
+  look_for: 'Chain of custody from seizure onward — who collected, when, where, how stored, every transfer. Courts
+    and clients both ask the same question: can you prove this evidence is the same bits you took?'
   corroborate: custody gaps are attackable in court regardless of technical quality
-  requires:
-    families: *id001
   kind: procedure
-  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
-    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
-    never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped:
-  - term: custody
-    reason: 'procedure step: shown to agents, never executed'
-  - term: seized
-    reason: 'procedure step: shown to agents, never executed'
-  - term: collected
-    reason: 'procedure step: shown to agents, never executed'
-  - *id002
-  - *id003
-  - *id004
-  - *id005
-  - *id010
-  - *id011
-  - *id012
-  - *id013
-  - *id006
-  - *id007
-  - *id008
-  - *id009
-negative: Missing acquisition records (no hash, no custody log, no tool version) doesn't
-  make analysis wrong — it makes it unverifiable. Flag provenance gaps explicitly
-  in the report rather than implying verification.
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER (do X, then Y), not evidence to
+    search. It is shown to agents as a procedure and never executed, so it cannot fire on noise and cannot count
+    as coverage.'
+negative: Missing acquisition records (no hash, no custody log, no tool version) doesn't make analysis wrong — it
+  makes it unverifiable. Flag provenance gaps explicitly in the report rather than implying verification.
 confidence_rules:
   high: hash-verified image + complete custody record + tool log
   medium: hashed evidence with partial custody documentation
@@ -246,11 +84,9 @@ confidence_rules:
 mitre:
 - T1005
 caveats:
-- 'Power state decides the procedure: powered-on encrypted → live-triage BEFORE shutdown;
-  powered-off → hiberfil/pagefile may still hold memory.'
-- Never acquire to or analyze on the source media — writes to the evidence disk contaminate
-  unallocated space.
-- A triage image is not a disk image — say which one a finding came from; 'disk shows
-  no X' is only valid for the scope actually acquired.
-- Record the tool AND version — parser behavior changes between releases; reproducibility
-  requires the exact toolchain.
+- 'Power state decides the procedure: powered-on encrypted → live-triage BEFORE shutdown; powered-off → hiberfil/pagefile
+  may still hold memory.'
+- Never acquire to or analyze on the source media — writes to the evidence disk contaminate unallocated space.
+- A triage image is not a disk image — say which one a finding came from; 'disk shows no X' is only valid for the
+  scope actually acquired.
+- Record the tool AND version — parser behavior changes between releases; reproducibility requires the exact toolchain.

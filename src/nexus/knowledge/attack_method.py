@@ -62,6 +62,24 @@ def technique_name(tid: str) -> str:
     return f"{parent['name']}: {tech['name']}" if parent and tech.get("sub") else str(tech.get("name") or "")
 
 
+def current_technique(tid: str) -> str:
+    """The id ATT&CK v20 uses for this technique: a revoked id follows its ``revoked_by``.
+
+    v20 revoked several ids that rule engines still tag (Hayabusa tags "Security log cleared" T1070.001,
+    now T1685.005); a revoked entry carries no analytics, so reading it as written gave such a lead no method.
+    """
+    seen: set[str] = set()
+    current = str(tid or "").upper()
+    while current and current not in seen:
+        seen.add(current)
+        tech = _techniques().get(current)
+        nxt = str((tech or {}).get("revoked_by") or "").upper() if (tech or {}).get("revoked") else ""
+        if not nxt:
+            return current
+        current = nxt
+    return current
+
+
 def technique_by_name(name: str, *, parent: str = "", platform: str = "Windows") -> str:
     """The id of the active technique with this name (and parent's name), on this platform; '' when none."""
     for tid, tech in sorted(_techniques().items()):
@@ -133,11 +151,15 @@ def method_block(techniques: list[str], *, platforms: list[str] | None = None, m
                  max_analytics: int = 2) -> str:
     """ATT&CK's analytics for each technique, on the case's platforms."""
     lines: list[str] = []
-    for tid in list(dict.fromkeys(str(t).upper() for t in techniques if t))[:max_techniques]:
+    shown_ids: set[str] = set()
+    for named in list(dict.fromkeys(str(t).upper() for t in techniques if t))[:max_techniques]:
+        tid = current_technique(named)
         tech = _techniques().get(tid)
-        if not tech:
+        if not tech or tid in shown_ids:
             continue
-        lines.append(f"- {tid} {technique_name(tid)} ({', '.join(tech.get('tactics') or [])})")
+        shown_ids.add(tid)
+        was = f" (tagged {named}, revoked in ATT&CK v20)" if tid != named else ""
+        lines.append(f"- {tid} {technique_name(tid)}{was} ({', '.join(tech.get('tactics') or [])})")
         shown = 0
         for strategy in tech.get("detection") or []:
             for analytic in strategy.get("analytics") or []:

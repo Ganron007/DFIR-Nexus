@@ -106,7 +106,7 @@ check(' fewer than the reviewer count', counts.get('cannot_match', 999) < 966,
 
 print()
 print('=== the converters agree with the files ===')
-for tool, label in (('devtools/knowledge/convert_to_es.py', 'skills'),):
+for tool, label in (('devtools/knowledge/compile_skills.py', 'skills and analytics'),):
     r = subprocess.run([sys.executable, tool, '--check'], capture_output=True, text=True)
     check(f'{label} --check', r.returncode == 0, r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr.strip()[-90:])
 

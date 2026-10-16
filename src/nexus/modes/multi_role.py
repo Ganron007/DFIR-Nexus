@@ -1417,15 +1417,23 @@ def attack_method_block(order: WorkOrder, case_dir: Path | None) -> str:
         return ""
 
 
-def _skill_procedure_block(order: WorkOrder) -> str:
+def _skill_procedure_block(order: WorkOrder, case_dir: Path | None = None) -> str:
     """Render the procedure steps attached to a work order (M3.2).
 
     Steps are copied from the skill, never invented; each block carries the
     skill id, content version and chunk citations so an agent (and later a
     staged finding) can be traced to the exact procedure version.
+
+    IC-6: each search step says what log it reads and, with the case named, whether the case holds that log.
+    A step whose log the case does not hold is shown without its prose: its "look for Sysmon EventID 10"
+    primed a Sysmon claim on a case with no Sysmon log (run 4 of CASE-C5B04D31). The step's query itself is
+    never shown (WO-KR2): the seat writes its own.
     """
     if not order.skill_refs:
         return ""
+    from nexus.analysis.skill_steps import step_source_present
+
+    case_id = Path(case_dir).name if case_dir is not None else ""
     by_id = _skill_lookup()
     lines: list[str] = []
     for ref in order.skill_refs:
@@ -1447,6 +1455,16 @@ def _skill_procedure_block(order: WorkOrder) -> str:
             corrob = str(step.get("corroborate") or "")
             result = str(step.get("result") or "")
             parts = [f"    * {name}"]
+            source = str(step.get("source") or "")
+            if str(step.get("kind") or "search") == "procedure":
+                parts.append("procedure (an order of method, no search)")
+            elif source:
+                present = step_source_present(step, case_id) if case_id else None
+                if present is False:
+                    lines.append(f"    * {name} | reads {source}: this case holds none of it - nothing to run, "
+                                 f"and nothing to claim from this step")
+                    continue
+                parts.append(f"reads {source}" + (" (this case holds it)" if present else ""))
             if look:
                 parts.append(f"look_for: {look}")
             if corrob:
@@ -1548,7 +1566,7 @@ def run_work_order(
     # WO-R1F item 7c: the digest summary this run built reaches every worker.
     work_context_digest = _pack(str(context.get("digest_summary") or "")
                                 if isinstance(context, dict) else "", case_dir)
-    skill_block = _pack(_skill_procedure_block(order) + attack_method_block(order, case_dir), case_dir)
+    skill_block = _pack(_skill_procedure_block(order, case_dir) + attack_method_block(order, case_dir), case_dir)
     shared = mode2_loop_budget(case_dir)
     budget = LoopBudget(
         rounds=order.max_rounds or shared.rounds,

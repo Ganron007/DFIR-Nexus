@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -175,6 +176,29 @@ def extract_es_fields(query: Any) -> set[str]:
     return fields
 
 
+@lru_cache(maxsize=1)
+def ecs_map_fields() -> frozenset[str]:
+    """Every `ecs.*` field the index writes: the ECS map's destinations, with the pieces a path and a hash list
+    are split into (`ecs_normalize`). The field registry is measured from the ES-Mapping catalog and lags the
+    map (`ecs.network.protocol` came with D117), so a query on a field the index does write read as unknown."""
+    from nexus.langgraph.ecs_normalize import load_ecs_map
+
+    out: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, str) and node.startswith("ecs."):
+            out.add(node)
+
+    walk(load_ecs_map())
+    out.update({"ecs.file.name", "ecs.file.directory", "ecs.file.extension"})  # `ecs.file.path`, split
+    for base in ("ecs.file.hash", "ecs.process.hash"):
+        out.update({f"{base}.md5", f"{base}.sha1", f"{base}.sha256"})
+    return frozenset(out)
+
+
 def validate_stored_query(
     es: Any,
     declared_families: Iterable[str] | None = None,
@@ -229,7 +253,7 @@ def validate_stored_query(
             raw_ecs = field_path
             if raw_ecs.endswith((".kw", ".wc", ".text", ".keyword")):
                 raw_ecs = raw_ecs.rsplit(".", 1)[0]
-            if raw_ecs in cols or raw_ecs.lower() in cols:
+            if raw_ecs in cols or raw_ecs.lower() in cols or raw_ecs in ecs_map_fields():
                 continue
             # an event_data name is dynamic (not in the registry); accept it.
             if ".winlog.event_data." in field_path:

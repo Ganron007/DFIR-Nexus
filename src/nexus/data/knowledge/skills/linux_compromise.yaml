@@ -5,9 +5,9 @@ primary_families:
 - auditd
 - authlog
 - syslog
-description: 'Investigate a Linux host: authentication logs (auth.log/secure, binary
-  utmp/wtmp/btmp), shell-history forensics with its documented limits, systemd/cron
-  persistence, unexpected accounts, and memory-resident malware via Linux.MalFind.'
+description: 'Investigate a Linux host: authentication logs (auth.log/secure, binary utmp/wtmp/btmp), shell-history
+  forensics with its documented limits, systemd/cron persistence, unexpected accounts, and memory-resident malware
+  via Linux.MalFind.'
 trigger:
   families:
   - linux
@@ -33,206 +33,274 @@ trigger:
   - T1543.002
   - T1078
   - T1059.004
-  - T1070.002
+  - T1685.006
 steps:
 - name: auth_log_analysis
   query: auth.log OR secure OR Failed password OR Accepted
-  look_for: 'Authentication logs first: auth.log/secure for failed→accepted sequences
-    (brute-force then success), logins at odd hours/from foreign IPs, sudo usage.
-    utmp/wtmp/btmp are BINARY — parse with last/lastb, don''t grep them.'
+  look_for: 'Authentication logs first: auth.log/secure for failed→accepted sequences (brute-force then success),
+    logins at odd hours/from foreign IPs, sudo usage. utmp/wtmp/btmp are BINARY — parse with last/lastb, don''t
+    grep them.'
   pivot: user
-  corroborate: failed-login burst from IP X followed by accepted login = credential
-    attack path
+  corroborate: failed-login burst from IP X followed by accepted login = credential attack path
+  requires:
+    families:
+    - authlog
+    - syslog
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - authlog
+          - syslog
+  source: families authlog, syslog
+  search:
+    families:
+    - authlog
+    - syslog
+    any:
+    - field: text
+      phrase:
+      - Failed password
+      - Accepted password
+      - Accepted publickey
+      - Invalid user
+      - session opened for user root
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*auth.log*'
-            case_insensitive: true
-      - wildcard:
-          ecs.user.name:
-            value: '*secure*'
-            case_insensitive: true
-      - wildcard:
-          ecs.user.name:
-            value: '*Failed password*'
-            case_insensitive: true
-      - wildcard:
-          ecs.user.name:
-            value: '*Accepted*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - linux
-    - syslog
-    - authlog
-    - journal
-    - bash
-    - memory
-  es_text_only_reason:
-  - 'auth.log: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - terms:
+          family:
+          - authlog
+          - syslog
+      - bool:
+          should:
+          - match_phrase:
+              text: Failed password
+          - match_phrase:
+              text: Accepted password
+          - match_phrase:
+              text: Accepted publickey
+          - match_phrase:
+              text: Invalid user
+          - match_phrase:
+              text: session opened for user root
+          minimum_should_match: 1
 - name: shell_history
   query: history OR .bash_history OR $HISTFILE
-  look_for: 'Shell history shows intent — but know its documented limits: $HISTFILE
-    only exists on a live system, is written only on shell EXIT (attackers'' sessions
-    may never flush), ordering is unreliable, and attackers clear it. Absence of history
-    ≠ absence of commands.'
+  look_for: 'Shell history shows intent — but know its documented limits: $HISTFILE only exists on a live system,
+    is written only on shell EXIT (attackers'' sessions may never flush), ordering is unreliable, and attackers
+    clear it. Absence of history ≠ absence of commands.'
   pivot: FileName
   corroborate: history entries ↔ auth.log session ↔ file-timestamp corroboration
+  requires:
+    families:
+    - bash_history
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - bash_history
+  source: families bash_history
+  kind: aggregate
+  search:
+    families:
+    - bash_history
+  aggregate:
+    field: ecs.process.command_line
+    size: 200
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*history*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.bash_history*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*$HISTFILE*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'history: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.bash_history: file-path pivot; no populated ecs.file.path, searched in text'
-  - '$HISTFILE: file-path pivot; no populated ecs.file.path, searched in text'
+      filter:
+      - terms:
+          family:
+          - bash_history
+  es_aggs:
+    by:
+      terms:
+        field: ecs.process.command_line
+        size: 200
 - name: persistence_mechanisms
   query: cron OR systemd OR .timer OR ExecStart
-  look_for: 'Linux persistence: crontab files (per-user spool + /etc/cron.*), systemd
-    services AND TIMERS (OnCalendar= — 13C example: a ''one-shot'' ExecStart exfil
-    service fired hourly by its .timer), rc.local, bashrc/profile hooks, SSH authorized_keys
-    additions.'
+  look_for: 'Linux persistence: crontab files (per-user spool + /etc/cron.*), systemd services AND TIMERS (OnCalendar=
+    — 13C example: a ''one-shot'' ExecStart exfil service fired hourly by its .timer), rc.local, bashrc/profile
+    hooks, SSH authorized_keys additions.'
   pivot: FileName
+  requires:
+    families:
+    - bash_history
+    - auditd
+    - syslog
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - bash_history
+          - auditd
+          - syslog
+  source: families bash_history, auditd, syslog
+  search:
+    families:
+    - bash_history
+    - auditd
+    - syslog
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - crontab
+      - authorized_keys
+      - rc.local
+      - .timer
+      - /etc/systemd/system/
+    - field: ecs.process.command_line
+      phrase:
+      - systemctl enable
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*cron*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*systemd*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.timer*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ExecStart*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'cron: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'systemd: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.timer: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'ExecStart: file-path pivot; no populated ecs.file.path, searched in text'
+      filter:
+      - terms:
+          family:
+          - bash_history
+          - auditd
+          - syslog
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*crontab*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*authorized_keys*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*rc.local*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*.timer*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/etc/systemd/system/*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - match_phrase:
+              ecs.process.command_line.text: systemctl enable
+          minimum_should_match: 1
 - name: account_anomalies
   query: passwd OR /etc/passwd OR sudoers OR useradd
-  look_for: /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers modifications,
-    authorized_keys additions — account artifacts persist after the attacker's session
-    ends.
+  look_for: /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers modifications, authorized_keys additions
+    — account artifacts persist after the attacker's session ends.
   pivot: user
+  requires:
+    families:
+    - bash_history
+    - auditd
+    - authlog
+    - syslog
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - bash_history
+          - auditd
+          - authlog
+          - syslog
+  source: families bash_history, auditd, authlog, syslog
+  search:
+    families:
+    - bash_history
+    - auditd
+    - authlog
+    - syslog
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - useradd
+      - usermod
+      - adduser
+      - visudo
+      - /etc/sudoers
+      - /etc/passwd
+    - field: text
+      phrase:
+      - new user
+      - new group
+      - password changed
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.user.name:
-            value: '*passwd*'
-            case_insensitive: true
-      - wildcard:
-          ecs.user.name:
-            value: '*/etc/passwd*'
-            case_insensitive: true
-      - wildcard:
-          ecs.user.name:
-            value: '*sudoers*'
-            case_insensitive: true
-      - wildcard:
-          ecs.user.name:
-            value: '*useradd*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - bash_history
+          - auditd
+          - authlog
+          - syslog
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*useradd*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*usermod*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*adduser*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*visudo*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/etc/sudoers*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/etc/passwd*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - match_phrase:
+                  text: new user
+              - match_phrase:
+                  text: new group
+              - match_phrase:
+                  text: password changed
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: process_memory_check
   query: pslist OR malfind OR /proc OR kmem
-  look_for: 'Linux memory analysis: Linux.PsList/Linux.MalFind for process enumeration
-    and injected/executable-anonymous memory — fileless Linux malware lives in /dev/shm,
-    memfd, or injected regions.'
+  look_for: 'Linux memory analysis: Linux.PsList/Linux.MalFind for process enumeration and injected/executable-anonymous
+    memory — fileless Linux malware lives in /dev/shm, memfd, or injected regions.'
   pivot: ProcessName
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.process.name:
-            value: '*pslist*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.name:
-            value: '*malfind*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.name:
-            value: '*/proc*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.name:
-            value: '*kmem*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: Linux process memory is analysed with the memory tools (pslist, malfind); their output reaches
+    the index as the vol family when the lane runs them.
 - name: log_integrity
   query: log cleared OR journald OR syslog OR auditd
-  look_for: 'Anti-forensics on Linux: truncated log files, journald vacuumed, auditd
-    rules removed, syslog forwarded-then-deleted. Check for gaps in sequential log
-    numbering and journal integrity.'
+  look_for: 'Anti-forensics on Linux: truncated log files, journald vacuumed, auditd rules removed, syslog forwarded-then-deleted.
+    Check for gaps in sequential log numbering and journal integrity.'
   corroborate: gap between last-clean and first-new log entries
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*log cleared*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*journald*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*syslog*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*auditd*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'log cleared: free phrase; the step''s pivot names no registry column'
-  - 'journald: free phrase; the step''s pivot names no registry column'
-  - 'syslog: free phrase; the step''s pivot names no registry column'
-  - 'auditd: free phrase; the step''s pivot names no registry column'
-negative: 'No auth anomalies, persistence artifacts, or history evidence → Linux compromise
-  not evident in collected telemetry. Note: minimal installs and containers ship sparse
-  logging — absence may be configuration, not cleanliness.'
+  kind: procedure
+  procedure_reason: truncated or vacuumed logs show as gaps in sequence and time across a log, not in one row.
+negative: 'No auth anomalies, persistence artifacts, or history evidence → Linux compromise not evident in collected
+  telemetry. Note: minimal installs and containers ship sparse logging — absence may be configuration, not cleanliness.'
 confidence_rules:
-  high: brute-force→success + persistence artifact + exec corroboration (history/persistence
-    contents)
+  high: brute-force→success + persistence artifact + exec corroboration (history/persistence contents)
   medium: suspicious auth + one persistence mechanism without exec proof
   low: single odd login (legitimate remote admin plausible)
 mitre:
@@ -241,11 +309,9 @@ mitre:
 - T1078
 - T1059.004
 caveats:
-- Shell history is unreliable by design — flushed only on shell exit, easily cleared,
-  ordering not guaranteed. Never claim 'no commands ran' from empty history.
-- utmp/wtmp/btmp are binary databases — strings/grep corrupts interpretation; use
-  last/lastb/utmpdump.
-- systemd .timer + .service pairs must be checked TOGETHER — a benign-looking service
-  gains schedule from its timer.
-- Containers/VMs may forward logs to syslog/journald remotely — check local AND forwarded
-  stores before calling gaps.
+- Shell history is unreliable by design — flushed only on shell exit, easily cleared, ordering not guaranteed. Never
+  claim 'no commands ran' from empty history.
+- utmp/wtmp/btmp are binary databases — strings/grep corrupts interpretation; use last/lastb/utmpdump.
+- systemd .timer + .service pairs must be checked TOGETHER — a benign-looking service gains schedule from its timer.
+- Containers/VMs may forward logs to syslog/journald remotely — check local AND forwarded stores before calling
+  gaps.

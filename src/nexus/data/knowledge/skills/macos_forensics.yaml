@@ -1,10 +1,9 @@
 skill: macos_forensics
 title: macOS host investigation — APFS, unified log, launchd, quarantine, TCC
 platform: macos
-description: 'Investigate a suspected-compromised macOS host: acquire and mount the
-  APFS volume, read the Apple Unified Log, enumerate launchd/login-item persistence,
-  review quarantine/Gatekeeper events and TCC privacy grants, and trace user activity
-  from shell history, terminal state, Safari and Spotlight artifacts.'
+description: 'Investigate a suspected-compromised macOS host: acquire and mount the APFS volume, read the Apple
+  Unified Log, enumerate launchd/login-item persistence, review quarantine/Gatekeeper events and TCC privacy grants,
+  and trace user activity from shell history, terminal state, Safari and Spotlight artifacts.'
 trigger:
   families:
   - plaso
@@ -33,227 +32,191 @@ trigger:
 steps:
 - name: image_mount_apfs
   query: apfs-fuse OR mount OR dmg OR e01 OR diskutil
-  look_for: Acquire read-only and mount the APFS volume (apfs-fuse -o ro on Linux;
-    diskutil mount readOnly on macOS). APFS is copy-on-write with snapshots — enumerate
-    local snapshots; an attacker's edits may still exist in an older snapshot that
-    the live volume no longer shows.
+  look_for: Acquire read-only and mount the APFS volume (apfs-fuse -o ro on Linux; diskutil mount readOnly on macOS).
+    APFS is copy-on-write with snapshots — enumerate local snapshots; an attacker's edits may still exist in an
+    older snapshot that the live volume no longer shows.
   pivot: FileName
-  corroborate: snapshot timestamp predates the suspected cleanup, preserving deleted
-    evidence
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*apfs-fuse*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*mount*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*dmg*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*e01*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*diskutil*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - plaso
-    - syslog
-    - memory
-    - mft
-    - browser
+  corroborate: snapshot timestamp predates the suspected cleanup, preserving deleted evidence
+  kind: procedure
+  procedure_reason: mounting the APFS volume read-only and enumerating its snapshots is done on the image.
 - name: unified_log
   query: .tracev3 OR log show OR unifiedlog OR UNIFIEDLOGS
-  look_for: 'The Apple Unified Log (.tracev3 via mac_apt UNIFIEDLOGS, or `log show`)
-    is the macOS event log — filter by process, subsystem, and event type: process
-    launches, launchd service installs, TCC decisions, sudo authentication, and outbound
-    network by process. It is high-volume; scope to the incident window before reading.'
+  look_for: 'The Apple Unified Log (.tracev3 via mac_apt UNIFIEDLOGS, or `log show`) is the macOS event log — filter
+    by process, subsystem, and event type: process launches, launchd service installs, TCC decisions, sudo authentication,
+    and outbound network by process. It is high-volume; scope to the incident window before reading.'
   pivot: process
   corroborate: log entries match file-creation and network flow timestamps
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.process.name:
-            value: '*.tracev3*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.name:
-            value: '*log show*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.name:
-            value: '*unifiedlog*'
-            case_insensitive: true
-      - wildcard:
-          ecs.process.name:
-            value: '*UNIFIEDLOGS*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: the unified log (.tracev3) is read with log show or mac_apt; the lane has no parser for it.
 - name: launchd_persistence
   query: LaunchAgents OR LaunchDaemons OR RunAtLoad OR KeepAlive
-  look_for: 'macOS persistence is launchd: ~/Library/LaunchAgents, /Library/ LaunchAgents,
-    /Library/LaunchDaemons (root), and login items. A plist in a user-writable path
-    with RunAtLoad + KeepAlive pointing at a temp/unsigned binary is the canonical
-    implant. Also check cron, periodic, emond, and configuration profiles.'
+  look_for: 'macOS persistence is launchd: ~/Library/LaunchAgents, /Library/ LaunchAgents, /Library/LaunchDaemons
+    (root), and login items. A plist in a user-writable path with RunAtLoad + KeepAlive pointing at a temp/unsigned
+    binary is the canonical implant. Also check cron, periodic, emond, and configuration profiles.'
   pivot: ProgramArguments
-  corroborate: the binary the plist launches also appears in quarantine or the unified
-    log executions
+  corroborate: the binary the plist launches also appears in quarantine or the unified log executions
+  requires:
+    families:
+    - plaso
+    - mactime
+    - fls
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - plaso
+          - mactime
+          - fls
+  source: families plaso, mactime, fls
+  search:
+    families:
+    - plaso
+    - mactime
+    - fls
+    any:
+    - field: text
+      contains:
+      - /Library/LaunchAgents/
+      - /Library/LaunchDaemons/
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*LaunchAgents*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*LaunchDaemons*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*RunAtLoad*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*KeepAlive*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'LaunchAgents: free phrase; the step''s pivot names no registry column'
-  - 'LaunchDaemons: free phrase; the step''s pivot names no registry column'
-  - 'RunAtLoad: free phrase; the step''s pivot names no registry column'
-  - 'KeepAlive: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - plaso
+          - mactime
+          - fls
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*/Library/LaunchAgents/*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*/Library/LaunchDaemons/*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: quarantine_and_gatekeeper
   query: QUARANTINE OR LastGKReject OR com.apple.quarantine OR Gatekeeper
-  look_for: Quarantine V2 databases + Gatekeeper reject records show what was downloaded,
-    by which agent (browser/app), the source URL, and whether the user overrode Gatekeeper.
-    This is macOS's "mark-of-the-web" — it ties a dropped executable back to its download
-    origin.
+  look_for: Quarantine V2 databases + Gatekeeper reject records show what was downloaded, by which agent (browser/app),
+    the source URL, and whether the user overrode Gatekeeper. This is macOS's "mark-of-the-web" — it ties a dropped
+    executable back to its download origin.
   pivot: FileName
   corroborate: download origin matches a browser-history or proxy entry
+  requires:
+    families:
+    - plaso
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - plaso
+  source: families plaso
+  search:
+    families:
+    - plaso
+    any:
+    - field: text
+      contains:
+      - com.apple.quarantine
+      - LSQuarantine
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*QUARANTINE*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*LastGKReject*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*com.apple.quarantine*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*Gatekeeper*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - plaso
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*com.apple.quarantine*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*LSQuarantine*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: tcc_privacy_abuse
   query: TCC.db OR kTCCService OR Accessibility OR ScreenCapture
-  look_for: TCC.db records which apps were granted camera/mic/screen/full-disk/ Accessibility
-    access. Malware abuses Accessibility and screen-recording grants for persistence
-    and surveillance — check for unexpected apps with these services and the timestamp/permission
-    flow that granted them.
+  look_for: TCC.db records which apps were granted camera/mic/screen/full-disk/ Accessibility access. Malware abuses
+    Accessibility and screen-recording grants for persistence and surveillance — check for unexpected apps with
+    these services and the timestamp/permission flow that granted them.
   pivot: client
+  requires:
+    families:
+    - plaso
+    - mactime
+    - fls
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - plaso
+          - mactime
+          - fls
+  source: families plaso, mactime, fls
+  search:
+    families:
+    - plaso
+    - mactime
+    - fls
+    any:
+    - field: text
+      contains:
+      - TCC.db
+      - kTCCService
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*TCC.db*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*kTCCService*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Accessibility*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ScreenCapture*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'kTCCService: free phrase; the step''s pivot names no registry column'
-  - 'Accessibility: free phrase; the step''s pivot names no registry column'
-  - 'ScreenCapture: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - plaso
+          - mactime
+          - fls
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*TCC.db*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*kTCCService*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: user_activity_artifacts
   query: zsh_history OR bash_history OR TERMSESSIONS OR SAFARI OR Spotlight
-  look_for: 'Reconstruct user/attacker activity: shell history (zsh/bash), Terminal
-    session/state (full window text), Safari history/downloads/cookies, Spotlight
-    queries, .sfl/.plist recent items, utmpx login records, and saved application
-    state window titles.'
+  look_for: 'Reconstruct user/attacker activity: shell history (zsh/bash), Terminal session/state (full window text),
+    Safari history/downloads/cookies, Spotlight queries, .sfl/.plist recent items, utmpx login records, and saved
+    application state window titles.'
   pivot: value
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.value.kw:
-            value: '*zsh_history*'
-            case_insensitive: true
-      - wildcard:
-          fields.value.kw:
-            value: '*bash_history*'
-            case_insensitive: true
-      - wildcard:
-          fields.value.kw:
-            value: '*TERMSESSIONS*'
-            case_insensitive: true
-      - wildcard:
-          fields.value.kw:
-            value: '*SAFARI*'
-            case_insensitive: true
-      - wildcard:
-          fields.value.kw:
-            value: '*Spotlight*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-negative: Mounted APFS shows no launchd modification, no quarantine override, no suspicious
-  TCC grant, and the unified log window is clean → no host-side macOS compromise in
-  the captured window. APFS snapshots and the unified log can be trimmed or aged out
-  — absence may be a retention gap, not innocence; state the log retention window.
+  kind: procedure
+  procedure_reason: user activity on macOS is reconstructed from several sources (shell history, Terminal state,
+    Safari, Spotlight, utmpx) read with mac_apt; no single search states it.
+negative: Mounted APFS shows no launchd modification, no quarantine override, no suspicious TCC grant, and the unified
+  log window is clean → no host-side macOS compromise in the captured window. APFS snapshots and the unified log
+  can be trimmed or aged out — absence may be a retention gap, not innocence; state the log retention window.
 confidence_rules:
-  high: unsigned launchd daemon in a writable path + execution in unified log + quarantine
-    origin to a malicious URL
+  high: unsigned launchd daemon in a writable path + execution in unified log + quarantine origin to a malicious
+    URL
   medium: suspicious launchd agent or TCC grant without confirmed execution or payload
-  low: third-party launch item in a standard path — legitimate admin tooling is common
-    (FD-004)
+  low: third-party launch item in a standard path — legitimate admin tooling is common (FD-004)
 mitre:
 - T1543.001
 - T1547.015
 - T1059.002
 - T1555.001
 caveats:
-- Unified log retention is limited (days-to-weeks and rotates) — if the window predates
-  retention, that is a coverage gap; say so rather than implying clean.
-- macOS ships many legitimate launch daemons and app agents — verify the signer and
-  path (user-writable/temp is the tell), not merely the presence of a plist (FD-004).
-- APFS snapshots can preserve pre-cleanup state, but they also age out; capture them
-  at acquisition before they are thinned.
-- TCC.db is protected (SIP/TCC) — read it from an image or with appropriate privileges;
-  a modified/unreadable TCC.db is itself worth noting.
+- Unified log retention is limited (days-to-weeks and rotates) — if the window predates retention, that is a coverage
+  gap; say so rather than implying clean.
+- macOS ships many legitimate launch daemons and app agents — verify the signer and path (user-writable/temp is
+  the tell), not merely the presence of a plist (FD-004).
+- APFS snapshots can preserve pre-cleanup state, but they also age out; capture them at acquisition before they
+  are thinned.
+- TCC.db is protected (SIP/TCC) — read it from an image or with appropriate privileges; a modified/unreadable TCC.db
+  is itself worth noting.

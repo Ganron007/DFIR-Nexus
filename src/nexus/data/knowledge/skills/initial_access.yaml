@@ -1,7 +1,7 @@
 skill: initial_access
 title: Initial access — LNK / MSI / CHM / HTML smuggling / macro
-description: Detect user-execution initial-access payloads — shortcut files, MSI installers,
-  compiled help files, HTML smuggling, office macros.
+description: Detect user-execution initial-access payloads — shortcut files, MSI installers, compiled help files,
+  HTML smuggling, office macros.
 trigger:
   families:
   - lnk
@@ -31,266 +31,744 @@ trigger:
 steps:
 - name: lnk_artifacts
   query: .lnk invoice document shortcut
-  look_for: LNK files in Downloads/Desktop/Temp with recent creation; check the LNK
-    target (cmd/powershell/mshta/rundll32 children).
+  look_for: LNK files in Downloads/Desktop/Temp with recent creation; check the LNK target (cmd/powershell/mshta/rundll32
+    children).
   pivot: LocalPath
+  requires:
+    families:
+    - lecmd
+    - jlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+  source: families lecmd, jlecmd
+  search:
+    basis: []
+    families:
+    - lecmd
+    - jlecmd
+    any:
+    - field: ecs.file.path
+      endswith:
+      - \cmd.exe
+      - \powershell.exe
+      - \mshta.exe
+      - \rundll32.exe
+      - \wscript.exe
+      - \cscript.exe
+      - \regsvr32.exe
   es:
     bool:
-      must:
-      - wildcard:
-          text.wc:
-            value: '*.lnk*'
-            case_insensitive: true
-      - wildcard:
-          fields.LocalPath.kw:
-            value: '*invoice document shortcut*'
-            case_insensitive: true
-  requires:
-    families: &id001
-    - lnk
-    - mft
-    - usn
-    - prefetch
-    - evtx
-    - sysmon
-    - amcache
-    - jumplist
-    - browser
-  es_text_only_reason:
-  - '.lnk: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\cmd.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\powershell.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\mshta.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\rundll32.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\wscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\cscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\regsvr32.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: msi_execution
   query: msiexec /i OR .msi MsiInstaller
-  look_for: msiexec executions of unsigned/downloaded MSIs; MsiInstaller events 11707
-    (install success) near the suspected window.
+  look_for: msiexec executions of unsigned/downloaded MSIs; MsiInstaller events 11707 (install success) near the
+    suspected window.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Application
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11707'
+                  - '1033'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; Application 11707, 1033
+  search:
+    basis:
+    - attack:DET0158
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Application
+      codes:
+      - '11707'
+      - '1033'
+    any:
+    - field: event_id
+      is:
+      - '11707'
+      - '1033'
+    - field: ecs.process.command_line
+      contains:
+      - /i http
+      - /i "http
+      - /q http
+      - /i \\
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*msiexec /i*'
-            case_insensitive: true
+      filter:
       - bool:
-          must:
-          - wildcard:
-              text.wc:
-                value: '*.msi*'
-                case_insensitive: true
-          - wildcard:
-              fields.command_line.kw:
-                value: '*MsiInstaller*'
-                case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - '.msi: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Application
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11707'
+                  - '1033'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - term:
+                  event_id: '11707'
+              - term:
+                  event_id: '1033'
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/i http*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/i "http*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/q http*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*/i \\\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: chm_execution
   query: hh.exe OR .chm
   look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
   pivot: ParentImage
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0081
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.executable
+      endswith:
+      - \hh.exe
+    - field: ecs.process.parent.executable
+      endswith:
+      - \hh.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \hh.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*hh.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*.chm*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'hh.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\hh.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.parent.executable.wc:
+                value: '*\\hh.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ParentProcessName.wc:
+                value: '*\\hh.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: html_smuggling_download
   query: '.html blob: download FromCache OR browser'
   look_for: Browser download of an HTML file followed by a new .exe/.dll write.
   pivot: URL
+  requires:
+    families:
+    - sqlecmd
+    - hindsight
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - hindsight
+  source: families sqlecmd, hindsight
+  search:
+    families:
+    - sqlecmd
+    - hindsight
+    any:
+    - field: fields.TargetPath
+      endswith:
+      - .html
+      - .htm
+      - .hta
+      - .svg
+    - field: fields.url
+      endswith:
+      - .html
+      - .htm
+      - .hta
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*.html download FromCache*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*browser*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - '.html download FromCache: free phrase; the step''s pivot names no registry column'
-  - 'browser: free phrase; the step''s pivot names no registry column'
-  es_dropped:
-  - term: 'blob:'
-    reason: field filter with no value
+      filter:
+      - terms:
+          family:
+          - sqlecmd
+          - hindsight
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  fields.TargetPath.kw:
+                    value: '*.html'
+                    case_insensitive: true
+              - wildcard:
+                  fields.TargetPath.kw:
+                    value: '*.htm'
+                    case_insensitive: true
+              - wildcard:
+                  fields.TargetPath.kw:
+                    value: '*.hta'
+                    case_insensitive: true
+              - wildcard:
+                  fields.TargetPath.kw:
+                    value: '*.svg'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  fields.url.kw:
+                    value: '*.html'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*.htm'
+                    case_insensitive: true
+              - wildcard:
+                  fields.url.kw:
+                    value: '*.hta'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: motw_mark
   query: Zone.Identifier Mark-of-the-Web OR ZoneId=3
   look_for: Zone.Identifier ADS on downloaded files (ZoneId=3 = internet).
   pivot: FileName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '15'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+  source: Sysmon 15; families mftecmd
+  search:
+    basis:
+    - attack:DET0294
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '15'
+    families:
+    - mftecmd
+    any:
+    - field: ecs.file.name
+      endswith:
+      - :Zone.Identifier
+    - field: ecs.winlog.event_data.TargetFilename
+      endswith:
+      - :Zone.Identifier
+    - field: fields.ZoneIdContents
+      contains:
+      - ZoneId=3
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*Zone.Identifier Mark-of-the-Web*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ZoneId=3*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'Zone.Identifier Mark-of-the-Web: file-path pivot; no populated ecs.file.path,
-    searched in text'
-  - 'ZoneId=3: file-path pivot; no populated ecs.file.path, searched in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '15'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:Zone.Identifier'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.TargetFilename.wc:
+                value: '*:Zone.Identifier'
+                case_insensitive: true
+          - wildcard:
+              fields.ZoneIdContents.kw:
+                value: '*ZoneId=3*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: office_spawns
   query: winword.exe OR excel.exe OR powerpnt.exe cmd.exe powershell.exe
   look_for: Office binaries spawning script interpreters — macro execution.
   pivot: ParentImage
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0236
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \cmd.exe
+      - \powershell.exe
+      - \pwsh.exe
+      - \wscript.exe
+      - \cscript.exe
+      - \mshta.exe
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \winword.exe
+      - \excel.exe
+      - \powerpnt.exe
+      - \outlook.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \winword.exe
+      - \excel.exe
+      - \powerpnt.exe
+      - \outlook.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*winword.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*excel.exe*'
-            case_insensitive: true
+      filter:
       - bool:
-          must:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
           - wildcard:
-              text.wc:
-                value: '*powerpnt.exe*'
+              ecs.process.executable.wc:
+                value: '*\\cmd.exe'
                 case_insensitive: true
           - wildcard:
-              text.wc:
-                value: '*cmd.exe*'
+              ecs.process.executable.wc:
+                value: '*\\powershell.exe'
                 case_insensitive: true
           - wildcard:
-              text.wc:
-                value: '*powershell.exe*'
+              ecs.process.executable.wc:
+                value: '*\\pwsh.exe'
                 case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'winword.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'excel.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'powerpnt.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'cmd.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'powershell.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\wscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\mshta.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\winword.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\excel.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\powerpnt.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.parent.executable.wc:
+                    value: '*\\outlook.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\winword.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\excel.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\powerpnt.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ParentProcessName.wc:
+                    value: '*\\outlook.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: child_process_anomaly
   query: explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe
   look_for: Script interpreters parented by explorer.exe near payload arrival.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0294
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \mshta.exe
+      - \wscript.exe
+      - \cscript.exe
+      - \rundll32.exe
+      - \regsvr32.exe
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \explorer.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \explorer.exe
   es:
     bool:
-      should:
+      filter:
       - bool:
-          must:
-          - wildcard:
-              text.wc:
-                value: '*explorer.exe*'
-                case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*cmd.exe*'
-                case_insensitive: true
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - bool:
-          must:
+          should:
           - wildcard:
-              text.wc:
-                value: '*explorer.exe*'
+              ecs.process.executable.wc:
+                value: '*\\mshta.exe'
                 case_insensitive: true
           - wildcard:
-              text.wc:
-                value: '*powershell.exe*'
+              ecs.process.executable.wc:
+                value: '*\\wscript.exe'
                 case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\cscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\rundll32.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\regsvr32.exe'
+                case_insensitive: true
+          minimum_should_match: 1
       - bool:
-          must:
+          should:
           - wildcard:
-              text.wc:
-                value: '*explorer.exe*'
+              ecs.process.parent.executable.wc:
+                value: '*\\explorer.exe'
                 case_insensitive: true
           - wildcard:
-              text.wc:
-                value: '*mshta.exe*'
+              ecs.winlog.event_data.ParentProcessName.wc:
+                value: '*\\explorer.exe'
                 case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'cmd.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'powershell.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'mshta.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
+          minimum_should_match: 1
 - name: iab_vector_check
   query: rdp OR 4625 OR edge OR vpn OR exchange
-  look_for: 'If no user-execution artifact explains entry, check the four dominant
-    IAB vectors: exposed internet-facing RDP (most common ransomware/ intrusion entry
-    — external 4624 type-10), border-device/VPN exploit, phishing delivery, and purchased
-    credentials (valid-account logon with no payload artifact at all).'
+  look_for: 'If no user-execution artifact explains entry, check the four dominant IAB vectors: exposed internet-facing
+    RDP (most common ransomware/ intrusion entry — external 4624 type-10), border-device/VPN exploit, phishing delivery,
+    and purchased credentials (valid-account logon with no payload artifact at all).'
   corroborate: external-IP logon preceding first malicious activity by hours/days
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*rdp*'
-            case_insensitive: true
-      - term:
-          event_id: '4625'
-      - wildcard:
-          text.wc:
-            value: '*edge*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*vpn*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*exchange*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'rdp: free phrase; the step''s pivot names no registry column'
-  - 'edge: free phrase; the step''s pivot names no registry column'
-  - 'vpn: free phrase; the step''s pivot names no registry column'
-  - 'exchange: free phrase; the step''s pivot names no registry column'
-negative: No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely
-  arrived through a different vector (exposed service, creds, drive-by).
+  kind: procedure
+  procedure_reason: an order of method (when no user-execution artefact explains entry, test the four access vectors
+    in turn); each vector has its own search (rdp_sessions, remote_logons, the email and browser steps).
+negative: No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely arrived through a different
+  vector (exposed service, creds, drive-by).
 confidence_rules:
-  high: downloaded artifact (Zone.Identifier) + exec artifact (prefetch/amcache) +
-    child-process chain
+  high: downloaded artifact (Zone.Identifier) + exec artifact (prefetch/amcache) + child-process chain
   medium: payload exec artifact without clear delivery vector
   low: single unsigned exec — corroborate delivery + persistence
 mitre:
@@ -299,6 +777,5 @@ mitre:
 - T1204.001
 - T1204.002
 caveats:
-- Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec)
-  is what matters.
+- Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec) is what matters.
 - LNK files are everywhere; focus on recent ones in download/desktop/temp paths.

@@ -1,10 +1,9 @@
 skill: cloud_identity_forensics
 title: Cloud identity investigation — CloudTrail, Azure/Entra sign-in, M365 audit
-description: 'Investigate suspected compromise of a cloud identity or tenant: read
-  the provider audit trail (AWS CloudTrail, Azure/Entra sign-in, Microsoft 365 Unified
-  Audit Log), reconstruct the authentication and API sequence, find persistence (new
-  credentials, OAuth consent, role/policy changes), and trace data access/exfiltration
-  from storage.'
+description: 'Investigate suspected compromise of a cloud identity or tenant: read the provider audit trail (AWS
+  CloudTrail, Azure/Entra sign-in, Microsoft 365 Unified Audit Log), reconstruct the authentication and API sequence,
+  find persistence (new credentials, OAuth consent, role/policy changes), and trace data access/exfiltration from
+  storage.'
 trigger:
   families:
   - azure
@@ -38,220 +37,440 @@ trigger:
 steps:
 - name: audit_trail_reconstruction
   query: CloudTrail OR AuditLog OR signin OR SignInLogs OR eventName
-  look_for: 'Pull the provider audit trail for the actor and window: AWS CloudTrail
-    (eventName/eventSource/userIdentity/sourceIPAddress), Azure/Entra sign-in logs
-    (user, app, IP, conditional-access result, MFA), M365 Unified Audit Log (Workload/Operation/UserId/ClientIP).
+  look_for: 'Pull the provider audit trail for the actor and window: AWS CloudTrail (eventName/eventSource/userIdentity/sourceIPAddress),
+    Azure/Entra sign-in logs (user, app, IP, conditional-access result, MFA), M365 Unified Audit Log (Workload/Operation/UserId/ClientIP).
     Reconstruct the sequence: logon → enumeration → privilege change → resource access.'
   pivot: sourceIPAddress
   corroborate: the actor's IP/User-Agent also appears in another provider's logs
+  requires:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+  source: families cloudtrail, azure, m365, suzaku
+  kind: aggregate
+  search:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+  aggregate:
+    field: ecs.user.name
+    size: 100
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*CloudTrail*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*AuditLog*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*signin*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*SignInLogs*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*eventName*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - azure
-    - cloudtrail
-    - m365
-    - elastic
-    - splunk
-    - syslog
-  es_text_only_reason:
-  - 'CloudTrail: free phrase; the step''s pivot names no registry column'
-  - 'AuditLog: free phrase; the step''s pivot names no registry column'
-  - 'signin: free phrase; the step''s pivot names no registry column'
-  - 'SignInLogs: free phrase; the step''s pivot names no registry column'
-  - 'eventName: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+  es_aggs:
+    by:
+      terms:
+        field: ecs.user.name
+        size: 100
 - name: unusual_authentication
   query: impossible travel OR MFA OR conditional access OR failed signin OR unfamiliar
-  look_for: 'Flag authentication anomalies: impossible travel, MFA fatigue/prompt
-    bombing, legacy-auth (no-MFA) sessions, failed-then-succeeded bursts, and sign-ins
-    from hosting/VPN/anonymous IPs. A successful unfamiliar sign-in that later performs
-    admin API calls is the pivot, not the sign-in alone.'
+  look_for: 'Flag authentication anomalies: impossible travel, MFA fatigue/prompt bombing, legacy-auth (no-MFA)
+    sessions, failed-then-succeeded bursts, and sign-ins from hosting/VPN/anonymous IPs. A successful unfamiliar
+    sign-in that later performs admin API calls is the pivot, not the sign-in alone.'
   pivot: userPrincipalName
   corroborate: the same session IP performs a privileged operation minutes later
+  requires:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+  source: families cloudtrail, azure, m365, suzaku
+  search:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+    any:
+    - field: fields.description
+      contains:
+      - ConsoleLogin
+      - UserLoginFailed
+      - UserLoggedIn
+      - GetSessionToken
+    - field: text
+      contains:
+      - UserLoginFailed
+      - ConsoleLogin
+    - field: text
+      phrase:
+      - Sign-in activity
+      - MFA denied
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*impossible travel*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*MFA*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*conditional access*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*failed signin*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*unfamiliar*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'impossible travel: free phrase; the step''s pivot names no registry column'
-  - 'MFA: free phrase; the step''s pivot names no registry column'
-  - 'conditional access: free phrase; the step''s pivot names no registry column'
-  - 'failed signin: free phrase; the step''s pivot names no registry column'
-  - 'unfamiliar: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  fields.description.kw:
+                    value: '*ConsoleLogin*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*UserLoginFailed*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*UserLoggedIn*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*GetSessionToken*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  text.wc:
+                    value: '*UserLoginFailed*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*ConsoleLogin*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - match_phrase:
+                  text: Sign-in activity
+              - match_phrase:
+                  text: MFA denied
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: persistence_and_credentials
-  query: CreateAccessKey OR AddServicePrincipal OR consent OR ApplicationPassword
-    OR role assignment
-  look_for: 'Cloud persistence: IAM CreateAccessKey / CreateUser, new role or ClusterRoleBinding,
-    ADD service principal / app registration, OAuth consent grants (illicit consent
-    grant), mailbox rules, and adding credentials to an app. These outlive password
-    resets — find them before declaring containment.'
+  query: CreateAccessKey OR AddServicePrincipal OR consent OR ApplicationPassword OR role assignment
+  look_for: 'Cloud persistence: IAM CreateAccessKey / CreateUser, new role or ClusterRoleBinding, ADD service principal
+    / app registration, OAuth consent grants (illicit consent grant), mailbox rules, and adding credentials to an
+    app. These outlive password resets — find them before declaring containment.'
   pivot: requestParameters.userName
   corroborate: the new principal/credential is used later from the attacker IP
+  requires:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+  source: families cloudtrail, azure, m365, suzaku
+  search:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+    any:
+    - field: fields.description
+      contains:
+      - CreateAccessKey
+      - CreateUser
+      - CreateLoginProfile
+      - UpdateLoginProfile
+      - AttachUserPolicy
+      - PutUserPolicy
+      - AddUserToGroup
+      - CreateRole
+    - field: text
+      phrase:
+      - Add service principal
+      - Consent to application
+      - Add app role assignment
+      - Add delegated permission grant
+      - New-InboxRule
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*CreateAccessKey*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*AddServicePrincipal*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*consent*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ApplicationPassword*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*role assignment*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'CreateAccessKey: free phrase; the step''s pivot names no registry column'
-  - 'AddServicePrincipal: free phrase; the step''s pivot names no registry column'
-  - 'consent: free phrase; the step''s pivot names no registry column'
-  - 'ApplicationPassword: free phrase; the step''s pivot names no registry column'
-  - 'role assignment: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  fields.description.kw:
+                    value: '*CreateAccessKey*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*CreateUser*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*CreateLoginProfile*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*UpdateLoginProfile*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*AttachUserPolicy*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*PutUserPolicy*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*AddUserToGroup*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*CreateRole*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - match_phrase:
+                  text: Add service principal
+              - match_phrase:
+                  text: Consent to application
+              - match_phrase:
+                  text: Add app role assignment
+              - match_phrase:
+                  text: Add delegated permission grant
+              - match_phrase:
+                  text: New-InboxRule
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: data_access_and_exfil
   query: GetObject OR ListBuckets OR ShareFile OR DownloadFile OR mailItemsAccessed
-  look_for: 'Determine what was touched: S3 GetObject/ListBuckets (and PublicAccessBlock
-    changes), storage snapshot/share creation, OneDrive/SharePoint downloads, Exchange
-    mailItemsAccessed, and mailbox forward/delegate rules. Volume and destination
-    distinguish recon from exfiltration.'
+  look_for: 'Determine what was touched: S3 GetObject/ListBuckets (and PublicAccessBlock changes), storage snapshot/share
+    creation, OneDrive/SharePoint downloads, Exchange mailItemsAccessed, and mailbox forward/delegate rules. Volume
+    and destination distinguish recon from exfiltration.'
   pivot: requestParameters.bucketName
-  corroborate: matching egress flow to a file-sharing/cloud destination in network
-    logs
+  corroborate: matching egress flow to a file-sharing/cloud destination in network logs
+  requires:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+  source: families cloudtrail, azure, m365, suzaku
+  search:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+    any:
+    - field: fields.description
+      contains:
+      - GetObject
+      - ListBuckets
+      - PutBucketPolicy
+      - PutBucketAcl
+      - CreateSnapshot
+      - ModifySnapshotAttribute
+    - field: text
+      contains:
+      - FileDownloaded
+      - MailItemsAccessed
+      - FileSyncDownloadedFull
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*GetObject*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ListBuckets*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ShareFile*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*DownloadFile*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*mailItemsAccessed*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'GetObject: free phrase; the step''s pivot names no registry column'
-  - 'ListBuckets: free phrase; the step''s pivot names no registry column'
-  - 'ShareFile: free phrase; the step''s pivot names no registry column'
-  - 'DownloadFile: free phrase; the step''s pivot names no registry column'
-  - 'mailItemsAccessed: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  fields.description.kw:
+                    value: '*GetObject*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*ListBuckets*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*PutBucketPolicy*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*PutBucketAcl*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*CreateSnapshot*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*ModifySnapshotAttribute*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  text.wc:
+                    value: '*FileDownloaded*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*MailItemsAccessed*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*FileSyncDownloadedFull*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: audit_coverage_check
   query: retention OR region OR logging disabled OR StopLogging OR PurgeLogs
-  look_for: 'Check whether the attacker degraded evidence: CloudTrail StopLogging/
-    DeleteTrail, log retention/region gaps, audit-disabled scopes. Audit gaps are
-    findings themselves and bound what can be concluded. Note log latency too — M365/Azure
-    events can take 15-30+ minutes to appear.'
+  look_for: 'Check whether the attacker degraded evidence: CloudTrail StopLogging/ DeleteTrail, log retention/region
+    gaps, audit-disabled scopes. Audit gaps are findings themselves and bound what can be concluded. Note log latency
+    too — M365/Azure events can take 15-30+ minutes to appear.'
   pivot: eventName
+  requires:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+  source: families cloudtrail, azure, m365, suzaku
+  search:
+    families:
+    - cloudtrail
+    - azure
+    - m365
+    - suzaku
+    any:
+    - field: fields.description
+      contains:
+      - StopLogging
+      - DeleteTrail
+      - UpdateTrail
+      - PutEventSelectors
+      - DeleteFlowLogs
+    - field: text
+      contains:
+      - StopLogging
+      - DeleteTrail
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*retention*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*region*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*logging disabled*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*StopLogging*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*PurgeLogs*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'retention: free phrase; the step''s pivot names no registry column'
-  - 'region: free phrase; the step''s pivot names no registry column'
-  - 'logging disabled: free phrase; the step''s pivot names no registry column'
-  - 'StopLogging: free phrase; the step''s pivot names no registry column'
-  - 'PurgeLogs: free phrase; the step''s pivot names no registry column'
-negative: No anomalous authentication, no new principal/credential/consent, and no
-  unusual resource access in the audit trail → no cloud identity compromise in the
-  retained window. Audit retention and provider latency limit this conclusion — state
-  the window and any logging gaps.
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+          - m365
+          - suzaku
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  fields.description.kw:
+                    value: '*StopLogging*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*DeleteTrail*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*UpdateTrail*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*PutEventSelectors*'
+                    case_insensitive: true
+              - wildcard:
+                  fields.description.kw:
+                    value: '*DeleteFlowLogs*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  text.wc:
+                    value: '*StopLogging*'
+                    case_insensitive: true
+              - wildcard:
+                  text.wc:
+                    value: '*DeleteTrail*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+negative: No anomalous authentication, no new principal/credential/consent, and no unusual resource access in the
+  audit trail → no cloud identity compromise in the retained window. Audit retention and provider latency limit
+  this conclusion — state the window and any logging gaps.
 confidence_rules:
-  high: unfamiliar sign-in + subsequent privileged API change + new credential/consent
-    confirmed in the same session
-  medium: anomalous authentication or a lone suspicious API call without a full attacker
-    chain
+  high: unfamiliar sign-in + subsequent privileged API change + new credential/consent confirmed in the same session
+  medium: anomalous authentication or a lone suspicious API call without a full attacker chain
   low: a single unusual sign-in that also matches the user's known travel/VPN (FD-004)
 mitre:
 - T1078.004
@@ -261,14 +480,14 @@ mitre:
 - T1567.002
 - T1556.006
 caveats:
-- Cloud audit logs have retention limits and latency (M365/Azure events can lag 15-30+
-  min) — a quiet window may be a retention/latency gap, not absence of activity.
-- A single ISP/VPN IP is shared by many users — corroborate with user-agent, device,
-  and the subsequent action, never IP alone (FD-004).
-- Automation, CI/CD, and break-glass accounts legitimately create credentials and
-  change roles — identify the workload identity before calling it malicious.
-- Provider log verbosity varies (metadata by default) — missing request bodies/parameters
-  is a coverage limit to state explicitly.
+- Cloud audit logs have retention limits and latency (M365/Azure events can lag 15-30+ min) — a quiet window may
+  be a retention/latency gap, not absence of activity.
+- A single ISP/VPN IP is shared by many users — corroborate with user-agent, device, and the subsequent action,
+  never IP alone (FD-004).
+- Automation, CI/CD, and break-glass accounts legitimately create credentials and change roles — identify the workload
+  identity before calling it malicious.
+- Provider log verbosity varies (metadata by default) — missing request bodies/parameters is a coverage limit to
+  state explicitly.
 primary_families:
 - cloudtrail
 - azure

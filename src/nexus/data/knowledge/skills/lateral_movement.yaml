@@ -1,7 +1,7 @@
 skill: lateral_movement
 title: Lateral movement (SMB / WinRM / RDP / psexec)
-description: Detect movement between hosts — remote logons, admin share access, remote
-  service creation, remote execution tooling.
+description: Detect movement between hosts — remote logons, admin share access, remote service creation, remote
+  execution tooling.
 trigger:
   families:
   - evtx
@@ -30,217 +30,669 @@ trigger:
 steps:
 - name: remote_logons
   query: 4624 10 OR 4648
-  look_for: Type-3/10 network logons from a source host to this host — 4624 with a
-    remote IpAddress; 4648 explicit-credential use.
+  look_for: Type-3/10 network logons from a source host to this host — 4624 with a remote IpAddress; 4648 explicit-credential
+    use.
   pivot: IpAddress
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
+  source: Security 4624
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0269
+    - attack:DET0327
+    events:
+    - channel: Security
+      codes:
+      - '4624'
+    all:
+    - field: ecs.winlog.logon.type
+      is:
+      - '3'
+      - '10'
+    none:
+    - field: ecs.source.ip
+      is:
+      - 127.0.0.1
+      - ::1
+  aggregate:
+    field: ecs.source.ip
+    size: 50
   es:
     bool:
-      should:
+      filter:
       - bool:
-          must:
+          filter:
           - term:
-              event_id: '4624'
-          - wildcard:
-              text.wc:
-                value: '*10*'
+              ecs.winlog.channel:
+                value: Security
                 case_insensitive: true
-      - term:
-          event_id: '4648'
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - evtx
-    - sysmon
-    - security
-    - hayabusa
-    - services
-    - scheduled_tasks
-  es_text_only_reason:
-  - '10: free phrase; the step''s pivot names no registry column'
+          - terms:
+              event_id:
+              - '4624'
+      - bool:
+          should:
+          - term:
+              ecs.winlog.logon.type:
+                value: '3'
+                case_insensitive: true
+          - term:
+              ecs.winlog.logon.type:
+                value: '10'
+                case_insensitive: true
+          minimum_should_match: 1
+      must_not:
+      - bool:
+          should:
+          - term:
+              ecs.source.ip:
+                value: 127.0.0.1
+                case_insensitive: true
+          - term:
+              ecs.source.ip:
+                value: ::1
+                case_insensitive: true
+          minimum_should_match: 1
+  es_aggs:
+    by:
+      terms:
+        field: ecs.source.ip
+        size: 50
 - name: admin_share_access
   query: ADMIN$ OR C$ OR IPC$
   look_for: 5140/5145 share access to ADMIN$/C$/IPC$ from a non-admin host.
   pivot: SourceAddress
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '5140'
+              - '5145'
+  source: Security 5140, 5145
+  search:
+    basis:
+    - manifest
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '5140'
+      - '5145'
+    any:
+    - field: ecs.winlog.event_data.ShareName
+      endswith:
+      - ADMIN$
+      - C$
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*ADMIN$*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*C$*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*IPC$*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'ADMIN$: free phrase; the step''s pivot names no registry column'
-  - 'C$: free phrase; the step''s pivot names no registry column'
-  - 'IPC$: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '5140'
+              - '5145'
+      - bool:
+          should:
+          - wildcard:
+              ecs.winlog.event_data.ShareName.wc:
+                value: '*ADMIN$'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ShareName.wc:
+                value: '*C$'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: remote_service_create
   query: 7045 OR psexesvc OR remcom
-  look_for: Service Control Manager 7045 service installs (psexesvc, remcom, random
-    8-char names) — remote exec via service.
+  look_for: Service Control Manager 7045 service installs (psexesvc, remcom, random 8-char names) — remote exec
+    via service.
   pivot: ServiceName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
+  source: System 7045; Security 4697
+  search:
+    basis:
+    - attack:DET0421
+    - attack:DET0127
+    events:
+    - channel: System
+      codes:
+      - '7045'
+    - channel: Security
+      codes:
+      - '4697'
+    any:
+    - field: ecs.service.name
+      contains:
+      - PSEXESVC
+      - RemCom
+    - field: ecs.winlog.event_data.ServiceName
+      contains:
+      - PSEXESVC
+      - RemCom
+    - field: ecs.process.executable
+      contains:
+      - '%COMSPEC%'
+      - \ADMIN$\
+      - \\127.0.0.1\
+    - field: ecs.winlog.event_data.ServiceFileName
+      contains:
+      - '%COMSPEC%'
+      - \ADMIN$\
+      - \\127.0.0.1\
   es:
     bool:
-      should:
-      - term:
-          event_id: '7045'
-      - wildcard:
-          text.wc:
-            value: '*psexesvc*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*remcom*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'psexesvc: free phrase; the step''s pivot names no registry column'
-  - 'remcom: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.service.name.wc:
+                    value: '*PSEXESVC*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.service.name.wc:
+                    value: '*RemCom*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ServiceName.wc:
+                    value: '*PSEXESVC*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceName.wc:
+                    value: '*RemCom*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*%COMSPEC%*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\ADMIN$\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\\\127.0.0.1\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*%COMSPEC%*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\ADMIN$\\*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ServiceFileName.wc:
+                    value: '*\\\\127.0.0.1\\*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: winrm_execution
   query: winrm 5985 OR 5986 OR wsman
   look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
   pivot: ParentImage
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-WinRM/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '6'
+                  - '91'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; WinRM/Operational 6, 91
+  search:
+    basis:
+    - attack:DET0477
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-WinRM/Operational
+      codes:
+      - '6'
+      - '91'
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \wsmprovhost.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \wsmprovhost.exe
+    - field: event_id
+      is:
+      - '6'
+      - '91'
   es:
     bool:
-      should:
+      filter:
       - bool:
-          must:
-          - term:
-              event_id: '5985'
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-WinRM/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '6'
+                  - '91'
+          minimum_should_match: 1
+      - bool:
+          should:
           - wildcard:
-              fields.parent_process.kw:
-                value: '*winrm*'
+              ecs.process.parent.executable.wc:
+                value: '*\\wsmprovhost.exe'
                 case_insensitive: true
-      - term:
-          event_id: '5986'
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*wsman*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+          - wildcard:
+              ecs.winlog.event_data.ParentProcessName.wc:
+                value: '*\\wsmprovhost.exe'
+                case_insensitive: true
+          - bool:
+              should:
+              - term:
+                  event_id: '6'
+              - term:
+                  event_id: '91'
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: rdp_sessions
   query: 4778 OR 4779 OR TerminalServices
   look_for: RDP session connect/reconnect events with foreign source hosts. The TerminalServices-LocalSessionManager
-    / RemoteConnectionManager / RdpClientTS logs form per-scenario chains (successful
-    logon, failed logon, disconnect-with-close vs start-disconnect, reconnect, logoff)
-    — profile the whole chain, not one ID.
+    / RemoteConnectionManager / RdpClientTS logs form per-scenario chains (successful logon, failed logon, disconnect-with-close
+    vs start-disconnect, reconnect, logoff) — profile the whole chain, not one ID.
   pivot: IpAddress
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4778'
+                  - '4779'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '21'
+                  - '22'
+                  - '24'
+                  - '25'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1149'
+          minimum_should_match: 1
+  source: Security 4778, 4779; Microsoft-Windows-TerminalServices-LocalSessionManager/Operational 21, 22, 24, 25;
+    Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational 1149
+  search:
+    basis:
+    - attack:DET0327
+    - evtx-map
+    events:
+    - channel: Security
+      codes:
+      - '4778'
+      - '4779'
+    - channel: Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+      codes:
+      - '21'
+      - '22'
+      - '24'
+      - '25'
+    - channel: Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational
+      codes:
+      - '1149'
   es:
     bool:
-      should:
-      - term:
-          event_id: '4778'
-      - term:
-          event_id: '4779'
-      - wildcard:
-          text.wc:
-            value: '*TerminalServices*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'TerminalServices: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4778'
+                  - '4779'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '21'
+                  - '22'
+                  - '24'
+                  - '25'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1149'
+          minimum_should_match: 1
 - name: ual_client_access
   query: current.mdb OR user access logging OR sum.mdb
-  look_for: 'User Access Logging (Windows Server 2012+ default; C:\Windows\System32\LogFiles\SUM\current.mdb
-    + GUID-named ESE dbs) — the TARGET-side ledger: which client IPs + authenticated
-    identities connected to which server roles, first/last seen. Profiles lateral
-    movement inbound to this server even when EVTX is thin.'
+  look_for: 'User Access Logging (Windows Server 2012+ default; C:\Windows\System32\LogFiles\SUM\current.mdb + GUID-named
+    ESE dbs) — the TARGET-side ledger: which client IPs + authenticated identities connected to which server roles,
+    first/last seen. Profiles lateral movement inbound to this server even when EVTX is thin.'
   pivot: ClientIP
   corroborate: UAL identity ↔ 4624 TargetUserName from the same client IP
+  requires:
+    families:
+    - sumecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sumecmd
+  source: families sumecmd
+  search:
+    families:
+    - sumecmd
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*current.mdb*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*user access logging*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*sum.mdb*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'current.mdb: free phrase; the step''s pivot names no registry column'
-  - 'user access logging: free phrase; the step''s pivot names no registry column'
-  - 'sum.mdb: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - sumecmd
 - name: interactive_artifacts
   query: user profile OR C:\Users\ OR ProfileImagePath
-  look_for: 'Interactive-access artifacts that outlive log events: a new user profile
-    directory / ProfileList entry proves an interactive logon happened even if event
-    evidence was cleared; LNK + RecycleBin + registry MRU under that profile prove
-    hands-on activity.'
+  look_for: 'Interactive-access artifacts that outlive log events: a new user profile directory / ProfileList entry
+    proves an interactive logon happened even if event evidence was cleared; LNK + RecycleBin + registry MRU under
+    that profile prove hands-on activity.'
   corroborate: profile-creation timestamp vs 4624/log-clearing window
+  requires:
+    families:
+    - recmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - recmd
+  source: families recmd
+  search:
+    families:
+    - recmd
+    all:
+    - field: ecs.registry.path
+      contains:
+      - \ProfileList
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - recmd
       - wildcard:
-          text.wc:
-            value: '*user profile*'
+          ecs.registry.path.wc:
+            value: '*\\ProfileList*'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*C:\Users\*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ProfileImagePath*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'user profile: free phrase; the step''s pivot names no registry column'
-  - 'C:\Users\: free phrase; the step''s pivot names no registry column'
-  - 'ProfileImagePath: free phrase; the step''s pivot names no registry column'
 - name: remote_scheduled_task
   query: schtasks /s OR 106 OR 140
   look_for: Remote scheduled task registration (SchRpc 106) or schtasks /s.
   pivot: TaskName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0441
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \schtasks.exe
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - '/s '
+      - '-s '
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          text.wc:
-            value: '*schtasks /s*'
+          ecs.process.executable.wc:
+            value: '*\\schtasks.exe'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*106*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*140*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'schtasks /s: free phrase; the step''s pivot names no registry column'
-  - '106: free phrase; the step''s pivot names no registry column'
-  - '140: free phrase; the step''s pivot names no registry column'
-negative: No remote-logon/share/service/task artifacts from other hosts → this host
-  was not a lateral-movement target in the window (or telemetry gap).
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*/s *'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*-s *'
+                case_insensitive: true
+          minimum_should_match: 1
+negative: No remote-logon/share/service/task artifacts from other hosts → this host was not a lateral-movement target
+  in the window (or telemetry gap).
 confidence_rules:
   high: new service + admin-share access + remote logon from same source host
   medium: remote logon + task creation without service install
@@ -250,11 +702,9 @@ mitre:
 - T1569.002
 - T1047
 caveats:
-- File-server and admin activity legitimately produces 4624 type-3 — corroborate with
-  share/service/task artifacts.
-- psexesvc can be renamed — look for unsigned/random service names, not just the literal
-  string.
-- UAL is server-only (2012+) and role-granular — it names the role accessed, not the
-  command run; absent UAL data is not absent movement.
-- Cleared Security.evtx does not erase interactive-access artifacts — check profile
-  creation, LNKs, and registry MRU before calling 'no hands-on'.
+- File-server and admin activity legitimately produces 4624 type-3 — corroborate with share/service/task artifacts.
+- psexesvc can be renamed — look for unsigned/random service names, not just the literal string.
+- UAL is server-only (2012+) and role-granular — it names the role accessed, not the command run; absent UAL data
+  is not absent movement.
+- Cleared Security.evtx does not erase interactive-access artifacts — check profile creation, LNKs, and registry
+  MRU before calling 'no hands-on'.

@@ -177,7 +177,7 @@ def _score_skill(
     why: list[str] = []
     score = 0
     if techs:
-        hit = techs & {str(t).upper() for t in (trig.get("techniques") or [])}
+        hit = techs & {_current(t) for t in (trig.get("techniques") or [])}
         score += _TECH_WEIGHT * len(hit)
         why.extend(f"technique {t}" for t in sorted(hit))
     if kws:
@@ -202,8 +202,15 @@ def _context(
 ) -> tuple[set[str], set[str], set[str]]:
     fams = {str(f).lower() for f in (families or []) if str(f).strip()}
     kws = {str(k).lower() for k in (keywords or []) if str(k).strip()}
-    techs = {str(t).upper() for t in (techniques or []) if str(t).strip()}
+    techs = {_current(t) for t in (techniques or []) if str(t).strip()}
     return fams, kws, techs
+
+
+def _current(tid: object) -> str:
+    """The technique's ATT&CK v20 id: a revoked id (rule engines still tag T1070.001) reads as its successor."""
+    from nexus.knowledge.attack_method import current_technique
+
+    return current_technique(str(tid).strip()) or str(tid).strip().upper()
 
 
 def _surfaceable(
@@ -316,7 +323,9 @@ def skill_version(skill: dict[str, Any]) -> str:
         "trigger": skill.get("trigger") or {},
         "steps": [
             {"name": st.get("name"), "query": st.get("query"),
-             "look_for": st.get("look_for"), "corroborate": st.get("corroborate")}
+             "look_for": st.get("look_for"), "corroborate": st.get("corroborate"),
+             # IC-6: what a step searches is its authored `search` (and its kind), not its free text.
+             "kind": st.get("kind") or "search", "search": st.get("search") or {}}
             for st in (skill.get("steps") or []) if isinstance(st, dict)
         ],
         "mitre": [str(t) for t in (skill.get("mitre") or [])],

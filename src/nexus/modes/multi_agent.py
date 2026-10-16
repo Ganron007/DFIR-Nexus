@@ -966,7 +966,7 @@ def _seat_with_model(
         software=tuple(str(s.get("id")) for s in (lead_extra.get("software") or [])
                        if isinstance(s, dict) and s.get("id")),
     )
-    skill_block = _skill_procedure_block(seat_order) + attack_method_block(seat_order, case_dir)
+    skill_block = _skill_procedure_block(seat_order, case_dir) + attack_method_block(seat_order, case_dir)
     # WO-R1F-M3 item 2: the verifier seat returns `verdicts`, not `claims`.
     # Use the right terminal key, or the loop never recognises the reply and
     # the verdicts are lost (the original defect in this seat path).

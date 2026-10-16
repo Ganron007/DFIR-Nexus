@@ -1,0 +1,2561 @@
+{
+ "control_case": "IC6-CONTROLS",
+ "flood": 100000,
+ "items": {
+  "analytic:ba-c2-living-off-trusted-sites": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "9711"
+   },
+   "control_total": 48,
+   "kind": "search",
+   "query_sha": "db7cc436b6aea31c"
+  },
+  "analytic:ba-col-archive-staging": {
+   "case_total": 7,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "4080"
+   },
+   "control_total": 21,
+   "kind": "search",
+   "query_sha": "3a3de73153f0858d"
+  },
+  "analytic:ba-col-powershell-transcript": {
+   "case_total": 267,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "24312"
+   },
+   "control_total": 13,
+   "kind": "search",
+   "query_sha": "84b2a23d5a3c2fa0"
+  },
+  "analytic:ba-cred-dcsync-nondc": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2774"
+   },
+   "control_total": 6,
+   "kind": "search",
+   "query_sha": "9c659662f249b810"
+  },
+  "analytic:ba-cred-kerberoast": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "8573"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "27667ef070580360"
+  },
+  "analytic:ba-cred-logon-type3": {
+   "case_total": 358,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2525"
+   },
+   "control_total": 76,
+   "kind": "search",
+   "query_sha": "152b85c14fcb646f"
+  },
+  "analytic:ba-cred-lsass-minidump-write": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "10822"
+   },
+   "control_total": 7,
+   "kind": "search",
+   "query_sha": "4baf67f2e9fadaab"
+  },
+  "analytic:ba-cred-lsass-nonsystem": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "549"
+   },
+   "control_total": 29,
+   "kind": "search",
+   "query_sha": "3476e2cddcc6ec52"
+  },
+  "analytic:ba-cred-lsass-path": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2880"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "9c43e8120421b702"
+  },
+  "analytic:ba-cred-new-local-admin": {
+   "case_total": 6,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "2375"
+   },
+   "control_total": 7,
+   "kind": "search",
+   "query_sha": "74c0594720c91fc6"
+  },
+  "analytic:ba-cred-rdp-firstseen": {
+   "case_total": 163,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2258"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "4b95b45810b92b86"
+  },
+  "analytic:ba-eva-audit-policy": {
+   "case_total": 42,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7079"
+   },
+   "control_total": 51,
+   "kind": "search",
+   "query_sha": "432608e5cf050f52"
+  },
+  "analytic:ba-eva-defender-exclusion": {
+   "case_total": 7,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "6079"
+   },
+   "control_total": 9,
+   "kind": "search",
+   "query_sha": "fe04026316f27590"
+  },
+  "analytic:ba-eva-log-cleared": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "2"
+   },
+   "control_total": 166,
+   "kind": "search",
+   "query_sha": "8eec35b43b3917c1"
+  },
+  "analytic:ba-eva-service-stopped": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "15489"
+   },
+   "control_total": 82,
+   "kind": "search",
+   "query_sha": "87af564406033baa"
+  },
+  "analytic:ba-eva-timestomp": {
+   "case_total": 682,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "41245"
+   },
+   "control_total": 1788,
+   "kind": "search",
+   "query_sha": "39b97cd4ef4eae44"
+  },
+  "analytic:ba-eva-timestomp-usn": {
+   "case_total": 823,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-usn/usn.csv",
+    "file_sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+    "line": "63619"
+   },
+   "control_total": 552,
+   "kind": "search",
+   "query_sha": "d8feb91d17a07f51"
+  },
+  "analytic:ba-exec-encoded-command": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "9888"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "532c38b6e551ba1a"
+  },
+  "analytic:ba-exec-lolbin-download": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "474"
+   },
+   "control_total": 12,
+   "kind": "search",
+   "query_sha": "3699cced9d96d03e"
+  },
+  "analytic:ba-exec-programdata": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "3672"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "0a5151c7913c25e3"
+  },
+  "analytic:ba-exec-script-host": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "106"
+   },
+   "control_total": 66,
+   "kind": "search",
+   "query_sha": "2ca076b0ffdc5c10"
+  },
+  "analytic:ba-exec-temp": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7648"
+   },
+   "control_total": 22,
+   "kind": "search",
+   "query_sha": "6794ec9ecc6c29c6"
+  },
+  "analytic:ba-exec-user-writable": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7648"
+   },
+   "control_total": 55,
+   "kind": "search",
+   "query_sha": "c478f497b04fb09e"
+  },
+  "analytic:ba-lat-remote-service-create": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "21769"
+   },
+   "control_total": 15,
+   "kind": "search",
+   "query_sha": "52ae7b90e39b0089"
+  },
+  "analytic:ba-lat-smb-admin-share": {
+   "case_total": 134,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2787"
+   },
+   "control_total": 3397,
+   "kind": "search",
+   "query_sha": "2a77c4bf6e14c13b"
+  },
+  "analytic:ba-lat-wmi-exec": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2959"
+   },
+   "control_total": 16,
+   "kind": "search",
+   "query_sha": "f9b0dd91a53f4d35"
+  },
+  "analytic:ba-lat-wmi-process-create": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "4100"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "5e1d40587ced6dce"
+  },
+  "analytic:ba-pers-schtask-reg-mod": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "522"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "b104f8a3ad833bb1"
+  },
+  "analytic:ba-persist-run-usbable": {
+   "case_total": 7,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "7765"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "a0e8d5cf989d5053"
+  },
+  "analytic:ba-persist-runonce": {
+   "case_total": 7,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "39"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "9cc7dba803cbbcb0"
+  },
+  "analytic:ba-persist-service-new": {
+   "case_total": 2196,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "43174"
+   },
+   "control_total": 379,
+   "kind": "search",
+   "query_sha": "ee5d88e6c7cd87bd"
+  },
+  "analytic:ba-persist-service-temp": {
+   "case_total": 340,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "43208"
+   },
+   "control_total": 7,
+   "kind": "search",
+   "query_sha": "43eae280b0baa7df"
+  },
+  "analytic:ba-persist-startup-folder": {
+   "case_total": 60,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "46"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "ccb934128695f952"
+  },
+  "analytic:ba-persist-task-hidden": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "80c88776b2a792ce"
+  },
+  "analytic:ba-persist-task-script-host": {
+   "case_total": 2,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "1e1c2cae7551167d"
+  },
+  "analytic:ba-persist-wmi-subscription": {
+   "case_total": 32,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "492"
+   },
+   "control_total": 17,
+   "kind": "search",
+   "query_sha": "1c32f43550d096c9"
+  },
+  "analytic:ba-priv-printspooler-exploit": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "6735"
+   },
+   "control_total": 21,
+   "kind": "search",
+   "query_sha": "fced94958fca5dbb"
+  },
+  "skill:ad_credential_attacks/asrep_roast": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "7991"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "2d52c1972597b1f5"
+  },
+  "skill:ad_credential_attacks/dcsync_replication": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2774"
+   },
+   "control_total": 6,
+   "kind": "search",
+   "query_sha": "9c659662f249b810"
+  },
+  "skill:ad_credential_attacks/delegation_abuse": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "3360"
+   },
+   "control_total": 15,
+   "kind": "search",
+   "query_sha": "0c531eccdf02f9aa"
+  },
+  "skill:ad_credential_attacks/enum_pre_attack": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "3300"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "b632c75bb55d1d2a"
+  },
+  "skill:ad_credential_attacks/golden_ticket": {
+   "case_total": 0,
+   "control_buckets": 3,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2843"
+   },
+   "control_total": 142,
+   "kind": "aggregate",
+   "query_sha": "349736857d765446"
+  },
+  "skill:ad_credential_attacks/kerberoast_tgs": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "8573"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "27667ef070580360"
+  },
+  "skill:browser_artifact_analysis/autoplay_browserless": {
+   "case_total": 0,
+   "control_row": {
+    "family": "hindsight",
+    "file": "hindsight/chrome-Default.jsonl",
+    "file_sha256": "8ab646310fd735d406b856bf388e2bc924536ed050fb059e222943fc8773ddd5",
+    "line": "65"
+   },
+   "control_total": 88,
+   "kind": "search",
+   "query_sha": "7986bf9aa737797f"
+  },
+  "skill:browser_artifact_analysis/cookies_and_auth": {
+   "case_total": 0,
+   "control_buckets": 100,
+   "control_row": {
+    "family": "hindsight",
+    "file": "hindsight/chrome-Default.jsonl",
+    "file_sha256": "8ab646310fd735d406b856bf388e2bc924536ed050fb059e222943fc8773ddd5",
+    "line": "72"
+   },
+   "control_total": 3610,
+   "kind": "aggregate",
+   "query_sha": "860f4eadc54b1bbc"
+  },
+  "skill:browser_artifact_analysis/download_lineage": {
+   "case_total": 65,
+   "control_row": {
+    "family": "sqlecmd",
+    "file": "sqlecmd/20260921222703409851_ChromiumBrowser_Downloads_0b575bcf-ade3-44e5-8162-eb52a96c2b06.csv",
+    "file_sha256": "1816c2ef41d75c32f736b97e5b6d053f4929dc5aa6c7e6e0a5a468000f5a75ad",
+    "line": "2"
+   },
+   "control_total": 52,
+   "kind": "search",
+   "query_sha": "dcb77b6f6b46dce5"
+  },
+  "skill:browser_artifact_analysis/history_visits": {
+   "case_total": 2237,
+   "control_buckets": 200,
+   "control_row": {
+    "family": "sqlecmd",
+    "file": "sqlecmd/20260921222703461136_ChromiumBrowser_HistoryVisits_1f37cc07-2b10-4c80-b845-84708e4f7429.csv",
+    "file_sha256": "81b8fc40e18c48a134c0907ed1ff24f1f2a4fec61a56e404cd694f221682bcf0",
+    "line": "2"
+   },
+   "control_total": 1430,
+   "kind": "aggregate",
+   "query_sha": "aafd9f73e279defc"
+  },
+  "skill:browser_artifact_analysis/sessions_open_tabs": {
+   "case_total": 0,
+   "control_row": {
+    "family": "hindsight",
+    "file": "hindsight/firefox.jsonl",
+    "file_sha256": "38458a6698da11505d68921ee25a739a5058b35334343eb95016480d0c3dac66",
+    "line": "1"
+   },
+   "control_total": 78,
+   "kind": "search",
+   "query_sha": "e1a398b08271349c"
+  },
+  "skill:browser_artifact_analysis/thumbs_media": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "d82bbd7b32e8ed48"
+  },
+  "skill:browser_artifact_analysis/typed_searches": {
+   "case_total": 58,
+   "control_row": {
+    "family": "sqlecmd",
+    "file": "sqlecmd/20260921222703466889_ChromiumBrowser_KeywordSearches_d968ece4-d24a-4baf-8f07-78da07727712.csv",
+    "file_sha256": "659e290274b7315802c58b8ddd5c8147d13edd876d129e8e0635a3a9a4c33e45",
+    "line": "2"
+   },
+   "control_total": 31,
+   "kind": "search",
+   "query_sha": "78344e185c9f7237"
+  },
+  "skill:browser_artifact_analysis/webmail_cloud": {
+   "case_total": 67,
+   "control_row": {
+    "family": "sqlecmd",
+    "file": "sqlecmd/20260921222703461136_ChromiumBrowser_HistoryVisits_1f37cc07-2b10-4c80-b845-84708e4f7429.csv",
+    "file_sha256": "81b8fc40e18c48a134c0907ed1ff24f1f2a4fec61a56e404cd694f221682bcf0",
+    "line": "3"
+   },
+   "control_total": 289,
+   "kind": "search",
+   "query_sha": "48c6a029f4d2b627"
+  },
+  "skill:c2_beaconing/carrier_protocols": {
+   "case_total": 0,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "194"
+   },
+   "control_total": 168,
+   "kind": "aggregate",
+   "query_sha": "ce474fc0a181cadf"
+  },
+  "skill:c2_beaconing/cobalt_beacon": {
+   "case_total": 54,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "fe9df85ea5bc9939"
+  },
+  "skill:c2_beaconing/dga_domains": {
+   "case_total": 0,
+   "control_buckets": 2,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "7676"
+   },
+   "control_total": 2,
+   "kind": "aggregate",
+   "query_sha": "b10638bc16007a1d"
+  },
+  "skill:c2_beaconing/dnscat_tunneling": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "b6abfd839706af9f"
+  },
+  "skill:c2_beaconing/periodic_connections": {
+   "case_total": 0,
+   "control_buckets": 39,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "194"
+   },
+   "control_total": 168,
+   "kind": "aggregate",
+   "query_sha": "b1a5809551ba9a21"
+  },
+  "skill:c2_beaconing/proxy_pac": {
+   "case_total": 8,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "10630"
+   },
+   "control_total": 10,
+   "kind": "search",
+   "query_sha": "15d557d98e5c32ed"
+  },
+  "skill:c2_beaconing/smb_beacon": {
+   "case_total": 0,
+   "control_buckets": 33,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2934"
+   },
+   "control_total": 79,
+   "kind": "aggregate",
+   "query_sha": "f7353dc785bc61ea"
+  },
+  "skill:cloud_identity_forensics/audit_coverage_check": {
+   "case_total": 0,
+   "control_row": {
+    "family": "cloudtrail",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "917"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "6d1d4a49346daa8d"
+  },
+  "skill:cloud_identity_forensics/audit_trail_reconstruction": {
+   "case_total": 0,
+   "control_buckets": 4,
+   "control_row": {
+    "family": "cloudtrail",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "1"
+   },
+   "control_total": 23981,
+   "kind": "aggregate",
+   "query_sha": "c10ef300515b10d3"
+  },
+  "skill:cloud_identity_forensics/data_access_and_exfil": {
+   "case_total": 0,
+   "control_row": {
+    "family": "cloudtrail",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "413"
+   },
+   "control_total": 1177,
+   "kind": "search",
+   "query_sha": "e08ce3952ea4ea1b"
+  },
+  "skill:cloud_identity_forensics/persistence_and_credentials": {
+   "case_total": 0,
+   "control_row": {
+    "family": "cloudtrail",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "14"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "c1da9519d8179bd5"
+  },
+  "skill:cloud_identity_forensics/unusual_authentication": {
+   "case_total": 0,
+   "control_row": {
+    "family": "cloudtrail",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "20"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "97d53fabc7d666cd"
+  },
+  "skill:container_forensics/exec_and_escape": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "8337d8cffd23c052"
+  },
+  "skill:defense_evasion/amsi_patch": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "1f719cd81e9a5cd6"
+  },
+  "skill:defense_evasion/defender_disable": {
+   "case_total": 203,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "6065"
+   },
+   "control_total": 8,
+   "kind": "search",
+   "query_sha": "047aa63e64e1b967"
+  },
+  "skill:defense_evasion/etw_tamper": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "8e9e8481fdcb7069"
+  },
+  "skill:defense_evasion/masquerading": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "38fe6e82a4f1597e"
+  },
+  "skill:defense_evasion/process_injection": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2782"
+   },
+   "control_total": 104,
+   "kind": "search",
+   "query_sha": "2148c251e34247bf"
+  },
+  "skill:defense_evasion/timestomp": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "3433"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "2a9570c81af29cd4"
+  },
+  "skill:deleted_file_recovery/freed_mft_records": {
+   "case_total": 31386,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "600520"
+   },
+   "control_total": 1945,
+   "kind": "aggregate",
+   "query_sha": "401e0624d805a1bf"
+  },
+  "skill:deleted_file_recovery/i30_slack_names": {
+   "case_total": 0,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-i30/i30-2.csv",
+    "file_sha256": "380a8ac7b3f74bdfa17cc73f55500744c9740d6b67b6f11a8cac875bd86a8623",
+    "line": "19"
+   },
+   "control_total": 163,
+   "kind": "search",
+   "query_sha": "db9a80af0103c8a8"
+  },
+  "skill:deleted_file_recovery/lnk_ghost_targets": {
+   "case_total": 652,
+   "control_buckets": 19,
+   "control_row": {
+    "family": "jlecmd",
+    "file": "jlecmd/jumplist-auto_AutomaticDestinations.csv",
+    "file_sha256": "a17e5a8dbaf6cfbdce7c7fd89bd82786ae881aef334c681c00051ccaa8dcca01",
+    "line": "2"
+   },
+   "control_total": 37,
+   "kind": "aggregate",
+   "query_sha": "c6c782cfa2b3acd9"
+  },
+  "skill:deleted_file_recovery/recycle_bin_i_files": {
+   "case_total": 15,
+   "control_row": {
+    "family": "rbcmd",
+    "file": "rbcmd/20260921222504_RBCmd_Output.csv",
+    "file_sha256": "d10f30bd5bda649ec7d33b006a8dd1e2fde3e50f8093f621615e3e344c2faa52",
+    "line": "2"
+   },
+   "control_total": 19,
+   "kind": "search",
+   "query_sha": "dbbedc6bb19b5147"
+  },
+  "skill:deleted_file_recovery/search_index_ghost": {
+   "case_total": 2753,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "e5893517680cdf23"
+  },
+  "skill:deleted_file_recovery/secure_delete_tools": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "7e71a25ac7ffdb57"
+  },
+  "skill:deleted_file_recovery/usn_delete_reasons": {
+   "case_total": 43674,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-usn/usn.csv",
+    "file_sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+    "line": "3"
+   },
+   "control_total": 47967,
+   "kind": "aggregate",
+   "query_sha": "0854ef3e235dfe9a"
+  },
+  "skill:discovery_recon/domain_enum": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "9df5c1fb27ff17ad"
+  },
+  "skill:discovery_recon/ipconfig_route": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7165"
+   },
+   "control_total": 73,
+   "kind": "search",
+   "query_sha": "9c33c4b0bd2c7c94"
+  },
+  "skill:discovery_recon/net_commands": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "11118"
+   },
+   "control_total": 25,
+   "kind": "search",
+   "query_sha": "6e5f9e11cea2262a"
+  },
+  "skill:discovery_recon/session_file_enum": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "b5f59339a52ce0e3"
+  },
+  "skill:discovery_recon/system_info": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "11139"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "bdbc74e786b0d09d"
+  },
+  "skill:discovery_recon/tasklist_scan": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "14899"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "5af695f40d136199"
+  },
+  "skill:discovery_recon/whoami_chains": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "24642"
+   },
+   "control_total": 26,
+   "kind": "search",
+   "query_sha": "6dbff32969a5f389"
+  },
+  "skill:email_phishing/attachment_triage": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "aed55540439e4961"
+  },
+  "skill:email_phishing/delivery_artifact": {
+   "case_total": 10,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "16890"
+   },
+   "control_total": 13,
+   "kind": "search",
+   "query_sha": "0512b98de56ae976"
+  },
+  "skill:email_phishing/execution_chain": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "10"
+   },
+   "control_total": 20,
+   "kind": "search",
+   "query_sha": "306e53fddab6a0ef"
+  },
+  "skill:email_phishing/header_chain": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "8d8def1f37076786"
+  },
+  "skill:email_phishing/sender_authentication": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "50b374fecb19b0e1"
+  },
+  "skill:execution_anomaly/artifact_cross_validation": {
+   "case_total": 270529,
+   "control_buckets": 5,
+   "control_row": {
+    "family": "pecmd",
+    "file": "pecmd/prefetch.csv",
+    "file_sha256": "a9862b2851a0a092597c6425246a273f9f24b9324cd3bd9819716de4424abde4",
+    "line": "2"
+   },
+   "control_total": 134037,
+   "kind": "aggregate",
+   "query_sha": "e570d34ef88fa1e5"
+  },
+  "skill:execution_anomaly/lolbin_abuse": {
+   "case_total": 0,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7161"
+   },
+   "control_total": 208,
+   "kind": "aggregate",
+   "query_sha": "d2abb9dca81dfa8d"
+  },
+  "skill:execution_anomaly/process_injection_indicators": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "549"
+   },
+   "control_total": 196,
+   "kind": "search",
+   "query_sha": "e46dfd9aa3af4db1"
+  },
+  "skill:execution_anomaly/renamed_system_binary": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "2d2efe58350cc6a1"
+  },
+  "skill:execution_anomaly/suspicious_parentage": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "7842"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "d364f3f09a33de75"
+  },
+  "skill:execution_anomaly/temp_exec": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7648"
+   },
+   "control_total": 50,
+   "kind": "search",
+   "query_sha": "954bfccab7696cf0"
+  },
+  "skill:execution_anomaly/unsigned_execution": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2780"
+   },
+   "control_total": 74,
+   "kind": "search",
+   "query_sha": "56534d7dfec47f6a"
+  },
+  "skill:execution_artifact_analysis/amcache_lineage": {
+   "case_total": 12759,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "5862cbcc3fc31156"
+  },
+  "skill:execution_artifact_analysis/bam_per_user": {
+   "case_total": 60,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-SYSTEM.csv",
+    "file_sha256": "4de108c9f32937615d31f3a0774dffde9256b6140545b41152ec00e87e2aef7a",
+    "line": "814"
+   },
+   "control_total": 57,
+   "kind": "search",
+   "query_sha": "ae8181028cf344bc"
+  },
+  "skill:execution_artifact_analysis/muicache_gui": {
+   "case_total": 165,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "5ee6a3c3a031d3ed"
+  },
+  "skill:execution_artifact_analysis/pca_applaunch": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "3cbdbfaf2f8d1246"
+  },
+  "skill:execution_artifact_analysis/prefetch_all": {
+   "case_total": 2453,
+   "control_buckets": 40,
+   "control_row": {
+    "family": "pecmd",
+    "file": "pecmd/prefetch.csv",
+    "file_sha256": "a9862b2851a0a092597c6425246a273f9f24b9324cd3bd9819716de4424abde4",
+    "line": "2"
+   },
+   "control_total": 60,
+   "kind": "aggregate",
+   "query_sha": "d63e53b9050e47d4"
+  },
+  "skill:execution_artifact_analysis/prefetch_lolbin": {
+   "case_total": 9,
+   "control_row": {
+    "family": "pecmd",
+    "file": "pecmd/prefetch.csv",
+    "file_sha256": "a9862b2851a0a092597c6425246a273f9f24b9324cd3bd9819716de4424abde4",
+    "line": "25"
+   },
+   "control_total": 1,
+   "kind": "search",
+   "query_sha": "bda08917e89fb769"
+  },
+  "skill:execution_artifact_analysis/shimcache_existence": {
+   "case_total": 1024,
+   "control_buckets": 100,
+   "control_row": {
+    "family": "appcompat",
+    "file": "appcompat/appcompat.csv",
+    "file_sha256": "8e160eb52469bc598dc182d5827485b805a4ea44be516df18c05d2de4bfba17a",
+    "line": "2"
+   },
+   "control_total": 527,
+   "kind": "aggregate",
+   "query_sha": "e0bb99c53d7adcc4"
+  },
+  "skill:execution_artifact_analysis/srum_usage": {
+   "case_total": 230027,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "srumecmd",
+    "file": "srum/20260922133520_SrumECmd_AppResourceUseInfo_Output.csv",
+    "file_sha256": "3884210f5356a6801df7a3939f476cc9e257c870600c9ec01e014f3cccd2c0ba",
+    "line": "2"
+   },
+   "control_total": 123296,
+   "kind": "aggregate",
+   "query_sha": "d4cbf8f5405362ff"
+  },
+  "skill:execution_artifact_analysis/userassist_gui": {
+   "case_total": 122,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-NTUSER-srlh.csv",
+    "file_sha256": "8102bfd105e70683c7ee5bb10328a5ad1479703dc4b68d8c471e08410dd8f8a0",
+    "line": "14"
+   },
+   "control_total": 37,
+   "kind": "search",
+   "query_sha": "04793f76a0f28128"
+  },
+  "skill:execution_artifact_analysis/windows_timeline": {
+   "case_total": 1076,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "wxtcmd",
+    "file": "wxtcmd/20260922035526_Activity.csv",
+    "file_sha256": "a0ce5038e9f3694b543d71268da0bec87f670aa01cffbc9713b60ba2d91844dc",
+    "line": "2"
+   },
+   "control_total": 644,
+   "kind": "aggregate",
+   "query_sha": "61b1285ccbf1bb59"
+  },
+  "skill:exfiltration/archive_creation": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7956"
+   },
+   "control_total": 15,
+   "kind": "search",
+   "query_sha": "cf2d48abf715d913"
+  },
+  "skill:exfiltration/bitsadmin_transfer": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "92"
+   },
+   "control_total": 12,
+   "kind": "search",
+   "query_sha": "93195e5749274c9c"
+  },
+  "skill:exfiltration/cloud_upload": {
+   "case_total": 67,
+   "control_row": {
+    "family": "sqlecmd",
+    "file": "sqlecmd/20260921222703461136_ChromiumBrowser_HistoryVisits_1f37cc07-2b10-4c80-b845-84708e4f7429.csv",
+    "file_sha256": "81b8fc40e18c48a134c0907ed1ff24f1f2a4fec61a56e404cd694f221682bcf0",
+    "line": "97"
+   },
+   "control_total": 177,
+   "kind": "search",
+   "query_sha": "1072cf4373da6101"
+  },
+  "skill:exfiltration/dns_tunneling": {
+   "case_total": 0,
+   "control_buckets": 2,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "7676"
+   },
+   "control_total": 2,
+   "kind": "aggregate",
+   "query_sha": "b10638bc16007a1d"
+  },
+  "skill:exfiltration/ftp_exfil": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "bd5b9dea34f7c902"
+  },
+  "skill:exfiltration/large_outbound": {
+   "case_total": 31510,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "srumecmd",
+    "file": "srum/20260922133520_SrumECmd_NetworkUsages_Output.csv",
+    "file_sha256": "7634dc79f9c85b7967f68bfd449a82c705ef787d1271288613db790d479eeb06",
+    "line": "2"
+   },
+   "control_total": 18516,
+   "kind": "aggregate",
+   "query_sha": "40202c98805f92f4"
+  },
+  "skill:ics_ot_forensics/control_protocol_analysis": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "d553217b85a884ea"
+  },
+  "skill:impact_ransomware/backup_kill": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "79"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "a59cc1b2191f561a"
+  },
+  "skill:impact_ransomware/bcdedit_recovery": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "85"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "d665319b7aa2c06d"
+  },
+  "skill:impact_ransomware/crypto_process": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "a3682264d59c7d2c"
+  },
+  "skill:impact_ransomware/mass_encryption": {
+   "case_total": 46572,
+   "control_buckets": 30,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-usn/usn.csv",
+    "file_sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+    "line": "2"
+   },
+   "control_total": 24577,
+   "kind": "aggregate",
+   "query_sha": "545d95f7ae408627"
+  },
+  "skill:impact_ransomware/service_stop": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "21"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "f5b68664aa122a1f"
+  },
+  "skill:impact_ransomware/shadow_delete": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "75"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "7c073a9fcc75c343"
+  },
+  "skill:initial_access/child_process_anomaly": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "4067"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "529e0d5dd6c1f581"
+  },
+  "skill:initial_access/chm_execution": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "4086"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "22b6d74c6e537ebe"
+  },
+  "skill:initial_access/html_smuggling_download": {
+   "case_total": 0,
+   "control_row": {
+    "family": "hindsight",
+    "file": "hindsight/chrome-Default.jsonl",
+    "file_sha256": "8ab646310fd735d406b856bf388e2bc924536ed050fb059e222943fc8773ddd5",
+    "line": "144"
+   },
+   "control_total": 7,
+   "kind": "search",
+   "query_sha": "fe19bbda761f60d4"
+  },
+  "skill:initial_access/lnk_artifacts": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "cacabb0487007cfc"
+  },
+  "skill:initial_access/motw_mark": {
+   "case_total": 69,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "16890"
+   },
+   "control_total": 35,
+   "kind": "search",
+   "query_sha": "2611e3ff655f6aa0"
+  },
+  "skill:initial_access/msi_execution": {
+   "case_total": 63,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "100"
+   },
+   "control_total": 46,
+   "kind": "search",
+   "query_sha": "10b1c1fe657398ca"
+  },
+  "skill:initial_access/office_spawns": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "7848"
+   },
+   "control_total": 1,
+   "kind": "search",
+   "query_sha": "51caecc5bb14f2ec"
+  },
+  "skill:ir_scoping_and_leads/separate_noise": {
+   "case_total": 89872,
+   "control_buckets": 42,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "32002"
+   },
+   "control_total": 44069,
+   "kind": "aggregate",
+   "query_sha": "c29b1ab3f8088f40"
+  },
+  "skill:lateral_movement/admin_share_access": {
+   "case_total": 134,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2787"
+   },
+   "control_total": 3397,
+   "kind": "search",
+   "query_sha": "2a77c4bf6e14c13b"
+  },
+  "skill:lateral_movement/interactive_artifacts": {
+   "case_total": 8,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-SOFTWARE.csv",
+    "file_sha256": "e2718c90c5da8ffa3425b30facfde81e5de9be59747d2020324073c03f7af3a0",
+    "line": "46"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "510fc04d668a6ac1"
+  },
+  "skill:lateral_movement/rdp_sessions": {
+   "case_total": 671,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "232"
+   },
+   "control_total": 46,
+   "kind": "search",
+   "query_sha": "550f3e87fc487b5f"
+  },
+  "skill:lateral_movement/remote_logons": {
+   "case_total": 3037,
+   "control_buckets": 21,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "5013"
+   },
+   "control_total": 225,
+   "kind": "aggregate",
+   "query_sha": "593754978f08c40b"
+  },
+  "skill:lateral_movement/remote_scheduled_task": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "527"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "0cace557311aaa38"
+  },
+  "skill:lateral_movement/remote_service_create": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "21769"
+   },
+   "control_total": 15,
+   "kind": "search",
+   "query_sha": "52ae7b90e39b0089"
+  },
+  "skill:lateral_movement/ual_client_access": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "b21a972d74a820a7"
+  },
+  "skill:lateral_movement/winrm_execution": {
+   "case_total": 253,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "5135"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "9ee9a0f50aefaff4"
+  },
+  "skill:linux_compromise/account_anomalies": {
+   "case_total": 0,
+   "control_row": {
+    "family": "authlog",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "25513"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "0a2260048058bf31"
+  },
+  "skill:linux_compromise/auth_log_analysis": {
+   "case_total": 0,
+   "control_row": {
+    "family": "authlog",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "25496"
+   },
+   "control_total": 1,
+   "kind": "search",
+   "query_sha": "075a6c10cea236c0"
+  },
+  "skill:linux_compromise/persistence_mechanisms": {
+   "case_total": 0,
+   "control_row": {
+    "family": "bash_history",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "70367"
+   },
+   "control_total": 8,
+   "kind": "search",
+   "query_sha": "fa288f0837905262"
+  },
+  "skill:linux_compromise/shell_history": {
+   "case_total": 0,
+   "control_buckets": 200,
+   "control_row": {
+    "family": "bash_history",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "70310"
+   },
+   "control_total": 442,
+   "kind": "aggregate",
+   "query_sha": "431e850623ca8ac0"
+  },
+  "skill:lnk_jumplist_analysis/automatic_destinations": {
+   "case_total": 435,
+   "control_buckets": 6,
+   "control_row": {
+    "family": "jlecmd",
+    "file": "jlecmd/jumplist-auto_AutomaticDestinations.csv",
+    "file_sha256": "a17e5a8dbaf6cfbdce7c7fd89bd82786ae881aef334c681c00051ccaa8dcca01",
+    "line": "2"
+   },
+   "control_total": 27,
+   "kind": "aggregate",
+   "query_sha": "01dd4ce374bd42ba"
+  },
+  "skill:lnk_jumplist_analysis/custom_destinations": {
+   "case_total": 0,
+   "control_row": {
+    "family": "jlecmd",
+    "file": "jlecmd/jumplist-custom_CustomDestinations.csv",
+    "file_sha256": "75e43b83b60588c197e2b8573b5c56ee8e509c007e18bf7d753b6ae73d63e780",
+    "line": "2"
+   },
+   "control_total": 21,
+   "kind": "search",
+   "query_sha": "8f8635e1c893802a"
+  },
+  "skill:lnk_jumplist_analysis/jumplist_persistence": {
+   "case_total": 60,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "d3de7af813bd595c"
+  },
+  "skill:lnk_jumplist_analysis/lnk_execution_payload": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "25b8341092479770"
+  },
+  "skill:lnk_jumplist_analysis/lnk_source_attribution": {
+   "case_total": 652,
+   "control_buckets": 1,
+   "control_row": {
+    "family": "jlecmd",
+    "file": "jlecmd/jumplist-auto_AutomaticDestinations.csv",
+    "file_sha256": "a17e5a8dbaf6cfbdce7c7fd89bd82786ae881aef334c681c00051ccaa8dcca01",
+    "line": "2"
+   },
+   "control_total": 37,
+   "kind": "aggregate",
+   "query_sha": "31a3c2a5f67afca2"
+  },
+  "skill:lnk_jumplist_analysis/recent_lnk_inventory": {
+   "case_total": 217,
+   "control_buckets": 10,
+   "control_row": {
+    "family": "lecmd",
+    "file": "lecmd/recent-lnk.csv",
+    "file_sha256": "2c84c9645e04cf477b0a42d87b7498b34f6399dccf9b8809dd915844d4334a39",
+    "line": "2"
+   },
+   "control_total": 10,
+   "kind": "aggregate",
+   "query_sha": "da0c100cdc8f2b1c"
+  },
+  "skill:log_clearing/audit_policy_change": {
+   "case_total": 42,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7079"
+   },
+   "control_total": 54,
+   "kind": "search",
+   "query_sha": "c116cc75f9a70a63"
+  },
+  "skill:log_clearing/security_log_cleared": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "15"
+   },
+   "control_total": 69,
+   "kind": "search",
+   "query_sha": "38005ab2cd367e8d"
+  },
+  "skill:log_clearing/surviving_artifacts": {
+   "case_total": 810548,
+   "control_buckets": 3,
+   "control_row": {
+    "family": "pecmd",
+    "file": "pecmd/prefetch.csv",
+    "file_sha256": "a9862b2851a0a092597c6425246a273f9f24b9324cd3bd9819716de4424abde4",
+    "line": "2"
+   },
+   "control_total": 989081,
+   "kind": "aggregate",
+   "query_sha": "de51440ab880ab1b"
+  },
+  "skill:log_clearing/sysmon_tamper": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "511"
+   },
+   "control_total": 7,
+   "kind": "search",
+   "query_sha": "fd1e2c1b671f2091"
+  },
+  "skill:log_clearing/system_log_cleared": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "2"
+   },
+   "control_total": 97,
+   "kind": "search",
+   "query_sha": "3f97f88b0dc032b9"
+  },
+  "skill:log_clearing/usn_journal_delete": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "9e0c755bd9a024f2"
+  },
+  "skill:log_clearing/wevtutil_execution": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+    "file_sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+    "line": "4764"
+   },
+   "control_total": 14,
+   "kind": "search",
+   "query_sha": "669a0cee08e628c5"
+  },
+  "skill:lsass_credential_access/dump_file_artifacts": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2880"
+   },
+   "control_total": 4,
+   "kind": "search",
+   "query_sha": "66e7c99edf3c846c"
+  },
+  "skill:lsass_credential_access/dump_tool_execution": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "9707"
+   },
+   "control_total": 38,
+   "kind": "search",
+   "query_sha": "582d54ef6f72125f"
+  },
+  "skill:lsass_credential_access/protected_process_bypass": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "068771561afdf8f8"
+  },
+  "skill:lsass_credential_access/sec_lsass_handle": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2777"
+   },
+   "control_total": 10,
+   "kind": "search",
+   "query_sha": "4c82961875c7820e"
+  },
+  "skill:lsass_credential_access/sysmon_lsass_access": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "549"
+   },
+   "control_total": 31,
+   "kind": "search",
+   "query_sha": "b5b7effca294d901"
+  },
+  "skill:macos_forensics/launchd_persistence": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "2118b7d4ad7566ba"
+  },
+  "skill:macos_forensics/quarantine_and_gatekeeper": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "6de4813b60f787ed"
+  },
+  "skill:macos_forensics/tcc_privacy_abuse": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "57198cf1b50a8c74"
+  },
+  "skill:malware_analysis_triage/capa_capabilities": {
+   "case_total": 0,
+   "control_buckets": 3,
+   "control_row": {
+    "family": "capa",
+    "file": "capa/chainsaw-capa.json",
+    "file_sha256": "13d91034a07d8b53baf514a12095bc300805695e6c69b65f7be2be5c3ef2fc72",
+    "line": "1"
+   },
+   "control_total": 843,
+   "kind": "aggregate",
+   "query_sha": "4abc7914bc4c1e59"
+  },
+  "skill:malware_analysis_triage/yara_and_memory_scan": {
+   "case_total": 0,
+   "control_buckets": 0,
+   "control_row": {
+    "family": "yara",
+    "file": "yara/chrome.yar.txt",
+    "file_sha256": "e9d3514051b4256ebf88835be9442a57688aa491f6d1b90121416860db09bdfd",
+    "line": "1"
+   },
+   "control_total": 1,
+   "kind": "aggregate",
+   "query_sha": "1295e75517fddf1a"
+  },
+  "skill:memory_process_analysis/injection_classification": {
+   "case_total": 25,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "560a8edea814cacb"
+  },
+  "skill:memory_process_analysis/process_enumeration": {
+   "case_total": 90514,
+   "control_buckets": 0,
+   "control_row": {
+    "family": "vol",
+    "file": "vol/vol-cmdline.json",
+    "file_sha256": "369cef8687474ea2621a678f095902136f652acfcb6dab5d985ad41cefb24fe5",
+    "line": "2"
+   },
+   "control_total": 43826,
+   "kind": "aggregate",
+   "query_sha": "7965ee59e4285552"
+  },
+  "skill:memory_process_analysis/webshell_exec_chain": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "2235b6a7c44056f8"
+  },
+  "skill:mft_file_activity/alternate_data_streams": {
+   "case_total": 11899,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "9"
+   },
+   "control_total": 65638,
+   "kind": "search",
+   "query_sha": "5029a41bcfceb105"
+  },
+  "skill:mft_file_activity/deleted_metafiles": {
+   "case_total": 28,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "601137"
+   },
+   "control_total": 2,
+   "kind": "search",
+   "query_sha": "e117e1bf87839d64"
+  },
+  "skill:mft_file_activity/i30_slack_residue": {
+   "case_total": 0,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-i30/i30-2.csv",
+    "file_sha256": "380a8ac7b3f74bdfa17cc73f55500744c9740d6b67b6f11a8cac875bd86a8623",
+    "line": "19"
+   },
+   "control_total": 163,
+   "kind": "search",
+   "query_sha": "db9a80af0103c8a8"
+  },
+  "skill:mft_file_activity/logfile_detail": {
+   "case_total": 1242657,
+   "control_buckets": 0,
+   "control_total": 0,
+   "kind": "aggregate",
+   "query_sha": "be86ed8a95486205"
+  },
+  "skill:mft_file_activity/mft_records": {
+   "case_total": 794304,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-usn/usn.csv",
+    "file_sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+    "line": "2"
+   },
+   "control_total": 987735,
+   "kind": "aggregate",
+   "query_sha": "622b9ef3ac33edec"
+  },
+  "skill:mft_file_activity/timestomp_si_fn": {
+   "case_total": 682,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "41245"
+   },
+   "control_total": 1788,
+   "kind": "search",
+   "query_sha": "39b97cd4ef4eae44"
+  },
+  "skill:mft_file_activity/usn_change_reasons": {
+   "case_total": 365943,
+   "control_buckets": 30,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-usn/usn.csv",
+    "file_sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+    "line": "2"
+   },
+   "control_total": 385368,
+   "kind": "aggregate",
+   "query_sha": "a1ef08c39307cca2"
+  },
+  "skill:network_session_analysis/dns_tunnel_volume": {
+   "case_total": 0,
+   "control_buckets": 0,
+   "control_total": 0,
+   "kind": "aggregate",
+   "query_sha": "ea3214dbf8c65ef8"
+  },
+  "skill:network_session_analysis/lateral_flows": {
+   "case_total": 0,
+   "control_row": {
+    "family": "nfdump",
+    "file": "nfdump/nfdump.csv",
+    "file_sha256": "0c4996fd9e2ca85a382546d56591a4b164e44c471f733479e52021ecedb58b31",
+    "line": "6"
+   },
+   "control_total": 17,
+   "kind": "search",
+   "query_sha": "b9c06e52b2cffc67"
+  },
+  "skill:network_session_analysis/session_inventory": {
+   "case_total": 0,
+   "control_buckets": 200,
+   "control_row": {
+    "family": "wireshark",
+    "file": "ingest/artifacts.jsonl",
+    "file_sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+    "line": "70752"
+   },
+   "control_total": 14243,
+   "kind": "aggregate",
+   "query_sha": "d4d8a19e231f8b2c"
+  },
+  "skill:persistence/dll_hijack": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "fb782ddc34aa1cdb"
+  },
+  "skill:persistence/image_file_execution_options": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "168"
+   },
+   "control_total": 12,
+   "kind": "search",
+   "query_sha": "c03588472a391dbe"
+  },
+  "skill:persistence/new_services": {
+   "case_total": 2196,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "43174"
+   },
+   "control_total": 379,
+   "kind": "search",
+   "query_sha": "ee5d88e6c7cd87bd"
+  },
+  "skill:persistence/run_keys": {
+   "case_total": 28,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "32"
+   },
+   "control_total": 13,
+   "kind": "search",
+   "query_sha": "8d339e09fdc8c860"
+  },
+  "skill:persistence/scheduled_tasks": {
+   "case_total": 11088,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2712"
+   },
+   "control_total": 14,
+   "kind": "search",
+   "query_sha": "9c6fd11d90ec5d46"
+  },
+  "skill:persistence/startup_folder_lnk": {
+   "case_total": 65,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "46"
+   },
+   "control_total": 8,
+   "kind": "search",
+   "query_sha": "46facb3d08a8f741"
+  },
+  "skill:persistence/wmi_subscription": {
+   "case_total": 32,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "492"
+   },
+   "control_total": 17,
+   "kind": "search",
+   "query_sha": "1c32f43550d096c9"
+  },
+  "skill:powershell_abuse/amsi_bypass": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "95b4a2260bbdd995"
+  },
+  "skill:powershell_abuse/download_cradles": {
+   "case_total": 267,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "9707"
+   },
+   "control_total": 37,
+   "kind": "search",
+   "query_sha": "a49400c0d42a0f83"
+  },
+  "skill:powershell_abuse/encoded_commands": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "9056"
+   },
+   "control_total": 65,
+   "kind": "search",
+   "query_sha": "b66ed85ef0d3dace"
+  },
+  "skill:powershell_abuse/powershell_downgrade": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/YamatoSecurity/20261016154149_EvtxECmd_Output.csv",
+    "file_sha256": "ab77251467e4d656421ec2018458416f260325ded6c23e336022a5d99a662218",
+    "line": "275"
+   },
+   "control_total": 1,
+   "kind": "search",
+   "query_sha": "95e70bb0a720bc27"
+  },
+  "skill:powershell_abuse/script_block_4104": {
+   "case_total": 9605,
+   "control_buckets": 18,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "230"
+   },
+   "control_total": 929,
+   "kind": "aggregate",
+   "query_sha": "6ffc9dfe597ab18c"
+  },
+  "skill:powershell_abuse/suspicious_modules": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "9707"
+   },
+   "control_total": 27,
+   "kind": "search",
+   "query_sha": "32cfd350709cc602"
+  },
+  "skill:powershell_abuse/transcription_artifacts": {
+   "case_total": 405,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd-usn/usn.csv",
+    "file_sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+    "line": "385246"
+   },
+   "control_total": 7,
+   "kind": "search",
+   "query_sha": "90e3a6a0168e51cb"
+  },
+  "skill:registry_artifact_analysis/comdlg32_mru": {
+   "case_total": 146,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "58b1de3a380792c5"
+  },
+  "skill:registry_artifact_analysis/hive_inventory": {
+   "case_total": 17482,
+   "control_buckets": 6,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-NTUSER-srlh.csv",
+    "file_sha256": "8102bfd105e70683c7ee5bb10328a5ad1479703dc4b68d8c471e08410dd8f8a0",
+    "line": "2"
+   },
+   "control_total": 6932,
+   "kind": "aggregate",
+   "query_sha": "976aa3239fc65dc2"
+  },
+  "skill:registry_artifact_analysis/installed_software": {
+   "case_total": 58,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-NTUSER-srlh.csv",
+    "file_sha256": "8102bfd105e70683c7ee5bb10328a5ad1479703dc4b68d8c471e08410dd8f8a0",
+    "line": "316"
+   },
+   "control_total": 54,
+   "kind": "search",
+   "query_sha": "c89db67d2586990e"
+  },
+  "skill:registry_artifact_analysis/recent_and_typed": {
+   "case_total": 631,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-NTUSER-srlh.csv",
+    "file_sha256": "8102bfd105e70683c7ee5bb10328a5ad1479703dc4b68d8c471e08410dd8f8a0",
+    "line": "3"
+   },
+   "control_total": 29,
+   "kind": "search",
+   "query_sha": "7938920172f91181"
+  },
+  "skill:registry_artifact_analysis/run_and_autostart": {
+   "case_total": 28,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-NTUSER-srlh.csv",
+    "file_sha256": "8102bfd105e70683c7ee5bb10328a5ad1479703dc4b68d8c471e08410dd8f8a0",
+    "line": "120"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "d86567ebb06f2fe6"
+  },
+  "skill:registry_artifact_analysis/sam_local_accounts": {
+   "case_total": 24,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-SAM.csv",
+    "file_sha256": "b7fa73f3336f0bd63e813e69e4954ae9b7e61351daa6a90acff26c1d1e68825e",
+    "line": "2"
+   },
+   "control_total": 25,
+   "kind": "search",
+   "query_sha": "b4ef55c8dfde7961"
+  },
+  "skill:registry_artifact_analysis/services_and_drivers": {
+   "case_total": 730,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-SYSTEM.csv",
+    "file_sha256": "4de108c9f32937615d31f3a0774dffde9256b6140545b41152ec00e87e2aef7a",
+    "line": "871"
+   },
+   "control_total": 734,
+   "kind": "search",
+   "query_sha": "c597e35a4b925e7c"
+  },
+  "skill:registry_artifact_analysis/shellbags_folder_views": {
+   "case_total": 446,
+   "control_buckets": 26,
+   "control_row": {
+    "family": "sbecmd",
+    "file": "sbecmd/Ganro_UsrClass_shellbags-srlh.csv",
+    "file_sha256": "3304b6609ec00227f7fdb050f12f0f51c908345cf0acbed35ab19264a601c2da",
+    "line": "2"
+   },
+   "control_total": 26,
+   "kind": "aggregate",
+   "query_sha": "6c4be7f87a2cb728"
+  },
+  "skill:sam_ntds_credential_theft/ntds_copy": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "563"
+   },
+   "control_total": 5,
+   "kind": "search",
+   "query_sha": "106f3241df1883ef"
+  },
+  "skill:sam_ntds_credential_theft/ntds_ifm_path": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "563"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "4066e7dd28d3f93f"
+  },
+  "skill:sam_ntds_credential_theft/replication_abuse": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2774"
+   },
+   "control_total": 6,
+   "kind": "search",
+   "query_sha": "b615792263f61717"
+  },
+  "skill:sam_ntds_credential_theft/sam_reg_export": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "155"
+   },
+   "control_total": 8,
+   "kind": "search",
+   "query_sha": "c507d27f1d5d2325"
+  },
+  "skill:sam_ntds_credential_theft/secretsdump_artifacts": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "e598ed62e24202e5"
+  },
+  "skill:sam_ntds_credential_theft/vss_shadow_copy": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "75"
+   },
+   "control_total": 17,
+   "kind": "search",
+   "query_sha": "08a67c247027a49d"
+  },
+  "skill:usb_device_intrusion/device_install_events": {
+   "case_total": 12,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "15595"
+   },
+   "control_total": 474,
+   "kind": "search",
+   "query_sha": "15b40da5c8a5c67b"
+  },
+  "skill:usb_device_intrusion/emdmgmt_volserial": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "68e09368332e44e3"
+  },
+  "skill:usb_device_intrusion/files_to_device": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "768377d587541773"
+  },
+  "skill:usb_device_intrusion/mounteddevices_guid_letter": {
+   "case_total": 5,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-SYSTEM.csv",
+    "file_sha256": "4de108c9f32937615d31f3a0774dffde9256b6140545b41152ec00e87e2aef7a",
+    "line": "795"
+   },
+   "control_total": 15,
+   "kind": "search",
+   "query_sha": "f16492c67e804832"
+  },
+  "skill:usb_device_intrusion/mountpoints2_user": {
+   "case_total": 16,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "36c57078559abd21"
+  },
+  "skill:usb_device_intrusion/setupapi_first_connect": {
+   "case_total": 144,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "66b99634c034d55a"
+  },
+  "skill:usb_device_intrusion/usbstor_serials": {
+   "case_total": 0,
+   "control_row": {
+    "family": "recmd",
+    "file": "recmd/recmd-SYSTEM.csv",
+    "file_sha256": "4de108c9f32937615d31f3a0774dffde9256b6140545b41152ec00e87e2aef7a",
+    "line": "766"
+   },
+   "control_total": 9,
+   "kind": "search",
+   "query_sha": "409aaa0d6a41b820"
+  },
+  "skill:usb_device_intrusion/vid_pid_device_class": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "6ca32dfc7cf96319"
+  },
+  "skill:usb_device_intrusion/volume_label": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "39dcc05722402fd7"
+  },
+  "skill:webshell_investigation/post_exploit_chain": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "5310"
+   },
+   "control_total": 1,
+   "kind": "search",
+   "query_sha": "838c8fb5ec4c21e9"
+  },
+  "skill:webshell_investigation/webroot_file_writes": {
+   "case_total": 0,
+   "control_total": 0,
+   "kind": "search",
+   "query_sha": "d75911de2b8f9fca"
+  },
+  "skill:webshell_investigation/worker_process_exec": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2802"
+   },
+   "control_total": 3,
+   "kind": "search",
+   "query_sha": "ab3f3464aedfe4d2"
+  },
+  "skill:windows_data_hiding/alternate_data_streams": {
+   "case_total": 11899,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "9"
+   },
+   "control_total": 65638,
+   "kind": "search",
+   "query_sha": "5029a41bcfceb105"
+  },
+  "skill:windows_data_hiding/recycle_bin_artifacts": {
+   "case_total": 15,
+   "control_row": {
+    "family": "rbcmd",
+    "file": "rbcmd/20260921222504_RBCmd_Output.csv",
+    "file_sha256": "d10f30bd5bda649ec7d33b006a8dd1e2fde3e50f8093f621615e3e344c2faa52",
+    "line": "2"
+   },
+   "control_total": 19,
+   "kind": "search",
+   "query_sha": "dbbedc6bb19b5147"
+  },
+  "skill:windows_data_hiding/shadow_copy_enumeration": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "75"
+   },
+   "control_total": 18,
+   "kind": "search",
+   "query_sha": "7ca2bbfa79d9a71d"
+  },
+  "skill:windows_data_hiding/timestomp_detection": {
+   "case_total": 682,
+   "control_row": {
+    "family": "mftecmd",
+    "file": "mftecmd/mft.csv",
+    "file_sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+    "line": "41245"
+   },
+   "control_total": 1788,
+   "kind": "search",
+   "query_sha": "39b97cd4ef4eae44"
+  },
+  "skill:windows_event_log_analysis/account_management": {
+   "case_total": 66,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "2292"
+   },
+   "control_total": 86,
+   "kind": "search",
+   "query_sha": "403d090b5d57e962"
+  },
+  "skill:windows_event_log_analysis/audit_tampering": {
+   "case_total": 0,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "2"
+   },
+   "control_total": 166,
+   "kind": "search",
+   "query_sha": "8eec35b43b3917c1"
+  },
+  "skill:windows_event_log_analysis/explicit_credentials": {
+   "case_total": 1349,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "5125"
+   },
+   "control_total": 345,
+   "kind": "aggregate",
+   "query_sha": "61922ba5ab1ba79c"
+  },
+  "skill:windows_event_log_analysis/kerberos_activity": {
+   "case_total": 32,
+   "control_buckets": 4,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "32787"
+   },
+   "control_total": 14457,
+   "kind": "aggregate",
+   "query_sha": "2f012629771d8829"
+  },
+  "skill:windows_event_log_analysis/logon_sessions": {
+   "case_total": 18817,
+   "control_buckets": 10,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "32002"
+   },
+   "control_total": 33612,
+   "kind": "aggregate",
+   "query_sha": "45a306731e842f74"
+  },
+  "skill:windows_event_log_analysis/process_creation": {
+   "case_total": 574,
+   "control_buckets": 50,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+    "file_sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+    "line": "7092"
+   },
+   "control_total": 11229,
+   "kind": "aggregate",
+   "query_sha": "8d849bd325e40eb2"
+  },
+  "skill:windows_event_log_analysis/share_access": {
+   "case_total": 142,
+   "control_buckets": 4,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2787"
+   },
+   "control_total": 3400,
+   "kind": "aggregate",
+   "query_sha": "8431c2fb04406df6"
+  },
+  "skill:windows_event_log_analysis/sysmon_core": {
+   "case_total": 0,
+   "control_buckets": 22,
+   "control_row": {
+    "family": "evtxecmd",
+    "file": "evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+    "file_sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+    "line": "2"
+   },
+   "control_total": 3414,
+   "kind": "aggregate",
+   "query_sha": "ae7879a6f41ac89a"
+  },
+  "skill:windows_event_log_analysis/task_and_service": {
+   "case_total": 2196,
+   "control_row": {
+    "family": "hayabusa",
+    "file": "hayabusa/evtx-timeline.csv",
+    "file_sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+    "line": "43174"
+   },
+   "control_total": 393,
+   "kind": "search",
+   "query_sha": "ef200c81511940ed"
+  }
+ },
+ "measure_case": "CASE-C5B04D31",
+ "summary": {
+  "errors": [],
+  "floods": [],
+  "items": 228,
+  "no_control": [
+   "skill:browser_artifact_analysis/thumbs_media",
+   "skill:c2_beaconing/cobalt_beacon",
+   "skill:c2_beaconing/dnscat_tunneling",
+   "skill:container_forensics/exec_and_escape",
+   "skill:lsass_credential_access/protected_process_bypass",
+   "skill:sam_ntds_credential_theft/secretsdump_artifacts",
+   "skill:defense_evasion/masquerading",
+   "skill:defense_evasion/etw_tamper",
+   "skill:defense_evasion/amsi_patch",
+   "skill:deleted_file_recovery/search_index_ghost",
+   "skill:deleted_file_recovery/secure_delete_tools",
+   "skill:discovery_recon/domain_enum",
+   "skill:discovery_recon/session_file_enum",
+   "skill:email_phishing/sender_authentication",
+   "skill:email_phishing/header_chain",
+   "skill:email_phishing/attachment_triage",
+   "skill:execution_anomaly/renamed_system_binary",
+   "skill:execution_artifact_analysis/amcache_lineage",
+   "skill:execution_artifact_analysis/pca_applaunch",
+   "skill:execution_artifact_analysis/muicache_gui",
+   "skill:exfiltration/ftp_exfil",
+   "skill:ics_ot_forensics/control_protocol_analysis",
+   "skill:impact_ransomware/crypto_process",
+   "skill:initial_access/lnk_artifacts",
+   "skill:lateral_movement/ual_client_access",
+   "skill:lnk_jumplist_analysis/lnk_execution_payload",
+   "skill:lnk_jumplist_analysis/jumplist_persistence",
+   "skill:log_clearing/usn_journal_delete",
+   "skill:macos_forensics/launchd_persistence",
+   "skill:macos_forensics/quarantine_and_gatekeeper",
+   "skill:macos_forensics/tcc_privacy_abuse",
+   "skill:memory_process_analysis/injection_classification",
+   "skill:memory_process_analysis/webshell_exec_chain",
+   "skill:mft_file_activity/logfile_detail",
+   "skill:network_session_analysis/dns_tunnel_volume",
+   "skill:persistence/dll_hijack",
+   "skill:powershell_abuse/amsi_bypass",
+   "skill:registry_artifact_analysis/comdlg32_mru",
+   "skill:usb_device_intrusion/vid_pid_device_class",
+   "skill:usb_device_intrusion/volume_label",
+   "skill:usb_device_intrusion/setupapi_first_connect",
+   "skill:usb_device_intrusion/mountpoints2_user",
+   "skill:usb_device_intrusion/emdmgmt_volserial",
+   "skill:usb_device_intrusion/files_to_device",
+   "skill:webshell_investigation/webroot_file_writes",
+   "analytic:ba-persist-task-script-host",
+   "analytic:ba-persist-task-hidden"
+  ],
+  "normalized": [],
+  "proved": 181
+ }
+}

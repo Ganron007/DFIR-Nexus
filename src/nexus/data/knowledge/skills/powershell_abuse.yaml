@@ -1,7 +1,7 @@
 skill: powershell_abuse
 title: PowerShell abuse — encoded commands, download cradles, script blocks
-description: Detect malicious PowerShell — encoded commands, download cradles, AMSI
-  bypass, suspicious script blocks, and shell profiles.
+description: Detect malicious PowerShell — encoded commands, download cradles, AMSI bypass, suspicious script blocks,
+  and shell profiles.
 trigger:
   families:
   - powershell
@@ -24,188 +24,726 @@ trigger:
 steps:
 - name: encoded_commands
   query: -enc OR -encodedcommand OR FromBase64String
-  look_for: powershell -enc/-e payloads — decode candidate; check for very long base64
-    strings in CommandLine.
+  look_for: powershell -enc/-e payloads — decode candidate; check for very long base64 strings in CommandLine.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0455
+    - attack:DET0378
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - ' -enc'
+      - ' -e '
+      - ' -ec '
+      - -EncodedCommand
+      - FromBase64String
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - FromBase64String
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*-enc*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*-encodedcommand*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*FromBase64String*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - powershell
-    - evtx
-    - sysmon
-    - prefetch
-    - hayabusa
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '* -enc*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '* -e *'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '* -ec *'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*-EncodedCommand*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*FromBase64String*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - wildcard:
+              ecs.winlog.event_data.ScriptBlockText.wc:
+                value: '*FromBase64String*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: download_cradles
-  query: DownloadString OR DownloadFile OR Invoke-WebRequest OR iwr OR curl.exe OR
-    wget
+  query: DownloadString OR DownloadFile OR Invoke-WebRequest OR iwr OR curl.exe OR wget
   look_for: Net.WebClient DownloadString / IEX cradle patterns.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0455
+    - attack:DET0060
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - DownloadString
+      - DownloadFile
+      - Invoke-WebRequest
+      - Net.WebClient
+      - Start-BitsTransfer
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - DownloadString
+      - DownloadFile
+      - Invoke-WebRequest
+      - Net.WebClient
+      - Start-BitsTransfer
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*DownloadString*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*DownloadFile*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*Invoke-WebRequest*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*iwr*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*curl.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*wget*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'curl.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*DownloadString*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*DownloadFile*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Invoke-WebRequest*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Net.WebClient*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Start-BitsTransfer*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*DownloadString*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*DownloadFile*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Invoke-WebRequest*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Net.WebClient*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Start-BitsTransfer*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: script_block_4104
   query: '4104'
-  look_for: PowerShell 4104 script-block logging — suspicious code content (invoke,
-    credential, bypass, amsi strings).
+  look_for: PowerShell 4104 script-block logging — suspicious code content (invoke, credential, bypass, amsi strings).
   pivot: ScriptBlockText
-  es:
-    term:
-      event_id: '4104'
   requires:
-    families: *id001
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-PowerShell/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4104'
+  source: PowerShell/Operational 4104
+  kind: aggregate
+  search:
+    basis:
+    - attack:DET0455
+    events:
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+  aggregate:
+    field: ecs.winlog.event_data.Path
+    size: 50
+  es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-PowerShell/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4104'
+  es_aggs:
+    by:
+      terms:
+        field: ecs.winlog.event_data.Path
+        size: 50
 - name: amsi_bypass
   query: amsiInitFailed OR amsi.dll OR AmsiUtils
   look_for: AMSI patch/bypass strings in script blocks or command lines.
   corroborate: subsequent suspicious 4104 content
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0455
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - amsiInitFailed
+      - AmsiUtils
+      - AmsiScanBuffer
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - amsiInitFailed
+      - AmsiUtils
+      - AmsiScanBuffer
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*amsiInitFailed*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*amsi.dll*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*AmsiUtils*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'
-  - 'amsi.dll: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'AmsiUtils: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*amsiInitFailed*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*AmsiUtils*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*AmsiScanBuffer*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*amsiInitFailed*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*AmsiUtils*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*AmsiScanBuffer*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: powershell_downgrade
   query: powershell -version 2 OR -Version 2.0
   look_for: -Version 2 downgrade (bypasses script-block logging).
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Windows PowerShell
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '400'
+  source: Windows PowerShell 400
+  search:
+    basis:
+    - attack:DET0455
+    events:
+    - channel: Windows PowerShell
+      codes:
+      - '400'
+    all:
+    - field: text
+      contains:
+      - EngineVersion=2.
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Windows PowerShell
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '400'
       - wildcard:
-          fields.command_line.kw:
-            value: '*powershell -version 2*'
+          text.wc:
+            value: '*EngineVersion=2.*'
             case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*-Version 2.0*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
 - name: suspicious_modules
   query: Invoke-Mimikatz OR PowerSploit OR PowerView OR Invoke-Expression
   look_for: Offensive framework/module names in script blocks or args.
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; PowerShell/Operational 4104
+  search:
+    basis:
+    - attack:DET0455
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    - channel: Microsoft-Windows-PowerShell/Operational
+      codes:
+      - '4104'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - Invoke-Mimikatz
+      - PowerSploit
+      - PowerView
+      - Invoke-Kerberoast
+      - Invoke-ShareFinder
+      - Get-NetDomain
+    - field: ecs.winlog.event_data.ScriptBlockText
+      contains:
+      - Invoke-Mimikatz
+      - PowerSploit
+      - PowerView
+      - Invoke-Kerberoast
+      - Invoke-ShareFinder
+      - Get-NetDomain
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*Invoke-Mimikatz*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*PowerSploit*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*PowerView*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Invoke-Expression*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'Invoke-Mimikatz: free phrase; the step''s pivot names no registry column'
-  - 'PowerSploit: free phrase; the step''s pivot names no registry column'
-  - 'PowerView: free phrase; the step''s pivot names no registry column'
-  - 'Invoke-Expression: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Invoke-Mimikatz*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*PowerSploit*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*PowerView*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Invoke-Kerberoast*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Invoke-ShareFinder*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*Get-NetDomain*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Invoke-Mimikatz*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*PowerSploit*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*PowerView*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Invoke-Kerberoast*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Invoke-ShareFinder*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.winlog.event_data.ScriptBlockText.wc:
+                    value: '*Get-NetDomain*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
 - name: transcription_artifacts
   query: transcript OR Start-Transcript OR .ps1
-  look_for: PowerShell transcription/console-history artifacts — ConsoleHost_history.txt
-    per user records interactive commands even when script-block logging is off; transcript
-    output files in user dirs capture full sessions.
+  look_for: PowerShell transcription/console-history artifacts — ConsoleHost_history.txt per user records interactive
+    commands even when script-block logging is off; transcript output files in user dirs capture full sessions.
   pivot: FileName
-  corroborate: history file content vs 4104 script blocks — gaps indicate disabled
-    logging
+  corroborate: history file content vs 4104 script blocks — gaps indicate disabled logging
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    any:
+    - field: ecs.file.name
+      is:
+      - ConsoleHost_history.txt
+    - field: ecs.file.name
+      startswith:
+      - PowerShell_transcript.
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*transcript*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Start-Transcript*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.ps1*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'transcript: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'Start-Transcript: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.ps1: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-negative: No encoded commands, cradles, or suspicious script blocks → PowerShell abuse
-  unlikely; check cmd/wscript/mshta/python instead.
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - bool:
+          should:
+          - term:
+              ecs.file.name:
+                value: ConsoleHost_history.txt
+                case_insensitive: true
+          - wildcard:
+              ecs.file.name.wc:
+                value: PowerShell_transcript.*
+                case_insensitive: true
+          minimum_should_match: 1
+negative: No encoded commands, cradles, or suspicious script blocks → PowerShell abuse unlikely; check cmd/wscript/mshta/python
+  instead.
 confidence_rules:
   high: encoded command + 4104 content showing download/exec + network artifact
   medium: suspicious script block without matching network evidence

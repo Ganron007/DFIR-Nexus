@@ -3,14 +3,14 @@
 A skill in this repo is a *method*: a trigger, a list of steps, a negative rule
 and caveats. Three things were missing for an examiner to trust it:
 
-* **A stored ES query per step.** Steps carried a free-text `query` only
-  (252 of 252), so a step could not be executed against the index and its result
-  could not be recorded. Each step now carries an `es:` (ES query JSON, built by
-  `devtools/knowledge/convert_to_es.py` under WO-KR2b, which keeps every
-  OR-alternative) and `validate_skill_dsl` proves every one validates against the
-  registry. The free-text `query` stays for display. **Mode 1's query syntax is
-  not a storage format** (backbone 4k.5.5): no reader in this module imports
-  `query_dsl`, and `dsl_for_step` is gone.
+* **A stored ES query per step.** Each search or aggregate step carries an `es:` (ES query JSON) compiled
+  from its authored `search:` by `devtools/knowledge/compile_skills.py` (IC-6, Part 9): the log source and
+  event codes it reads, cited from pinned sources, and the fields and values it matches, each step proved
+  on real rows (`devtools/knowledge/step-controls.json`). It also carries `source` (what it reads, in words)
+  and `es_source` (that source alone), so a seat is told whether the case holds the log a step needs. A
+  `procedure` step is an investigation order with no query. The free-text `query` stays as Mode 1's text
+  search. **Mode 1's query syntax is not a storage format** (backbone 4k.5.5): no reader in this module
+  imports `query_dsl`.
 * **A declaration of what the skill needs.** No skill declared `requires`
   (0 of 37), so a skill whose evidence was absent still presented itself as
   applicable. `derive_requires` computes `{families, lanes}` and
@@ -30,8 +30,10 @@ Citations: `citation_grade` classifies a skill's sources as `chunk`
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable
+from functools import lru_cache
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -134,6 +136,36 @@ def resolve_field(pivot: str, available: Iterable[str] | None = None) -> str:
         if hit:
             return hit
     return ""
+
+
+@lru_cache(maxsize=4096)
+def _source_rows(case_id: str, source_json: str) -> int | None:
+    try:
+        from nexus.langgraph.es_native import es_search
+
+        result = es_search(case_id, json.loads(source_json), size=1)
+    except Exception:  # noqa: BLE001 - no index: the case cannot say
+        return None
+    if result.get("error") or result.get("degraded"):
+        return None
+    try:
+        return int(result.get("total"))
+    except (TypeError, ValueError):
+        return None
+
+
+def step_source_present(step: dict[str, Any], case_id: str) -> bool | None:
+    """Whether the case's index holds the log a step reads (its `es_source`); None when it cannot say.
+
+    IC-6: a step's prose names its log source ("Sysmon EventID 10 on lsass.exe"). Shown to a seat on a case
+    with no Sysmon log, it primed a claim of Sysmon events the case does not hold (CASE-C5B04D31 run 4, 23
+    calls before the claim). The seat is told which steps' sources the case holds.
+    """
+    source = (step or {}).get("es_source")
+    if not isinstance(source, dict) or not source or not case_id:
+        return None
+    rows = _source_rows(str(case_id), json.dumps(source, sort_keys=True))
+    return None if rows is None else rows > 0
 
 
 def step_records(

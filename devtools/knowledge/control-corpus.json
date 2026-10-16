@@ -1,0 +1,2830 @@
+{
+ "case": "IC6-CONTROLS",
+ "evtx_source": {
+  "repo": "https://github.com/Yamato-Security/hayabusa-sample-evtx",
+  "commit": "0845333ecb4afcf64c55c6e10946383f168f308c",
+  "folders": [
+   "EVTX-ATTACK-SAMPLES",
+   "YamatoSecurity",
+   "DeepBlueCLI",
+   "EVTX-to-MITRE-Attack"
+  ]
+ },
+ "evtx_inputs": [
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/Malware/DE_timestomp_and_dll_sideloading_and_RunPersist.evtx",
+   "sha256": "ce94f2bd83c0adf2381afee0f3714b41aef4ae0997350b3aa039d7947865164c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/Malware/rundll32_cmd_schtask.evtx",
+   "sha256": "4ee3de8ac48d973a800666c3e1d757d11eaf9a960e7144db566bb51d903b4b09"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/Malware/rundll32_hollowing_wermgr_masquerading.evtx",
+   "sha256": "dd771b5c6f30a25886af418e0bb69ded8383c13a08f74e5602cc5878ed623b11"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/Malware/sideloading_injection_persistence_run_key.evtx",
+   "sha256": "7a58c4055659045dbdba8e8bc83252711455f0c4d54e2b963147ef9349822699"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/Malware/sideloading_uacbypass_rundll32_injection_c2.evtx",
+   "sha256": "ead8a4c6c822da22ac98c6f16123090f0eb30955666c63f9acaa0d51561925da"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/panache_sysmon_vs_EDRTestingScript.evtx",
+   "sha256": "9c1371a0632de15095b6ffe2e38991b764d4beaddb1722178e93aa476f83f52f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/PanacheSysmon_vs_AtomicRedTeam01.evtx",
+   "sha256": "6903dff9f218fa027c704c8c445b74e08b952c8d71be79bd0327f1e792d4aa01"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/AutomatedTestingTools/WinDefender_Events_1117_1116_AtomicRedTeam.evtx",
+   "sha256": "d7bebbe4a9bd6fdcfe53e019e7386a983f89c2fc7919fc51ecf249453ed60780"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Command and Control/bits_openvpn.evtx",
+   "sha256": "9dc80ef8dd521d443016559ee5b0e55837a59bfcc9d790b20b72c38a9eddc40e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Command and Control/DE_RDP_Tunnel_5156.evtx",
+   "sha256": "25853cab2d474dd52159d45e8c7b139c27b55767be558447ccbc6f494daec786"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Command and Control/DE_RDP_Tunneling_4624.evtx",
+   "sha256": "2668d3d7f0505ad453affcb9e2b7206617cf1ec1e5a212bd8f191eb8523c0ab1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Command and Control/DE_RDP_Tunneling_TerminalServices-RemoteConnectionManagerOperational_1149.evtx",
+   "sha256": "b9d6d1a3af56501120d1d6b4dbe3d1fc600d88844f255208b4eff0f1e250b00f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Command and Control/DE_sysmon-3-rdp-tun.evtx",
+   "sha256": "1d1eb55d1b7c785db26e19b0d50b9eb4a7928671e4edeb82ea5182cb834c874a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Command and Control/tunna_iis_rdp_smb_tunneling_sysmon_3.evtx",
+   "sha256": "d7e75b35f9db32c91dc0d066ee935b382253fb56659f19c05833c964f8217469"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/4794_DSRM_password_change_t1098.evtx",
+   "sha256": "6858de83024b72dff54d75b882103f760eaa85847831578abab78ab5c7f62061"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/ACL_ForcePwd_SPNAdd_User_Computer_Accounts.evtx",
+   "sha256": "f09f993909deb7acdae4c4f6f48e5a8447487e89437873fd8e653436a3dce36c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/babyshark_mimikatz_powershell.evtx",
+   "sha256": "3747c33a60a32142bf4e30bf023f155b2c0d6e7a018bce8b7bafbd5aa7ec109c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_4624_4625_LogonType2_LogonProc_chrome.evtx",
+   "sha256": "75f199b68d473172705bf874720b01820317fdd7aa4843545c98720dd6de197f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_chrome_firefox_opera_4663.evtx",
+   "sha256": "e23b74c463d1fba5c1ef44bcc5f386c56a17327a5b216118f6704cc30545cd8c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_DCSync_4662.evtx",
+   "sha256": "679b2ff27af6c932c07bf3e81391e455fae98e69bf3aff0f524e31aadc418131"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_hashdump_4663_4656_lsass_access.evtx",
+   "sha256": "05fc4e1cf2a55b2b0c1623e4404e42f281dc68e0f024503527d19f3c065d39ac"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_keefarce_keepass_credump.evtx",
+   "sha256": "101037366f9c300f3ec9397ab42b2b9ee35115c3da97b5725c52db04d6bc33b2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_keepass_KeeThief_Get-KeePassDatabaseKey.evtx",
+   "sha256": "da1c3fc77c5efdfd652201e2037f5c257ec4e48432900473491b9ca1c32bcf15"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_Mimikatz_Memssp_Default_Logs_Sysmon_11.evtx",
+   "sha256": "a5c52377c8a430fc4838fdc9b7c1638125b95c618d7efa930be0562124e0bfba"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_protectedstorage_5145_rpc_masterkey.evtx",
+   "sha256": "65931b695ed13ad1d0779342257b8e22b2cc30676d65a2610dc6a540701f7841"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_sysmon_hashdump_cmd_meterpreter.evtx",
+   "sha256": "897206ca4c3c427753fde880970048494cd5a99be9aaba6154b4e3ac499e24c9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/CA_teamviewer-dumper_sysmon_10.evtx",
+   "sha256": "53eaf99a0a50ad2b2b8b86535b6b5f5da30663d5f977a02eeb4e69d2438fa668"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/dc_applog_ntdsutil_dfir_325_326_327.evtx",
+   "sha256": "56b83f3f107ad9e02ecbcdc849930608f86cac1269d156c90e38326bc401a6ec"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/discovery_sysmon_1_iis_pwd_and_config_discovery_appcmd.evtx",
+   "sha256": "5388d3281a902a1f3cc087697589145b7de6abdbbc0dc716abd6a702c44bb106"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/kerberos_pwd_spray_4771.evtx",
+   "sha256": "4a0a1c7132e216dbc704c806e9429df9ae3ac00485d5238e50c776e3099ae11d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/LsassSilentProcessExit_process_exit_monitor_3001_lsass.evtx",
+   "sha256": "9a9467f92de5a4b49302800b8c1d4ca0a5f6b562e23aaaa36d87bae690888014"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/MSSQL_multiple_failed_logon_EventID_18456.evtx",
+   "sha256": "014e936e1b5bad13275d3c6f2e61cc6dc74c4514557b20264b27df06a08d6ee6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/phish_windows_credentials_powershell_scriptblockLog_4104.evtx",
+   "sha256": "177db8fa70262b4e2eba4e2902c97e82e3c6943fd111bde2ee522d5f1d57e856"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/Powershell_4104_MiniDumpWriteDump_Lsass.evtx",
+   "sha256": "54ff62eff26af588782e066b7b3b1b952bc83e1b75a84d81f9492e654cb5c319"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/ppl_bypass_ppldump_knowdll_hijack_sysmon_security.evtx",
+   "sha256": "9ac47a1ab7ac5e899dede49a4ea3512f0d3628edb9605981fe78bc0aec6f296f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/remote_pwd_reset_rpc_mimikatz_postzerologon_target_DC.evtx",
+   "sha256": "6a5d703c2838d568bdf0db3578dc3ddbb5de44c24839c5defd2c0545b49043e0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/remote_sam_registry_access_via_backup_operator_priv.evtx",
+   "sha256": "5eb397ece85fa13263685cb1d61ec6fdb768f2dc83d17e222f9d318f3703044f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/Sysmon13_MachineAccount_Password_Hash_Changed_via_LsarSetSecret.evtx",
+   "sha256": "f2e5df7f6929dcb0ab9c45f0c5f30488dfb167a56ee472fa2ae6bf52f610fa94"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon17_18_kekeo_tsssp_default_np.evtx",
+   "sha256": "5784342008a619ae910f88fe435bc30fc372399f14405c6265dbce8c9b578838"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_10_11_lsass_memdump.evtx",
+   "sha256": "915f0859251552b6c33efc32f6184d2c25419c5859852124a7f14ed6ec1a3723"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_10_11_outlfank_dumpert_and_andrewspecial_memdump.evtx",
+   "sha256": "f0d11bf8e186947aaf64c3a57debb1b665f518e2dab13acdaafb30c7e8d262af"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_10_1_memdump_comsvcs_minidump.evtx",
+   "sha256": "d1bf591cabf7d21f49936150bfaf433da7665211ba3fd00bc806f4912a6f96b4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_10_lsass_mimikatz_sekurlsa_logonpasswords.evtx",
+   "sha256": "9a1689574ed08c1fb18e7ff3f3bed612109aedcb7bf8efbf3537d756e669e96f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_13_keylogger_directx.evtx",
+   "sha256": "a3ca60a7b49d5a6900460431d4aad4f75e915b9baf8fc211878c2b7bcdac4b6b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/Sysmon_13_Local_Admin_Password_Changed.evtx",
+   "sha256": "821e5225b243dfcb44789b1904b7d9ae5ab7a458eeeb68b24af27ace1f477367"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_2x10_lsass_with_different_pid_RtlCreateProcessReflection.evtx",
+   "sha256": "7d160c1b636f8eb3642e9c2c15c941c136d9ecbf19116b18b19f981324d44e00"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_3_10_Invoke-Mimikatz_hosted_Github.evtx",
+   "sha256": "59c28ff11e4b9b329ee6b0859a5514f772913e95ef9ba8f94c46e02c4d78be17"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/sysmon_rdrleakdiag_lsass_dump.evtx",
+   "sha256": "17f010bff45a34212e5c5ff13ed1106274f65e3524fc508f7481db8aaeef0434"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/tutto_malseclogon.evtx",
+   "sha256": "7f8651fa3ed49bb02a0760e3b4124e08aa0579d580395ea1b1c8c24332fce092"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/Zerologon_CVE-2020-1472_DFIR_System_NetLogon_Error_EventID_5805.evtx",
+   "sha256": "519cdae51e2a3a3045ff3a3c61fc06576869deed23a81b9e45619f9521f6bc63"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/Zerologon_VoidSec_CVE-2020-1472_4626_LT3_Anonym_follwedby_4742_DC_Anony_DC.evtx",
+   "sha256": "7ea57911a3afea3777e503e69d30d91b635201df3e6f7f5bbffb1495791064e6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/apt10_jjs_sideloading_prochollowing_persist_as_service_sysmon_1_7_8_13.evtx",
+   "sha256": "a623b11315eacd9732da5ebeabdb7c72d0f641fdf0ec5d2ec43e360abd13837e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_104_system_log_cleared.evtx",
+   "sha256": "5579cdca073ee4864ea82d656aa2d25400b5c1e85b8e688db5d85f6dc558c2af"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_1102_security_log_cleared.evtx",
+   "sha256": "a0615707b547a2ac254688fd725c3c590f62440fc9b7947c2843dd40498a39e8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_BYOV_Zam64_CA_Memdump_sysmon_7_10.evtx",
+   "sha256": "329b2a8c70d43789e03bad581e971c4f84aeb2852c5a7c960fa57454225e5199"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_EventLog_Service_Crashed.evtx",
+   "sha256": "97637b9c858afe52cd644108b30f0aaaeea8837db900b06e40c00c9bc45a3963"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_Fake_ComputerAccount_4720.evtx",
+   "sha256": "8b0c2b1998bbd6292fbd23c2fbd954ed2a0db5ae38f39493e718262b215b4da9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/de_hiding_files_via_attrib_cmdlet.evtx",
+   "sha256": "8bb94aeb8ee163f9d7363382656057feed83c2a22abe25f04a36c61b78b80e8f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_KernelDebug_and_TestSigning_ON_Security_4826.evtx",
+   "sha256": "3fbd57015ffdacdb063535f1269782f9c7ac27da74b9c009ae50b636e3d3f836"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/de_portforward_netsh_rdp_sysmon_13_1.evtx",
+   "sha256": "9ca0c561593fbd30956437d566e51e5e913829ba2aec30c0d867d739d4b3f3f8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_Powershell_CLM_Disabled_Sysmon_12.evtx",
+   "sha256": "3eb77febe76db38146275927c57fa7fcb98394c2261858d957dabc90573ac7c0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/de_powershell_execpolicy_changed_sysmon_13.evtx",
+   "sha256": "da5765253da63f39373dd9f8df0ec9f7573acb6059c6b44f7d7b3ca83393f645"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_ProcessHerpaderping_Sysmon_11_10_1_7.evtx",
+   "sha256": "cafd901d6b6583a2441386ef6b42c380090270e91eb3431ec01a77ccb0e1c37f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/de_PsScriptBlockLogging_disabled_sysmon12_13.evtx",
+   "sha256": "aff2a84996514a6a3e6369de06c2d8edd8dcf4afc3e8e5c2c6fbc38431ef9084"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_remote_eventlog_svc_crash_byt3bl33d3r_sysmon_17_1_3.evtx",
+   "sha256": "aadfd6f526c9ce0b76381f8c7a047b0882fcd2a4640a733f9b4b90d68a34446b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_renamed_psexec_service_sysmon_17_18.evtx",
+   "sha256": "3b58311891bc80b239da102dec9c462d9c8d07c1f0ba5fedaf2c59e1e4447179"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_suspicious_remote_eventlog_svc_access_5145.evtx",
+   "sha256": "bd9b7712b67b16515f70fd5168142aca1f4cb88cdc1f51c08cf838e317cfdf59"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/de_sysmon_13_VBA_Security_AccessVBOM.evtx",
+   "sha256": "9045bbb928d944da7156b488cdc036d40961736a592bb1e6c496786fd02415c6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_UAC_Disabled_Sysmon_12_13.evtx",
+   "sha256": "06d462b8367cfc620bc84dbda970cf34bff761e02d9d6e1d33bc48f56bc66e6d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/de_unmanagedpowershell_psinject_sysmon_7_8_10.evtx",
+   "sha256": "13099e0dd75dd4222c289864902cb12d0c63777f689709a36531fae3e2e43c05"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_WinEventLogSvc_Crash_System_7036.evtx",
+   "sha256": "026f7df81fd1ac2b8c98678d340b05ffc330f8e944026ec75af48df00b1ce871"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DE_xp_cmdshell_enabled_MSSQL_EID_15457.evtx",
+   "sha256": "2ef4fa374e6ccc23efeb32d12ce38362673cc0afa2e986fcfd88f882480ec582"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/DSE_bypass_BYOV_TDL_dummydriver_sysmon_6_7_13.evtx",
+   "sha256": "1162521cb06986ddef24bff7c044b05d63f37ea8faeaa6acd8cc2529b05c7618"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/evasion_codeinj_odzhan_conhost_sysmon_10_1.evtx",
+   "sha256": "8034cbbcf25f2d33c9f92d518e29e4501ca2611c5396e15b4b2a60654315fd4b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/evasion_codeinj_odzhan_spoolsv_sysmon_10_1.evtx",
+   "sha256": "768feeb10b97df3903002d023efa4f83f5392a5dd80e10d609f0063d5353f291"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/faxhell_sysmon_7_1_18_3_bindshell_dllhijack.evtx",
+   "sha256": "844b8d7aa509fa95cd0734dcd09e16a76d9e3fed49b234ea954b7d94b5571a8c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/meterpreter_migrate_to_explorer_sysmon_8.evtx",
+   "sha256": "9e6fe88d33af7ebee4841098a639a04215b3d04cc8e0f1d4f6fa94212fe5d2fc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/process_suspend_sysmon_10_ga_800.evtx",
+   "sha256": "21ed5dc7b3e18d1280d6ff8f50d198d88294423c41aec0d790ba767adc798238"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/sideloading_wwlib_sysmon_7_1_11.evtx",
+   "sha256": "d6a2d4e6f886c7a5cf9c6734527e38c6f7bfe051283cc6d39084be1c713a743d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/Sysmon 7  Update Session Orchestrator Dll Hijack.evtx",
+   "sha256": "7a0c541506770e6ef05e327f600c7fc1d328676058214a0e3a6a82c7d7e8fcdf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/Sysmon 7 dllhijack_cdpsshims_CDPSvc.evtx",
+   "sha256": "95b499a8478cce0fa8eb579c236a5216c1ba8dff8d4b98f751b2d52edba67400"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/sysmon_10_1_ppid_spoofing.evtx",
+   "sha256": "74dda489578fc89d0d8b684126f1d913750da5b9aa30869afa5c054f06a4754e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/Sysmon_10_Evasion_Suspicious_NtOpenProcess_CallTrace.evtx",
+   "sha256": "90c5a7871a9f90bcf6fdea15fc6623aac5fe29c63282bdf00b8c1b687dac4e2c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/Sysmon_12_DE_AntiForensics_MRU_DeleteKey.evtx",
+   "sha256": "1eb4fc9d4fc6c4c36db7c4ec2ae5a6833e6cfb8d26e4c1f8d0653d5a78c533f3"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/sysmon_13_rdp_settings_tampering.evtx",
+   "sha256": "1a877ee743da4f3183e19f30f9d864f9c86bd119fb4c47fa849af5be04985944"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/sysmon_2_11_evasion_timestomp_MACE.evtx",
+   "sha256": "1fd461647854d19cf9c813a419ffc728522507777e76d7a32150e58e746d43d6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Defense Evasion/Win_4985_T1186_Process_Doppelganging.evtx",
+   "sha256": "ec2fe6bac8ecbc6e2bf5b253792f2cace2d4530af0152ba9f58dd446db193ae8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/4799_remote_local_groups_enumeration.evtx",
+   "sha256": "c998491414379a4cd7b2f2d6025b7e4c1d1e13e8c31c623368d32b7acebcf93f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/dicovery_4661_net_group_domain_admins_target.evtx",
+   "sha256": "3e1451e5d8845360044e11807219073a289c9183142a7032bbee2796d2577a37"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_bloodhound.evtx",
+   "sha256": "34f153b6384a6842fe4c635ec224f7551aef2c69b89267715413fd7d00690eb0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_enum_shares_target_sysmon_3_18.evtx",
+   "sha256": "c939a9aa65b2b262154571b6290234f559e2b22546ebfe5a57fb792f452f4198"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_local_user_or_group_windows_security_4799_4798.evtx",
+   "sha256": "dc2d739363f7ee4c27c429bcff0676e70d605b1f99198fd59433969dc455d65f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_meterpreter_ps_cmd_process_listing_sysmon_10.evtx",
+   "sha256": "4a2f88aee90d58fa58fd32a3c1bb31e76cdd1caa4a36f2cfb63b6aa045f60378"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_psloggedon.evtx",
+   "sha256": "aa2f3ad059952502d159ead3225a6dac6f2903d76f2ce8f503933deb46af7f07"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/Discovery_Remote_System_NamedPipes_Sysmon_18.evtx",
+   "sha256": "40d36563e61b022c7115b5723a796cb138b60eb61d85d9bcf8fc8dfdf0cf02f9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_sysmon_18_Invoke_UserHunter_NetSessionEnum_DC-srvsvc.evtx",
+   "sha256": "616a8eed6a0e0901679607659b9c71df38e4e99081ac8f8219113ae4330edf47"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_sysmon_3_Invoke_UserHunter_SourceMachine.evtx",
+   "sha256": "a743d37d41d7b88e85ff11baaa2050739fd68703a53ac94cc06df4a28a59ede4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Discovery/discovery_UEFI_Settings_rweverything_sysmon_6.evtx",
+   "sha256": "1f1903ca9c4a89b9e463c0c0de671da0862b0aa06af9145cfabd0255468b5eba"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/evasion_execution_imageload_wuauclt_lolbas.evtx",
+   "sha256": "6e2101b499829c9c7b273309821d63addd0a5020fd1069b29d9bd146586814e2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_driveby_cve-2018-15982_sysmon_1_10.evtx",
+   "sha256": "18c724eefbc80312cf0628e0cd1390c138c216c8b057c8a5e287f2bef2640727"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_msxsl_xsl_sysmon_1_7.evtx",
+   "sha256": "ddaec1c8c49cb3706e9daf184bbcb4c332ae4b148924908ef65acb621ca8e84a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_persist_rundll32_mshta_scheduledtask_sysmon_1_3_11.evtx",
+   "sha256": "fb5679aec77dc45a35902f705b513811dfea0f2f93c9c8503464a20270c3222f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_11_lolbin_rundll32_openurl_FileProtocolHandler.evtx",
+   "sha256": "11150ee64363501f5f5ca7ab359e696a6a7bb51a1c76f5fb182c38682a5e7a07"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_11_lolbin_rundll32_shdocvw_openurl.evtx",
+   "sha256": "a958cf481c4a9fb6e434dfdd6cad6974e577bad6716926b6ff5b6c6a2acce74c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_11_lolbin_rundll32_zipfldr_RouteTheCall.evtx",
+   "sha256": "03a43d28ce470db4b3a9e40bda8147a7fa254cbf3237ff2219c3c09e8ddb8847"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_7_jscript9_defense_evasion.evtx",
+   "sha256": "34588fcca4663a5abf9111b58860d8b0b2b8e0cf67acc61599874daa1edfcc4d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_ftp.evtx",
+   "sha256": "aadae0e31b5f2310284687062010251fdd9ed9b8e8d76be14b79896d05f970ef"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_lolbin_pcalua.evtx",
+   "sha256": "3d99ad191360bb22739ce0cbb87dc4d3646f9084d2e6f042fb570f39b0f97418"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_lolbin_renamed_regsvr32_scrobj.evtx",
+   "sha256": "4baa0bc603d1e8b50212e60931431c5c6f7bf35fcdedb80bf6ab1fc77907ec04"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_lolbin_rundll32_advpack_RegisterOCX.evtx",
+   "sha256": "6d5b52398a67b36c160ec22db8e027efbc3e40943075d2d79c748931bc8d9982"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_1_rundll32_pcwutl_LaunchApplication.evtx",
+   "sha256": "d5f8d2c619562d8dcfc6c68ee51131436e060d036447aae1e88c89518a191f9a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_sysmon_lobin_regsvr32_sct.evtx",
+   "sha256": "d6978888a7dead4523c01df417aa7ea6ad2599a5bbf1acd05d89882aac956442"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/Exec_sysmon_meterpreter_reversetcp_msipackage.evtx",
+   "sha256": "328ec1b4b6c531af991a2de2221900ec93db1853f7446f61c7e3c9bf9bf052e3"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/Exec_via_cpl_Application_Experience_EventID_17_ControlPanelApplet.evtx",
+   "sha256": "435da66e3edbb223208cdd31f2aff37ffb3037b091d728fa427d5067022fcc92"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/exec_wmic_xsl_internet_sysmon_3_1_11.evtx",
+   "sha256": "8b3448717a53b1c3e0dc4803b128da844f052bdd5c9d6afac99b69148e89ef94"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/execution_evasion_visual_studio_prebuild_event.evtx",
+   "sha256": "4faca379cd9e454539b922d56037003c9aaaf049185c9ddcad384f041cc74c3f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/revshell_cmd_svchost_sysmon_1.evtx",
+   "sha256": "08ce1feab22e30eb12a5a5b1ba4ac0aa552ff988b762d08de3a4d75ee1636abd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/rogue_msi_url_1040_1042.evtx",
+   "sha256": "3e4fff1443d6b63f1f575574555c62492f307bbbfd967551e5fe4d4c2141286e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/susp_explorer_exec.evtx",
+   "sha256": "e36ecc5634406fa5a8a898b3d0934a6c258891f27ccea97ba4972a81085b6af9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/susp_explorer_exec_root_cmdline_@rimpq_@CyberRaiju.evtx",
+   "sha256": "7ad60f106034ee3b3ea2614766dabb75bd03ef56431648fdfc56d0d83a87d86b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_11_1_lolbas_downldr_desktopimgdownldr.evtx",
+   "sha256": "f63ea09964ad1b6cc1d1dab6d8203a96f4eae71dd4cddc5408719afdc6e861af"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_1_11_rundll32_cpl_ostap.evtx",
+   "sha256": "3a343508ea71725bf118a85971840257bbba793d25336993cea73274743c3550"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/Sysmon_Exec_CompiledHTML.evtx",
+   "sha256": "c139f6920de2f2712137589196ab733d2566cd211e4f8dca62fd7f35a88fb21e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_exec_from_vss_persistence.evtx",
+   "sha256": "9abd2bd89115f77f79a96d0ffcc0b1cdb238d2c6d3edcaf24abddc50ee405964"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_lolbas_rundll32_zipfldr_routethecall_shell.evtx",
+   "sha256": "5f83c2a19819cf21098ff7047b52d5ece20303bb95332e4020660da6de9c6050"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_lolbin_bohops_vshadow_exec.evtx",
+   "sha256": "9cabd9accd1cad037ef7408bfddd9639f793665b73634833722b8cd842485fed"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/Sysmon_meterpreter_ReflectivePEInjection_to_notepad_.evtx",
+   "sha256": "872e959cb691d3e3d3a48068c02c7fb579c2d818a007fbd2831f6616bb8c7082"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_mshta_sharpshooter_stageless_meterpreter.evtx",
+   "sha256": "a2c396ac66aed02c0e36c6e467db3c3b83a57d003604ca79eb2a33175efcbad1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_vbs_sharpshooter_stageless_meterpreter.evtx",
+   "sha256": "57748248a6fbe68c36332acf603b537acce263a3c1b17f6a1cc5f635aaee7558"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/sysmon_zipexec.evtx",
+   "sha256": "4d995c2a339d3c272afd4ac8cf01f009ca5358bafe3fa51889b28f86296cd894"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/temp_scheduled_task_4698_4699.evtx",
+   "sha256": "a7decf0fbabc340e37de7e7c39fddd5398a7106a4f6acded0ea1d2ffa6bf8b70"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Execution/windows_bits_4_59_60_lolbas desktopimgdownldr.evtx",
+   "sha256": "0269326ab0e308192181a470bd588550d524e7cffd13a60373b29b24c32b1ead"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/DFIR_RDP_Client_TimeZone_RdpCoreTs_104_example.evtx",
+   "sha256": "b0d91162d7e3b211968ab9d797374a4576cc5cb233757e4f62776a60eb456e9d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/dfir_rdpsharp_target_RdpCoreTs_168_68_131.evtx",
+   "sha256": "daebe139e2647e9a5d887a7b9d8f6e023d3ca18a225e9e897746b04fd2c1af5c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/ImpersonateUser-via local Pass The Hash Sysmon and Security.evtx",
+   "sha256": "b3cdcbad24144417123becbc62d73d7954e832657d92f3a6b63e7b61291afede"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/lateral_movement_startup_3_11.evtx",
+   "sha256": "1ba7395ea70bcd250176771133eefaba0f1f19e5a4e60b9a17cbe8d81c34763d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_4624_mimikatz_sekurlsa_pth_source_machine.evtx",
+   "sha256": "bbfd87cacdd56a9135de1838666937cd6c74daba47b366bba0c11f95ce97f461"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_5145_4674_SVCCTL.evtx",
+   "sha256": "73cc971073dec8d74284a29ea49fa57240d386eaa8243a116896f6f6e09a9b71"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_5145_Remote_FileCopy.evtx",
+   "sha256": "3806a2b6662d82e13969939251539e10532bda11f10a5ed6c3565b9c0679907e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_add_new_namedpipe_tp_nullsession_registry_turla_like_ttp.evtx",
+   "sha256": "9ca45e8f1506d2bda35a9c10c3af95b1463672d9fffddbaca58d8dc03bb8636f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_DCOM_MSHTA_LethalHTA_Sysmon_3_1.evtx",
+   "sha256": "155cc5da10cb63a7fb69747c440796be17d1f4230ba24e7cb45423bdd9c368b6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_dcom_shwnd_shbrwnd_mmc20_failed_traces_system_10016.evtx",
+   "sha256": "aed4ec89526d0a5fe3427184664379fd243598f894b2da8cd4b75c3e6c616e57"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_ImageLoad_NFSH_Sysmon_7.evtx",
+   "sha256": "aca97ff41ccc3fb314e97ae5c9e0aa6adcaf97f0cfd4ce92ee3178ae76a50264"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_impacket_docmexec_mmc_sysmon_01.evtx",
+   "sha256": "6c50f3c7106080fb4e2535285d55435c325b651af7558e5e61a4fe82d80dbdce"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_NewShare_Added_Sysmon_12_13.evtx",
+   "sha256": "95ce1cefe507a1de70aa5cd987cee942ecdad4dd692cbedb435c58b2cd9fda00"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_PowershellRemoting_sysmon_1_wsmprovhost.evtx",
+   "sha256": "c890d2b67dc2902b2fa5a094e517674920911a15b273f43c674fbfaa69540658"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_regsvc_DirectoryServiceExtPt_Lsass_NTDS_AdamXpn.evtx",
+   "sha256": "c351c446c1aaa3e9cd70ee891ad7f0b135573e339d9e383f0a361c687b477fe5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_REMCOM_5145_TargetHost.evtx",
+   "sha256": "9f6fd1e395454108e2176448f31cc8354378075f51474756a1ed2418e9bbdae2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/lm_remote_registry_sysmon_1_13_3.evtx",
+   "sha256": "bde8db7a364e9fd3da953498690e5e6c81c7c915032ff98743074b91cb140824"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_Remote_Service01_5145_svcctl.evtx",
+   "sha256": "5c49c677d0fdce4402369c953e29065d93cc8a3f2071cb8ce997c25a60cd53cc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_Remote_Service02_7045.evtx",
+   "sha256": "af758eb492b6d5ab6665f7e4c44b31490f57be78c37dc0a8b1da714bb0d3d458"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_renamed_psexecsvc_5145.evtx",
+   "sha256": "38343c25834964a28a23cb9ad43e1d72c8ffbac0b21105877956e80e38465f4d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_ScheduledTask_ATSVC_target_host.evtx",
+   "sha256": "53999570b8edb7f909cb07165fecda1f29bf04e3462d13dc404e31f31a9ab932"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/lm_sysmon_18_remshell_over_namedpipe.evtx",
+   "sha256": "efdb2b2f2dd0864e82dabb693d38b44aea93e43c7df490ca3c94a4084da5c173"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_sysmon_1_12_13_3_tsclient_SharpRdp.evtx",
+   "sha256": "595bfaea747cb5a872eff12d637f6abc432d8e1a37be1dd7313a1c7e53b1008a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_sysmon_3_12_13_1_SharpRDP.evtx",
+   "sha256": "2c0aa9ea79dd513dee70daf1aeb5cb8d1ca5bad36c96929cb0a61db001d0f41a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_sysmon_3_DCOM_ShellBrowserWindow_ShellWindows.evtx",
+   "sha256": "be5cb186b8217f49f8e9531bd8ac6fc87ce4659ad5366bf73aa28ba36cdbec68"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_sysmon_psexec_smb_meterpreter.evtx",
+   "sha256": "18ffdda9c24e593d6b1414b6e05c7f7a5dbffb8588a387c165431b61ab52d76f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_sysmon_remote_task_src_powershell.evtx",
+   "sha256": "3b047a264a341faa16e33af4cbf4097f6db3aec75e5c87082f7b9551a3cc0e5b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_tsclient_startup_folder.evtx",
+   "sha256": "8ca6304cdbdde41b148cf9b25f1978e1eabb1e2253444ba3e8d01379b5ad3323"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_typical_IIS_webshell_sysmon_1_10_traces.evtx",
+   "sha256": "6f1cb3c435389d961261ccfbb2c4562b156d4160319fe4736ce1506a43327c7b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_winrm_exec_sysmon_1_winrshost.evtx",
+   "sha256": "7115c48511d18d934d1e63417b7b1d5d2b4fef903e716852b00ebc481ee5f2e9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_winrm_target_wrmlogs_91_wsmanShellStarted_poorLog.evtx",
+   "sha256": "e5d434f9ade9eafc12990d9826e7a92db801c1a138ab31dcb01f6fd172f3e42a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_WMI_4624_4688_TargetHost.evtx",
+   "sha256": "3ff3fcdb55c08ec0eaa39b25c1e02a205314f367bcedc662586bd063185ca41d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_wmi_PoisonHandler_Mr-Un1k0d3r_sysmon_1_13.evtx",
+   "sha256": "9d10de497c8d7929f262be305547d148bac17e1d4fd72222bfae3855ddf9c93a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_WMIC_4648_rpcss.evtx",
+   "sha256": "421b796a74d3b0bdeab65d5ff520dd825822809a4ed2d38b87c9393dbde43d3b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_wmiexec_impacket_sysmon_whoami.evtx",
+   "sha256": "21b8852b2b386f4d3f6f0c8a7304de8e628bb43cfa23888ab317b95b784ffe59"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/LM_xp_cmdshell_MSSQL_Events.evtx",
+   "sha256": "ef281c4f1068fecbcdeae001665a8fe8d8f8af17125274fa55e195e685d1dc89"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/MSSQL_15281_xp_cmdshell_exec_failed_attempt.evtx",
+   "sha256": "a39e30c118eb4da16994b0bc598a48b04258c63543f2163541ef0155e32d4341"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/net_share_drive_5142.evtx",
+   "sha256": "0498ba26c42ada5acd5dd8e2730432b59b9a6a6b294051fd20b4af7f435a7fce"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/powercat_revShell_sysmon_1_3.evtx",
+   "sha256": "914d90705f1f94e7cff9b8d074e9ed0fab4d35449bf1b18d9f37ea6afd3e84df"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/remote task update 4624 4702 same logonid.evtx",
+   "sha256": "82ef6ef9e7616c441e79059fcad9ea7b53358431769e924a0bba6408ecba5fce"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/remote_file_copy_system_proc_file_write_sysmon_11.evtx",
+   "sha256": "f03c8c5ff4114ef7baeba777d625a18f27edb4ce327f764cf6ed350b5f29c7bc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/RemotePowerShell_MS_Windows-Remote_Management_EventID_169.evtx",
+   "sha256": "d3305bdf01975538062f13a534fc1b6cf61ca23c8c13e04a1bc75f43e6f552eb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/sharprdp_sysmon_7_mstscax.dll.evtx",
+   "sha256": "e75cdf11d232a079606bd6fad30c0d13ccca98386268ef1fd1d76d6fc827e1b3"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/smb_bi_auth_conn_spoolsample.evtx",
+   "sha256": "588869dc910cca84331e371310ddcc7ab4012a0cdb9d8d2661a0109642de8f8b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/smbmap_upload_exec_sysmon.evtx",
+   "sha256": "21a69f9ea97e2a953c47fbb76a9a77682e128436c26ccf7445ae8012832e8def"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/spoolsample_5145.evtx",
+   "sha256": "265dd0eafc5a5d553da2469c96c4964a208d52191d079abb3ef4dda847238eda"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/sysmon_1_exec_via_sql_xpcmdshell.evtx",
+   "sha256": "79092a6f3c1beed9205fc24210f327c08b10cb50123e047f63f768c3e5bcef57"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Lateral Movement/wmi_remote_registry_sysmon.evtx",
+   "sha256": "2c8cb1ecaea860d599ae85397157eb8f3c0631a4bff949b576bcc007a78430de"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/APT28-CredentialStealer.evtx",
+   "sha256": "2f364365ca9daa093f0886698e8303dbbc50c15b7d815e6925393596b6e2300c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/emotet/exec_emotet_ps_4104.evtx",
+   "sha256": "c1639a23219f24f308e7001ffacb7e72ad6570154542adfbe5198c7c4abebd61"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/emotet/exec_emotet_ps_800_get-item.evtx",
+   "sha256": "ba6381380022037d657972a6146af844fc2c05bab247d56a605ca0148d59a8b9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/emotet/exec_emotet_ps_800_invoke-item.evtx",
+   "sha256": "6776429b2ac580b501ad591d9263d30482d58b4cb25445a03098b3d6f56e68df"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/emotet/exec_emotet_ps_800_new-item.evtx",
+   "sha256": "e65359ea8b2b9a2ea69c7f79bd8f3194e1a6570ce914a08c6249c823fa08ac6d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/emotet/exec_emotet_ps_800_new-object.evtx",
+   "sha256": "b7aac9e35e5a605652f8d02e901535e56c039cfb5d421d44e2c91d3439cac265"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/emotet/exec_emotet_sysmon_1.evtx",
+   "sha256": "5d7347a786943c3d4cd0e5d10e8941df3218ce6f3b473ed7a76ff89997c3b83b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/maldoc_mshta_via_shellbrowserwind_rundll32.evtx",
+   "sha256": "fd59102d39891a81ee0e002bec2a855998c57e6439a10608fd9f4b12861e34a5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Other/rdpcorets_148_mst120_bluekeep_rpdscan_full.evtx",
+   "sha256": "fdd890565a1c0e5a8efd2a554c18acf32d43852f328abde89edda0031e999b61"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/DACL_DCSync_Right_Powerview_ Add-DomainObjectAcl.evtx",
+   "sha256": "3acc52d1c27a22db5cf7def3c317caf1c2f44b9db837e676815f9fa233e5a314"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/evasion_persis_hidden_run_keyvalue_sysmon_13.evtx",
+   "sha256": "b8df8232d917fed223e2bf9abebb249489f84c6204c40b72dab6a74157d6f8bd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/Network_Service_Guest_added_to_admins_4732.evtx",
+   "sha256": "9619b9d9d7bb8a277080167ff639fd9162e3d88d61d674cf1606beadce17ea5a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persist_bitsadmin_Microsoft-Windows-Bits-Client-Operational.evtx",
+   "sha256": "c2ed1a0248ab716a863f52bbfbd04d215f919c7ecefdfe6778a383b5552fb4f7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persist_firefox_comhijack_sysmon_11_13_7_1.evtx",
+   "sha256": "5efdbe9d51c06538d20db3d132594326fbff8ac8b98c542805aaeb90779b9cde"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persist_turla_outlook_backdoor_comhijack.evtx",
+   "sha256": "1a066ced716a9580e28662dbfdc60f4446818281c387f4c7bc1acdd742186f1a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persist_valid_account_guest_rid_hijack.evtx",
+   "sha256": "5f482d8f769d13b4d90cdbfb114924fe3890e78eb1d0a619219e88a99a6f0f6e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_accessibility_features_osk_sysmon1.evtx",
+   "sha256": "9a99994be7f64e5111370cfd1f5f541a7a5e8a1e31911b14e0881811f6ea2925"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_hidden_local_account_sysmon.evtx",
+   "sha256": "c472b0b7808c310b910af5e099ac7bcbf803adfd68d4edb56c73bf01e9c4bb8c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_pendingGPO_sysmon_13.evtx",
+   "sha256": "cf9b918ac583028815e8ca5a547265221f745a92e5d093e759e5b00958db538b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_security_dcshadow_4742.evtx",
+   "sha256": "524c34f83dd4dd1091100222caaf36e92aa3eaaf974f7aa0c07ad97aefcdcb66"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/Persistence_Shime_Microsoft-Windows-Application-Experience_Program-Telemetry_500.evtx",
+   "sha256": "f13ef5a54ea84140024e30f968ac00e5ce4b4434426f66fafa4479b01d92832a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_SilentProcessExit_ImageHijack_sysmon_13_1.evtx",
+   "sha256": "37f5121b071db0333b19d81b676a5e31f63c99c6fd52f504f96659c927827e0d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_startup_UserShellStartup_Folder_Changed_sysmon_13.evtx",
+   "sha256": "4a6544a5b564fd84d299cea4c97e8f1c813f13ac0f5d24fa751f28c022b31801"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/persistence_sysmon_11_13_1_shime_appfix.evtx",
+   "sha256": "799420511f35300d3a071ca2c047d2edd49324d24544214a8124babe3fee9f90"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/Persistence_Winsock_Catalog Change EventId_1.evtx",
+   "sha256": "c53b6f9d958302626c3a7c217b77d49dc5e239210820c3448c60667a41325e3f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/sysmon_13_1_persistence_via_winlogon_shell.evtx",
+   "sha256": "78592aa982a478d1a65f56853bdf3817a3d5c79db3b1ca64642e1a2e16064423"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/sysmon_1_persist_bitsjob_SetNotifyCmdLine.evtx",
+   "sha256": "f2ac975c8dd1671a66ddbff5d9d59aa76f6577956d8c394970cbe11020837f78"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/sysmon_1_smss_child_proc_bootexecute_setupexecute.evtx",
+   "sha256": "29913aef999a1e4d8f6fad34025912a7585088c599feb808f741a0bcb0c5f417"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/sysmon_20_21_1_CommandLineEventConsumer.evtx",
+   "sha256": "136cd2549e4944e66c6f26aabafea84011ba011982ac1cf35cde7cb52d32b358"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/sysmon_local_account_creation_and_added_admingroup_12_13.evtx",
+   "sha256": "85851f4724cf490d26ec96f8f546ee07d8354a381e3f16f83afd4cfd46cbbb7c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Persistence/wmighost_sysmon_20_21_1.evtx",
+   "sha256": "687c5cbe9a912bd8688692489bd94bb91f0518e3008535469e4fc4e1adc59446"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/4624 LT3 AnonymousLogon Localhost - JuicyPotato.evtx",
+   "sha256": "b058ae02bbed96921cc0bb65088a3692b4ccd1c5b7aa65a318df353f09fcf6da"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/4765_sidhistory_add_t1178.evtx",
+   "sha256": "2e1aadc0097be6dc61803134c7fa8a4e0ddc33a2aa9c063f8a65cee3c14acade"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/CVE-2020-0796_SMBV3Ghost_LocalPrivEsc_Sysmon_3_1_10.evtx",
+   "sha256": "58c0e61d14c25300c9473b842cec25cb5fb1dd517adf9259f3c3460031a97c9a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/EfsPotato_sysmon_17_18_privesc_seimpersonate_to_system.evtx",
+   "sha256": "b90b44749a59f8b45827de083e3276d0635310077d51100f1110bf34e555bfc0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/eop_appcontainer_il_broker_filewrite.evtx",
+   "sha256": "3175fc1489e8ba07035396e8175b8b54a08e5fdc0bb58cafdb19a58dd70bfb58"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Invoke_TokenDuplication_UAC_Bypass4624.evtx",
+   "sha256": "8e8a735ccfa261b60607d907fb825dc231d067b8bd3da5a32cdabc810ca8abfe"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/NTLM2SelfRelay-med0x2e-security_4624_4688.evtx",
+   "sha256": "26fd9de9bc19b4af5308c30b51d2ca17b0518f8c89826fceb092c86a01f42b2b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/PrivEsc_CVE-2020-1313_Sysmon_13_UScheduler_Cmdline.evtx",
+   "sha256": "278c679da912063fdecc9475cf73a2751bc5576e4a8b644add46bd6c8b0af4b1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/PrivEsc_Imperson_NetSvc_to_Sys_Decoder_Sysmon_1_17_18.evtx",
+   "sha256": "498ce5682bd58d81edba3a704d82afe80ba9e7a0bbc1ba06b85c72c1f08563fc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_KrbRelayUp_windows_4624.evtx",
+   "sha256": "f8c7ee23333b228ba05bbae43f410ae9d92244ea6531c369a081e32205c0bc82"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/PrivEsc_NetSvc_SessionToken_Retrival_via_localSMB_Auth_5145.evtx",
+   "sha256": "2fe940895252a4faa77d036112862f964350adc00b1005dedca4a9a1e00b00d7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_registry_symlink_CVE-2020-1377.evtx",
+   "sha256": "f273b368f752e24ebdc4f84fb0896ea2d5b95cb4916e261e7e2af7ac63609a76"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_roguepotato_sysmon_17_18.evtx",
+   "sha256": "21bcc12aed93c390545c1b07005a681e1c9e9dbe5d47983c273518456855595d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_rotten_potato_from_webshell_metasploit_sysmon_1_8_3.evtx",
+   "sha256": "03d1d202bdf50f7290da06e816ddf9535705f90acebbb0ccae7d2e62dcbf6699"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_seimpersonate_tosys_spoolsv_sysmon_17_18.evtx",
+   "sha256": "868533829b979d925c0f4a488a6380bcb85d939a3ad2b1196be5335c38265cf7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/PrivEsc_SeImpersonatePriv_enabled_back_for_upnp_localsvc_4698.evtx",
+   "sha256": "d6840c8618b24ef671a9810daad60cbd1e12dafe35fba300f5bc54d71a94156a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_spoolfool_mahdihtm_sysmon_1_11_7_13.evtx",
+   "sha256": "9457cdfd5159e9b25185352a66f9ec1d14cc84f1780ea282e47c5653c28fad58"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_spoolsv_spl_file_write_sysmon11.evtx",
+   "sha256": "44c56f76471969f91b4df8f00d3ed087536c99924141b7cd9bdc031e67b5dd3d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_sysmon_cve_20201030_spooler.evtx",
+   "sha256": "c220b523b3b788bc593208622058bd54c634005b104aeaf5f177a35aea1e8312"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privesc_unquoted_svc_sysmon_1_11.evtx",
+   "sha256": "5b3bd618ff215254db994f223f1700082dbb1f339a651e1c89ae41d857edbcc2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/privexchange_dirkjan.evtx",
+   "sha256": "321c68c4f41b47c69f8cf050c572a27be77ee1818716c5d79d746d1c805901ad"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/RogueWinRM.evtx",
+   "sha256": "9b650416ac195034dd0e22b7152de9326828c2587a4a52baf60ed83f2b4e9a7f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Runas_4624_4648_Webshell_CreateProcessAsUserA.evtx",
+   "sha256": "23dc9b1713896d35c98834101846985453161631045b3b96e1c363800ad686d7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/samaccount_spoofing_CVE-2021-42287_CVE-2021-42278_DC_securitylogs.evtx",
+   "sha256": "d3cf4940a0400a615e7e848a16de8d957bd12ccb99f7c9ce247b17a72a55d212"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/security_4624_4673_token_manip.evtx",
+   "sha256": "2546b08851204db18c8f60722dcbb406356b323fbcd790774949e8a0168cc4e7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_11_1_15_WScriptBypassUAC.evtx",
+   "sha256": "48f65d146e64c9c58a4774d03ba83aa120c307e52a0a1d21975fb225125abbff"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_11_1_7_uacbypass_cliconfg.evtx",
+   "sha256": "08d994196edc3477b7e860bf5ef97173daa1d82f3132759fe78db96c80383c20"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_11_7_1_uacbypass_windirectory_mocking.evtx",
+   "sha256": "d75d688bd1df279d32b75aab51a162465d3351c5aae1f7386ad8d4c8dc86528a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_13_1_12_11_perfmonUACBypass.evtx",
+   "sha256": "7a0312bce23cc20e719ffc6ca2cf62ec2b8a9a3f67d0048d7e16a6bdbf134092"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_13_1_compmgmtlauncherUACBypass.evtx",
+   "sha256": "2bf934cb66f81fd5abfa5b32c7a50159184c260401e09407513bdb59066e2e93"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_13_1_meterpreter_getsystem_NamedPipeImpersonation.evtx",
+   "sha256": "9e1fbb0604db5e559c1f65d51b85c35625f6a43d071598f161dd32f70d597722"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_13_1_UAC_Bypass_EventVwrBypass.evtx",
+   "sha256": "d4abc83c9668060532b20ada82a2dfc8fd9b106be0eaea539c9d75dc7d8c8043"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_13_1_UACBypass_SDCLTBypass.evtx",
+   "sha256": "343bf81c3dbf508432ba4b2eb2fceef7cb59653417d3e209ffb7cbd2fa485050"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_11_exec_as_system_via_schedtask.evtx",
+   "sha256": "6b2ae54c6e3926f62101c2f8f85e7003869de534af1b17d309a0a84298e70edd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_13_11_cmstp_ini_uacbypass.evtx",
+   "sha256": "6a49ee4d01b15f45c72f242655595613ee06eb5797488d6de7b25b7a1dca85a1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_13_UACBypass_AppPath_Control.evtx",
+   "sha256": "8296ad4d09de6d796da8b7dc27aea2f44b261ee12b6a54ef83e2a805cd5b8b87"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_7_11_mcx2prov_uacbypass.evtx",
+   "sha256": "2a6fdd4c4c3b650cf267f02ee87a2cac27362054d37b1834ca92aadbe0b21854"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_7_11_migwiz.evtx",
+   "sha256": "83b13ff4ae16dfaa212229c672e4bcc16a3b6ab39c96bcd46a376bb99229dc9d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_7_11_sysprep_uacbypass.evtx",
+   "sha256": "230e09d306b1ab52ec5502b8768042a13f375449012485f3bac9191ccffe0c25"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_1_7_elevate_uacbypass_sysprep.evtx",
+   "sha256": "199b9686cf89e3b6b9e00330c2b707a1de99eafc908992252d2266a25594de76"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_privesc_from_admin_to_system_handle_inheritance.evtx",
+   "sha256": "0e6a64e50207a8772b413dc4cc66c02def3c2d070c923a1faa9d4ad4c5c73ab5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_privesc_psexec_dwell.evtx",
+   "sha256": "a79a14dcaac146c06c4d3dc3eb5a6ca1eaf62c93d65f47699a2aa5e88e436223"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/sysmon_uacbypass_CDSSync_schtask_hijack_byeintegrity5.evtx",
+   "sha256": "6265ba7f12b850cf2ebcee735ee24aa26b66e757f2cfa05759c58f0a4aedf83f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_22.evtx",
+   "sha256": "45f90c35f977592fa8a5fd5205e73fade980d633bae219dfaeb65de8a27ba18c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_23.evtx",
+   "sha256": "c742e7767e11e4810cbbe77f53d04e855241b85b1df30c954e9210e50b5ba772"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_30.evtx",
+   "sha256": "044ee159b0b9617086c74ed6ef183353496573a952be079b2644018af2a4bd04"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_32.evtx",
+   "sha256": "3729a7b639782b909b22c3b4ccaacbf1f7acaf8311221cb7976c3e12d863cfbc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_33.evtx",
+   "sha256": "369fe7264d8d343659fb8ef0cbf9a9cc2dfff06958e2dd173dfb7ecb8d9093fd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_34.evtx",
+   "sha256": "d3b277e1165eec22392054022ed239d68adfcd654b663076fec062e20c8ea336"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_36_FileCreate.evtx",
+   "sha256": "a84ee8dd4a45fcca42d0af62a6bcd1817c09baee8e4211a24dd1484f4c1eb4eb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_37_FileCreate.evtx",
+   "sha256": "0b3893de16d5b7bf94337a08706a0b158965ab9aa6e20a0dd968883f96d0e1db"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_38.evtx",
+   "sha256": "42075b5afd438fbeee2b87ebb085558350c4a3d40d1b5677a3aba10a81d6a522"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_39.evtx",
+   "sha256": "85c32ce26cbd8bf03c44b26d4a913188b38890ed40b8ab855b1f5ccbed703b66"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_41.evtx",
+   "sha256": "10607601e5ab7476fa8920ca63ace9f29ccbe79279e1731436b9d009f36ba2f0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_43.evtx",
+   "sha256": "47bdaa367dfadf39d6b55587f38c488642836305d593aa6452e6ac51bb88ad3c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_45.evtx",
+   "sha256": "aae67b99a0b4103513bb678f9d3d5222a402a5e202d8d3fb1c6bcf085c7548fd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_53.evtx",
+   "sha256": "3a6f512f47e00da769d1076fe0367c15f3f787a79cdc8909b74e04f002d3e0f9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_54.evtx",
+   "sha256": "90fa9a2b3bdd8414df20846634badf9d6a50882db92caa8b7a163aef6d6aafe1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_56.evtx",
+   "sha256": "a1f83d4189384d95693bb33ffe90f09b82d0a9ff7219bf37b51727d667be54af"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_uacme_58.evtx",
+   "sha256": "40e37fb256e29dd27df7741da1443df59a688d47c295b0855cddc37a78398ffb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_63.evtx",
+   "sha256": "5cbfc3e5c3dfe38ae5c121b2de344229e73e5abb32deba6bf402e6d844b7bf72"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/Sysmon_UACME_64.evtx",
+   "sha256": "b1a47437b3095b0660f069d107800427279c07448a4a470ad7c6c7ca2e27bced"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/System_7045_namedpipe_privesc.evtx",
+   "sha256": "21a62694861beff246ea9fb357b908541b4acefaefdb7ecd6281b64df96cb187"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/UACME_59_Sysmon.evtx",
+   "sha256": "1de3775180143fd5d956bae48f572367534ae8c10f6ffbe98dd4b4e0e47e0fa1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/UACME_61_Changepk.evtx",
+   "sha256": "65fe36818330f6e07731e2efed639091fce4bf836673832e4b6e6092b00ffae3"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Privilege Escalation/win10_4703_SeDebugPrivilege_enabled.evtx",
+   "sha256": "df34b4db3dae36c7bc4ae807782e72af0097491674247405b5f71adaa119a4c5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/UACME_59_Sysmon.evtx",
+   "sha256": "1de3775180143fd5d956bae48f572367534ae8c10f6ffbe98dd4b4e0e47e0fa1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/CredentialAccess/T1558.003_StealOrForgeKerberosTicketsKerberoasting_Security.evtx",
+   "sha256": "957d0c301baad9e6936683b7aa727d23ca7fb6434eaea786794dae528ecffbe9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/CredentialAccess/T1558.004_StealOrForgeKerberosTicketsAS-REP-Roasting_Security.evtx",
+   "sha256": "56daf2609c5283b02ae13df2cff588f3f51f844f65339a938adbd237efc45d0d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/DefenseEvasion/T1027.004_ObfuscatedFilesOrInformationCompileAfterDelivery_Sysmon.evtx",
+   "sha256": "85c0bf97dbffafb9c9e45b58457d3c43af4a489b9c4a29b06fb74c30f87a0e80"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/DefenseEvasion/T1218.004_SignedBinaryProxyExecutionInstallUtil_Sysmon.evtx",
+   "sha256": "351027606b81e6a9c46b42a407af1bc0d38ff550dcdb3d6940c4c26a0e1d8725"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/ImpairDefenses/T1562.010_DowngradeAttack_PowerShell.evtx",
+   "sha256": "3948b0d598f1d24a098933a330d00f4082ee9dc98d8e83dd1be1322a88fcba7a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/IntialAccess/ValidAccounts/ID21-25 RDP Logon Logoff Reconnect.evtx",
+   "sha256": "3ccf2ed6599201b0d407f0903d4ecdb0924f44d4631f057512ee9eb61789ed5d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/IntialAccess/ValidAccounts/ID302 RDS Gateway Logon Logoff.evtx",
+   "sha256": "d6bcfa16e91cf6b45a882826abd600836b32f124399185dfc795352747e1dcd9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/LateralMovement/T1210_Zerologon_Sysmon.evtx",
+   "sha256": "f3c4396e84fbcbe69d27b33ebdcb03caa7967fe9e3508700241a903b086ec1d3"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/LateralMovement/T1210_Zerologon_WindowsDefaultLogging.evtx",
+   "sha256": "cfc67286924c2194220ec23b4787fedc3cca6ca646c0e37bf2f672deb1661ebd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/LateralMovement/T1210_Zerologon_WindowsExtraLogging.evtx",
+   "sha256": "f3c02abbb64e58c614a5653d2521c036e9cbdabefa1e8176952b54bfb3a95fac"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/LateralMovement/T1563.002_RDP-Hijacking_Security.evtx",
+   "sha256": "ea906b54832f76a65b4d6a1af2ae8064d1ceec8b6c39653453dfa22ea08432d6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/Persistence/SharpEventPersistHiddenShellcode.evtx",
+   "sha256": "04cc0b8b7fe18d91ea1f2ee30814c64cbdeb76955928d2335cf300a2081443bb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/Persistence/T1197_BitsClient.evtx",
+   "sha256": "e0af6818dfcc19b2e059bd65d50ffe3692581c7bd1bd71a4bc5cba20755f8697"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/Sysmon/Sysmon-27-BlockExeWrite_AbusingCertutil.evtx",
+   "sha256": "4a6e0c25cd24048e60682aa4fa0d0be629ccd55859429532557be121aedfb72f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/Sysmon/Sysmon-27-BlockExeWrite_AbusingSvchost.evtx",
+   "sha256": "9d1c72bbd7540dac1f7f087d2a651487c08639c88a3674734ebb3192355451be"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/YamatoSecurity/Vulnerabilities/App_1_CVE-Detected.evtx",
+   "sha256": "70bdf411d3a95a160860e1db149827449fe08acd35afef4cf38d4fedc6ae99f1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/disablestop-eventlog.evtx",
+   "sha256": "7645e96c6d778f96d60ce2a6f209cc4202385c9d87cc077139921270a8e9bb23"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/eventlog-dac.evtx",
+   "sha256": "8aacbc5a4c249092bb09908b46754612c0760d469523fa9ab5ce02935537e2b1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/many-events-application.evtx",
+   "sha256": "358a6d18e110457a5fc70d32e88fb1ffb75a16f4616258d73e381c849a88bfcc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/many-events-security.evtx",
+   "sha256": "e1bb83d4583aaee2144f37afd8ce9b647ae7f34a636b85ce4a75683fba93f30e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/many-events-system.evtx",
+   "sha256": "cac38c40a0420f2d1c71f6dd13143edab1ead77b9bb4cf6e9cea34c9f3bcf3da"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/metasploit-psexec-native-target-security.evtx",
+   "sha256": "0c3547836951912d0645b7496f79424d383c2f8287a7159950931acc93e6376d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/metasploit-psexec-native-target-system.evtx",
+   "sha256": "a6f285b356850395b8171cb526d10d86adeeb2e74a3bfa3d8a2eae40d310b040"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/metasploit-psexec-powershell-target-security.evtx",
+   "sha256": "84a086d6d4afc2a0de2040518757ee99eb83550156b95719c936a16130c7e9fb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/metasploit-psexec-powershell-target-system.evtx",
+   "sha256": "971915aa6e7a508c4f0a2cb0e76882fd43234fa61c906dc33adf431efc8f2cd4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/metasploit-psexec-pwshpayload.evtx",
+   "sha256": "d6d86aac6f5ce402ec7df59b01afe8a0a5e7483dab52f2a30d4033913e4f1eaf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/mimikatz-privesc-hashdump.evtx",
+   "sha256": "ee2278c513a42eb58b896e3696fabb5b2ee84c7a12cfc323993b1dbd74c75f3b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/mimikatz-privilegedebug-tokenelevate-hashdump.evtx",
+   "sha256": "54cd56eb11a00bbaec200be00c1c161a6c6983a697128c9605691b63a9348fd4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/new-user-security.evtx",
+   "sha256": "6f9fe51d0a5dec63dc68f819e23bc14da5db0b75db4a68dfdf6b39f02868a379"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/password-spray.evtx",
+   "sha256": "de910e6c86476db2898d8b5f22201c7505a52c90d6a3b03f9362eebe8f242029"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/Powershell-Invoke-Obfuscation-encoding-menu.evtx",
+   "sha256": "b1d7c3411053a4190c93657265679958228b4bdb97652984c1564a67fcfab167"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/Powershell-Invoke-Obfuscation-many.evtx",
+   "sha256": "2fa243e52ab2bba2ad3bc7a1a14ea653a1508575e703c494cfc36e78c219a5ad"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/Powershell-Invoke-Obfuscation-string-menu.evtx",
+   "sha256": "32c7e1b5169f6f7c2c27aa1f9e7272d7eefba35ea13b469fb57234a17613c6ac"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/powersploit-security.evtx",
+   "sha256": "b9d805537ca768fcbed1ed765e61bee56e16d3c1baec65b12567e73d865fb8ae"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/powersploit-system.evtx",
+   "sha256": "d22f54beca194d8b95994d89c02e8ad7f97144b798e374937e41f5b238ac95ee"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/psattack-security.evtx",
+   "sha256": "2207cef54b911475c03ee268125b6290beedddae86bbd59ebca700cbb293f7c7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/smb-password-guessing-security.evtx",
+   "sha256": "19202585fe053e7b0acf43458dec26957c16a2ddb6f87a21f5f85e6cba98b89c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/Antivirus/ID1116-1117-Defender threat detected.evtx",
+   "sha256": "6b1cce6cbb972596ec9361de93163fc6173c52e0e7c23c890bd99f9f42928862"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/Antivirus/ID1151-Defender health status.evtx",
+   "sha256": "d82f06d31bcfcca406bff1ea9974bf834fdfd61d293f83664796978bcf42d00f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID11,13,17,18-PSexec as system execution.evtx",
+   "sha256": "2652560b4da35c983974408316b15a5932c6e69fa21a5193c769622874039886"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4624,4688,5140,5145-Eternal Romance - MS17_010_psexec (GLOBAL).evtx",
+   "sha256": "ef506d72d26cec8b8a24bd0b726d530bd9ec793cf855ff3c2338cbcd31c0efca"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4674,5142-Mimikatz print spool privileges requested.evtx",
+   "sha256": "01a103032a0e14ad6bfb999b00a155a5e5efd5e03d0c9cd129e0bbb6387dec4b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4674,6416 New external device connected (PrintNightmare).evtx",
+   "sha256": "f48d5e82587edf85822a30f6ca88c45dbdc23e51232d38f794032b2f1533f678"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4688,4698,4699,5145,4624-ATexec remote trask creation (GLOBAL).evtx",
+   "sha256": "befcc72aacc572fded5cb05f9022c00c9cf307044bebec66b5af8ae213a86752"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4688,5140,5145-WMIexec execution via SMB (GLOBAL).evtx",
+   "sha256": "a9ab5847280f06ecad7598ff54a02bd73330ef2d093619d78c20728deeba6060"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4720,4698-Fortinet APT group abuse on Windows.evtx",
+   "sha256": "ccf0e003e304a0bb110ea431fee63f2939ebeb636263a7853363cf161b63fbf7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID4742,4935,4662,4661,5137-DCshadow attack (GLOBAL) failed.evtx",
+   "sha256": "31bf4a9dee3a547d5e1af1dc3e7fe1d1817f23bd8b4a35ee106dd27998f83386"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID47x,4661-4662,5136,4688,4697-SAM the admin (CVE-2021-42287).evtx",
+   "sha256": "5b74f2c76c1e059930e07e078291058227db8f82463f5c64fa691ea92da1c7ac"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID5140-5145,4688,4697-Encrypted payload deployed with service over SMB (GLOBAL).evtx",
+   "sha256": "46b69b857cb1663e4f2096a62d15e6388ddad5aa9528413ca97cefc7a9809501"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/EVTX_full_APT_attack_steps/ID5145-4624-DonPAPI full extraction.evtx",
+   "sha256": "e489a9f9d47475f20a244460c1138f4ebe39d818d49ebf901d7850cc344da25e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0001-Initial access/T1078-Valid accounts/ID1149-RDP success logins to multiple hosts.evtx",
+   "sha256": "3cf3d18a4a905b33c03d9743775b504bf63de253928dc3c64268b4bec7540559"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0001-Initial access/T1078-Valid accounts/ID33205-SQL Server failed login with disabled SA account.evtx",
+   "sha256": "cc867ec32a3d1d8e00c2f2e1ff0ae487d7585485e9b59b236a82f60a4c6d2e10"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0001-Initial access/T1078-Valid accounts/ID4625-failed login with denied access due to account restriction.evtx",
+   "sha256": "06aec213c40fe5eece31c8958d3774381f28e2cd44b7e60f214217a344bc2574"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1047-Windows Management Instrumentation/ID1-WMI spwaning PowerShell process - WMImplant.evtx",
+   "sha256": "675dceaca12515dba1763378739f3dc40984d68f3f5892a2aa1dfbe3f1c31685"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1047-Windows Management Instrumentation/ID1-WMIexec process execution.evtx",
+   "sha256": "91c113522dc73779dce81c47aefe139c6a91bcb23a90943cdf0108ea3812dbe5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1047-Windows Management Instrumentation/ID3-7-10-Suspicious DLL loaded (CME+Mimikatz).evtx",
+   "sha256": "5da95d3f3956c4061db243ea8eaf58268961f3ae596de71c1261741881f89b87"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1047-Windows Management Instrumentation/ID4688-5145-WMIexec execution via SMB.evtx",
+   "sha256": "2f5f9cde468a826bf658a4183b4a0127bc655659400b9bddebff354a76d60ef7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1053.005-Scheduled Task/ID4688-4698 Persistent scheduled task with SYSTEM privileges creation.evtx",
+   "sha256": "6f00c7423da4ce91c6d3aa44dd81234cef24340c74e3209f78b5ce9395f0d90a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1053.005-Scheduled Task/ID4688-Interactive shell using AT schedule task.evtx",
+   "sha256": "b9a1f876bb51e41ac1573930ee5e444f0c1253af911cb7a19c4730ffe5616ccf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1053.005-Scheduled Task/ID4688-Scheduled task creation.evtx",
+   "sha256": "640fed5b01787f10e8b38019de16b21845548cc6e01b5b34a31417af47852e28"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1053.005-Scheduled Task/ID4698-4699-Fast created & deleted task by ATexec (susp. arg.).evtx",
+   "sha256": "4a456435b53e23e3ca62afd0dfbfc0314fed63f9ebb508a5ba862b2268126b52"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1053.005-Scheduled Task/ID4698-4699-Fast created & deleted task by SMBexec (sups. arg.).evtx",
+   "sha256": "807f38044bf60b28bd644c9a3dd76cb2ea4358e9ae507450f9760c8db85278e9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1053.005-Scheduled Task/ID5145-Remote schedule task creation (ATexec).evtx",
+   "sha256": "490de9486be13e1e1ed23d4b728ac4da4f7659135548f8940b86ebb41109ae53"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1059.001-PowerShell/ID4103-4104-Payload download via PowerShell.evtx",
+   "sha256": "76da739520ecfb51c0bc93a5856ff45c0cd5e038114826fee30790f92fce0fca"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1059.001-PowerShell/ID4688-Encoded PowerShell MSF payload via process execution.evtx",
+   "sha256": "dc7340a1b68e172f39ce378044a304df86539b43434d2cd6755f9cfdce855479"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1059.001-PowerShell/ID800-4103-Interactive PipeShell over named pipe (server and client).evtx",
+   "sha256": "58bcd0bfd02273891dc2d98f793cd1e237dfa89ae616cc91f8bdbfcd3df8ad5c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1059.003-Windows Command Shell/ID4688-SQL Server payload injectection for reverse shell (MSF).evtx",
+   "sha256": "84231774b7a674215a725cd2e94d1cfff857c2e553fdb923d8f26ddbda4d468f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1204-User execution/ID4688-Edge payload download via command.evtx",
+   "sha256": "cb0fb3cf62be55e0a5563cd9ab469032a3286a2afbbe598faea479ce9666fa7c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1569.002-Service execution/ID5145-remote service creation over SMB.evtx",
+   "sha256": "45257cbfc4f96d7ca53912113a5f00ef3ed54630ebc0edb0f13791d79d174a23"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1569.002-Service execution/ID5145-service massive remote creation via named pipe - Tchopper.evtx",
+   "sha256": "ba69288172186dbbd06233959af0c6b7e48886678ad0a3ca18ead0380537408a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1569.002-Service execution/ID7000,7009,7045-Payload deployed via service - Tchopper.evtx",
+   "sha256": "54706872a684b9103368ec7aa50f0a89ff55e2bed21045b8b53500357c564997"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0002-Execution/T1569.002-Service execution/ID7009-Service deployment time out (meterpreter).evtx",
+   "sha256": "277a833db50bf2c868cf2f43cc9da8c3ecfaf8cd4bf6577565922d15b1791df4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID33205-SQL Server member added to database role.evtx",
+   "sha256": "3b8bd59cebcd7b1ede14f879ea9beb720bfb62889bc1e85e0519c11e93d91e23"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID33205-SQL Server member added to server role.evtx",
+   "sha256": "cafe5b270e923411f26668fc85662f6586de8c90c8626faa111b1a0c22e70d8f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID33205-SQL Server user linked to a database.evtx",
+   "sha256": "f462021d3a0bb348df525613adf75a9152748209242188ca290133f69f0f60b0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4688-SPN added to an account.evtx",
+   "sha256": "adaa6f019ad5436d73f39604b7d93ef10df283654d1b4ed5720362293d4861ec"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4723-5145-password reset with changeNTLM (Mimikatz).evtx",
+   "sha256": "449eec522e39e951ccfbb881b314f847b66fc3eae703eacdec28e867cc46dec5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4724-5145-password reset with setNTLM (Mimikatz).evtx",
+   "sha256": "f51a807732d47d49b75a32bedc761f91f2a696edb9d7aa812698f9e278071161"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4728-4756-Member added to sensitive domain groups.evtx",
+   "sha256": "6361ef8442d1f299cc024f76563a81d0206e724248c5922eb1ed8e143b6086be"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4728-Massive account group membership change.evtx",
+   "sha256": "5566ef46e7ce52c0658edef9a871f4ea52becc887ac90d6a7e139779e780adc7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4728-Member adding to a group by the same account.evtx",
+   "sha256": "cd98ab1be964ce4f069f004f2b00040ee519d9f2aa5116c9cf59a64907922794"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4732-4733-Quick added-removed user from local group.evtx",
+   "sha256": "0a5fc9d60003d6b6e3b05782c2cd5bb9ea052b03d24f26809d9a5ecd6c2aff2f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4732-DNSadmin new member added.evtx",
+   "sha256": "5e40004161155a2209dd4632c04ee5007761e067871dcf9548ef503f881a3083"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4732-User added to local admin groups.evtx",
+   "sha256": "0d546fc62fb7fa69d9038c58ecff31eb65d3399dcfe955620cc42cb062e13f4a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738,5136-SPN set on user account.evtx",
+   "sha256": "98ea5f3920b8b91a529a461aab66c99dfe820eb3cf607bba3864643fba6d07ba"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-Account is sensitive and cannot be delegated.evtx",
+   "sha256": "8309eb0c1b44f6abfdd4103dcb0ec37141312a7290a53c9c06701990ddd89d97"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-Account with password not required.evtx",
+   "sha256": "d32ffa0d1bb32a77d0c7b0e8e0d605fc531ba42bab04edac4ddb4612f526464b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-Do not require Kerberos preauthentication.evtx",
+   "sha256": "7f1a623c4f1e35128a286278436decfcbb41d6958856d2f80f68d610780d6607"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-Password cannot be changed.evtx",
+   "sha256": "d3df8e36081433ef7d710e15328038a1cf68d193eee5d2f44b837bcd8a1e5d2d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-Password never expires.evtx",
+   "sha256": "efbcb791c816c032e62a2cf2783c47606660364c9f81045739e94a4fd2c0e0a8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-Use only Kerberos DES encryption types.evtx",
+   "sha256": "80220b97b939e742d1b9121546e1cb19840368c46725dc66c0d38d1342c1cd81"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4738-User set with reversible psw encryption.evtx",
+   "sha256": "dfa66e0e6d3b836d035a6215bcebaef46b618d36997fbda7f1e7b12fcb986957"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4742,5136-Enable Trust this computer for delegation (to any service, Kerberos only).evtx",
+   "sha256": "cae6c0cc7c32901534afc0d4e340d5542de28b3b1cea60b30ab07bdd0adffb12"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4742,5136-Enable Trust this computer for delegation (to specified service, any protocol).evtx",
+   "sha256": "2f76471c0dc497bed1822395e8f5a7f1aac46e935341c851f49b55e2d8276e97"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4742,5136-Enable Trust this computer for delegation (to specified service, Kerberos only).evtx",
+   "sha256": "a631465e1862388f763a5b521fc21162246b5b83b04a466977388ecdf48ae073"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4742,5136-SPN set on computer account.evtx",
+   "sha256": "d8673fc9f972db737b949861a8c1c7c17d754c6657bd1eb7109fd04197738bab"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4742-SPN set on computer account (DCshadow).evtx",
+   "sha256": "dc45bc4088ea338d1863af77aed6b15c6427064914cfa4a0ba6afc3e958b3eb7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4756-Exchange admin group change.evtx",
+   "sha256": "4da198ea66eb6c8e9a7202ab2fb9265610896a1f1959084c2ee8559e59db4faf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4781-4738-User renamed to admin or likely.evtx",
+   "sha256": "34a5c14106cc935fac6d87decc0593ac486bd8f9d5607caf2081f4878b71d497"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID4781-Computer account renamed without a trailing $ (CVE-2021-42278).evtx",
+   "sha256": "ca3ddde50c503a333a46e88a1d7b1c79d823b563e9319b25905e34119a575a91"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID5136-4662 AD object owner changed.evtx",
+   "sha256": "77ff853b9c6a064a9c4810cb2a3679b76e80ec4249697a12267fdc38207ff824"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1098.xxx-Account manipulation/ID5136-Computer account set for RBCD delegation.evtx",
+   "sha256": "6aad1aaaa2d51e5280feda0208e90b03675dd725d9f83f7f40cbaace9abb2ef2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID33205-SQL Server Disabled SA user activated.evtx",
+   "sha256": "f47bdfc264cc4ef2ccdf2c6cedf97147d92fe5508d93330e0e60503fcc546c2c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID33205-SQL Server local user created.evtx",
+   "sha256": "2b4751f4a6899c346fe7162c29b35a2df2002d12db5377623d79dac4e4233031"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4688-User creation via commandline.evtx",
+   "sha256": "a836c00074d50eb70f05af528e92258f8f31ad7113399936856e74c0303f2d17"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID472, 4728 Hidden user creation.evtx",
+   "sha256": "324222349afcf890de88a5153efda70f0d64b5d193eb7b8ceb39fd3f1e0dcf71"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4720-4726 Fast created-deleted user.evtx",
+   "sha256": "5faa1162426f39548515cf679e7d2e24f9da258bf8902f260be45c5a8b5d7388"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4720-Admin like user created.evtx",
+   "sha256": "787b83e46aa60143f57122ea94732f43b5fd72fa859334d56c620346c1a8127d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4720-Fake computer account created.evtx",
+   "sha256": "c4b2bd05cabfa58e8fd83aeaf67718e78c200159b74695a9c61460eeb053d95c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4720-Local user created.evtx",
+   "sha256": "72bcb609fd38db07ca8e7add09caf26ebfef806ecd433230e5723960948dbab3"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4722-Guest account activated.evtx",
+   "sha256": "d1213bad210e67e674cd450ec31e3be26fe24baf517dd4298c53ebf384cad715"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4741-Computer account created with privileges.evtx",
+   "sha256": "372c89986a01ad0e2645e849b574a237260668fc2660875945be4eaae6a604c1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1136-Create account/ID4742-4743-Fast created & deleted computer account.evtx",
+   "sha256": "934239a628c8814d4737868acd86f8fa23d2c8b73373ec632336ca95efea9c69"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1197-BITS jobs/ID3-59-60-BITS job created.evtx",
+   "sha256": "d7cf8dcf205e97693ecf259f31ecff56b2715bb891b5dd80ff9182e8eb6e8ce4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1197-BITS jobs/ID4688-BITS transfer initiated.evtx",
+   "sha256": "abe59259ed48b990ae9b15cfba006a5148ea2a93a09167120ffe5dcd88cb9b14"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1197-BITS jobs/ID60-High volume file downloaded with BITS.evtx",
+   "sha256": "c114e4e2bb77c3be2cf236cf53504d060b5f5fbe184cefbe7829b8f22f597211"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1197-BITS jobs/ID800-4103-4104-PowerShell BITS job started.evtx",
+   "sha256": "a92d473358a54f8f92b8302defe60fc6a61d2a81334dc78ad38d14ddb2aef1bf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505-Server Software Component/ID11-Exchange transport config modified.evtx",
+   "sha256": "db5ebd1a227fedab0e4ec59cd9075d0ace42408e9ee8d143a9ea25e102635c23"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505-Server Software Component/ID6-Failed to install an Exchange transport agent.evtx",
+   "sha256": "2aa11a77aed752bd3d1876b664c9c4a92ba5eeb94105238f5ccaf74e479cd6e4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505.001-SQL Stored Procedures/ID11715-SQL Server started in single mode for psw recovery.evtx",
+   "sha256": "96c54e78821c097d59b5710800c68a2ebc843d5c90332d7c8ff4a0f2f5df9102"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505.001-SQL Stored Procedures/ID15457-SQL server CLR lateral movement.evtx",
+   "sha256": "15718c39d1b4e2387422b93670507e8d42692340ce16c20d47fd1bd970330dbf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505.001-SQL Stored Procedures/ID15457-SQL Server CMDshell enabled.evtx",
+   "sha256": "1eb6b1cc6f778735e5509081ad47af16e4e3d7391dde98d75b16e1f78aedb3c0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505.001-SQL Stored Procedures/ID4688-SQL Server started in single mode for psw recovery.evtx",
+   "sha256": "1c935f07ef22a61c2c9620adaabcd1972b67c9edd4aa6d46c9f2a920610169f7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1505.001-SQL Stored Procedures/ID4688-sqlcmd tool abuse in SQL Server.evtx",
+   "sha256": "fd94955aef3d1262d09d380185df533d3be6d2a5ea5047c9bfc646c2b68e47dc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID13-New service for Mimikatz.evtx",
+   "sha256": "d37c9de58408beef8a729900b4209ecbd92ed48c1e9b5b0e6c678720e8ef2d13"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-4697 RDP hijack via service creation.evtx",
+   "sha256": "03806bfc2cfed95ab6a6ee28b9941ef1a9cc0599e69a036ab41936fc1b382537"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-Command SC to create service on remote host.evtx",
+   "sha256": "addde3a056ed0a35d3c0868858f87afacdc0ef359b8e1bd4b9b1860337b62703"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-Service abuse with Failure Command.evtx",
+   "sha256": "10028550b221a9330807ec6bf0616cbfe3b8ec96ce7109e9d4567789cd5cf323"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-Service abuse with malicious path.evtx",
+   "sha256": "dce1455bf833a1ce61ec3327378d96b1581a37fcf9916e126de6f923ca9bf534"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-Service created (command).evtx",
+   "sha256": "acc6db6290b267b0a44ae505a859cee7c8246030a0c5a4463be0d79e8686fc87"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-Service permissions modified (registry).evtx",
+   "sha256": "dac68adc6f4ab9a0fb110e2e692fd1f152560918dc1e68ad68e16cf302dd37d7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4688-Service permissions modified (sc).evtx",
+   "sha256": "56b05732ea52ed111ac594ce2072e7680c7b72fa2af2adc91a22b4d4b544a8d8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4697-MSF payload deployed via service.evtx",
+   "sha256": "c9f96f42fe02368ffc8a881548cc9ee9980b7f326de1a018935c80806b1351ef"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID4697-New service for Mimikatz.evtx",
+   "sha256": "33abf51ba440107b6b9514d0e2ce9db4503b443ad1f31419754292728b63580e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID7045-4697-SMBexec service registration.evtx",
+   "sha256": "00281f9d7bbb8b883f7e17583ba05d74eb1d16f42b0f9c593577498972f2a7f7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID7045-7036 PSexec service installation.evtx",
+   "sha256": "5e7528705393816605ad8c1f223580aa73e3f923b745979019d0c46f50306cd5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID7045-New service for Mimikatz +npcap.evtx",
+   "sha256": "020edfe4f2458f9ade1743f0a3b384f8653f7f94f0f8b4bff2140cab900c745f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID7045-Random service installation.evtx",
+   "sha256": "57ce87d3d72650ab6a80fbf89ea57915b144def1f5bdb80830cf40c6ddf9faa2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID800-4103-4104-Service abuse with Failure Command.evtx",
+   "sha256": "4da7f4c8d25f695b4ba2213d560ec603858e375be54903141021d3234725d2b0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID800-4103-4104-Service abuse with malicious path.evtx",
+   "sha256": "f87c3fef92e085b5c3b89775677cfd0c21d8a90a3be41fd6a4a0a8fd76021bf0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1543.003-Create or Modify System Process-Windows Service/ID800-4103-4104-Service creation (PowerShell).evtx",
+   "sha256": "dbedc3e400ff22019c51ae049e40e3cf16635c201f3157542250dfd0d4afee92"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1546-Event Triggered Execution/ID13-WMIimplant registry crash control.evtx",
+   "sha256": "ee8a199b88a2cd1f86e0dfb1358a32051c2c20eb08e07bec7da30aa2a3dad578"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1546-Event Triggered Execution/ID19-20-WMI registration via PowerLurk.evtx",
+   "sha256": "9fd3c4a8727a55fad064201e5b0ce57f916bd0c667f4b5691a779bb4abd5f36d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1546-Event Triggered Execution/ID4688-netsh helper DLL.evtx",
+   "sha256": "4bcefdc10149c183ef0fa6a82e382d11232e7d4cab804e45fb46a64456574144"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1546-Event Triggered Execution/ID5136-AdminSDholder backdoor obfuscation (via localizationDisplayId).evtx",
+   "sha256": "1501bd0c9016b331dc70b543b333dbd112d0d8d956213f8bceb0c3dcce2d1886"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1546-Event Triggered Execution/ID5136-AdminSDholder permissions changed.evtx",
+   "sha256": "f3cc77a890c01f0461cfed6cbdd4658dd58fb837e684bb035ebf14b45045d6e6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1546-Event Triggered Execution/ID800-4103-4104-WMI registration via PowerLurk.evtx",
+   "sha256": "1157a9c45756b04cc79fc20f07887bb56dbef83ed8b9acf82395010981295ec7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1547-Boot or Logon Autostart Execution/ID12-LSA Protect mode enabled RunAsPPL.evtx",
+   "sha256": "bbf8d2423d420a3326d212beb6214ea9a0adfc227f3f39dd39d20e29c8e958a7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1547-Boot or Logon Autostart Execution/ID4622-New SSP loaded in LSA (only legitim).evtx",
+   "sha256": "aed301f8b53e2ea03ac52b63dcfac8be26baf2eaad35a79f353a520c7220188e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1547-Boot or Logon Autostart Execution/ID4664-symbolic link created.evtx",
+   "sha256": "2a37ab58d2e55179c1a8f551d51894c8271622523657ddf9d8384db079523ab8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1574-Hijack Execution Flow/ID150-Failed DLL loaded by DNS server.evtx",
+   "sha256": "d92beca952d6727706a1d39def4aa1d4782062650e26799e6c3f8caf45ce51c2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1574-Hijack Execution Flow/ID4688-DNS DLL serverlevelplugindll command.evtx",
+   "sha256": "55a052822bf14f7e44b2bc77cf9a775a8ff6828400eae0345468e4c6769f4d8a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1574-Hijack Execution Flow/ID770-Success DLL loaded by DNS server.evtx",
+   "sha256": "c6a61eb505b4871092307c12ac93fc7e5ebb4830f382b13b34b1ac8b2d902f8b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0003-Persistence/T1574-Hijack Execution Flow/ID800-4103-4104-Print spooler privilege escalation (CVE-2020-1048).evtx",
+   "sha256": "58918c00cd61844481cec3d0c1721c0c598be1770eefcb733fd3c701a7b3d484"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1068-Exploitation for Privilege Escalation/ID4673-Privilege SeMachineAccountPrivilege called.evtx",
+   "sha256": "ce321d59f857c90eb5152e1d4f2f19cce870d6a456214bb06c26af0431716481"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1134-Access Token Manipulation/ID4648-4624-RunAsCS login.evtx",
+   "sha256": "cd8b2586e6a8bbc07e260bcb34f5e2c8090c1d6d30ccc07252cfeb04b7330032"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1134-Access Token Manipulation/ID4688,4624-RottenPotatoNG.evtx",
+   "sha256": "2ae1fbb98f3a0a13af0a2e5495e3c8e17839714d341c138207ba6dc89aafb766"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1134-Access Token Manipulation/ID4688,4648,4624-Runas execution with different user.evtx",
+   "sha256": "8af32868dbef424d47890a0ea687abb92e079a6cd1dfe1419aab95acf57da123"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1134-Access Token Manipulation/ID4704-4705-User righ assigned to account.evtx",
+   "sha256": "e8b2120895f7449158c0bfbe8fd48b14d3e90687ec7e8e717ab711a54145b22e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1134-Access Token Manipulation/ID4717-4718-System security granded to account.evtx",
+   "sha256": "66feae0ffc24b63c3158eee6804aa850fb0852f4fa3d16358fc7b7fdc699f5be"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1134.005-Access Token Manipulation SID-History Injection/ID 4765 - SID history added.evtx",
+   "sha256": "2e1aadc0097be6dc61803134c7fa8a4e0ddc33a2aa9c063f8a65cee3c14acade"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1484-Domain or Tenant Policy Modification/ID 4865 4706 - trust added.evtx",
+   "sha256": "8d837e8b0e3f781c0746f16e5b7ba49246fb32a6eac9ced9a79f7248717dd462"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1484.001-Domain Policy Modification-Group Policy Modification/ID5136-4662 sensitive GPO edited.evtx",
+   "sha256": "db9bcf9c8ec922c5b25fca5a7d8e46ebc92d3cba3184957d8758f0b6e6a4170e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1546-Image File Execution Options Injection/ID1-CMD executed via sticky key call.evtx",
+   "sha256": "b55be6f16cc0bff5d262c9370f3695fc64942a5f39d60bf8c355a37ddefe9e61"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1546-Image File Execution Options Injection/ID11-New sethc file created from CMD copy.evtx",
+   "sha256": "ecc23bd6b274604dfb20bc677f3d88eb03bbd71daa30951adce709dec19ca200"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1546-Image File Execution Options Injection/ID12,13-Stickey key registry update.evtx",
+   "sha256": "d913837adc47a3046662214759f85a0924554ee002b30d401edbe9cb4db704ff"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1546-Image File Execution Options Injection/ID4656-Failed sethc replacement by CMD.evtx",
+   "sha256": "aa9bfb0a956df8f42169c3e31c192453425ce6151a22b877054a37bcfa024e8e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1546-Image File Execution Options Injection/ID4688-Stickey command reg update + execution.evtx",
+   "sha256": "e3bf41cb7f1c4663c5d9708cd0994c9362dad8e914e23a2bd45d93647d0eeefb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1574-DLL side-loading/1-Print spool spawned a CMD shell (PrintNightMare).evtx",
+   "sha256": "81bce2103e9893c3947461199890ad05a18838f8efa7baf5e6addd74b60c4eb8"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1574-DLL side-loading/ID316,300,301,316,823,848-Mimispool printer server instal.evtx",
+   "sha256": "1d183b689bd85596f6eaefa220e5afcb18d7dd1090dc03d5e0c2ad8039641adf"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1574-DLL side-loading/ID354-808-Mimispool printer installation (PrintNightmare).evtx",
+   "sha256": "02b442fdc39b768672c12213637f33e75edf7101c3bcff402283848e40f8e226"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0004-Privilege Escalation/T1574-DLL side-loading/ID4688,6416,4648-SystemNightMare.evtx",
+   "sha256": "2c5ae1c2901429b6372d4b05359aba9cb0dd086f7e47829e1db0c97c7a2cb434"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1027-Obfuscated Files or Information/4624,4674,4688- CrackMap Exec SMB mimikatz.evtx",
+   "sha256": "4f1d1a9a56442b0bd41e5f6469d352fcab11b4dda07574bafb5860abeb4837d5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1027-Obfuscated Files or Information/ID1-CrackMapExec payload execution.evtx",
+   "sha256": "07876ef99e5a294b7d576ec3fc34129435870a48a6e4dd406230f9580588e74d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1027-Obfuscated Files or Information/ID400-800-CrackMapExec payload execution.evtx",
+   "sha256": "777ea70bdad5ca50a11c775c0eb0d63e3f7549e1aec1d041ece183b7ba520f3d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1027-Obfuscated Files or Information/ID4103-4104-CrackMapExec payload execution.evtx",
+   "sha256": "2558003907578d60d0cb49ef3f67fc2cc23b5ace5b9dccda6f5b6d7d4ca9cf82"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1027-Obfuscated Files or Information/ID4688-Obfuscated payload transfer via service name - Tchopper.evtx",
+   "sha256": "c81077fd361f4b597f2fa3b78e630277366a29e83b155ee5f92510346c178ef6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1070.001-Clear Windows event logs/ID104-1102-Event log cleared.evtx",
+   "sha256": "2e815c6303c57914d54fa4d6ff7d13122693638852b39a4d212e21c5b2ae7ed2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1070.001-Clear Windows event logs/ID4688-Clear event log attempt (native).evtx",
+   "sha256": "e28468602f4c31677b115e91d61dec060355427a4516695a06bab9d40250da66"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1070.001-Clear Windows event logs/ID4688-Clear event log attempt (wmi).evtx",
+   "sha256": "75dbd4987dbb89adb88ba89fec7a3cb3982bdd5729a7e3992c86c8933eb443f2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1070.001-Clear Windows event logs/ID800-4103-4104-Clear event log attempt.evtx",
+   "sha256": "31438c82b7cb0f8fbe2462f6a4c0a322de1527e8b9a4423596e5dd739b6e6419"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1070.006-Timestomp/ID4616-system time changed.evtx",
+   "sha256": "b00c46578d9e6b2d4075e55ac02fd4031be1e165f88661dec86d1f0891ad8301"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1078.002-Valid accounts-Domain accounts/ID4964-Login of a member of a special group.evtx",
+   "sha256": "d6492c93823822d2718411040f1114a10301fe951838512d7273c11c095500a2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1112-Modify registry/ID11,13-SMBexec service registration.evtx",
+   "sha256": "43ee82319efec6755a000db47e8572310a6d2c9f16ccaff819a9d876696638ea"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1112-Modify registry/ID4624,4670,4688,4674-Registry permission change via WMI (DAMP).evtx",
+   "sha256": "6f5f2fef9187c1587db910d960dc0857a5d720494b5261a2fbbb45b5ad715918"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1112-Modify registry/ID800-4103-4104-Registry permission change via WMI (DAMP) PowerShell on source.evtx",
+   "sha256": "924677d2d167c8fd95e864a508ddb30fed90aae5931d0e29709a6f88d1b8b132"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1140-Deobfuscate-Decode Files or Information/ID4688-Certutil download.evtx",
+   "sha256": "e56414f341e24ff2cf3cf53c3377034897c91d821e69b6e8bf8b0f41efa68d7d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1207-Rogue domain controller/ID4662-Sensitive attributes accessed (DCshadow).evtx",
+   "sha256": "9be3b31d453ef028015ed979e227381efb3730637bb66ba662b6d6b5c75ca77c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1207-Rogue domain controller/ID5137-Fake domain controller registration (DCshadow).evtx",
+   "sha256": "da49271706008982cae24696bd4f38f985b47b5da74ba117f8b343cf21c38307"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1222.001-File and Directory Permissions Modification/ID5124-OCSP security settings changed.evtx",
+   "sha256": "6bec02bdf85b74d603d846c4a240c82cc5594e101902526e6348a32e3550157b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1222.001-File and Directory Permissions Modification/ID5136-Permission change on OU by computer.evtx",
+   "sha256": "0524fef0f769c3190a829525b6f771d075a549c7c5952211556c328c1630814e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1222.001-File and Directory Permissions Modification/ID5136-Permission change on OU by user.evtx",
+   "sha256": "2c14bbc18d60ed6364af0d12f1ebeddbce9b1ade0d8ebfbd2d3cf69f432f8811"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1222.001-File and Directory Permissions Modification/ID5136-Permission change on top root AD (DCsync).evtx",
+   "sha256": "dd877bb49ca1e9c19e8b3d845e5929432708f276a2073c9d8a20b341b154a891"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1222.001-File and Directory Permissions Modification/ID5136-Permissions changed on a GPO.evtx",
+   "sha256": "b80adae10649bd504683ae6e225e3e64c5383f1e8976417f20c8fb9689eede13"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1222.001-File and Directory Permissions Modification/ID5143-File share permissions changed.evtx",
+   "sha256": "00a05509d5bade25a53db9162485582f85d658150ba29a2554ff29449c930e4e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1553- Subvert Trust Controls/ID12-13 SIP provider registration.evtx",
+   "sha256": "222526122c02fba3b9530c01fc005fc5b8bea7ab7603fde75aae3634bd6a7b3c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1555.004-Windows Credential Manager/ID 5376, 5379, 5382, 5381, 5382 credential manager and vault.evtx",
+   "sha256": "99aa5f1f14197a85696f4b796bf42543e8db7b2b0a85c107c6e463441b05f607"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID1-SYSMON driver unload (FilterManager).evtx",
+   "sha256": "c78f416491c0442e435ff99b4c1abb0edb66f137218e623dfbb25ee5c487c817"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID13-Defender service configuration disabled.evtx",
+   "sha256": "4c008ddc8aa5786ee89250dde1ed94141297e0d7694dfd1dc2d43d5c7e89fe34"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID4688-Defender critical features disabled (command).evtx",
+   "sha256": "be3ba362d31c36232f93463daafd4ecd02d646e089128d66d29b3b9951081012"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID4688-Defender service deactivation attempt.evtx",
+   "sha256": "9479fc351ba99e1bd81386ff422764e594b03e6e0d6eb0b3f3d413d54608bbc9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID5007-Defender threat exclusion (native).evtx",
+   "sha256": "3b3e551784d1f574f29b4d0090516531b503f41c6f7cb9deeb40b658f0434569"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID8-Module Virtualization disabled (Credential Guard).evtx",
+   "sha256": "4bcc1d1e82c9e1afee4a5f9a6767613b6677ddeac047048568e746f293b8ebef"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID800-4103-4104 Defender critical features disabled (PowerShell).evtx",
+   "sha256": "0dc4798e88c84a54d39cde42613fdd4e521d9bc9a1832e62ae8e56aac10afb4c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID800-4103-4104 Defender default action allow any (PowerShell).evtx",
+   "sha256": "a0b370324f1c8767fe09ac8b75a5f154a6cb18141e2ca568e391261c265880ba"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.001-Impair Defenses-Disable or Modify tool/ID800-4103-4104 Defender exclusion added (PowerShell).evtx",
+   "sha256": "b5c61a1dd14629c8acb98a258837524b5ff0af4acca3d48c8b46e3b8c9f45a4f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID33205-SQL Server  audit object disabled.evtx",
+   "sha256": "5ab026029ad766c467d5233faf15800df1e7dedf528efc48b5085cba5c030f11"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID33205-SQL Server audit object deleted.evtx",
+   "sha256": "1516e8243bd884d9722b9161cfd1541d73cc34db88ffde4d129759e38cb4dd25"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID33205-SQL Server audit specification deleted.evtx",
+   "sha256": "139a10f6a8a28037f2a8f4a233ab888c7120d30d8b0c29bd791fa36d65c87ece"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID33205-SQL Server audit specification disabled.evtx",
+   "sha256": "d4d41055859a70314b8022978df644e51132c3424b823d11cd603efe9af15eac"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID33205-SQL Server Database audit specification deleted.evtx",
+   "sha256": "e46e152971ee33c27641eb5a65a19772798018f4e0560123ad98e960f165804e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID33205-SQL Server Database audit specification disabled.evtx",
+   "sha256": "27597cb0ae4038aef53090ef05963c63fb9313c1f68b84464d09c65f9a84eeda"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID4688-Audit policy clear attempt.evtx",
+   "sha256": "08931a35be43a5b38bb3425c54b4b682c8e7d9f66ed3ff0ff02f17394e79bf86"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID4688-Audit policy deactivation attempt.evtx",
+   "sha256": "2cb710e75e3d1a3713152ef4f4d0e876a5e3ff63a3178debabc35490650240ab"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID4719-Audit policy deactivation.evtx",
+   "sha256": "9f54e2e6205ac6458c78fbb690afc842fd8def90cd1c55b176b5cb6af3892cdd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID4739-Domain policy changed by non system account.evtx",
+   "sha256": "6bc3cfc5b029769a6fefcb4dc7cf0456e50bf85074e2f38739b8cae5e756d211"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID4885,4876,4877,5123,5124-ADCS PKI OCSP.evtx",
+   "sha256": "b3d831ff16f8050d4a6a204427643da03fa28d020a6d6dfc831e19b6be1cc060"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID4908-Special group table changed.evtx",
+   "sha256": "306609f0fecbe2d101cc1f0f983e8363b922ed7b3682c7a9ca5c810a7812b524"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.002-Disable Windows Event Logging/ID541-DNS server auditing changed.evtx",
+   "sha256": "671391f30bf83c9a77ce8bb91d49aba60b9ff62a36335d005a18ef259d509df1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.004-Impair Defenses-Disable or Modify System Firewall/ID2003-4950-Firewall disabled.evtx",
+   "sha256": "5e7708bbf96f82491c1764254604c0428d536185ec0c006e907f6bd495d80cd5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.004-Impair Defenses-Disable or Modify System Firewall/ID2004-Any any firewall rule created.evtx",
+   "sha256": "9e62b93704855fe4ae672cea822b38a10894e2616bb9032671c2e3d1d6dabe92"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.004-Impair Defenses-Disable or Modify System Firewall/ID2004-New firewall rule created by PowerShell.evtx",
+   "sha256": "46728952607b8c3006268af50a78469ce5ad66c9ae37324530756015bd3d5f92"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.004-Impair Defenses-Disable or Modify System Firewall/ID4103-4104-2004-OpenSSH firewall rule activation.evtx",
+   "sha256": "0f92f8522be67e2558fdcdfd94dd7ec168667173a9df9e4571869c4f376e0c1d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.004-Impair Defenses-Disable or Modify System Firewall/ID4688-5447-4950-Firewall disabled (command).evtx",
+   "sha256": "16bdc81f8ca7f20609b01266b92873be1d2b3dba317a69a2909cf898dcb89fa1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1562.004-Impair Defenses-Disable or Modify System Firewall/ID800-4103-Firewall disabled.evtx",
+   "sha256": "32bb9aeaf92909eabbf64b23b6c531caefe6d0695a6cabcbaee272f0f088d609"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0005-Defense Evasion/T1564-Hide artifacts/ID4688-Linux Subsystem installation (WSL).evtx",
+   "sha256": "d1b00d8f282e96b59498c5f9964e265362e96f84ce4171bbd9603e2832c319f1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID1-12-13-Wdigest authentication activation.evtx",
+   "sha256": "e17329f6855dbe570eaa008b213617620b74c3ce704367ccac2b7a33a9916abc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID1-LSASS dump with LSASSY (SYSMON).evtx",
+   "sha256": "29a1c8656a78c0172317b9d58e3c037dd9c5d8b823e2495140b7771cf1cc384b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID10-Mimikatz LSASS process dump.evtx",
+   "sha256": "3d81a6b0443c91daa4837ef67abf9b2d417d7001db90fb0cbe34f1808ee2f171"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID11-LSASS credentials dump via Task Manager.evtx",
+   "sha256": "8ea0377d2db034072633b7d3309af12b391ba84662d6fc7ff49b7ac310a04c5d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID11-Mimikatz LSA SSP clear text password exfiltration.evtx",
+   "sha256": "6d413fb2be896dd2c0de704ad35ffa0de37089346ed10c66f5e468c29ff4aafc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID325-327-IFM created - ESENT.evtx",
+   "sha256": "480618bf823ba1ec86f735641bb7b5559f336dcc0ee9520743acc3939c9cd28d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4656, 5145, 4674-Impacket secret dump via SMB.evtx",
+   "sha256": "b36c78ab3b11b65371d0129e19c33c2c573bf68d3f7aa4d009b7adf9dc9032f4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4656-4663-4658 Mimikatz sekurlsa password dump.evtx",
+   "sha256": "4705db1ffbb763f74a5bd9f9d54748de895832cc88c57e22cf617b6c7070c442"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4661-4658 Mimikatz sekurlsa password dump SAM.evtx",
+   "sha256": "718c3fbd8394686ae74e5b774ba642bb24136666c1b4eb0ec78921218ea8f112"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4661-Suspicious SAM access to password attributes by LSASS (Dcshadow).evtx",
+   "sha256": "8bddde8f6e450aab75c64bcd9828e127e596f9c9be3428af0d9a4864529a1922"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4662-DCsync attack using Mimikatz.evtx",
+   "sha256": "4139591e6c943bf46db2d1d05476df5b5336b368305b3deb3ee09e37e2d439a7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4663-Task Manager used to dump LSASS process.evtx",
+   "sha256": "718ec9ba3f9711a7a72adb8cae90809422b0eaf3537da4cca5bce6e7d8bdb327"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4688-4663-4656-LSASS dump with LSASSY (process).evtx",
+   "sha256": "6d42403f2ec222f0647349cbe23705d9cc68379d5d308f9d463679cc2c380b2d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4688-Diskshadow abuse.evtx",
+   "sha256": "bfb1fedc84133e57aefad31e604fefd451d9c2683194a0166b8037a72eced702"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4688-IFM created.evtx",
+   "sha256": "b7fe08ec73c306790b8114259b00c8b3285cf7d79a8f02ca4111f2ece18a0277"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4688-Task Manager access indicator for potential LSASS dump.evtx",
+   "sha256": "24ec293f92bf95ba9187f25c92c4c6d8f147003889c19b68ed151a3ea3cb8c15"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4756-Exchange critical group change (DCsync).evtx",
+   "sha256": "a6700d04dc152b154a708bc1415dc19ade3c2f955e1cde43dc228a20aebcb793"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID4794-4688-DSRM password set with NTDSutil.evtx",
+   "sha256": "3eab7d4f8de9fc02ab01da2b470a38f251bc5a19ecdee432104dfcbb9b83f05a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1003-Credential dumping/ID800-4103-4104-LSASS dump with LSASSY (PowerShell).evtx",
+   "sha256": "1f4e6774aacaf7be4a2ec036519bc679cf029d336cfc221cb1105a0cac4d35f5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1040-Traffic sniffing/ID-4688 Native Windows sniffer Pktmon usage.evtx",
+   "sha256": "4119d59b951b14ec7a3b25f3b0223b48c5f6db63548331ead8f15f2ca5897915"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID 4776,4625-AccountRestore local bruteforce.evtx",
+   "sha256": "83cc548d47150f1420bb47448f7a91c348a6c6f6890c2bb30abcab021b1a611a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID18456-SQL Server failed login because only Windows auth.evtx",
+   "sha256": "ed03373a4dff4386b90279a5a0e1ffa888b2b1eb75bef8783e2d541aa9dfe4d7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID33205-SQL Server failed login because only Windows auth.evtx",
+   "sha256": "252dbc805c16f0388a3977deab53c487bf980a2a275a758d4939ce428c469acb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID33205-SQL Server failed login with non existing accounts.evtx",
+   "sha256": "06d287d6663fe820916baafa38e4c57ff3b1fcf1903e1f59ef473d66a1e9bd9b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID33205-SQL Server failed login with SA wrong password.evtx",
+   "sha256": "a780702066f454a1122dd1f4ae464ff47ebd50101c7148235ef331bfbd63d1a6"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4-OpenSSH brutforce with non existing users (sshd logs).evtx",
+   "sha256": "0d5fa250da45c61bbdc9bc8e8b5a0ddb3d4d112360ddea8fc6bd02eebe34fedd"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4-OpenSSH brutforce with valid users.evtx",
+   "sha256": "2367d3ee537245a0f606f6b7e88daad51c9e816af407a736c3bbb15f540e58d5"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4625-OpenSSH brutforce with non existing users.evtx",
+   "sha256": "d8ff4d58f63729ac71531b83b23c5ea522da3e328341314a8ec6a946f7b753da"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4625-OpenSSH brutforce with valid users.evtx",
+   "sha256": "a3ae0340b3ff332ae51f59b70bd6ee6db3d81bf054f9d9a7c77567f0346ac8d4"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4768-4771-Kerberos brutforce with non existing users.evtx",
+   "sha256": "bb6e23b0cef01ae2361f04a4b5cf232626fde1ad6e667cc80552bc4986f93742"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4768-4771-Kerberos user enumeration (Kerbrute).evtx",
+   "sha256": "f790ec5ea616b58932486e368eeccd3407ee8727081de94b31b7908f461545a0"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1110.xxx-Brut force/ID4771-Kerberos brutforce with valid user.evtx",
+   "sha256": "a69b1dacb13b2b9769ad306dc3f0eb410bc25c9dbdf161aafef2c2c65af73109"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1552.004-Unsecured Credentials-Private Keys/ID70-CAPI-Private key accessed Mimikatz.evtx",
+   "sha256": "5383eb274d51dbf672b4c48c7ad68d8d4456b269b36434a760fdc99daa6763e2"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1555-Credentials from Password Stores/ID4662-Sensitve DPAPI attributes accessed.evtx",
+   "sha256": "e09f35861b366a84b9cd68f1726d08649500bad4e3aecd9dde53cc9d17818d4a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1555-Credentials from Password Stores/ID5145-user file-credentials-browser dump via network share.evtx",
+   "sha256": "8243d188ba3b7af36881e5c9752d8ede66e873f6f956a881b805b997a4f9aeba"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1557-Man in the middle/ID5145-Print spooler bug abuse.evtx",
+   "sha256": "63de46393c3365d6d233a2688f94879a2c7946b774966d5013808206f598ee13"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1558-Steal or Forge Kerberos Tickets/ID4624-Success login with Golden ticket.evtx",
+   "sha256": "9e7019d8c3e6945bb5afdb8f516e40f51f4b96bd6b5dcab791217bee5d2d24b1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1558-Steal or Forge Kerberos Tickets/ID4768-4769-Kerberos host ticket without a trailing $.evtx",
+   "sha256": "6d6a45f97c3ea241a3fdf6a9f361d4d823be2e568258288dfa8deb55908347db"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1558-Steal or Forge Kerberos Tickets/ID4768-Kerberos AS-REP Roasting.evtx",
+   "sha256": "675f0f159e7a1870acd1a0fa9f0fe88966f5002351d56f8b6920524dacbbe5b7"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1558-Steal or Forge Kerberos Tickets/ID4769-Golden ticket issued.evtx",
+   "sha256": "fbe0b5478e6866ed48ccf33b2a361f3e0ead741678e0621e4883619c54b704a9"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0006-Credential Access/T1558-Steal or Forge Kerberos Tickets/ID4769-Kerberoast ticket with low encryption.evtx",
+   "sha256": "2c0360611fa5f43738e213638cf01a73c7701d8ddf510a3a03045a277739968a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1016-System Network Configuration Discovery/ID4688-Audit policy enumerated.evtx",
+   "sha256": "7a29a392d56e2acaf1691d739d7ffc56a2e47ae18f5bb900a90a394dc21c6a7f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1016-System Network Configuration Discovery/ID4688-Firewall configuration enumerated (command).evtx",
+   "sha256": "4da3603d336c13cb2a12941cca3f91adebaa19c747383590997c7601a9f64478"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1016-System Network Configuration Discovery/ID4688-Scheduled task configuration enumeration.evtx",
+   "sha256": "f52e4f5d9f69426307e3ad204c85f2d995334ddb7d37529bfc98a27ef7e76535"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1016-System Network Configuration Discovery/ID6004-DNS-server-failed zone transfer.evtx",
+   "sha256": "f1e800f3d84e2b5c628a7a4c75563afcfdf2ec2369484c1ad9c799207a486b02"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1016-System Network Configuration Discovery/ID800-4103-4104-Firewall configuration enumerated (PowerShell).evtx",
+   "sha256": "afe649fa3abf3c54b7b592fc43c9d178752a520f67e808d5bac16aab0e326b3b"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1018-Remote System Discovery/ID5145-DNS hosts files access via network share.evtx",
+   "sha256": "115290bd9d63d0eb838b5b8b414d6d642fc5fb9f6d54589be95eef2a1b11317c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1046-Network Service Scanning/ID131-RDP brutforce (no user info).evtx",
+   "sha256": "488e15fc2660e7149b353dc30f7fdd012a0072f701601a6d219640e6feb44e69"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1046-Network Service Scanning/ID4624-Anonymous login with domain specified (DonPapi).evtx",
+   "sha256": "eda16b94dc63e0553a5b59d8ca210cc9d52966a9c1e25d55eff8cb0ecb80921c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID4661-Local group enumeration with RID brutforce with CME.evtx",
+   "sha256": "4ad1f077543748271131824f905e2e2e1973c3e689bd24ba48af0dbb73652441"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID4661-SAM sensitive domain users & groups discovery.evtx",
+   "sha256": "422d568317a0f7e96e053729cb818535ff42220a1e13f1267db3241179d0fa21"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID4662-Domain group enumeration CME.evtx",
+   "sha256": "24d71a3d8eac2ddfe3a58fdeadeff13d0a6a879c36c4c816fc34d2c74d1c9223"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID4688-Group discovery via commandline.evtx",
+   "sha256": "bd85ac726a4ce6ba7f934862948798a6dc9f1f1b19bd17bdd1fb4167a6dba995"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID4799-4624-Local admin group enumerated by SharpHound.evtx",
+   "sha256": "b5d00c473e2474dd2d5bbed974d8416e3a8398ce915074060c132bebe77e396c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID800-4103-4104-Domain group discovery via PowerShell.evtx",
+   "sha256": "3e5357988266494fa0a4e512dbca72e336932046e8c2b4a8fbfea7e4f7a32936"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1069-Permission Groups Discovery/ID800-4103-4104-Local group discovery via PowerShell.evtx.evtx",
+   "sha256": "bed188a576fec7afd75f1caa832bdf5becb36fdfabf1d00815e93a5f559a8f57"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID1-SPN discovery (SYSMON process).evtx",
+   "sha256": "33df2cc4cd2c13b28c4d62f8e2f850c6808ef3e14c9901736097eef344444416"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID4103-4104 - SPN discovery (moder nPowerShell).evtx",
+   "sha256": "60aa8089ce7d839b9cb132215e7f2a6cd439482e81d2bd06a6c2de76b2de6f46"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID4662-4624-Honeypot account property read.evtx",
+   "sha256": "61b4cf17ed73fde606d1f9e5c11301c10ef64120b26530edae882fe89f248d99"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID4688-List all Service Principal Names (SPN).evtx",
+   "sha256": "adaa6f019ad5436d73f39604b7d93ef10df283654d1b4ed5720362293d4861ec"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID4688-User enumeration via command.evtx",
+   "sha256": "afecbbd6383081afcf12f4dafbee145f77e058fa4f3b6948d772f863526886ca"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID4769-Kerberos TGS host enumeration (Bloodhound).evtx",
+   "sha256": "0ffd12cb62b2797e4e7a0675b132c27dfa5231b6b1a81cac92556335657d54bc"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID600-Active Directory module called by PowerShell.evtx",
+   "sha256": "3c9e758fea66d1896a3f02eab5c09f0cea93777d6fc693ba53ca9dc5a01caf8c"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1087-Account discovery/ID800 - SPN discovery (PowerShell).evtx",
+   "sha256": "88947b8cf5b4b5659297214f4b7d36d55c409f449d215850fb7c0e30446fca43"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1135.xxx-Network Share Discovery/ID4688-Network share discovery or connection via commandline.evtx",
+   "sha256": "ff2e4f4f6cf3b67c83207a9abdb3b7f06b508e80c6442227ec6e3fde7411e014"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1135.xxx-Network Share Discovery/ID5140-5145-Bloodhound-SharpHound enumeration via SMB.evtx",
+   "sha256": "663e175cff68ba5bd4983a005be24244bfdaa5c5a2ba7e465843380a4c736c8d"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1135.xxx-Network Share Discovery/ID5140-Failed ADMIN$ share access.evtx",
+   "sha256": "b01ff1a574ababfd734a4dc73ba3b2b2a28df069370344ba4329262b81765735"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1201-Password Policy Discovery/ID4661-Password policy enumeration.evtx",
+   "sha256": "0a1a6a71af0e988067ebd3d312a2331fb4df18f04a4f5f7c86acbebffad26e71"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1201-Password Policy Discovery/ID4688-Password policy discovery via commandline.evtx",
+   "sha256": "3fec68dd193b4f10c0e93f37dc275607171a997c9ab6a5191278f6fb8bac0c96"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0007-Discovery/T1482-Domain Trust Discovery/ID800,4103,4104-Active Directory Forest PowerShell class.evtx",
+   "sha256": "589f2a839f441986a736736859317fa959445f0a68796cdcea7d0c02e3065a9f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.001-Remote Desktop Protocol/ID4688,4778,4779 RDP hijack direct.evtx",
+   "sha256": "d15da5b8dfe3a8e28d3a2423e031891167f5d94db4b8dea80bf8de06d787f341"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.001-Remote Desktop Protocol/ID4688-4778 RDP hijack command execution.evtx",
+   "sha256": "3b09bb1a0cb852bf065ce829ea5d23981e4d237c7f3dd4237fb42e04c4a11940"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.001-Remote Desktop Protocol/ID4825-Denied RDP connection with valid credentials.evtx",
+   "sha256": "3c1cfa23190d2efb521b36ce21b89f90ffb578d218858c515d1b74b9cf8fbdff"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID4688,4697,5140-5145 PSexec remote execution + admin share.evtx",
+   "sha256": "47d5075d07a51d21e307417188f3db490e611892dc70edd09130085198b789ce"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID4688-4648 Lateral movement with net use.evtx",
+   "sha256": "1519d52ac97bce2fdcfcc0f8fcdea3ff47f4feb63a8771812c1868848e7adcbb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID4688-Network share manipulation via commandline.evtx",
+   "sha256": "1c354faf99a596bf9179635b1c550ea82e329bf7829174e671bf29180a1d3bf1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID5140-ADMIN$ share connection with Golden ticket.evtx",
+   "sha256": "aa71762a02d608c77d17f57dbf2092367196ee52416126ffe5f279aeead43f8a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID5142- New file share created.evtx",
+   "sha256": "2770a87629d535a6feb92930a1c5ff9b7685426b1d380c60574a936711570231"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID5142-5143-Mimispool print share created and modified.evtx",
+   "sha256": "5480998c00f92a86132463af1beab446501c972880306356a01fb4aa4b6f709a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.002-SMB Windows Admin Shares/ID5145-remote shell execution via SMB admin share.evtx",
+   "sha256": "45257cbfc4f96d7ca53912113a5f00ef3ed54630ebc0edb0f13791d79d174a23"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.003-Distributed Component Object Model (DCOM)/ID4103,4104-DCOMexec native via PowerShell.evtx",
+   "sha256": "5e5f002201f2fb4e22479bac9f74296ff2728987f6662160249a59f9564fedbb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.003-Distributed Component Object Model (DCOM)/ID4688,4674-DCOMexec process spawned.evtx",
+   "sha256": "87728f421e6eda77b35a035340f6892ac8bb5c8e2620f5b5e901225e280a2477"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.004-Remote Service SSH/ID4-OpenSSH server listening.evtx",
+   "sha256": "47571784af02703b101a15803ea1708bdc1bfd4cb85041d5d3704d621cd19800"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.004-Remote Service SSH/ID4103-4104-OpenSSH server activation and config.evtx",
+   "sha256": "d89f6d79095421b8757b8035220c37be8250c15ed7c2e57e2bd24ae2ff4ab38f"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.004-Remote Service SSH/ID4103-4104-OpenSSH server install.evtx",
+   "sha256": "83214b4391c5f6ad24544b045d386c835ced033279a75f294b01e804897575fb"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1021.006-Windows Remote Management/ID4656-WS Management listener enumeration.evtx",
+   "sha256": "c5ad3edfbc596a82a2478c60105da2cc4e6d6d853cdbe8d7135d18a4cdd23d57"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0008-Lateral Movement/T1550-Use Alternate Authentication Material/ID4624-Mimikatz Pass the hash.evtx",
+   "sha256": "8148effc68019aadac50fd8bc7990d068604a313ca1e601fd834c18c8d9c1a0a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0009-Collection/T1125-Video capture/ID13-RDP shadow session configuration enabled (registry).evtx",
+   "sha256": "48d9ce56b168957b106dd0c84491b28f7817fa8ef7d3053630bed40c17462977"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0011-Command and Control/T1090-Proxy/ID5600-proxy configuration changed.evtx",
+   "sha256": "b168d98bf1fe60aac715cd1b6d3355dc8739d67115ccb09a395f7abf669ee75e"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0011-Command and Control/T1572-Protocol tunneling/ID4688-netsh RDP port forwarding abuse.evtx",
+   "sha256": "549044a3bc1652ed83896f0b5402eeda8ab8e5a4c85154cf7dd3874161a89a96"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0040-Impact/T1486-Data Encrypted for Impact/ID 768,775,793,796,817,840-BitLocker encryption activated.evtx",
+   "sha256": "4136b351c894f5e418241a4f6eb52bba3194434ecc42efec50f80c5f4289976a"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0040-Impact/T1490-Inhibit System Recovery/ID4688-Delete VSS backup (WMI).evtx",
+   "sha256": "92d50c04091efb1259c7dfc113266616bb36efea878290db486d98dddba7b005"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0040-Impact/T1490-Inhibit System Recovery/ID4688-Delete Window backup (webadmin).evtx",
+   "sha256": "1d0419d2437f34d197c6f37e852d383d06aa2a2a15e3741c300f4270bcf705a1"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0040-Impact/T1490-Inhibit System Recovery/ID800-4103-4104-Delete VSS backup (PowerShell).evtx",
+   "sha256": "b99440b0fc0b797e5df29a6dd1e6a7fccc475737ef7ac2ba188b6f381abd2344"
+  },
+  {
+   "path": "Evidence-files/01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-to-MITRE-Attack/TA0040-Impact/T1565-Data manipulation/ID11-DNS hosts files modified.evtx",
+   "sha256": "f21b6a1fc4c52b833b2aea82399c32a6d17fb8a327199731492df315ff3954d6"
+  }
+ ],
+ "host_source": "Evidence-files/ES-Mapping/outputs (real runs, Evidence-files/ES-Mapping/RUNS.md)",
+ "files": [
+  {
+   "family": "appcompat",
+   "path": "extractions/appcompat/appcompat.csv",
+   "sha256": "8e160eb52469bc598dc182d5827485b805a4ea44be516df18c05d2de4bfba17a",
+   "bytes": 105916
+  },
+  {
+   "family": "capa",
+   "path": "extractions/capa/chainsaw-capa.json",
+   "sha256": "13d91034a07d8b53baf514a12095bc300805695e6c69b65f7be2be5c3ef2fc72",
+   "bytes": 10343184
+  },
+  {
+   "family": "capa",
+   "path": "extractions/capa/chrome-capa.json",
+   "sha256": "93024d4de5995bb01cd80e249a99b42757b123f42ad3edf4ad193b1fa2e0e57a",
+   "bytes": 24389
+  },
+  {
+   "family": "capa",
+   "path": "extractions/capa/msedge-capa.json",
+   "sha256": "714c7635c309c8a7b94730fadd4fe48218f42678e356dc635227aace88071e60",
+   "bytes": 4741567
+  },
+  {
+   "family": "evtxecmd",
+   "path": "extractions/evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
+   "sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
+   "bytes": 31611943
+  },
+  {
+   "family": "evtxecmd",
+   "path": "extractions/evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
+   "sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
+   "bytes": 11791626
+  },
+  {
+   "family": "evtxecmd",
+   "path": "extractions/evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
+   "sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
+   "bytes": 24055166
+  },
+  {
+   "family": "evtxecmd",
+   "path": "extractions/evtxecmd/YamatoSecurity/20261016154149_EvtxECmd_Output.csv",
+   "sha256": "ab77251467e4d656421ec2018458416f260325ded6c23e336022a5d99a662218",
+   "bytes": 296181
+  },
+  {
+   "family": "fls",
+   "path": "extractions/fls/fls.txt",
+   "sha256": "f93df829526e64adc70c451c72f60ba9bf9b4f6f0a9b626b29fbf1ca8598f90a",
+   "bytes": 1079
+  },
+  {
+   "family": "hayabusa",
+   "path": "extractions/hayabusa/evtx-timeline.csv",
+   "sha256": "f511b0d22e2d37b6262cad67e51336af039053d612405afedc5fd325eacc5581",
+   "bytes": 18505205
+  },
+  {
+   "family": "hindsight",
+   "path": "extractions/hindsight/chrome-Default.jsonl",
+   "sha256": "8ab646310fd735d406b856bf388e2bc924536ed050fb059e222943fc8773ddd5",
+   "bytes": 1564080
+  },
+  {
+   "family": "hindsight",
+   "path": "extractions/hindsight/edge-Default.jsonl",
+   "sha256": "1181d7bb7116324d6e2e98be8c6cf5ce76cc7cefc7bdf2264fb46ee40c8d8cd2",
+   "bytes": 3765777
+  },
+  {
+   "family": "hindsight",
+   "path": "extractions/hindsight/firefox.jsonl",
+   "sha256": "38458a6698da11505d68921ee25a739a5058b35334343eb95016480d0c3dac66",
+   "bytes": 130471
+  },
+  {
+   "family": "jlecmd",
+   "path": "extractions/jlecmd/jumplist-auto_AutomaticDestinations.csv",
+   "sha256": "a17e5a8dbaf6cfbdce7c7fd89bd82786ae881aef334c681c00051ccaa8dcca01",
+   "bytes": 5765
+  },
+  {
+   "family": "jlecmd",
+   "path": "extractions/jlecmd/jumplist-custom_CustomDestinations.csv",
+   "sha256": "75e43b83b60588c197e2b8573b5c56ee8e509c007e18bf7d753b6ae73d63e780",
+   "bytes": 17918
+  },
+  {
+   "family": "lecmd",
+   "path": "extractions/lecmd/recent-lnk.csv",
+   "sha256": "2c84c9645e04cf477b0a42d87b7498b34f6399dccf9b8809dd915844d4334a39",
+   "bytes": 7375
+  },
+  {
+   "family": "mactime",
+   "path": "extractions/mactime/mactime-head.csv",
+   "sha256": "fc4dee140704c9b2d8d70cdbf468596a9c86a2d25b295dc9d65134aae038e3fd",
+   "bytes": 3846069
+  },
+  {
+   "family": "mftecmd",
+   "path": "extractions/mftecmd/mft.csv",
+   "sha256": "80d581a292b876549547cd39d47a5d18dd63ea25364cf579d4af1c32da59f64c",
+   "bytes": 269199110
+  },
+  {
+   "family": "mftecmd-i30",
+   "path": "extractions/mftecmd-i30/i30-1.csv",
+   "sha256": "e8a71f72d26f078b1c9bc5dab2c88ca1d69c171aed9666c61bf9b9deccde5256",
+   "bytes": 3961
+  },
+  {
+   "family": "mftecmd-i30",
+   "path": "extractions/mftecmd-i30/i30-2.csv",
+   "sha256": "380a8ac7b3f74bdfa17cc73f55500744c9740d6b67b6f11a8cac875bd86a8623",
+   "bytes": 145784
+  },
+  {
+   "family": "mftecmd-i30",
+   "path": "extractions/mftecmd-i30/i30-3.csv",
+   "sha256": "0a78452c42b9927a321de75ad12073911b434a39e1a2f3f62fce5ce0a40a3d06",
+   "bytes": 23762
+  },
+  {
+   "family": "mftecmd-i30",
+   "path": "extractions/mftecmd-i30/i30-4.csv",
+   "sha256": "fb0b97f7c32656a24148a860a51f49975dd12045b8c46ac11f7645e068922812",
+   "bytes": 35063
+  },
+  {
+   "family": "mftecmd-i30",
+   "path": "extractions/mftecmd-i30/i30-5.csv",
+   "sha256": "292efc5743d8c82824be1b81602e42b126f688741fe5a702ad5fb2265ddb6537",
+   "bytes": 42298
+  },
+  {
+   "family": "mftecmd-i30",
+   "path": "extractions/mftecmd-i30/i30-6.csv",
+   "sha256": "da78f54ee68e87756d684cdbd065be7ac23502099f4b5967dfcc909d0503565d",
+   "bytes": 4618
+  },
+  {
+   "family": "mftecmd-usn",
+   "path": "extractions/mftecmd-usn/usn.csv",
+   "sha256": "708fab0ade4bf103b12df7d2a8e0800c5d78313941877cc22e7cf74f65f525fc",
+   "bytes": 85835347
+  },
+  {
+   "family": "nfdump",
+   "path": "extractions/nfdump/nfdump.csv",
+   "sha256": "0c4996fd9e2ca85a382546d56591a4b164e44c471f733479e52021ecedb58b31",
+   "bytes": 2139816
+  },
+  {
+   "family": "pecmd",
+   "path": "extractions/pecmd/prefetch.csv",
+   "sha256": "a9862b2851a0a092597c6425246a273f9f24b9324cd3bd9819716de4424abde4",
+   "bytes": 707573
+  },
+  {
+   "family": "plaso",
+   "path": "extractions/plaso/plaso-detailed.csv",
+   "sha256": "e18efa7b550eea708065cc6d9062e5b0bf9c304498079c585a3ab889edc05961",
+   "bytes": 17612852
+  },
+  {
+   "family": "rbcmd",
+   "path": "extractions/rbcmd/20260921222504_RBCmd_Output.csv",
+   "sha256": "d10f30bd5bda649ec7d33b006a8dd1e2fde3e50f8093f621615e3e344c2faa52",
+   "bytes": 3646
+  },
+  {
+   "family": "recmd",
+   "path": "extractions/recmd/recmd-NTUSER-srlh.csv",
+   "sha256": "8102bfd105e70683c7ee5bb10328a5ad1479703dc4b68d8c471e08410dd8f8a0",
+   "bytes": 150819
+  },
+  {
+   "family": "recmd",
+   "path": "extractions/recmd/recmd-SAM.csv",
+   "sha256": "b7fa73f3336f0bd63e813e69e4954ae9b7e61351daa6a90acff26c1d1e68825e",
+   "bytes": 14435
+  },
+  {
+   "family": "recmd",
+   "path": "extractions/recmd/recmd-SECURITY.csv",
+   "sha256": "6e598a11e3b706dd3debf4b209fa394dcda562b4bcf489569a6be65752ddad4a",
+   "bytes": 3915
+  },
+  {
+   "family": "recmd",
+   "path": "extractions/recmd/recmd-SOFTWARE.csv",
+   "sha256": "e2718c90c5da8ffa3425b30facfde81e5de9be59747d2020324073c03f7af3a0",
+   "bytes": 738486
+  },
+  {
+   "family": "recmd",
+   "path": "extractions/recmd/recmd-SYSTEM.csv",
+   "sha256": "4de108c9f32937615d31f3a0774dffde9256b6140545b41152ec00e87e2aef7a",
+   "bytes": 2361197
+  },
+  {
+   "family": "recmd",
+   "path": "extractions/recmd/recmd-UsrClass-srlh.csv",
+   "sha256": "f439eb97100475dcaf4cc220146b090676418039b5f3b2e49feb91ca6cd1386f",
+   "bytes": 112925
+  },
+  {
+   "family": "sbecmd",
+   "path": "extractions/sbecmd/Ganro_UsrClass_shellbags-srlh.csv",
+   "sha256": "3304b6609ec00227f7fdb050f12f0f51c908345cf0acbed35ab19264a601c2da",
+   "bytes": 4375
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222703409851_ChromiumBrowser_Downloads_0b575bcf-ade3-44e5-8162-eb52a96c2b06.csv",
+   "sha256": "1816c2ef41d75c32f736b97e5b6d053f4929dc5aa6c7e6e0a5a468000f5a75ad",
+   "bytes": 2863
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222703461136_ChromiumBrowser_HistoryVisits_1f37cc07-2b10-4c80-b845-84708e4f7429.csv",
+   "sha256": "81b8fc40e18c48a134c0907ed1ff24f1f2a4fec61a56e404cd694f221682bcf0",
+   "bytes": 56844
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222703466889_ChromiumBrowser_KeywordSearches_d968ece4-d24a-4baf-8f07-78da07727712.csv",
+   "sha256": "659e290274b7315802c58b8ddd5c8147d13edd876d129e8e0635a3a9a4c33e45",
+   "bytes": 5092
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222703959652_ChromiumBrowser_Downloads_0b575bcf-ade3-44e5-8162-eb52a96c2b06.csv",
+   "sha256": "4d07392667d6b4e676d74c6262373446065f2c23c91b16b6c3ce126af756fb8c",
+   "bytes": 17486
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222704000806_ChromiumBrowser_HistoryVisits_1f37cc07-2b10-4c80-b845-84708e4f7429.csv",
+   "sha256": "b86938367ffe91840837d4faa29fd9d59f482a95e5f7b801a183721012157ef7",
+   "bytes": 539342
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222704010518_ChromiumBrowser_KeywordSearches_d968ece4-d24a-4baf-8f07-78da07727712.csv",
+   "sha256": "cbbdfb460473159cd5bc12f5e6e6719dbb4fa0f56d9ac8a75f5e895bd10b6965",
+   "bytes": 5604
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222704542157_Firefox_Bookmarks_eda1fb9b-8275-4fb5-9ff2-ac557dc0d399.csv",
+   "sha256": "b1b91c20be6c37dfc439b223bbfdba62b68d87078b824b9ed5d3f23fbfebbea9",
+   "bytes": 3263
+  },
+  {
+   "family": "sqlecmd",
+   "path": "extractions/sqlecmd/20260921222704591272_Firefox_History_2f34be88-08d0-43c1-a2fd-60fe0b71f32b.csv",
+   "sha256": "01e4af23c17f94be8500d254f80bcc4bbc7a7e57491f31ec647b342bd2680a31",
+   "bytes": 103900
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_AppResourceUseInfo_Output.csv",
+   "sha256": "3884210f5356a6801df7a3939f476cc9e257c870600c9ec01e014f3cccd2c0ba",
+   "bytes": 15048063
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_AppTimelineProvider_Output.csv",
+   "sha256": "fffc1dd7f771317662d74b5ee68e1207bc05bf284c0c439cb08ecf6eff937d7b",
+   "bytes": 4409693
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_EnergyUsage_Output.csv",
+   "sha256": "7d0ab9804a185ca8d4d3969e63c922e1e9c2f966676c495bbb34125a7b4cfe10",
+   "bytes": 151648
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_NetworkConnections_Output.csv",
+   "sha256": "edfc4891239447d16738bcf703da9bccde6e13d416e2137a7b6e436e823b8f25",
+   "bytes": 65576
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_NetworkUsages_Output.csv",
+   "sha256": "7634dc79f9c85b7967f68bfd449a82c705ef787d1271288613db790d479eeb06",
+   "bytes": 3336784
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_PushNotifications_Output.csv",
+   "sha256": "b389f2650b9e3511d9e48dd331aa53703c4a03ef4c1d6c2f3a59071f3537e0a2",
+   "bytes": 68293
+  },
+  {
+   "family": "srum",
+   "path": "extractions/srum/20260922133520_SrumECmd_vfuprov_Output.csv",
+   "sha256": "bb3f81e72b5ecd13b1df287cc2761c0508533c2291ddd1c1a2686eb8effe1364",
+   "bytes": 278919
+  },
+  {
+   "family": "vol",
+   "path": "extractions/vol/vol-cmdline.json",
+   "sha256": "369cef8687474ea2621a678f095902136f652acfcb6dab5d985ad41cefb24fe5",
+   "bytes": 246282
+  },
+  {
+   "family": "vol",
+   "path": "extractions/vol/vol-info.json",
+   "sha256": "c569fcad348b6c79ab5a92418646bb25eb6943a8252611cfea3832bf0854e7ed",
+   "bytes": 1994
+  },
+  {
+   "family": "vol",
+   "path": "extractions/vol/vol-pslist.json",
+   "sha256": "a06e1be00616c3327b57f79621bb7c468e28d30d41b1ed91a870eedff9b1f37c",
+   "bytes": 762083
+  },
+  {
+   "family": "wxtcmd",
+   "path": "extractions/wxtcmd/20260922035526_Activity.csv",
+   "sha256": "a0ce5038e9f3694b543d71268da0bec87f670aa01cffbc9713b60ba2d91844dc",
+   "bytes": 414736
+  },
+  {
+   "family": "yara",
+   "path": "extractions/yara/chrome.yar.txt",
+   "sha256": "e9d3514051b4256ebf88835be9442a57688aa491f6d1b90121416860db09bdfd",
+   "bytes": 105
+  },
+  {
+   "family": "ingest",
+   "path": "ingest/artifacts.jsonl",
+   "sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
+   "bytes": 296616283
+  }
+ ],
+ "imported": [
+  {
+   "source": "cloudtrail",
+   "path": "06-cloud/504-awslogs/CloudTrail",
+   "member": "*.json.gz",
+   "inputs": 3872,
+   "sha256": [
+    "a8d3a0e33d6af16a4b395196002b1ecc1ac6226098933be04de194307a75c15c",
+    "a320a0b95a908c94a61e96c072b83bc9be6407302d4ccca758301357aa7f1aac",
+    "23e95226da01c7f0a37546f521c61b49c75c4e250ea0bab7320f3458e29ece8a",
+    "3d828b714d65e03a9b21bec9579c5f072c145ddc890d94990ab158ec7aa0898c",
+    "6022c89de4cad00c89dcd9719c0ac5035fe52fb163275acc039a6e0b323689a6"
+   ]
+  },
+  {
+   "source": "authlog",
+   "path": "03-linux/608-sift/precooked/triagedata.7z",
+   "member": "logs/secure",
+   "inputs": 1,
+   "sha256": [
+    "f24bc588fc6ecb395c6e2e08b8de7266b09cd6b3ade063291285bdb7d00de977"
+   ]
+  },
+  {
+   "source": "syslog",
+   "path": "03-linux/608-sift/precooked/triagedata.7z",
+   "member": "logs/messages",
+   "inputs": 1,
+   "sha256": [
+    "cf94fa8bb21a7de1842d365a186e5ab95be44dceeff7382152685707a83ae898"
+   ]
+  },
+  {
+   "source": "auditd",
+   "path": "03-linux/608-sift/precooked/triagedata.7z",
+   "member": "logs/audit/audit.log",
+   "inputs": 1,
+   "sha256": [
+    "9684852356fd4a022420b433196f3d1413366e1fdcca3c6e8d04fcdf88a420a1"
+   ]
+  },
+  {
+   "source": "bash_history",
+   "path": "03-linux/608-sift/precooked/triagedata.7z",
+   "member": "history/root_bash_history.txt",
+   "inputs": 1,
+   "sha256": [
+    "24cd0cad596eed92142741e8184e3c6b4730a3037ba0207fbc10d9fdbd4f5e94"
+   ]
+  },
+  {
+   "source": "bash_history",
+   "path": "03-linux/608-sift/precooked/triagedata.7z",
+   "member": "history/rsydow_bash_history.txt",
+   "inputs": 1,
+   "sha256": [
+    "8572f01264c272a27b7aa754938d2a698411bec9e6f6f4fba87302dec563a670"
+   ]
+  },
+  {
+   "source": "wireshark",
+   "path": "04-network/pcap",
+   "member": "tcpreplay-smallFlows.pcap",
+   "inputs": 1,
+   "sha256": [
+    "77d06d3f33f1a95fb9f2610f20ead8ce978449077d6ba22d4945b85bd48f75d1"
+   ]
+  }
+ ],
+ "index": {
+  "index": "nexus-case-ic6-controls",
+  "docs": 1395906,
+  "errors": 0
+ }
+}

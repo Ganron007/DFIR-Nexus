@@ -1,9 +1,8 @@
 skill: mft_file_activity
 title: NTFS file-system activity — $MFT, $UsnJrnl, $I30 slack, ADS, timestomp
-description: 'Reconstruct file-system truth: the MFT''s per-record timestamps and
-  attributes, the USN journal''s change reasons, $I30 slack''s deleted-file residue,
-  and SI-vs-FN timestamp comparison for timestomp detection. This is the ground layer
-  the timeline is built on.'
+description: 'Reconstruct file-system truth: the MFT''s per-record timestamps and attributes, the USN journal''s
+  change reasons, $I30 slack''s deleted-file residue, and SI-vs-FN timestamp comparison for timestomp detection.
+  This is the ground layer the timeline is built on.'
 trigger:
   families:
   - mftecmd
@@ -27,167 +26,377 @@ trigger:
   techniques:
   - T1070.006
   - T1036
-  - T1096
   - T1564.004
 steps:
 - name: mft_records
   query: file:mft
-  look_for: MFTEcmd rows carry Entry+Sequence numbers (the file reference), parent
-    path, and the SI/FN timestamp sets. Sequential MFT entries created in close succession
-    mark write bursts — e.g. a cluster of records around prefetch .pf files acts as
-    a backup creation timestamp (FOR508.5).
+  look_for: MFTEcmd rows carry Entry+Sequence numbers (the file reference), parent path, and the SI/FN timestamp
+    sets. Sequential MFT entries created in close succession mark write bursts — e.g. a cluster of records around
+    prefetch .pf files acts as a backup creation timestamp (FOR508.5).
   pivot: FileName
-  es:
-    wildcard:
-      file:
-        value: '*mft*'
-        case_insensitive: true
   requires:
-    families: &id001
+    families:
     - mftecmd
-    - mft
-    - usn
-    - fls
-    - log2timeline
-    - plaso
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  kind: aggregate
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.EntryNumber
+      exists: true
+  aggregate:
+    field: ecs.file.extension
+    size: 50
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - exists:
+          field: fields.EntryNumber
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.extension
+        size: 50
 - name: usn_change_reasons
   query: file:usn
-  look_for: $UsnJrnl\$Extend\$J records per-change reasons — FileCreate, DataExtend,
-    RenameOldName/RenameNewName, Close, Delete — each with the file reference number.
-    This is the per-file event ledger for days of activity on a busy volume.
+  look_for: $UsnJrnl\$Extend\$J records per-change reasons — FileCreate, DataExtend, RenameOldName/RenameNewName,
+    Close, Delete — each with the file reference number. This is the per-file event ledger for days of activity
+    on a busy volume.
   pivot: FileName
   corroborate: rename chains (OldName→NewName) expose extension-swap staging
-  es:
-    wildcard:
-      file:
-        value: '*usn*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  kind: aggregate
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.UpdateReasons
+      exists: true
+  aggregate:
+    field: fields.UpdateReasons
+    size: 30
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - exists:
+          field: fields.UpdateReasons
+  es_aggs:
+    by:
+      terms:
+        field: fields.UpdateReasons.kw
+        size: 30
 - name: i30_slack_residue
   query: file:i30 OR $i30
-  look_for: $I30 index slack — B-tree rebalancing leaves entries for files that no
-    longer exist; each residue still carries filename, size, and a full timestamp
-    set. The primary proof a file once existed in a directory after the MFT record
-    itself was reused.
+  look_for: $I30 index slack — B-tree rebalancing leaves entries for files that no longer exist; each residue still
+    carries filename, size, and a full timestamp set. The primary proof a file once existed in a directory after
+    the MFT record itself was reused.
   pivot: FileName
   corroborate: residue timestamp + USN delete reason pins the deletion window
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.FromSlack
+      is:
+      - 'True'
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*i30*'
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.FromSlack.kw:
+            value: 'True'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$i30*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
 - name: alternate_data_streams
   query: zone.identifier OR file:ads OR \:$
-  look_for: ADS on records — Zone.Identifier marks files downloaded from the internet/email
-    (MOTW); attacker tools hide payloads in :stream names. ZoneId 3+ on an exe = internet-sourced
-    code executed on the host.
+  look_for: ADS on records — Zone.Identifier marks files downloaded from the internet/email (MOTW); attacker tools
+    hide payloads in :stream names. ZoneId 3+ on an exe = internet-sourced code executed on the host.
   pivot: ZoneId
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.IsAds
+      is:
+      - 'True'
+    none:
+    - field: ecs.file.name
+      endswith:
+      - :Zone.Identifier
+      - :SmartScreen
+      - :$DATA
   es:
     bool:
-      should:
-      - wildcard:
-          fields.ZoneIdContents.kw:
-            value: '*zone.identifier*'
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.IsAds.kw:
+            value: 'True'
             case_insensitive: true
-      - wildcard:
-          file:
-            value: '*ads*'
-            case_insensitive: true
-      - wildcard:
-          fields.ZoneIdContents.kw:
-            value: '*\:$*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:Zone.Identifier'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:SmartScreen'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:$DATA'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: timestomp_si_fn
   query: file:mft .exe OR .dll OR .ps1
-  look_for: 'Timestomp detection: 0x10 $STANDARD_INFORMATION timestamps are attacker-writable
-    via API; 0x30 $FILE_NAME timestamps are not (they change only on rename/move).
-    $FN BornTime LATER than $SI BornTime, or $SI predating sibling records in the
-    same burst = backdated file.'
+  look_for: 'Timestomp detection: 0x10 $STANDARD_INFORMATION timestamps are attacker-writable via API; 0x30 $FILE_NAME
+    timestamps are not (they change only on rename/move). $FN BornTime LATER than $SI BornTime, or $SI predating
+    sibling records in the same burst = backdated file.'
   pivot: FileName
-  corroborate: the stomped M-time is what ShimCache recorded — pair with appcompat
-    rows
+  corroborate: the stomped M-time is what ShimCache recorded — pair with appcompat rows
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    basis:
+    - attack:DET0591
+    families:
+    - mftecmd
+    all:
+    - field: fields.SI<FN
+      is:
+      - 'True'
+    - field: fields.uSecZeros
+      is:
+      - 'True'
+    - field: ecs.file.extension
+      is:
+      - exe
+      - dll
+      - sys
+      - ps1
+      - bat
+      - vbs
+      - js
+      - scr
+      - hta
+    none:
+    - field: ecs.file.path
+      contains:
+      - \Windows\WinSxS\
+      - \Windows\servicing\
+      - \Windows\SoftwareDistribution\
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.SI<FN.kw:
+            value: 'True'
+            case_insensitive: true
+      - term:
+          fields.uSecZeros.kw:
+            value: 'True'
+            case_insensitive: true
       - bool:
-          must:
+          should:
+          - term:
+              ecs.file.extension:
+                value: exe
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: dll
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: sys
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: ps1
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: bat
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: vbs
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: js
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: scr
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: hta
+                case_insensitive: true
+          minimum_should_match: 1
+      must_not:
+      - bool:
+          should:
           - wildcard:
-              file:
-                value: '*mft*'
+              ecs.file.path.wc:
+                value: '*\\Windows\\WinSxS\\*'
                 case_insensitive: true
           - wildcard:
-              ecs.file.path:
-                value: '*.exe*'
+              ecs.file.path.wc:
+                value: '*\\Windows\\servicing\\*'
                 case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*.dll*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*.ps1*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\SoftwareDistribution\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: logfile_detail
   query: file:logfile
-  look_for: $LogFile — lowest-level NTFS transaction log (hours to ~1 day). Fills
-    the gap between USN reasons and raw writes; NTFS Log Tracker parses create/write/rename
-    operations MFTEcmd does not.
+  look_for: $LogFile — lowest-level NTFS transaction log (hours to ~1 day). Fills the gap between USN reasons and
+    raw writes; NTFS Log Tracker parses create/write/rename operations MFTEcmd does not.
   pivot: FileName
-  es:
-    wildcard:
-      file:
-        value: '*logfile*'
-        case_insensitive: true
   requires:
-    families: *id001
-- name: deleted_metafiles
-  query: file:mft .pf OR .evtx OR .lnk
-  look_for: MFT records for metafiles (.pf, .evtx, .lnk, .pf) — their own timestamps
-    tell when an artifact was born/copied; a .pf record deleted but still in MFT proves
-    prefetch existed and was removed.
+    families:
+    - logfileparser
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - logfileparser
+  source: families logfileparser
+  kind: aggregate
+  search:
+    families:
+    - logfileparser
+  aggregate:
+    field: fields.lf_RedoOperation
+    size: 30
   es:
     bool:
-      should:
-      - bool:
-          must:
-          - wildcard:
-              file:
-                value: '*mft*'
-                case_insensitive: true
-          - wildcard:
-              ecs.file.path:
-                value: '*.pf*'
-                case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*.evtx*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*.lnk*'
-            case_insensitive: true
-      minimum_should_match: 1
+      filter:
+      - terms:
+          family:
+          - logfileparser
+  es_aggs:
+    by:
+      terms:
+        field: fields.lf_RedoOperation.kw
+        size: 30
+- name: deleted_metafiles
+  query: file:mft .pf OR .evtx OR .lnk
+  look_for: MFT records for metafiles (.pf, .evtx, .lnk, .pf) — their own timestamps tell when an artifact was born/copied;
+    a .pf record deleted but still in MFT proves prefetch existed and was removed.
   requires:
-    families: *id001
-negative: Empty MFT/USN output means the metafiles were not parsed or not collected
-  — file-system-layer absence is almost always a collection gap, never proof a file
-  did not exist. Fall back to fls/TIMELINE bodyfiles and LNK residue.
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.InUse
+      is:
+      - 'False'
+    - field: ecs.file.extension
+      is:
+      - pf
+      - evtx
+      - lnk
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.InUse.kw:
+            value: 'False'
+            case_insensitive: true
+      - bool:
+          should:
+          - term:
+              ecs.file.extension:
+                value: pf
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: evtx
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: lnk
+                case_insensitive: true
+          minimum_should_match: 1
+negative: Empty MFT/USN output means the metafiles were not parsed or not collected — file-system-layer absence
+  is almost always a collection gap, never proof a file did not exist. Fall back to fls/TIMELINE bodyfiles and LNK
+  residue.
 confidence_rules:
   high: SI/FN anomaly or $I30 residue + matching USN delete reason for the same record
   medium: rename/create journal chain without surviving content
@@ -197,11 +406,10 @@ mitre:
 - T1036
 - T1564.004
 caveats:
-- MFT record reuse destroys the old record — cite $I30 slack and $LogFile for what
-  the MFT itself no longer shows.
-- USN journal rolls over by size, not time — short retention on busy volumes; note
-  the covered window before claiming gaps.
-- FN timestamps update on rename/move — a moved-but-original file re-timestamps FN;
-  compare against SI and siblings, not in isolation.
-- Zone.Identifier survives copy operations but not all write paths — absence of MOTW
-  does not prove the file was local.
+- MFT record reuse destroys the old record — cite $I30 slack and $LogFile for what the MFT itself no longer shows.
+- USN journal rolls over by size, not time — short retention on busy volumes; note the covered window before claiming
+  gaps.
+- FN timestamps update on rename/move — a moved-but-original file re-timestamps FN; compare against SI and siblings,
+  not in isolation.
+- Zone.Identifier survives copy operations but not all write paths — absence of MOTW does not prove the file was
+  local.

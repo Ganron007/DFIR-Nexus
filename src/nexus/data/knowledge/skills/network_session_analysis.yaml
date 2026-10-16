@@ -1,8 +1,7 @@
 skill: network_session_analysis
 title: Network session analysis — flows, byte asymmetry, session profiling
-description: 'Analyze network telemetry like an examiner: profile sessions by duration,
-  byte asymmetry, port/protocol congruence, and periodicity — separating interactive
-  attacker sessions from beacon callbacks and bulk transfers.'
+description: 'Analyze network telemetry like an examiner: profile sessions by duration, byte asymmetry, port/protocol
+  congruence, and periodicity — separating interactive attacker sessions from beacon callbacks and bulk transfers.'
 trigger:
   families:
   - netstat
@@ -35,190 +34,234 @@ trigger:
 steps:
 - name: session_inventory
   query: ESTABLISHED OR conn.log OR netstat
-  look_for: 'Build the session inventory first: external destinations, internal lateral
-    flows, listening services. Zeek conn.log fields that matter: duration, orig_bytes/resp_bytes,
-    conn_state, service label.'
+  look_for: 'Build the session inventory first: external destinations, internal lateral flows, listening services.
+    Zeek conn.log fields that matter: duration, orig_bytes/resp_bytes, conn_state, service label.'
   pivot: RemoteAddress
+  requires:
+    families:
+    - zeek
+    - suricata
+    - network
+    - nfdump
+    - wireshark
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - network
+          - nfdump
+          - wireshark
+  source: families zeek, suricata, network, nfdump, wireshark
+  kind: aggregate
+  search:
+    families:
+    - zeek
+    - suricata
+    - network
+    - nfdump
+    - wireshark
+    all:
+    - field: ecs.destination.ip
+      exists: true
+  aggregate:
+    field: ecs.destination.ip
+    size: 200
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.source.ip:
-            value: '*ESTABLISHED*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*conn.log*'
-            case_insensitive: true
-      - wildcard:
-          ecs.source.ip:
-            value: '*netstat*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - netstat
-    - zeek
-    - conn
-    - dns
-    - pcap
-    - firewall
-    - proxy
-  es_text_only_reason:
-  - 'conn.log: a file name token; no populated ecs.file.path for these families, searched
-    in text'
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - network
+          - nfdump
+          - wireshark
+      - exists:
+          field: ecs.destination.ip
+  es_aggs:
+    by:
+      terms:
+        field: ecs.destination.ip
+        size: 200
 - name: byte_asymmetry
   query: bytes OR orig_bytes OR resp_bytes OR sent
-  look_for: 'Byte asymmetry classifies the session: big-send/small-recv = exfil or
-    upload; small-send/big-recv = download/staging; uniform small-both-ways at intervals
-    = beacon; balanced interactive sizes = hands-on session.'
+  look_for: 'Byte asymmetry classifies the session: big-send/small-recv = exfil or upload; small-send/big-recv =
+    download/staging; uniform small-both-ways at intervals = beacon; balanced interactive sizes = hands-on session.'
   pivot: RemoteAddress
   corroborate: byte profile + destination + interval = session class
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.source.ip:
-            value: '*bytes*'
-            case_insensitive: true
-      - wildcard:
-          ecs.source.ip:
-            value: '*orig_bytes*'
-            case_insensitive: true
-      - wildcard:
-          ecs.source.ip:
-            value: '*resp_bytes*'
-            case_insensitive: true
-      - wildcard:
-          ecs.source.ip:
-            value: '*sent*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: asymmetry is a ratio of two byte counts per session (orig/resp, ibyt/obyt), computed across
+    fields.
 - name: long_duration_sessions
   query: duration OR long OR persistent
-  look_for: Long-lived sessions to external IPs — interactive C2/webshell/ tunnel
-    sessions stay open; normal client traffic churns. Sort by duration and filter
-    to rare destinations.
+  look_for: Long-lived sessions to external IPs — interactive C2/webshell/ tunnel sessions stay open; normal client
+    traffic churns. Sort by duration and filter to rare destinations.
   pivot: RemoteAddress
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.source.ip:
-            value: '*duration*'
-            case_insensitive: true
-      - wildcard:
-          ecs.source.ip:
-            value: '*long*'
-            case_insensitive: true
-      - wildcard:
-          ecs.source.ip:
-            value: '*persistent*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: duration ranking is a sort over the flow records' duration, done by aggregation on the case's
+    own fields.
 - name: port_protocol_mismatch
   query: 443 OR 80 OR 53 OR 3389
-  look_for: 'Protocol/port incongruence: HTTP-shaped traffic on 443 that''s really
-    a tunnel, DNS on non-53, RDP on unusual ports, cleartext creds on 80. Zeek service
-    labels vs port reveal the lie.'
+  look_for: 'Protocol/port incongruence: HTTP-shaped traffic on 443 that''s really a tunnel, DNS on non-53, RDP
+    on unusual ports, cleartext creds on 80. Zeek service labels vs port reveal the lie.'
   pivot: RemotePort
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*443*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*80*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*53*'
-            case_insensitive: true
-      - term:
-          event_id: '3389'
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - '443: free phrase; the step''s pivot names no registry column'
-  - '80: free phrase; the step''s pivot names no registry column'
-  - '53: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  procedure_reason: a mismatch compares the service label with the port on the same row; no stored query can compare
+    two fields.
 - name: dns_tunnel_volume
   query: dns OR query OR TXT OR NULL
-  look_for: 'DNS tunneling profile: query VOLUME per host (tunnels need thousands),
-    long/encoded subdomains, TXT/NULL record types, rare resolver use. Compare per-host
-    query counts — tunnels are statistical outliers.'
+  look_for: 'DNS tunneling profile: query VOLUME per host (tunnels need thousands), long/encoded subdomains, TXT/NULL
+    record types, rare resolver use. Compare per-host query counts — tunnels are statistical outliers.'
   pivot: QueryName
+  requires:
+    families:
+    - zeek
+    - suricata
+    - wireshark
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - wireshark
+  source: families zeek, suricata, wireshark
+  kind: aggregate
+  search:
+    families:
+    - zeek
+    - suricata
+    - wireshark
+    all:
+    - field: ecs.dns.question.name
+      exists: true
+  aggregate:
+    field: ecs.dns.question.name
+    size: 200
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*dns*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*query*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*TXT*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*NULL*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'dns: free phrase; the step''s pivot names no registry column'
-  - 'query: free phrase; the step''s pivot names no registry column'
-  - 'TXT: free phrase; the step''s pivot names no registry column'
-  - 'NULL: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - wireshark
+      - exists:
+          field: ecs.dns.question.name
+  es_aggs:
+    by:
+      terms:
+        field: ecs.dns.question.name
+        size: 200
 - name: lateral_flows
   query: 445 OR 3389 OR 5985 OR 135 OR 22
-  look_for: 'Internal lateral flows: SMB 445, RDP 3389, WinRM 5985/5986, RPC 135,
-    SSH 22 between workstation-class hosts — workstations rarely talk to workstations
-    on admin ports.'
+  look_for: 'Internal lateral flows: SMB 445, RDP 3389, WinRM 5985/5986, RPC 135, SSH 22 between workstation-class
+    hosts — workstations rarely talk to workstations on admin ports.'
   pivot: DestIp
   corroborate: matching 4624 type-3/10 on the destination host
+  requires:
+    families:
+    - zeek
+    - suricata
+    - network
+    - nfdump
+    - wireshark
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - network
+          - nfdump
+          - wireshark
+  source: families zeek, suricata, network, nfdump, wireshark
+  search:
+    families:
+    - zeek
+    - suricata
+    - network
+    - nfdump
+    - wireshark
+    any:
+    - field: ecs.destination.port
+      is:
+      - '445'
+      - '3389'
+      - '5985'
+      - '5986'
+      - '135'
+      - '22'
+    - field: fields.dp
+      is:
+      - '445'
+      - '3389'
+      - '5985'
+      - '5986'
+      - '135'
+      - '22'
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*445*'
-            case_insensitive: true
-      - term:
-          event_id: '3389'
-      - term:
-          event_id: '5985'
-      - wildcard:
-          text.wc:
-            value: '*135*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*22*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - '445: value of the wrong kind for dest_ip; searched in text'
-  - '135: value of the wrong kind for dest_ip; searched in text'
-  - '22: value of the wrong kind for dest_ip; searched in text'
-negative: No anomalous sessions, asymmetric flows, or beacon patterns → network C2/exfil
-  not evident. Encrypted channels still hide content — volume and timing analysis
-  survives encryption, content inspection does not.
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+          - network
+          - nfdump
+          - wireshark
+      - bool:
+          should:
+          - bool:
+              should:
+              - term:
+                  ecs.destination.port:
+                    value: '445'
+                    case_insensitive: true
+              - term:
+                  ecs.destination.port:
+                    value: '3389'
+                    case_insensitive: true
+              - term:
+                  ecs.destination.port:
+                    value: '5985'
+                    case_insensitive: true
+              - term:
+                  ecs.destination.port:
+                    value: '5986'
+                    case_insensitive: true
+              - term:
+                  ecs.destination.port:
+                    value: '135'
+                    case_insensitive: true
+              - term:
+                  ecs.destination.port:
+                    value: '22'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - term:
+                  fields.dp: '445'
+              - term:
+                  fields.dp: '3389'
+              - term:
+                  fields.dp: '5985'
+              - term:
+                  fields.dp: '5986'
+              - term:
+                  fields.dp: '135'
+              - term:
+                  fields.dp: '22'
+              minimum_should_match: 1
+          minimum_should_match: 1
+negative: No anomalous sessions, asymmetric flows, or beacon patterns → network C2/exfil not evident. Encrypted
+  channels still hide content — volume and timing analysis survives encryption, content inspection does not.
 confidence_rules:
   high: beacon intervals OR asymmetric exfil flow + matching endpoint artifact
   medium: anomalous sessions without endpoint corroboration
@@ -228,14 +271,12 @@ mitre:
 - T1041
 - T1571
 caveats:
-- Netflow/conn logs show metadata not content — a 'clean' flow record says nothing
-  about what was inside it.
-- NAT and proxies collapse source attribution — resolve the true client via load-balancer/proxy
-  logs before blaming a host.
-- Legitimate backup/sync/replication produces large asymmetric flows — check schedule
-  and destination ownership first.
-- Jittered beacons defeat interval-only detection — use variance analysis and byte-size
-  uniformity together.
+- Netflow/conn logs show metadata not content — a 'clean' flow record says nothing about what was inside it.
+- NAT and proxies collapse source attribution — resolve the true client via load-balancer/proxy logs before blaming
+  a host.
+- Legitimate backup/sync/replication produces large asymmetric flows — check schedule and destination ownership
+  first.
+- Jittered beacons defeat interval-only detection — use variance analysis and byte-size uniformity together.
 primary_families:
 - zeek
 - netstat

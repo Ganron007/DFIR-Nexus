@@ -1,7 +1,7 @@
 skill: impact_ransomware
 title: Impact — ransomware, backup destruction, disk encryption
-description: Detect ransomware and destructive impact — shadow deletion, backup removal,
-  mass file encryption, ransom notes.
+description: Detect ransomware and destructive impact — shadow deletion, backup removal, mass file encryption, ransom
+  notes.
 trigger:
   families:
   - evtx
@@ -26,207 +26,549 @@ trigger:
   - T1491
 steps:
 - name: shadow_delete
-  query: vssadmin delete shadows OR vssadmin resize shadowstorage OR wmic shadowcopy
-    delete
+  query: vssadmin delete shadows OR vssadmin resize shadowstorage OR wmic shadowcopy delete
   look_for: Shadow-copy deletion — the canonical ransomware anti-recovery move.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0329
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.command_line
+      contains:
+      - delete
+      - resize
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - vssadmin
+      - shadowcopy
+      - shadowstorage
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*vssadmin delete shadows*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*vssadmin resize shadowstorage*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*wmic shadowcopy delete*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - evtx
-    - sysmon
-    - mft
-    - usn
-    - prefetch
-    - services
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*delete*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*resize*'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*vssadmin*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*shadowcopy*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*shadowstorage*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: bcdedit_recovery
   query: bcdedit /set OR bootstatuspolicy OR recoveryenabled no
   look_for: bcdedit disabling recovery/bootstatus — prevents safe-mode recovery.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0329
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \bcdedit.exe
+    - field: ecs.process.command_line
+      contains:
+      - recoveryenabled
+      - bootstatuspolicy
+      - safeboot
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          fields.command_line.kw:
-            value: '*bcdedit /set*'
+          ecs.process.executable.wc:
+            value: '*\\bcdedit.exe'
             case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*bootstatuspolicy*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*recoveryenabled no*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*recoveryenabled*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*bootstatuspolicy*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*safeboot*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: backup_kill
   query: wbadmin delete catalog OR backup delete
   look_for: wbadmin catalog deletion — removes backup inventory.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0329
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \wbadmin.exe
+    - field: ecs.process.command_line
+      contains:
+      - delete
   es:
     bool:
-      should:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
       - wildcard:
-          fields.command_line.kw:
-            value: '*wbadmin delete catalog*'
+          ecs.process.executable.wc:
+            value: '*\\wbadmin.exe'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
-            value: '*backup delete*'
+          ecs.process.command_line.wc:
+            value: '*delete*'
             case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
 - name: mass_encryption
   query: .encrypted OR .locked OR .crypt OR readme OR ransom
-  look_for: Mass file renames to ransom extensions; readme/ransom-note files in mft/usn
-    with high write rates.
+  look_for: Mass file renames to ransom extensions; readme/ransom-note files in mft/usn with high write rates.
   pivot: FileName
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  kind: aggregate
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.UpdateReasons
+      contains:
+      - RenameNewName
+  aggregate:
+    field: ecs.file.extension
+    size: 30
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - mftecmd
       - wildcard:
-          text.wc:
-            value: '*.encrypted*'
+          fields.UpdateReasons.kw:
+            value: '*RenameNewName*'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.locked*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*.crypt*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*readme*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ransom*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - '.encrypted: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.locked: file-path pivot; no populated ecs.file.path, searched in text'
-  - '.crypt: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'readme: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'ransom: file-path pivot; no populated ecs.file.path, searched in text'
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.extension
+        size: 30
 - name: service_stop
   query: sc stop OR net stop OR service stop
   look_for: Mass service stops (database, backup, AV) before encryption.
   pivot: ServiceName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0021
+    - manifest
+    - evtx-map
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \net.exe
+      - \net1.exe
+      - \sc.exe
+      - \taskkill.exe
+    - field: ecs.process.command_line
+      contains:
+      - stop
+      - /im
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*sc stop*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*net stop*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*service stop*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'sc stop: free phrase; the step''s pivot names no registry column'
-  - 'net stop: free phrase; the step''s pivot names no registry column'
-  - 'service stop: free phrase; the step''s pivot names no registry column'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net1.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\sc.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\taskkill.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*stop*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*/im*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: crypto_process
   query: cipher /w OR diskcryptor OR vboxdrv
   look_for: Disk-encryption tool execution or crypto-loop patterns.
   pivot: ProcessName
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0215
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - cipher /w
+      - cipher.exe /w
+      - diskcryptor
+      - dcrypt
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*cipher /w*'
-            case_insensitive: true
-      - wildcard:
-          fields.process_name.kw:
-            value: '*diskcryptor*'
-            case_insensitive: true
-      - wildcard:
-          fields.process_name.kw:
-            value: '*vboxdrv*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'cipher /w: value of the wrong kind for process_name; searched in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*cipher /w*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*cipher.exe /w*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*diskcryptor*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*dcrypt*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: backward_analysis
   query: rdp OR 4624 OR msiexec OR phish
-  look_for: 'Work BACKWARD from impact: ransomware investigations begin at the ransomed/highest-activity
-    hosts, then trace back to entry. Most common IAB vectors to hunt: exposed internet-facing
-    RDP (the most common ransomware entry — hunt illegitimate external RDP), border-
-    device exploit, phishing, purchased credentials/access.'
-  corroborate: first ransom-note write time → work backward through lateral movement
-    → initial access on the earliest-affected host
+  look_for: 'Work BACKWARD from impact: ransomware investigations begin at the ransomed/highest-activity hosts,
+    then trace back to entry. Most common IAB vectors to hunt: exposed internet-facing RDP (the most common ransomware
+    entry — hunt illegitimate external RDP), border- device exploit, phishing, purchased credentials/access.'
+  corroborate: first ransom-note write time → work backward through lateral movement → initial access on the earliest-affected
+    host
   pivot: IpAddress
-  requires:
-    families: *id001
   kind: procedure
-  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
-    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
-    never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped:
-  - term: rdp
-    reason: 'procedure step: shown to agents, never executed'
-  - term: '4624'
-    reason: 'procedure step: shown to agents, never executed'
-  - term: msiexec
-    reason: 'procedure step: shown to agents, never executed'
-  - term: phish
-    reason: 'procedure step: shown to agents, never executed'
-  - term: sha256
-    reason: 'procedure verb, not evidence: hashing is what the examiner does, not
-      what is searched for'
-  - term: md5
-    reason: procedure verb, not evidence
-  - term: hash
-    reason: procedure verb, not evidence
-  - term: kape
-    reason: names a tool the examiner runs, not a field value to search for
-  - term: triage
-    reason: procedure verb, not evidence
-  - term: bitlocker
-    reason: a pre-acquisition decision, not a search over indexed evidence
-  - term: encryption
-    reason: procedure verb, not evidence
-  - term: encrypted
-    reason: procedure verb, not evidence
-  - term: event_id 4624
-    reason: a real clue, but this step is the order of investigation, not a search
-      for it
-negative: No shadow deletion, recovery disable, or mass-encryption artifacts → impact
-  phase not reached or aborted.
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER (do X, then Y), not evidence to
+    search. It is shown to agents as a procedure and never executed, so it cannot fire on noise and cannot count
+    as coverage.'
+negative: No shadow deletion, recovery disable, or mass-encryption artifacts → impact phase not reached or aborted.
 confidence_rules:
   high: vss delete + bcdedit recovery-off + mass rename/encrypt + ransom note
   medium: shadow deletion + backup kill without confirmed encryption
@@ -237,5 +579,4 @@ mitre:
 - T1489
 caveats:
 - Backup software legitimately manages shadows — check the account and schedule context.
-- Some ransomware skips vss delete if it can encrypt directly — check for mass file
-  writes instead.
+- Some ransomware skips vss delete if it can encrypt directly — check for mass file writes instead.

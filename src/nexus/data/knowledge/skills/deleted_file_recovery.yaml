@@ -1,9 +1,8 @@
 skill: deleted_file_recovery
 title: Deleted-file recovery — Recycle Bin, $I30 slack, USN deletes, carving
-description: 'Prove what was deleted, when, and by which path. Deletion is layered:
-  Recycle Bin preserves content+metadata, USN records the delete reason, $I30 slack
-  keeps the name+timestamps, freed MFT records/clusters persist until reuse — and
-  LNK files still point at targets that are gone.'
+description: 'Prove what was deleted, when, and by which path. Deletion is layered: Recycle Bin preserves content+metadata,
+  USN records the delete reason, $I30 slack keeps the name+timestamps, freed MFT records/clusters persist until
+  reuse — and LNK files still point at targets that are gone.'
 trigger:
   families:
   - rbcmd
@@ -30,184 +29,369 @@ trigger:
 steps:
 - name: recycle_bin_i_files
   query: file:rbcmd OR $i
-  look_for: $Recycle.Bin\<SID>\$I* files (RBCmd) — each $I metadata file records the
-    original full path and the deletion timestamp; the paired $R file holds recoverable
-    content. Vista+ format; XP-era INFO2 is legacy.
+  look_for: $Recycle.Bin\<SID>\$I* files (RBCmd) — each $I metadata file records the original full path and the
+    deletion timestamp; the paired $R file holds recoverable content. Vista+ format; XP-era INFO2 is legacy.
   pivot: FileName
   corroborate: owning SID identifies which user deleted it
+  requires:
+    families:
+    - rbcmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - rbcmd
+  source: families rbcmd
+  search:
+    families:
+    - rbcmd
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*rbcmd*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$i*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - rbcmd
-    - mftecmd
-    - mft
-    - usn
-    - fls
-    - recmd
-    - registry
+      filter:
+      - terms:
+          family:
+          - rbcmd
 - name: usn_delete_reasons
   query: file:usn delete
-  look_for: USN journal Delete/Close+Delete reasons with the file reference number
-    — proves WHEN the record was freed even after the $I file is gone. Pair with the
-    parent path to state what directory lost the file.
+  look_for: USN journal Delete/Close+Delete reasons with the file reference number — proves WHEN the record was
+    freed even after the $I file is gone. Pair with the parent path to state what directory lost the file.
   pivot: FileName
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  kind: aggregate
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.UpdateReasons
+      contains:
+      - FileDelete
+  aggregate:
+    field: ecs.file.extension
+    size: 50
   es:
     bool:
-      must:
+      filter:
+      - terms:
+          family:
+          - mftecmd
       - wildcard:
-          file:
-            value: '*usn*'
+          fields.UpdateReasons.kw:
+            value: '*FileDelete*'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*delete*'
-            case_insensitive: true
-  requires:
-    families: *id001
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.extension
+        size: 50
 - name: i30_slack_names
   query: file:i30
-  look_for: $I30 slack residue — filename + size + full timestamp set for files whose
-    MFT records were already reused. The strongest evidence a file once existed in
-    that directory.
+  look_for: $I30 slack residue — filename + size + full timestamp set for files whose MFT records were already reused.
+    The strongest evidence a file once existed in that directory.
   pivot: FileName
-  es:
-    wildcard:
-      file:
-        value: '*i30*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.FromSlack
+      is:
+      - 'True'
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.FromSlack.kw:
+            value: 'True'
+            case_insensitive: true
 - name: freed_mft_records
   query: file:mft
-  look_for: MFT records flagged not-in-use — for non-resident files the data runs
-    still point at freed clusters whose content survives until reuse; resident-file
-    data (<~600-700 bytes) may sit inside the record itself.
+  look_for: MFT records flagged not-in-use — for non-resident files the data runs still point at freed clusters
+    whose content survives until reuse; resident-file data (<~600-700 bytes) may sit inside the record itself.
   pivot: FileName
   corroborate: resident-data recovery yields small scripts/configs intact
-  es:
-    wildcard:
-      file:
-        value: '*mft*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  kind: aggregate
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.InUse
+      is:
+      - 'False'
+  aggregate:
+    field: ecs.file.extension
+    size: 50
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.InUse.kw:
+            value: 'False'
+            case_insensitive: true
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.extension
+        size: 50
 - name: search_index_ghost
   query: windows.db OR windows.edb OR file:search
-  look_for: Windows Search index (Windows.edb) — records persist for deleted files
-    until the index rebuilds; proves existence AND content snippets even when MFT/USN
-    are exhausted.
+  look_for: Windows Search index (Windows.edb) — records persist for deleted files until the index rebuilds; proves
+    existence AND content snippets even when MFT/USN are exhausted.
+  requires:
+    families:
+    - sidr
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - sidr
+  source: families sidr
+  search:
+    families:
+    - sidr
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*windows.db*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*windows.edb*'
-            case_insensitive: true
-      - wildcard:
-          file:
-            value: '*search*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'windows.edb: free phrase; the step''s pivot names no registry column'
+      filter:
+      - terms:
+          family:
+          - sidr
 - name: lnk_ghost_targets
   query: file:lnk OR .lnk
-  look_for: LNK files outlive their targets — a .lnk in Recent proves the target path
-    existed and was opened, even after the file is gone. Its internal timestamps bound
-    the last-access window.
+  look_for: LNK files outlive their targets — a .lnk in Recent proves the target path existed and was opened, even
+    after the file is gone. Its internal timestamps bound the last-access window.
   pivot: TargetPath
+  requires:
+    families:
+    - lecmd
+    - jlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+  source: families lecmd, jlecmd
+  kind: aggregate
+  search:
+    families:
+    - lecmd
+    - jlecmd
+  aggregate:
+    field: ecs.file.path
+    size: 100
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*lnk*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*.lnk*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.path
+        size: 100
 - name: shadow_copies
   query: vss OR shadow OR System Volume Information
-  look_for: Volume Shadow Copies — pre-deletion snapshots may retain the file intact;
-    enumerate vssadmin/vssadmin list shadows age vs the delete window before concluding
-    content is unrecoverable.
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*vss*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*shadow*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*System Volume Information*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'vss: free phrase; the step''s pivot names no registry column'
-  - 'shadow: free phrase; the step''s pivot names no registry column'
-  - 'System Volume Information: free phrase; the step''s pivot names no registry column'
+  look_for: Volume Shadow Copies — pre-deletion snapshots may retain the file intact; enumerate vssadmin/vssadmin
+    list shadows age vs the delete window before concluding content is unrecoverable.
+  kind: procedure
+  procedure_reason: whether a shadow copy holds the file is answered on the evidence image (list and mount the shadows);
+    the index holds no shadow-copy contents.
 - name: secure_delete_tools
   query: sdelete OR cipher /w OR bcwipe OR file_wipe
-  look_for: Execution of wiping tools (sdelete, cipher /w, BCWipe) — prefetch/ execution
-    artifacts for the tool date-bound when recovery became impossible and who made
-    it so.
+  look_for: Execution of wiping tools (sdelete, cipher /w, BCWipe) — prefetch/ execution artifacts for the tool
+    date-bound when recovery became impossible and who made it so.
   pivot: CommandLine
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+    - pecmd
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '1'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Security
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '4688'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - pecmd
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688; families pecmd
+  search:
+    basis:
+    - attack:DET0140
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    families:
+    - pecmd
+    any:
+    - field: ecs.process.executable
+      endswith:
+      - \sdelete.exe
+      - \sdelete64.exe
+      - \bcwipe.exe
+      - \eraser.exe
+    - field: ecs.process.command_line
+      contains:
+      - cipher /w
+      - cipher.exe /w
+    - field: ecs.process.name
+      is:
+      - SDELETE.EXE
+      - SDELETE64.EXE
+      - BCWIPE.EXE
+      - ERASER.EXE
   es:
     bool:
-      should:
-      - wildcard:
-          fields.command_line.kw:
-            value: '*sdelete*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*cipher /w*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*bcwipe*'
-            case_insensitive: true
-      - wildcard:
-          fields.command_line.kw:
-            value: '*file_wipe*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-negative: No Recycle Bin entries and no $I30 residue in the target path means either
-  the file was deleted perma (Shift+Del/CLI del) — which still leaves USN reasons
-  — or the volume's artifacts were not collected. State which layer was actually checked.
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '1'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Security
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '4688'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - pecmd
+          minimum_should_match: 1
+      - bool:
+          should:
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\sdelete.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\sdelete64.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\bcwipe.exe'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.executable.wc:
+                    value: '*\\eraser.exe'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*cipher /w*'
+                    case_insensitive: true
+              - wildcard:
+                  ecs.process.command_line.wc:
+                    value: '*cipher.exe /w*'
+                    case_insensitive: true
+              minimum_should_match: 1
+          - bool:
+              should:
+              - term:
+                  ecs.process.name:
+                    value: SDELETE.EXE
+                    case_insensitive: true
+              - term:
+                  ecs.process.name:
+                    value: SDELETE64.EXE
+                    case_insensitive: true
+              - term:
+                  ecs.process.name:
+                    value: BCWIPE.EXE
+                    case_insensitive: true
+              - term:
+                  ecs.process.name:
+                    value: ERASER.EXE
+                    case_insensitive: true
+              minimum_should_match: 1
+          minimum_should_match: 1
+negative: No Recycle Bin entries and no $I30 residue in the target path means either the file was deleted perma
+  (Shift+Del/CLI del) — which still leaves USN reasons — or the volume's artifacts were not collected. State which
+  layer was actually checked.
 confidence_rules:
-  high: $I file or $I30 residue + matching USN delete reason (what + when, two layers
-    agree)
+  high: $I file or $I30 residue + matching USN delete reason (what + when, two layers agree)
   medium: USN delete reason alone, or LNK ghost target with access timestamp
   low: inference from MFT gaps or missing-index entries
 mitre:
@@ -215,11 +399,9 @@ mitre:
 - T1485
 - T1564
 caveats:
-- Recycle Bin is per-user — a SYSTEM-context delete (task/service) may leave no $I
-  file under any user SID; check USN first.
-- Shift+Delete and CLI del bypass the Recycle Bin entirely — absence of $I files is
-  expected, not exonerating.
-- Carving window is time-dependent — freed clusters are reused by allocation pressure;
-  state the collection lag.
-- Secure-delete tools overwrite content but still leave MFT/USN metadata — a wipe
-  proves intent, not erasure of the filename record.
+- Recycle Bin is per-user — a SYSTEM-context delete (task/service) may leave no $I file under any user SID; check
+  USN first.
+- Shift+Delete and CLI del bypass the Recycle Bin entirely — absence of $I files is expected, not exonerating.
+- Carving window is time-dependent — freed clusters are reused by allocation pressure; state the collection lag.
+- Secure-delete tools overwrite content but still leave MFT/USN metadata — a wipe proves intent, not erasure of
+  the filename record.

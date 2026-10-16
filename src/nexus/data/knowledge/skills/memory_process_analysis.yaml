@@ -1,9 +1,8 @@
 skill: memory_process_analysis
 title: Memory process analysis — enumeration, injection classes, hollowing
-description: 'Work a memory image like an examiner: enumerate the process tree, check
-  parent/child sanity, hunt hidden/unlinked processes, then classify code injection
-  (classic inject, hollowing, APC, atom bombing) before dumping suspicious processes
-  for deeper analysis.'
+description: 'Work a memory image like an examiner: enumerate the process tree, check parent/child sanity, hunt
+  hidden/unlinked processes, then classify code injection (classic inject, hollowing, APC, atom bombing) before
+  dumping suspicious processes for deeper analysis.'
 trigger:
   families:
   - vol
@@ -30,194 +29,226 @@ trigger:
 steps:
 - name: process_enumeration
   query: pslist OR pstree OR svchost OR explorer.exe
-  look_for: 'Baseline the process tree: walk Windows.PSTree/pslist output — every
-    process under a sane parent (explorer for user apps, services.exe for services,
-    svchost under services, wininit/csrss/ smss at root). Sanity-check counts: lone
-    svchosts, duplicate lsass/csrss, user processes parented by services.exe.'
+  look_for: 'Baseline the process tree: walk Windows.PSTree/pslist output — every process under a sane parent (explorer
+    for user apps, services.exe for services, svchost under services, wininit/csrss/ smss at root). Sanity-check
+    counts: lone svchosts, duplicate lsass/csrss, user processes parented by services.exe.'
   pivot: ProcessName
   corroborate: parent/child chain — process exists but parentage impossible = inject/DCOM
+  requires:
+    families:
+    - vol
+    - volatility
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - vol
+          - volatility
+  source: families vol, volatility
+  kind: aggregate
+  search:
+    families:
+    - vol
+    - volatility
+  aggregate:
+    field: ecs.process.name
+    size: 200
   es:
     bool:
-      should:
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*pslist*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*pstree*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*svchost*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*explorer.exe*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - vol
-    - memprocfs
-    - memory
-    - evtx
-    - sysmon
-  es_text_only_reason:
-  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
+      filter:
+      - terms:
+          family:
+          - vol
+          - volatility
+  es_aggs:
+    by:
+      terms:
+        field: ecs.process.name
+        size: 200
 - name: hidden_process_check
   query: psxview OR psscan OR unlink
-  look_for: 'Cross-view detection: psxview/psscan compares multiple enumeration methods
-    — a process visible in psscan but missing from pslist/ pstree was UNLINKED (DKOM
-    hiding). Also note: DCOM-spawned processes legitimately escape the linked list,
-    so absence from the tree alone is not proof — corroborate with psscan.'
+  look_for: 'Cross-view detection: psxview/psscan compares multiple enumeration methods — a process visible in psscan
+    but missing from pslist/ pstree was UNLINKED (DKOM hiding). Also note: DCOM-spawned processes legitimately escape
+    the linked list, so absence from the tree alone is not proof — corroborate with psscan.'
   pivot: ProcessName
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*psxview*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*psscan*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*unlink*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: cross-view detection compares two process listings (pslist against psscan); the difference is
+    computed across rows, not found in one.
 - name: injection_classification
   query: malfind OR VAD OR PAGE_EXECUTE_READWRITE
-  look_for: 'malfind finds injected code via VAD anomalies — private PAGE_EXECUTE_READWRITE
-    regions with no file backing. Classify the injection: classic VirtualAllocEx+WriteProcessMemory+CreateRemoteThread,
-    process hollowing (legit process spawned suspended, image replaced), APC injection,
-    or process doppelganging. Each leaves different VAD/PEB residue.'
+  look_for: 'malfind finds injected code via VAD anomalies — private PAGE_EXECUTE_READWRITE regions with no file
+    backing. Classify the injection: classic VirtualAllocEx+WriteProcessMemory+CreateRemoteThread, process hollowing
+    (legit process spawned suspended, image replaced), APC injection, or process doppelganging. Each leaves different
+    VAD/PEB residue.'
   pivot: ProcessName
+  requires:
+    families:
+    - vol
+    - volatility
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - vol
+          - volatility
+  source: families vol, volatility
+  search:
+    families:
+    - vol
+    - volatility
+    all:
+    - field: text
+      contains:
+      - PAGE_EXECUTE_READWRITE
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - vol
+          - volatility
       - wildcard:
-          fields.ImageFileName.kw:
-            value: '*malfind*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*VAD*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
+          text.wc:
             value: '*PAGE_EXECUTE_READWRITE*'
             case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
 - name: webshell_exec_chain
   query: w3wp.exe OR net.exe OR whoami.exe OR ipconfig.exe
-  look_for: 'On web servers: w3wp.exe (IIS worker) spawning net.exe, whoami.exe, ipconfig.exe,
-    sc.exe, cmd.exe = webshell command execution — the worker process becomes an HTTP-enabled
-    backdoor. (FOR508.3 Deep Panda case: w3wp→net1/ipconfig/arp/whoami/sc chain.)'
+  look_for: 'On web servers: w3wp.exe (IIS worker) spawning net.exe, whoami.exe, ipconfig.exe, sc.exe, cmd.exe =
+    webshell command execution — the worker process becomes an HTTP-enabled backdoor. (FOR508.3 Deep Panda case:
+    w3wp→net1/ipconfig/arp/whoami/sc chain.)'
   pivot: ParentImage
   corroborate: IIS logs showing POSTs to the rogue page in the same window
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0394
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    all:
+    - field: ecs.process.executable
+      endswith:
+      - \net.exe
+      - \net1.exe
+      - \whoami.exe
+      - \ipconfig.exe
+    any:
+    - field: ecs.process.parent.executable
+      endswith:
+      - \w3wp.exe
+    - field: ecs.winlog.event_data.ParentProcessName
+      endswith:
+      - \w3wp.exe
   es:
     bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*w3wp.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*net.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*whoami.exe*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*ipconfig.exe*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'w3wp.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'net.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'whoami.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'ipconfig.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\net1.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\whoami.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.executable.wc:
+                value: '*\\ipconfig.exe'
+                case_insensitive: true
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.parent.executable.wc:
+                value: '*\\w3wp.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.winlog.event_data.ParentProcessName.wc:
+                value: '*\\w3wp.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: credential_material
   query: lsass.exe OR mimikatz OR wdigest OR sekurlsa
-  look_for: 'Credential material lives in memory: lsass.exe injected threads, unexpected
-    open handles, mimikatz/sekurlsa strings, wdigest plaintext artifacts — memory
-    proves theft disk artifacts miss.'
+  look_for: 'Credential material lives in memory: lsass.exe injected threads, unexpected open handles, mimikatz/sekurlsa
+    strings, wdigest plaintext artifacts — memory proves theft disk artifacts miss.'
   pivot: ProcessName
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*lsass.exe*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*mimikatz*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*wdigest*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*sekurlsa*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - 'lsass.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
+  kind: procedure
+  procedure_reason: credential material in memory is read with the memory tools (lsass handles, injected threads,
+    YARA); their detections reach every mode as memory leads (IC-2).
 - name: dump_for_analysis
   query: procdump OR memdump OR .dmp OR dlldump
-  look_for: Suspicious processes get dumped (procdump/memdump/dlldump) for string/YARA/decompile
-    analysis — the dump is evidence, record its hash and the source PID/offset.
+  look_for: Suspicious processes get dumped (procdump/memdump/dlldump) for string/YARA/decompile analysis — the
+    dump is evidence, record its hash and the source PID/offset.
   pivot: ProcessName
-  es:
-    bool:
-      should:
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*procdump*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*memdump*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*.dmp*'
-            case_insensitive: true
-      - wildcard:
-          fields.ImageFileName.kw:
-            value: '*dlldump*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-negative: Clean tree + no VAD anomalies + no cross-view gaps → memory shows no active
-  compromise at capture time. Dormant/dead-code implants and fileless artifacts that
-  already exited won't appear — check disk and timeline for historical evidence.
+  kind: procedure
+  procedure_reason: an order of handling (dump the suspicious process, record its hash and PID) for the examiner's
+    tools, not a search over the index.
+negative: Clean tree + no VAD anomalies + no cross-view gaps → memory shows no active compromise at capture time.
+  Dormant/dead-code implants and fileless artifacts that already exited won't appear — check disk and timeline for
+  historical evidence.
 confidence_rules:
-  high: unlinked/hidden process OR malfind hit + anomalous parentage + dump confirms
-    malicious code
+  high: unlinked/hidden process OR malfind hit + anomalous parentage + dump confirms malicious code
   medium: anomalous parentage or lone suspicious process without confirmed injection
   low: unsigned/unknown process with sane parentage (may be legitimate tooling)
 mitre:
@@ -225,14 +256,13 @@ mitre:
 - T1055.001
 - T1055.012
 caveats:
-- Memory is a snapshot — processes that exited before capture leave no pslist trace;
-  corroborate with prefetch/amcache for historical execution.
-- pslist/pstree follows the EPROCESS linked list — DCOM-spawned processes escape it
-  legitimately; use psscan/psxview before claiming 'hidden'.
-- Smear and acquisition noise create false anomalies — verify suspicious structures
-  across two enumeration methods before flagging.
-- malfind fires on JIT'd browsers and .NET legitimately — check process context, not
-  just the VAD flag.
+- Memory is a snapshot — processes that exited before capture leave no pslist trace; corroborate with prefetch/amcache
+  for historical execution.
+- pslist/pstree follows the EPROCESS linked list — DCOM-spawned processes escape it legitimately; use psscan/psxview
+  before claiming 'hidden'.
+- Smear and acquisition noise create false anomalies — verify suspicious structures across two enumeration methods
+  before flagging.
+- malfind fires on JIT'd browsers and .NET legitimately — check process context, not just the VAD flag.
 primary_families:
 - vol
 - volatility

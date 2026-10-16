@@ -36,6 +36,22 @@ columns:
     families:
       - ingest-scheduled_tasks
       - tasks
+  # IC-6 (Part 9): the catalog's sqlecmd entry was derived from the HistoryVisits output alone (its notes list
+  # Downloads and KeywordSearches too). SQLECmd's Downloads and KeywordSearches outputs carry these columns
+  # (ES-Mapping/outputs/sqlecmd2/*_ChromiumBrowser_Downloads_*.csv and *_KeywordSearches_*.csv headers); the
+  # browser skill's download and search steps read them, proved on those rows (step-controls.json).
+  TargetPath:
+    type: text
+    families:
+      - sqlecmd
+  DownloadURL:
+    type: text
+    families:
+      - sqlecmd
+  KeywordSearchTerm:
+    type: text
+    families:
+      - sqlecmd
 
 # Families this supplement guarantees exist in the registry, with a reason. The
 # build check fails if a regeneration would remove one of these without a reason.

@@ -698,7 +698,7 @@ async def run_interpret_loop(
             software += [str(s) for s in lead.get("software") or [] if str(s) not in software]
         order = WorkOrder(order_id="interpret", role="evidence", task="", skill_refs=refs or [],
                           techniques=tuple(crit_techniques), software=tuple(software))
-        block = (_skill_procedure_block(order) if refs else "") + attack_method_block(order, case_dir)
+        block = (_skill_procedure_block(order, case_dir) if refs else "") + attack_method_block(order, case_dir)
         if block:
             skill_block = "\n" + block + "\n"
     except Exception:  # noqa: BLE001

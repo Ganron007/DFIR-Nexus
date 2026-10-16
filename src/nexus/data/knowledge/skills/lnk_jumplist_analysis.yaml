@@ -1,9 +1,8 @@
 skill: lnk_jumplist_analysis
 title: LNK & JumpList analysis — file access trails and ghost targets
-description: LNK files are created the moment a user first opens a file and modified
-  on each later access — and they persist after the target is deleted. JumpLists extend
-  this into per-application recently-used files. Together they prove user-level file
-  interaction and expose files that no longer exist on disk.
+description: LNK files are created the moment a user first opens a file and modified on each later access — and
+  they persist after the target is deleted. JumpLists extend this into per-application recently-used files. Together
+  they prove user-level file interaction and expose files that no longer exist on disk.
 trigger:
   families:
   - lecmd
@@ -28,153 +27,250 @@ trigger:
 steps:
 - name: recent_lnk_inventory
   query: file:lnk OR .lnk
-  look_for: 'LNKs under Recent/Desktop — created on FIRST open of a file, modified
-    on each subsequent access. They persist after the target is deleted: a .lnk is
-    proof a file existed at a path and that a user opened it.'
+  look_for: 'LNKs under Recent/Desktop — created on FIRST open of a file, modified on each subsequent access. They
+    persist after the target is deleted: a .lnk is proof a file existed at a path and that a user opened it.'
   pivot: TargetPath
   corroborate: LNK create-time ≈ first access; modify-time ≈ last access of the target
+  requires:
+    families:
+    - lecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - lecmd
+  source: families lecmd
+  kind: aggregate
+  search:
+    families:
+    - lecmd
+  aggregate:
+    field: ecs.file.path
+    size: 200
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*lnk*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*.lnk*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - lecmd
-    - jlecmd
-    - lnk
-    - jumplist
-    - mftecmd
-    - recent
+      filter:
+      - terms:
+          family:
+          - lecmd
+  es_aggs:
+    by:
+      terms:
+        field: ecs.file.path
+        size: 200
 - name: lnk_source_attribution
   query: file:lnk
-  look_for: LNK internals carry the creating machine's identifiers — NetBIOS name,
-    volume serial, MAC address, drive type. A removable-drive volume serial or a foreign
-    machine name ties the file to a USB or another host (the infection source).
+  look_for: LNK internals carry the creating machine's identifiers — NetBIOS name, volume serial, MAC address, drive
+    type. A removable-drive volume serial or a foreign machine name ties the file to a USB or another host (the
+    infection source).
   pivot: MachineID
   corroborate: volume serial matches a USB device in MountedDevices → delivery vector
-  es:
-    wildcard:
-      file:
-        value: '*lnk*'
-        case_insensitive: true
   requires:
-    families: *id001
+    families:
+    - lecmd
+    - jlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+  source: families lecmd, jlecmd
+  kind: aggregate
+  search:
+    families:
+    - lecmd
+    - jlecmd
+  aggregate:
+    field: fields.MachineID
+    size: 50
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+  es_aggs:
+    by:
+      terms:
+        field: fields.MachineID.kw
+        size: 50
 - name: lnk_execution_payload
   query: file:lnk powershell OR cmd OR mshta OR rundll32 OR wscript
-  look_for: Malicious LNKs — target path pointing at interpreters (powershell, cmd,
-    mshta, rundll32) with embedded arguments instead of a document. Campaign-H style
-    Invoice.lnk = interpreter target + encoded payload.
+  look_for: Malicious LNKs — target path pointing at interpreters (powershell, cmd, mshta, rundll32) with embedded
+    arguments instead of a document. Campaign-H style Invoice.lnk = interpreter target + encoded payload.
   pivot: Arguments
+  requires:
+    families:
+    - lecmd
+    - jlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
+  source: families lecmd, jlecmd
+  search:
+    families:
+    - lecmd
+    - jlecmd
+    any:
+    - field: ecs.file.path
+      endswith:
+      - \cmd.exe
+      - \powershell.exe
+      - \mshta.exe
+      - \rundll32.exe
+      - \wscript.exe
+      - \cscript.exe
   es:
     bool:
-      should:
+      filter:
+      - terms:
+          family:
+          - lecmd
+          - jlecmd
       - bool:
-          must:
+          should:
           - wildcard:
-              file:
-                value: '*lnk*'
+              ecs.file.path.wc:
+                value: '*\\cmd.exe'
                 case_insensitive: true
           - wildcard:
-              fields.Arguments.kw:
-                value: '*powershell*'
+              ecs.file.path.wc:
+                value: '*\\powershell.exe'
                 case_insensitive: true
-      - wildcard:
-          fields.Arguments.kw:
-            value: '*cmd*'
-            case_insensitive: true
-      - wildcard:
-          fields.Arguments.kw:
-            value: '*mshta*'
-            case_insensitive: true
-      - wildcard:
-          fields.Arguments.kw:
-            value: '*rundll32*'
-            case_insensitive: true
-      - wildcard:
-          fields.Arguments.kw:
-            value: '*wscript*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\mshta.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\rundll32.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\wscript.exe'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\cscript.exe'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: automatic_destinations
   query: file:automaticdestinations OR file:jlecmd
-  look_for: 'AutomaticDestinations jump lists (OS-created, named by AppID hash) —
-    per-application recently-opened files. Each entry is an embedded LNK: target path
-    + access time; the list bounds what the user did inside each application.'
+  look_for: 'AutomaticDestinations jump lists (OS-created, named by AppID hash) — per-application recently-opened
+    files. Each entry is an embedded LNK: target path + access time; the list bounds what the user did inside each
+    application.'
   pivot: TargetPath
+  requires:
+    families:
+    - jlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - jlecmd
+  source: families jlecmd
+  kind: aggregate
+  search:
+    families:
+    - jlecmd
+  aggregate:
+    field: fields.AppIdDescription
+    size: 50
   es:
     bool:
-      should:
-      - wildcard:
-          file:
-            value: '*automaticdestinations*'
-            case_insensitive: true
-      - wildcard:
-          file:
-            value: '*jlecmd*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - jlecmd
+  es_aggs:
+    by:
+      terms:
+        field: fields.AppIdDescription.kw
+        size: 50
 - name: custom_destinations
   query: file:customdestinations
-  look_for: CustomDestinations jump lists (application-created) — recent items the
-    app itself tracked; catches activity AutomaticDestinations misses (scripts, remote
-    files, uncommon apps).
+  look_for: CustomDestinations jump lists (application-created) — recent items the app itself tracked; catches activity
+    AutomaticDestinations misses (scripts, remote files, uncommon apps).
   pivot: TargetPath
-  es:
-    wildcard:
-      file:
-        value: '*customdestinations*'
-        case_insensitive: true
   requires:
-    families: *id001
-- name: jumplist_persistence
-  query: file:lnk startup OR file:lnk start menu\programs\startup
-  look_for: LNKs inside Startup folders — user-context persistence that survives reboot;
-    check creation time vs intrusion window and the target's legitimacy.
-  pivot: TargetPath
+    families:
+    - jlecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - jlecmd
+  source: families jlecmd
+  search:
+    families:
+    - jlecmd
+    all:
+    - field: file
+      contains:
+      - CustomDestinations
   es:
     bool:
-      should:
-      - bool:
-          must:
-          - wildcard:
-              file:
-                value: '*lnk*'
-                case_insensitive: true
-          - wildcard:
-              ecs.file.path:
-                value: '*startup*'
-                case_insensitive: true
-      - bool:
-          must:
-          - wildcard:
-              file:
-                value: '*lnk*'
-                case_insensitive: true
-          - wildcard:
-              ecs.file.path:
-                value: '*start menu\programs\startup*'
-                case_insensitive: true
-      minimum_should_match: 1
+      filter:
+      - terms:
+          family:
+          - jlecmd
+      - wildcard:
+          file:
+            value: '*CustomDestinations*'
+            case_insensitive: true
+- name: jumplist_persistence
+  query: file:lnk startup OR file:lnk start menu\programs\startup
+  look_for: LNKs inside Startup folders — user-context persistence that survives reboot; check creation time vs
+    intrusion window and the target's legitimacy.
+  pivot: TargetPath
   requires:
-    families: *id001
-negative: Empty Recent/jumplist output usually means a per-user artifact gap (the
-  profile wasn't collected or the user never opened files via Explorer) — CLI-launched
-  and service-run files leave no LNK trail at all.
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: ecs.file.path
+      contains:
+      - \Start Menu\Programs\Startup\
+    - field: ecs.file.extension
+      is:
+      - lnk
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - wildcard:
+          ecs.file.path.wc:
+            value: '*\\Start Menu\\Programs\\Startup\\*'
+            case_insensitive: true
+      - term:
+          ecs.file.extension:
+            value: lnk
+            case_insensitive: true
+negative: Empty Recent/jumplist output usually means a per-user artifact gap (the profile wasn't collected or the
+  user never opened files via Explorer) — CLI-launched and service-run files leave no LNK trail at all.
 confidence_rules:
-  high: LNK + matching target MFT/$I30 residue or foreign machine-id linking to a
-    known device
+  high: LNK + matching target MFT/$I30 residue or foreign machine-id linking to a known device
   medium: LNK exists but target evidence is gone (existence still proven)
   low: jumplist entries consistent with ordinary app use
 mitre:
@@ -182,11 +278,8 @@ mitre:
 - T1547.001
 - T1078
 caveats:
-- LNK creation is user-driven — files opened by services, tasks, or scripts leave
-  no LNK; absence proves nothing about machine actions.
-- A LNK proves the file was OPENED at least once — not that it was created on this
-  host nor that it still exists.
-- Jumplist AppID names are hash-derived — resolve the AppID to the application before
-  attributing usage.
-- Deleting a file does NOT delete its LNKs — stale LNKs pointing at long-gone paths
-  are normal; use timestamps.
+- LNK creation is user-driven — files opened by services, tasks, or scripts leave no LNK; absence proves nothing
+  about machine actions.
+- A LNK proves the file was OPENED at least once — not that it was created on this host nor that it still exists.
+- Jumplist AppID names are hash-derived — resolve the AppID to the application before attributing usage.
+- Deleting a file does NOT delete its LNKs — stale LNKs pointing at long-gone paths are normal; use timestamps.

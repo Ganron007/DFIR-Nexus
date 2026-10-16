@@ -551,7 +551,7 @@ def behavioural_analytics_leads(
         try:
             count, samples = _analytic_matches(case_dir, clause, probe=probe)
         except Exception as exc:  # noqa: BLE001 — one analytic must not lose the rest
-            log.debug("analytic %s failed: %s", name, exc)
+            log.warning("analytic %s not run: %s", name, exc)
             continue
         if count <= 0:
             continue
@@ -594,9 +594,11 @@ def _analytic_matches(
 ) -> tuple[int, list[dict[str, Any]]]:
     """How many indexed rows an analytic's clause matches, and the first few as evidence rows.
 
-    Prefers the case's ES index (exact total, no scan); falls back to counting
-    over the parsed rows the case already holds when ES is not available, so an
-    unindexed case still gets analytics rather than silence (a count with no rows).
+    Only the case's index answers. An analytic reads the `ecs.*` fields the indexer computes, which a parsed
+    file does not hold, and its terms and patterns mean what Elasticsearch makes of them; the in-process
+    count over parsed rows that stood in when ES was down returned 0 for every such analytic, a "no match"
+    nobody had established (IC-7). When the index cannot answer this raises, and the caller leaves the
+    analytic out of the leads with the reason logged.
     """
     if probe is not None:
         if hasattr(probe, "count_analytic"):
@@ -605,48 +607,12 @@ def _analytic_matches(
             hits = list(probe.analytic_hits(clause) or [])
             return len(hits), _hit_rows(hits[:ANALYTIC_SAMPLE_ROWS])
     case_id = Path(case_dir).name
-    try:
-        from nexus.langgraph.es_native import es_search
+    from nexus.langgraph.es_native import es_search
 
-        result = es_search(case_id, clause, size=ANALYTIC_SAMPLE_ROWS)
-        if result.get("degraded"):
-            return 0, []
-        return int(result.get("total") or 0), _hit_rows(result.get("hits") or [])
-    except Exception:  # noqa: BLE001 — ES down: count over the case's own rows
-        return _count_analytic_csv(Path(case_dir), clause), []
-
-
-def _count_analytic_csv(case_dir: Path, clause: dict[str, Any]) -> int:
-    """Count an analytic's matches over the case's own parsed rows."""
-    import json
-
-    from nexus.analysis.behavioural_analytics import matches_record
-    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
-
-    total = 0
-    base = resolve_tools_extractions(case_dir)
-    if not base.is_dir():
-        return 0
-    analytic = {"es": clause}
-    for path in base.rglob("*.jsonl"):
-        try:
-            with path.open(encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        row = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    try:
-                        if matches_record(analytic, row):
-                            total += 1
-                    except Exception:  # noqa: BLE001
-                        continue
-        except OSError:
-            continue
-    return total
+    result = es_search(case_id, clause, size=ANALYTIC_SAMPLE_ROWS)
+    if result.get("degraded") or result.get("error"):
+        raise RuntimeError(f"the index could not run the analytic: {result.get('error') or 'degraded'}")
+    return int(result.get("total") or 0), _hit_rows(result.get("hits") or [])
 
 
 def _index_file(path: Any) -> str:

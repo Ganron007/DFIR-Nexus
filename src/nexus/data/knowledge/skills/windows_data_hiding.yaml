@@ -1,9 +1,8 @@
 skill: windows_data_hiding
 title: Hidden/deleted data on NTFS — shadow copies, ADS, recycle bin, timestomp
-description: 'Find data an attacker tried to hide or destroy on an NTFS volume: enumerate
-  and mount Volume Shadow Copies to recover pre-deletion state, detect Alternate Data
-  Streams, parse the Recycle Bin ($I/$R), and catch timestomping by comparing $STANDARD_INFORMATION
-  against $FILE_NAME timestamps.'
+description: 'Find data an attacker tried to hide or destroy on an NTFS volume: enumerate and mount Volume Shadow
+  Copies to recover pre-deletion state, detect Alternate Data Streams, parse the Recycle Bin ($I/$R), and catch
+  timestomping by comparing $STANDARD_INFORMATION against $FILE_NAME timestamps.'
 trigger:
   families:
   - mftecmd
@@ -32,205 +31,321 @@ trigger:
 steps:
 - name: shadow_copy_enumeration
   query: vssadmin OR shadowcopy OR vsc OR \\?\GLOBALROOT OR plaso
-  look_for: Enumerate Volume Shadow Copies (vssadmin list shadows / vshadowinfo /
-    VSS artifacts under System Volume Information). Shadow copies are point-in-time
-    differential backups — mounting one recovers files deleted or encrypted AFTER
-    the snapshot, including ransomware pre-encryption state. Record each shadow's
-    creation time.
+  look_for: Enumerate Volume Shadow Copies (vssadmin list shadows / vshadowinfo / VSS artifacts under System Volume
+    Information). Shadow copies are point-in-time differential backups — mounting one recovers files deleted or
+    encrypted AFTER the snapshot, including ransomware pre-encryption state. Record each shadow's creation time.
   pivot: FileName
-  corroborate: a file present in a VSS snapshot but absent from the live volume proves
-    deletion
+  corroborate: a file present in a VSS snapshot but absent from the live volume proves deletion
+  requires:
+    families:
+    - evtxecmd
+    - hayabusa
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+  source: Sysmon 1; Security 4688
+  search:
+    basis:
+    - attack:DET0329
+    - manifest
+    events:
+    - channel: Microsoft-Windows-Sysmon/Operational
+      codes:
+      - '1'
+    - channel: Security
+      codes:
+      - '4688'
+    any:
+    - field: ecs.process.command_line
+      contains:
+      - vssadmin
+      - vshadow
+      - shadowcopy
+      - HarddiskVolumeShadowCopy
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*vssadmin*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*shadowcopy*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*vsc*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*\\?\GLOBALROOT*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*plaso*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: &id001
-    - mftecmd
-    - mft
-    - fls
-    - registry
-    - evtx
-    - usn
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
+      - bool:
+          should:
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*vssadmin*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*vshadow*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*shadowcopy*'
+                case_insensitive: true
+          - wildcard:
+              ecs.process.command_line.wc:
+                value: '*HarddiskVolumeShadowCopy*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: shadow_copy_restore
   query: GLOBALROOT OR HarddiskVolumeShadowCopy OR shadow copy mount
-  look_for: 'Mount read-only via \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN and
-    compare against the live volume: files deleted, modified, or encrypted between
-    the snapshot and now. This is the single highest-value recovery step on a compromised
-    NTFS host.'
+  look_for: 'Mount read-only via \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN and compare against the live volume:
+    files deleted, modified, or encrypted between the snapshot and now. This is the single highest-value recovery
+    step on a compromised NTFS host.'
   pivot: FileName
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*GLOBALROOT*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*HarddiskVolumeShadowCopy*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*shadow copy mount*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+  kind: procedure
+  procedure_reason: mounting a shadow copy and comparing it with the live volume is done on the evidence image,
+    not in the index.
 - name: alternate_data_streams
   query: Alternate Data Stream OR :Zone.Identifier OR $DATA OR stream
-  look_for: 'ADS hide data beside a file: `dir /r` and MFTECmd show named $DATA attributes
-    (e.g. file.txt:evil.exe). Malware stashes payloads in ADS and Zone.Identifier
-    marks downloads. Non-resident named $DATA attributes in the MFT record are the
-    forensic trace.'
+  look_for: 'ADS hide data beside a file: `dir /r` and MFTECmd show named $DATA attributes (e.g. file.txt:evil.exe).
+    Malware stashes payloads in ADS and Zone.Identifier marks downloads. Non-resident named $DATA attributes in
+    the MFT record are the forensic trace.'
   pivot: FileName
   corroborate: the ADS content hash matches a known payload on disk or in memory
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    families:
+    - mftecmd
+    all:
+    - field: fields.IsAds
+      is:
+      - 'True'
+    none:
+    - field: ecs.file.name
+      endswith:
+      - :Zone.Identifier
+      - :SmartScreen
+      - :$DATA
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*Alternate Data Stream*'
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.IsAds.kw:
+            value: 'True'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*:Zone.Identifier*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$DATA*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*stream*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:Zone.Identifier'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:SmartScreen'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.name.wc:
+                value: '*:$DATA'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: recycle_bin_artifacts
   query: $I OR $R OR RECYCLE.BIN OR recycle
-  look_for: 'The Recycle Bin stores $I<id> (original path + deletion time + size)
-    and $R<id> (content) per user SID. Parse both: $I proves what was deleted and
-    when; $R recovers the content. Per-user SID ties deletion to an account.'
+  look_for: 'The Recycle Bin stores $I<id> (original path + deletion time + size) and $R<id> (content) per user
+    SID. Parse both: $I proves what was deleted and when; $R recovers the content. Per-user SID ties deletion to
+    an account.'
   pivot: FileName
   corroborate: the deleted file's hash matches a payload found in prefetch/Sysmon
+  requires:
+    families:
+    - rbcmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - rbcmd
+  source: families rbcmd
+  search:
+    families:
+    - rbcmd
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*$I*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$R*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*RECYCLE.BIN*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*recycle*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
+      filter:
+      - terms:
+          family:
+          - rbcmd
 - name: timestomp_detection
   query: $SI OR $FN OR $STANDARD_INFORMATION OR 0x10 OR 0x30
-  look_for: 'Timestomping: $STANDARD_INFORMATION ($SI, modifiable) earlier than or
-    wildly inconsistent with $FILE_NAME ($FN, only set at creation). A $SI time predating
-    the volume format, or nanosecond precision lost in $SI but present in $FN, is
-    the classic tell.'
+  look_for: 'Timestomping: $STANDARD_INFORMATION ($SI, modifiable) earlier than or wildly inconsistent with $FILE_NAME
+    ($FN, only set at creation). A $SI time predating the volume format, or nanosecond precision lost in $SI but
+    present in $FN, is the classic tell.'
   pivot: FileName
-  corroborate: USN journal or $LogFile shows the file was written after its claimed
-    $SI time
+  corroborate: USN journal or $LogFile shows the file was written after its claimed $SI time
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+  source: families mftecmd
+  search:
+    basis:
+    - attack:DET0591
+    families:
+    - mftecmd
+    all:
+    - field: fields.SI<FN
+      is:
+      - 'True'
+    - field: fields.uSecZeros
+      is:
+      - 'True'
+    - field: ecs.file.extension
+      is:
+      - exe
+      - dll
+      - sys
+      - ps1
+      - bat
+      - vbs
+      - js
+      - scr
+      - hta
+    none:
+    - field: ecs.file.path
+      contains:
+      - \Windows\WinSxS\
+      - \Windows\servicing\
+      - \Windows\SoftwareDistribution\
   es:
     bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*$SI*'
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - term:
+          fields.SI<FN.kw:
+            value: 'True'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$FN*'
+      - term:
+          fields.uSecZeros.kw:
+            value: 'True'
             case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$STANDARD_INFORMATION*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*0x10*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*0x30*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-  es_text_only_reason:
-  - '0x10: no typed column for a hex mask in these families'
-  - '0x30: no typed column for a hex mask in these families'
+      - bool:
+          should:
+          - term:
+              ecs.file.extension:
+                value: exe
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: dll
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: sys
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: ps1
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: bat
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: vbs
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: js
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: scr
+                case_insensitive: true
+          - term:
+              ecs.file.extension:
+                value: hta
+                case_insensitive: true
+          minimum_should_match: 1
+      must_not:
+      - bool:
+          should:
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\WinSxS\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\servicing\\*'
+                case_insensitive: true
+          - wildcard:
+              ecs.file.path.wc:
+                value: '*\\Windows\\SoftwareDistribution\\*'
+                case_insensitive: true
+          minimum_should_match: 1
 - name: usn_and_journal_gaps
   query: $UsnJrnl OR USN OR $LogFile OR journal
-  look_for: USN journal ($UsnJrnl:$J) records create/delete/rename/data-change — gaps
-    or truncation indicate journal clearing or overwrite; correlate remaining records
-    against the MFT. This dates activity and exposes cleanup.
+  look_for: USN journal ($UsnJrnl:$J) records create/delete/rename/data-change — gaps or truncation indicate journal
+    clearing or overwrite; correlate remaining records against the MFT. This dates activity and exposes cleanup.
   pivot: FileName
-  es:
-    bool:
-      should:
-      - wildcard:
-          ecs.file.path:
-            value: '*$UsnJrnl*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*USN*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*$LogFile*'
-            case_insensitive: true
-      - wildcard:
-          ecs.file.path:
-            value: '*journal*'
-            case_insensitive: true
-      minimum_should_match: 1
-  requires:
-    families: *id001
-negative: No shadow copies, no ADS, empty/absent Recycle Bin, consistent $SI/$FN timestamps,
-  and an intact USN journal → no evidence of hidden or destroyed data on this volume
-  for the retained window. A missing USN journal or absent shadow copies is itself
-  a gap — note it rather than reading clean.
+  kind: procedure
+  procedure_reason: a gap or truncation in the USN journal is seen across the journal's record sequence and dates,
+    not in one row.
+negative: No shadow copies, no ADS, empty/absent Recycle Bin, consistent $SI/$FN timestamps, and an intact USN journal
+  → no evidence of hidden or destroyed data on this volume for the retained window. A missing USN journal or absent
+  shadow copies is itself a gap — note it rather than reading clean.
 confidence_rules:
-  high: file recovered from shadow copy that is absent/encrypted live + timestomp
-    tell on the same file
-  medium: ADS or deleted-$I artifact consistent with the intrusion without the recovered
-    payload
+  high: file recovered from shadow copy that is absent/encrypted live + timestomp tell on the same file
+  medium: ADS or deleted-$I artifact consistent with the intrusion without the recovered payload
   low: a lone ADS (Zone.Identifier from normal downloads) or a benign deletion (FD-004)
 mitre:
 - T1070.004
@@ -239,11 +354,11 @@ mitre:
 - T1485
 - T1490
 caveats:
-- Shadow copies age out or are deleted (vssadmin delete shadows is a common ransom
-  tactic) — their absence is a gap, and a deleted shadow store is itself suspicious.
-- Zone.Identifier ADS is created by every browser download — benign ADSton; require
-  a hidden payload, not the marker alone (FD-004).
-- Recycle Bin $R content is recoverable only while the bin is not purged; a SID with
-  $I entries but no $R means content is gone.
-- MFT time fields can be corrupted by legitimate tools (e.g. robocopy /copy:T) — a
-  single odd timestamp is weak; look for a pattern.
+- Shadow copies age out or are deleted (vssadmin delete shadows is a common ransom tactic) — their absence is a
+  gap, and a deleted shadow store is itself suspicious.
+- Zone.Identifier ADS is created by every browser download — benign ADSton; require a hidden payload, not the marker
+  alone (FD-004).
+- Recycle Bin $R content is recoverable only while the bin is not purged; a SID with $I entries but no $R means
+  content is gone.
+- MFT time fields can be corrupted by legitimate tools (e.g. robocopy /copy:T) — a single odd timestamp is weak;
+  look for a pattern.
