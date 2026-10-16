@@ -322,6 +322,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             task_path: Task path (e.g. '\\Microsoft\\Windows\\UpdateOrchestrator\\Schedule Scan')
             os_version: Target OS version
         """
+        from nexus.analysis.examiner_checks import check_scheduled_task as _check_task
+
         known_good, _ = _open_dbs()
         if not known_good:
             return {"task_path": task_path, "verdict": "UNKNOWN",
@@ -329,22 +331,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         audit.log(tool="check_scheduled_task", params={"task_path": task_path},
                   result_summary={"status": "checked"})
-
-        tasks = known_good.lookup_task(task_path)
-        if tasks:
-            return {
-                "task_path": task_path,
-                "verdict": "EXPECTED",
-                "reasons": ["Task matches Windows baseline"],
-                "confidence": "high",
-                "baseline_os_versions": [t.get("os_versions", "[]") for t in tasks],
-            }
-        return {
-            "task_path": task_path,
-            "verdict": "UNKNOWN",
-            "reasons": ["Task not in baseline (neutral)"],
-            "confidence": "low",
-        }
+        # The one implementation, shared with the agents' loop (WO-K2, IC-8).
+        return _check_task(known_good, task_path=task_path)
 
     @server.tool()
     def check_autorun(key_path: str, value_name: str = "", os_version: str = "") -> dict:

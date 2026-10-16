@@ -118,8 +118,11 @@ def source_activity(
         count=int((rules_note or {}).get("detections") or 0),
         note=("" if (rules_note or {}).get("detections") else "no rule-engine detection in this case"))
 
-    add("baselines", ran=True, count=0,
-        note="the triage baselines answer per-value checks; they do not produce leads")
+    # D244: the case's tasks and services are checked against the baseline, one lead per executable
+    # outside it. It used to answer per-value checks only and produce no lead.
+    baseline_count = sum(1 for k in kinds if k == "baseline")
+    add("baselines", ran=True, count=baseline_count,
+        note="" if baseline_count else "every task and service executable is in the triage baseline")
 
     add("anomaly", ran=True, count=anomaly_count,
         note="" if anomaly_count else "no anomaly probe raised a lead")

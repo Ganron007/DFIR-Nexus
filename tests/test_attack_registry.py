@@ -21,13 +21,27 @@ def test_registry_counts():
     reg = get_attack_registry()
     assert reg, "attack_registry.yaml missing — run scripts/build_attack_registry.py"
     counts = reg["counts"]
-    assert counts["techniques"] == 1140
-    assert counts["active"] == 918
-    assert counts["subtechniques"] == 558
-    assert counts["detection_strategies"] == 918
+    # ATT&CK v20.0 (released 2026-10-13), pinned by version in scripts/build_attack_registry.py.
+    assert reg["version"] == "v20.0"
+    assert counts["techniques"] == 1158
+    assert counts["active"] == 935
+    assert counts["subtechniques"] == 570
+    assert counts["detection_strategies"] == 931
     assert set(counts["per_matrix"]) == {"enterprise", "ics", "mobile"}
     assert "CC BY 4.0" in reg["license"]
     assert reg["raw_sha256"]
+
+
+def test_an_analytic_keeps_its_log_sources_event_codes_and_tunables():
+    """D247: ATT&CK's method for a technique reaches the registry whole, not cut to 220 characters."""
+    from nexus.knowledge.loader import get_attack_registry
+
+    tech = next(t for t in get_attack_registry()["techniques"] if t["id"] == "T1053.005")
+    analytic = next(a for d in tech["detection"] for a in d["analytics"] if a["name"] == "Analytic 1221")
+    assert analytic["description"].endswith("especially those created under SYSTEM or suspicious user contexts.")
+    assert {"name": "WinEventLog:Security", "channel": "EventCode=4698",
+            "data_component": "Scheduled Job Creation"} in analytic["log_source_refs"]
+    assert "UserContext" in {t["field"] for t in analytic["tunables"]}
 
 
 def test_sample_technique_fields():

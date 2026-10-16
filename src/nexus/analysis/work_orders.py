@@ -123,6 +123,9 @@ BENIGN_ALTERNATIVE: dict[str, str] = {
     "first_seen": "a new install, a first-time logon, or a service starting after a patch",
     "burst": "scheduled activity - a backup, a patch cycle, log rotation, or a bulk import",
     "rule_engine": "a rule that fired on benign activity; the rows decide, not the rule's name",
+    # D244: the baseline lists the files of Windows builds only.
+    "baseline": "third-party software, a driver package or an administrator's own task or service; the "
+                "baseline lists Windows' own files only",
 }
 
 #: What would settle it, per lead kind.
@@ -132,6 +135,8 @@ REFUTATION: dict[str, str] = {
     "first_seen": "the same value present before the evidence window",
     "burst": "a maintenance window or scheduled task covering that bucket",
     "rule_engine": "the same rows explained by a change record, and no follow-on behaviour in the surrounding window",
+    "baseline": "the installer or change that put the executable there, a creator and creation time that match it, "
+                "and no other evidence against the executable",
 }
 
 

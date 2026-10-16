@@ -57,6 +57,7 @@ MODE2_TOOL_ALLOWLIST: dict[str, str] = {
     # single implementation in `analysis/examiner_checks.py` - a forked copy of a
     # baseline check would drift, and a drifted check is worse than none.
     "check_file": "evidence",
+    "check_scheduled_task": "evidence",
     "check_process_tree": "evidence",
     "check_service": "evidence",
     "check_hash": "evidence",
@@ -108,7 +109,7 @@ _CONTEXT_TOOL_NAMES: tuple[str, ...] = (
     "rag_search", "run_record",
     # WO-K2: Mode 1's loop gets the examiner toolkit too, so a hit can be
     # checked against the baseline in the same turn that raises it.
-    "check_file", "check_process_tree", "check_service", "check_hash",
+    "check_file", "check_scheduled_task", "check_process_tree", "check_service", "check_hash",
     "check_autorun", "check_registry", "analyze_filename_triage",
     "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
     "check_driver", "check_lots_domain", "check_loobin",
@@ -151,6 +152,9 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
             "- check_file(path, hash) — is this path/hash in the Windows baseline? verdict "
             "EXPECTED / EXPECTED_LOLBIN / SUSPICIOUS / UNKNOWN, plus whether the filename is a "
             "known tool or a LOLBin.",
+            "- check_scheduled_task(task_path) — is this task (full path, e.g. \\Folder\\Name) one of "
+            "the Windows builds' own tasks? EXPECTED or UNKNOWN; for a task outside it, check_file what "
+            "it runs.",
             "- check_process_tree(process_name, parent_name, path, user) — does this "
             "parent/child/path/user combination match the baseline?",
             "- check_service(service_name, binary_path) — is this service expected, and does its "
@@ -283,7 +287,7 @@ def _resolve_tool(name: str) -> str:
 
 #: WO-K2 examiner tools, importable without pulling the triage package.
 EXAMINER_CHECK_TOOL_SET: frozenset[str] = frozenset({
-    "check_file", "check_process_tree", "check_service", "check_hash",
+    "check_file", "check_scheduled_task", "check_process_tree", "check_service", "check_hash",
     "check_autorun", "check_registry", "analyze_filename_triage",
     "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
     "check_driver", "check_lots_domain", "check_loobin",
@@ -294,7 +298,7 @@ _EXAMINER_ARG_KEYS: frozenset[str] = frozenset({
     "path", "hash", "hash_value", "process_name", "parent_name", "user",
     "service_name", "binary_path", "key_path", "value_name", "hive",
     "os_version", "filename", "dll_name", "command",
-    "driver_name", "domain", "binary_name",
+    "driver_name", "domain", "binary_name", "task_path",
 })
 
 
@@ -357,6 +361,8 @@ def _examiner_call(
     if name == "check_file":
         return ec.check_file(known_good, context, path=_s("path"),
                              path_hash=_s("hash") or _s("hash_value"))
+    if name == "check_scheduled_task":
+        return ec.check_scheduled_task(known_good, task_path=_s("task_path"))
     if name == "check_process_tree":
         return ec.check_process_tree(
             context, process_name=_s("process_name"), parent_name=_s("parent_name"),

@@ -449,7 +449,17 @@ def calculate_file_verdict(path_in_baseline, filename_in_baseline, is_sys_path,
             reasons.append(f.get("description", f.get("type")))
         return VerdictResult(Verdict.SUSPICIOUS, reasons, "medium")
 
-    reasons.append("Not in baseline (neutral - may be legitimate third-party software)")
+    # IC-8: the reason states where the file sits. "May be legitimate third-party software" was the whole
+    # answer for C:\Windows\System32\STUN.exe, a file no Windows build ships, and the agents read it as one.
+    # The verdict stays UNKNOWN (FD-004); the fact that it sits where Windows keeps its own files is stated.
+    windows_dir = (dir_normalized == "\\windows" or dir_normalized.startswith("\\windows\\")) and not (
+        dir_normalized.startswith("\\windows\\temp"))
+    if windows_dir:
+        reasons.append("Not a file of any Windows build in the baseline, yet it sits in the Windows directory, "
+                       "where Windows keeps its own files; vendor drivers aside, third-party programs install "
+                       "elsewhere (neutral until corroborated: check what runs it, who placed it and when)")
+    else:
+        reasons.append("Not in baseline (neutral - may be legitimate third-party software)")
     return VerdictResult(Verdict.UNKNOWN, reasons, "low")
 
 

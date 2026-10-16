@@ -37,19 +37,25 @@ ATTACK_DIR = ROOT / "src" / "nexus" / "data" / "knowledge" / "attack"
 OUT_PATH = ATTACK_DIR / "attack_registry.yaml"
 
 BASE = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master"
+#: The ATT&CK release the registry is built from: the versioned files of the repository's own index.json, not
+#: whatever `master` holds the day the script runs (operator 2026-10-16: v20.0, released 2026-10-13).
+VERSION = "20.0"
 MATRICES = {
-    "enterprise": f"{BASE}/enterprise-attack/enterprise-attack.json",
-    "ics": f"{BASE}/ics-attack/ics-attack.json",
-    "mobile": f"{BASE}/mobile-attack/mobile-attack.json",
+    "enterprise": f"{BASE}/enterprise-attack/enterprise-attack-{VERSION}.json",
+    "ics": f"{BASE}/ics-attack/ics-attack-{VERSION}.json",
+    "mobile": f"{BASE}/mobile-attack/mobile-attack-{VERSION}.json",
 }
 
 _HTML_TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 
 _DESC_CAP = 350
-_ANALYTIC_CAP = 220
-_MAX_STRATEGIES = 2
-_MAX_ANALYTICS = 2
+#: An analytic is ATT&CK's method for one technique: what to look for, in which log sources and event codes,
+#: and what to tune. It is kept whole (D247): cut at 220 characters, with its log sources reduced to their
+#: names and two analytics per strategy, the seats received a fragment of it in 9 of 1,032 calls.
+_ANALYTIC_CAP = 1500
+_MAX_STRATEGIES = 3
+_MAX_ANALYTICS = 12
 _MAX_MITIGATIONS = 4
 _MAX_PROCEDURES = 6
 
@@ -190,15 +196,30 @@ def compile_matrix(path: Path, matrix: str, techniques: dict[str, dict]) -> dict
                 ana = analytics.get(str(aref))
                 if not ana:
                     continue
-                logs = [
-                    _clean((ls or {}).get("name"), 60)
-                    for ls in (ana.get("x_mitre_log_source_references") or [])
-                ]
+                refs = [ls for ls in (ana.get("x_mitre_log_source_references") or []) if isinstance(ls, dict)]
+                logs = [_clean(ls.get("name"), 60) for ls in refs]
                 entry["analytics"].append({
                     "name": _clean(ana.get("name"), 80),
                     "platforms": [str(p) for p in (ana.get("x_mitre_platforms") or [])],
                     "description": _clean(ana.get("description"), _ANALYTIC_CAP),
-                    "log_sources": [x for x in logs if x][:3],
+                    "log_sources": list(dict.fromkeys(x for x in logs if x)),
+                    # Each source with the channel it is read on (`EventCode=4698`) and the data component it
+                    # observes (`Scheduled Job Creation`).
+                    "log_source_refs": [
+                        {
+                            "name": _clean(ls.get("name"), 60),
+                            "channel": _clean(ls.get("channel"), 160),
+                            "data_component": _clean(
+                                (by_stix.get(str(ls.get("x_mitre_data_component_ref") or "")) or {}).get("name"),
+                                80),
+                        }
+                        for ls in refs
+                    ],
+                    # What the defender tunes: the analytic's own statement of what makes an instance suspicious.
+                    "tunables": [
+                        {"field": _clean(m.get("field"), 60), "description": _clean(m.get("description"), 300)}
+                        for m in (ana.get("x_mitre_mutable_elements") or []) if isinstance(m, dict)
+                    ],
                 })
                 counts["analytics"] += 1
             counts["strategies"] += 1
@@ -258,7 +279,8 @@ def main() -> int:
     active = [t for t in techniques.values() if not t["revoked"] and not t["deprecated"]]
     strategies_total = len({d["id"] for t in techniques.values() for d in t["detection"]})
     registry = {
-        "version": "v19 (attack-stix-data master)",
+        "version": f"v{VERSION}",
+        "files": dict(MATRICES),
         "source": "https://github.com/mitre-attack/attack-stix-data",
         "license": "CC BY 4.0 (c) The MITRE Corporation - see attack/NOTICE.txt",
         "raw_sha256": hashes,

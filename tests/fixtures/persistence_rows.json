@@ -1,0 +1,536 @@
+{
+ "source": "CASE-C5B04D31 Elasticsearch index nexus-case-case-c5b04d31, documents copied verbatim 2026-10-16; the EvtxECmd Payload column is dropped (its EventData is the document's ecs.winlog.event_data)",
+ "docs": {
+  "task_run_stun": [
+   {
+    "family": "evtxecmd",
+    "file": "evtxecmd/20261011110524_EvtxECmd_Output.csv",
+    "line": 244608,
+    "fields": {
+     "RecordNumber": "129340",
+     "EventRecordId": "129340",
+     "TimeCreated": "2023-01-17 15:48:34.0504591",
+     "EventId": "129",
+     "Level": "Info",
+     "Provider": "Microsoft-Windows-TaskScheduler",
+     "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+     "ProcessId": "1248",
+     "ThreadId": "1388",
+     "Computer": "rd01.shieldbase.com",
+     "ChunkNumber": "351",
+     "UserId": "S-1-5-18",
+     "MapDescription": "Scheduled Task created",
+     "PayloadData1": "Task: \\SRL Update Service",
+     "PayloadData2": "ProcessID: 5264",
+     "ExecutableInfo": "C:\\Windows\\System32\\STUN.exe",
+     "HiddenRecord": "False",
+     "SourceFile": "<source>",
+     "Keywords": "Classic",
+     "ExtraDataOffset": "0"
+    },
+    "host": "rd01.shieldbase.com",
+    "event_id": "129",
+    "ecs": {
+     "winlog": {
+      "event_data": {
+       "TaskName": "\\SRL Update Service",
+       "Path": "C:\\Windows\\System32\\STUN.exe",
+       "ProcessID": "5264",
+       "Priority": "16384"
+      },
+      "channel": "Microsoft-Windows-TaskScheduler/Operational",
+      "record_id": "129340"
+     },
+     "process": {
+      "executable": "C:\\Windows\\System32\\STUN.exe",
+      "pid": "5264"
+     },
+     "event": {
+      "code": "129",
+      "provider": "Microsoft-Windows-TaskScheduler"
+     },
+     "host": {
+      "name": "rd01.shieldbase.com"
+     }
+    },
+    "ts": "2023-01-17T15:48:34Z"
+   }
+  ],
+  "task_registered_stun": [
+   {
+    "family": "evtxecmd",
+    "file": "evtxecmd/20261011110524_EvtxECmd_Output.csv",
+    "line": 244606,
+    "fields": {
+     "RecordNumber": "129338",
+     "EventRecordId": "129338",
+     "TimeCreated": "2023-01-17 15:48:01.8111327",
+     "EventId": "106",
+     "Level": "Info",
+     "Provider": "Microsoft-Windows-TaskScheduler",
+     "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+     "ProcessId": "1248",
+     "ThreadId": "9520",
+     "Computer": "rd01.shieldbase.com",
+     "ChunkNumber": "351",
+     "UserId": "S-1-5-18",
+     "MapDescription": "Scheduled Task created",
+     "UserName": "S-1-5-18",
+     "PayloadData1": "Task: \\SRL Update Service",
+     "HiddenRecord": "False",
+     "SourceFile": "<source>",
+     "Keywords": "Classic",
+     "ExtraDataOffset": "0"
+    },
+    "host": "rd01.shieldbase.com",
+    "event_id": "106",
+    "ecs": {
+     "winlog": {
+      "event_data": {
+       "TaskName": "\\SRL Update Service",
+       "UserContext": "S-1-5-18"
+      },
+      "channel": "Microsoft-Windows-TaskScheduler/Operational",
+      "record_id": "129338"
+     },
+     "user": {
+      "name": "S-1-5-18"
+     },
+     "event": {
+      "code": "106",
+      "provider": "Microsoft-Windows-TaskScheduler"
+     },
+     "host": {
+      "name": "rd01.shieldbase.com"
+     }
+    },
+    "ts": "2023-01-17T15:48:01Z"
+   }
+  ],
+  "task_run_srlupdate": [
+   {
+    "family": "evtxecmd",
+    "file": "evtxecmd/20261011110524_EvtxECmd_Output.csv",
+    "line": 245157,
+    "fields": {
+     "RecordNumber": "129889",
+     "EventRecordId": "129889",
+     "TimeCreated": "2023-01-17 23:31:08.6230414",
+     "EventId": "129",
+     "Level": "Info",
+     "Provider": "Microsoft-Windows-TaskScheduler",
+     "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+     "ProcessId": "1248",
+     "ThreadId": "120",
+     "Computer": "rd01.shieldbase.com",
+     "ChunkNumber": "356",
+     "UserId": "S-1-5-18",
+     "MapDescription": "Scheduled Task created",
+     "PayloadData1": "Task: \\SRL User Maintenance",
+     "PayloadData2": "ProcessID: 11388",
+     "ExecutableInfo": "C:\\Windows\\System32\\SRLUpdate.exe",
+     "HiddenRecord": "False",
+     "SourceFile": "<source>",
+     "Keywords": "Classic",
+     "ExtraDataOffset": "0"
+    },
+    "host": "rd01.shieldbase.com",
+    "event_id": "129",
+    "ecs": {
+     "winlog": {
+      "event_data": {
+       "TaskName": "\\SRL User Maintenance",
+       "Path": "C:\\Windows\\System32\\SRLUpdate.exe",
+       "ProcessID": "11388",
+       "Priority": "16384"
+      },
+      "channel": "Microsoft-Windows-TaskScheduler/Operational",
+      "record_id": "129889"
+     },
+     "process": {
+      "executable": "C:\\Windows\\System32\\SRLUpdate.exe",
+      "pid": "11388"
+     },
+     "event": {
+      "code": "129",
+      "provider": "Microsoft-Windows-TaskScheduler"
+     },
+     "host": {
+      "name": "rd01.shieldbase.com"
+     }
+    },
+    "ts": "2023-01-17T23:31:08Z"
+   }
+  ],
+  "task_run_lpremove": [
+   {
+    "family": "evtxecmd",
+    "file": "evtxecmd/20261011110524_EvtxECmd_Output.csv",
+    "line": 209218,
+    "fields": {
+     "RecordNumber": "93950",
+     "EventRecordId": "93950",
+     "TimeCreated": "2022-12-15 21:16:04.5359432",
+     "EventId": "129",
+     "Level": "Info",
+     "Provider": "Microsoft-Windows-TaskScheduler",
+     "Channel": "Microsoft-Windows-TaskScheduler/Operational",
+     "ProcessId": "2016",
+     "ThreadId": "1516",
+     "Computer": "rd01.shieldbase.com",
+     "ChunkNumber": "23",
+     "UserId": "S-1-5-18",
+     "MapDescription": "Scheduled Task created",
+     "PayloadData1": "Task: \\Microsoft\\Windows\\MUI\\LPRemove",
+     "PayloadData2": "ProcessID: 1016",
+     "ExecutableInfo": "%windir%\\system32\\lpremove.exe",
+     "HiddenRecord": "False",
+     "SourceFile": "<source>",
+     "Keywords": "Classic",
+     "ExtraDataOffset": "0"
+    },
+    "host": "rd01.shieldbase.com",
+    "event_id": "129",
+    "ecs": {
+     "winlog": {
+      "event_data": {
+       "TaskName": "\\Microsoft\\Windows\\MUI\\LPRemove",
+       "Path": "%windir%\\system32\\lpremove.exe",
+       "ProcessID": "1016",
+       "Priority": "16384"
+      },
+      "channel": "Microsoft-Windows-TaskScheduler/Operational",
+      "record_id": "93950"
+     },
+     "process": {
+      "executable": "%windir%\\system32\\lpremove.exe",
+      "pid": "1016"
+     },
+     "event": {
+      "code": "129",
+      "provider": "Microsoft-Windows-TaskScheduler"
+     },
+     "host": {
+      "name": "rd01.shieldbase.com"
+     }
+    },
+    "ts": "2022-12-15T21:16:04Z"
+   }
+  ],
+  "service_fresponse": [
+   {
+    "family": "evtxecmd",
+    "file": "evtxecmd/20261011110524_EvtxECmd_Output.csv",
+    "line": 1130507,
+    "fields": {
+     "RecordNumber": "165752",
+     "EventRecordId": "165752",
+     "TimeCreated": "2023-01-24 18:04:59.5109922",
+     "EventId": "4697",
+     "Level": "LogAlways",
+     "Provider": "Microsoft-Windows-Security-Auditing",
+     "Channel": "Security",
+     "ProcessId": "712",
+     "ThreadId": "8592",
+     "Computer": "rd01.shieldbase.com",
+     "ChunkNumber": "1803",
+     "MapDescription": "A service was installed on the system",
+     "UserName": "shieldbase\\cbarton-a",
+     "PayloadData1": "ServiceName: F-Response Subject Service",
+     "PayloadData2": "ServiceFileName: \"C:\\windows\\subject_srv.exe\" -s \"172.16.5.25:5682\" -l 3262 -v \"F-Response Subject Service\" -k \"155522845\"",
+     "PayloadData3": "ServiceType: Win32 Own Process",
+     "PayloadData4": "ServiceStartType: Automatic",
+     "PayloadData5": "ServiceAccount: LocalSystem",
+     "HiddenRecord": "False",
+     "SourceFile": "<source>",
+     "Keywords": "Audit success",
+     "ExtraDataOffset": "0"
+    },
+    "host": "rd01.shieldbase.com",
+    "event_id": "4697",
+    "ecs": {
+     "winlog": {
+      "event_data": {
+       "SubjectUserSid": "S-1-5-21-2838623409-1327563992-2591358621-1108",
+       "SubjectUserName": "cbarton-a",
+       "SubjectDomainName": "shieldbase",
+       "SubjectLogonId": "0x4AF8892",
+       "ServiceName": "F-Response Subject Service",
+       "ServiceFileName": "\"C:\\windows\\subject_srv.exe\" -s \"172.16.5.25:5682\" -l 3262 -v \"F-Response Subject Service\" -k \"155522845\"",
+       "ServiceType": "0x10",
+       "ServiceStartType": "2",
+       "ServiceAccount": "LocalSystem",
+       "ClientProcessStartKey": "0",
+       "ClientProcessId": "0",
+       "ParentProcessId": "0"
+      },
+      "channel": "Security",
+      "record_id": "165752"
+     },
+     "event": {
+      "code": "4697",
+      "provider": "Microsoft-Windows-Security-Auditing"
+     },
+     "host": {
+      "name": "rd01.shieldbase.com"
+     },
+     "user": {
+      "name": "shieldbase\\cbarton-a"
+     }
+    },
+    "ts": "2023-01-24T18:04:59Z"
+   }
+  ],
+  "service_ena_driver": [
+   {
+    "family": "evtxecmd",
+    "file": "evtxecmd/20261011110524_EvtxECmd_Output.csv",
+    "line": 1133680,
+    "fields": {
+     "RecordNumber": "929",
+     "EventRecordId": "929",
+     "TimeCreated": "2022-09-30 23:35:59.5105276",
+     "EventId": "7045",
+     "Level": "Info",
+     "Provider": "Service Control Manager",
+     "Channel": "System",
+     "ProcessId": "632",
+     "ThreadId": "1008",
+     "Computer": "tpl-packer",
+     "ChunkNumber": "6",
+     "UserId": "S-1-5-18",
+     "MapDescription": "A new service was installed in the system",
+     "PayloadData1": "Name: Amazon Elastic Network Adapter Driver",
+     "PayloadData2": "StartType: demand start",
+     "PayloadData3": "Account:",
+     "ExecutableInfo": "\\SystemRoot\\System32\\drivers\\ena.sys",
+     "HiddenRecord": "False",
+     "SourceFile": "<source>",
+     "Keywords": "Audit success, classic",
+     "ExtraDataOffset": "0"
+    },
+    "host": "tpl-packer",
+    "event_id": "7045",
+    "ecs": {
+     "winlog": {
+      "event_data": {
+       "ServiceName": "Amazon Elastic Network Adapter Driver",
+       "ImagePath": "\\SystemRoot\\System32\\drivers\\ena.sys",
+       "ServiceType": "kernel mode driver",
+       "StartType": "demand start"
+      },
+      "channel": "System",
+      "record_id": "929"
+     },
+     "service": {
+      "name": "Amazon Elastic Network Adapter Driver",
+      "start_type": "demand start"
+     },
+     "process": {
+      "executable": "\\SystemRoot\\System32\\drivers\\ena.sys"
+     },
+     "event": {
+      "code": "7045",
+      "provider": "Service Control Manager"
+     },
+     "host": {
+      "name": "tpl-packer"
+     }
+    },
+    "ts": "2022-09-30T23:35:59Z"
+   }
+  ],
+  "task_xml_stun": [
+   {
+    "family": "scheduled_tasks",
+    "file": "ingest/artifacts.jsonl",
+    "line": 91950,
+    "fields": {
+     "source": "scheduled_tasks",
+     "artifact_type": "process",
+     "severity": "informational",
+     "timestamp": "2023-01-17T10:48:01+00:00",
+     "host": "System32",
+     "description": "Scheduled Task: SRL Update Service → C:\\Windows\\System32\\STUN.exe (by shieldbase\\wacsvc)",
+     "ts_synthesized": "False",
+     "ts_year_assumed": "False",
+     "command_line": "C:\\Windows\\System32\\STUN.exe",
+     "task_uri": "\\SRL Update Service",
+     "task_author": "shieldbase\\wacsvc",
+     "task_registration_date": "2023-01-17T10:48:01",
+     "principal_user_id": "S-1-5-18",
+     "run_level": "HighestAvailable",
+     "task_hidden": "False",
+     "task_enabled": "True",
+     "action_command": "C:\\Windows\\System32\\STUN.exe",
+     "trigger_type": "BootTrigger",
+     "trigger_start_boundary": "2023-01-17T10:48:00",
+     "trigger_enabled": "True"
+    },
+    "host": "system32",
+    "ecs": {
+     "process": {
+      "command_line": "C:\\Windows\\System32\\STUN.exe"
+     },
+     "host": {
+      "name": "System32"
+     }
+    },
+    "ts": "2023-01-17T10:48:01Z"
+   }
+  ],
+  "memory_task_stun": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/csv/tasks.csv",
+    "line": 223,
+    "fields": {
+     "GUID": "{2F4E2AE3-5061-4939-9EEA-C080492482E8}",
+     "TaskName": "SRL Update Service",
+     "TaskPath": "\\SRL Update Service",
+     "User": "Author",
+     "TimeMostRecent": "2023-01-25 14:38:30",
+     "CommandLine": "C:\\Windows\\System32\\STUN.exe",
+     "Parameters": "---",
+     "TimeReg": "2023-01-17 15:48:01",
+     "TimeCreate": "2023-01-17 15:48:01",
+     "TimeLastRun": "2023-01-25 14:38:30"
+    },
+    "ts": "2023-01-25T14:38:30Z"
+   }
+  ],
+  "yara_stun": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/findevil/yara.txt",
+    "line": 41,
+    "fields": {
+     "MatchIndex": "1",
+     "Rule": "Windows_Trojan_CobaltStrike_663fc95d",
+     "Author": "Elastic Security",
+     "Id": "663fc95d-2472-4d52-ad75-c5d86cfc885f",
+     "Fingerprint": "d0f781d7e485a7ecfbbfd068601e72430d57ef80fc92a993033deb1ddcee5c48",
+     "Creation_date": "2021-04-01",
+     "Last_modified": "2021-12-17",
+     "Description": "Identifies CobaltStrike via unidentified function code",
+     "Threat_name": "Windows.Trojan.CobaltStrike",
+     "Severity": "100",
+     "Arch_context": "x86, arm64",
+     "Scan_context": "file, memory",
+     "License": "Elastic License v2",
+     "Os": "windows",
+     "MemoryType": "Virtual Memory (VAD)",
+     "BaseAddress": "0x000001f05e260000",
+     "PID": "1912",
+     "ProcessName": "STUN.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume1\\Windows\\System32\\STUN.exe",
+     "CommandLine": "C:\\Windows\\System32\\STUN.exe",
+     "User": "SYSTEM",
+     "Created": "2023-01-25 14:38:30 UTC",
+     "ts_none": "true"
+    }
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/findevil/yara.txt",
+    "line": 81,
+    "fields": {
+     "MatchIndex": "2",
+     "Rule": "Windows_Trojan_CobaltStrike_f0b627fc",
+     "Author": "Elastic Security",
+     "Id": "f0b627fc-97cd-42cb-9eae-1efb0672762d",
+     "Fingerprint": "fbc94bedd50b5b943553dd438a183a1e763c098a385ac3a4fc9ff24ee30f91e1",
+     "Creation_date": "2021-10-21",
+     "Last_modified": "2022-01-13",
+     "Description": "Rule for beacon reflective loader",
+     "Threat_name": "Windows.Trojan.CobaltStrike",
+     "Reference_sample": "b362951abd9d96d5ec15d281682fa1c8fe8f8e4e2f264ca86f6b061af607f79b",
+     "Severity": "100",
+     "Arch_context": "x86, arm64",
+     "Scan_context": "file, memory",
+     "License": "Elastic License v2",
+     "Os": "windows",
+     "MemoryType": "Virtual Memory (VAD)",
+     "BaseAddress": "0x00007ff73de70000",
+     "PID": "1912",
+     "ProcessName": "STUN.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume1\\Windows\\System32\\STUN.exe",
+     "CommandLine": "C:\\Windows\\System32\\STUN.exe",
+     "User": "SYSTEM",
+     "Created": "2023-01-25 14:38:30 UTC",
+     "ts_none": "true"
+    }
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/findevil/yara.txt",
+    "line": 132,
+    "fields": {
+     "MatchIndex": "3",
+     "Rule": "Windows_Trojan_CobaltStrike_3dc22d14",
+     "Author": "Elastic Security",
+     "Id": "3dc22d14-a2f4-49cd-a3a8-3f071eddf028",
+     "Fingerprint": "0e029fac50ffe8ea3fc5bc22290af69e672895eaa8a1b9f3e9953094c133392c",
+     "Creation_date": "2023-05-09",
+     "Last_modified": "2023-06-13",
+     "Threat_name": "Windows.Trojan.CobaltStrike",
+     "Reference_sample": "7898194ae0244611117ec948eb0b0a5acbc15cd1419b1ecc553404e63bc519f9",
+     "Severity": "100",
+     "Arch_context": "x86, arm64",
+     "Scan_context": "file, memory",
+     "License": "Elastic License v2",
+     "Os": "windows",
+     "MemoryType": "Virtual Memory (VAD)",
+     "BaseAddress": "0x00007ff73de70000",
+     "PID": "1912",
+     "ProcessName": "STUN.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume1\\Windows\\System32\\STUN.exe",
+     "CommandLine": "C:\\Windows\\System32\\STUN.exe",
+     "User": "SYSTEM",
+     "Created": "2023-01-25 14:38:30 UTC",
+     "ts_none": "true"
+    }
+   }
+  ],
+  "findevil_stun_yara": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/csv/findevil.csv",
+    "line": 3,
+    "fields": {
+     "PID": "1912",
+     "ProcessName": "STUN.exe",
+     "Type": "YR_TROJAN",
+     "Address": "0x1f05e277d10",
+     "Description": "Windows_Trojan_CobaltStrike_663fc95d [1]"
+    }
+   }
+  ],
+  "findevil_msedge_thread": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/csv/findevil.csv",
+    "line": 24,
+    "fields": {
+     "PID": "2524",
+     "ProcessName": "msedge.exe",
+     "Type": "THREAD",
+     "Address": "0x246d9b10003",
+     "Description": "TID:2516 NO_IMAGE"
+    }
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/SRL_Evidence-rd01-memory-39e55fe9.img/forensic/csv/findevil.csv",
+    "line": 25,
+    "fields": {
+     "PID": "2524",
+     "ProcessName": "msedge.exe",
+     "Type": "THREAD",
+     "Address": "0x7ff8cb3f6a00",
+     "Description": "TID:7520 SYSTEM_IMPERSONATION"
+    }
+   }
+  ]
+ }
+}

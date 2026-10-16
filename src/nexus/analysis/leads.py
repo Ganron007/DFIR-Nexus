@@ -463,6 +463,20 @@ def _rule_engine_leads(case_dir: Path) -> list[Lead]:
     return rule_engine_leads(case_dir)
 
 
+def _memory_verdict_leads(case_dir: Path, probe: Any) -> list[Lead]:
+    """The memory scanner's detections (D245), imported lazily for the same reason."""
+    from nexus.analysis.baseline_leads import memory_verdict_leads
+
+    return memory_verdict_leads(case_dir, probe=probe)
+
+
+def _persistence_leads(case_dir: Path, probe: Any) -> list[Lead]:
+    """Tasks and services against the triage baseline (D244), imported lazily for the same reason."""
+    from nexus.analysis.baseline_leads import persistence_leads
+
+    return persistence_leads(case_dir, probe=probe)
+
+
 def behavioural_analytics_leads(
     case_dir: Path | str,
     *,
@@ -760,6 +774,12 @@ def build_leads(
         ])
     if active["rules"]["enabled"]:
         builders.append(lambda: _rule_engine_leads(case_dir))
+        # D245: the memory scanner's own detections (MemProcFS YARA, FindEvil) are rule-engine leads.
+        builders.append(lambda: _memory_verdict_leads(case_dir, probe))
+    if active.get("baselines", {}).get("enabled"):
+        # D244: the case's tasks and services against the triage baseline. The baselines answered
+        # one value when a model asked and produced no lead, so no agenda ever held a persistence entry.
+        builders.append(lambda: _persistence_leads(case_dir, probe))
     if active.get("analytics", {}).get("enabled"):
         # WO-R1F item 8: EXECUTE the hand behavioural analytics once, so their
         # hits become leads and therefore reach every mode through the lead list.
@@ -777,11 +797,13 @@ def build_leads(
             log.error("lead builder failed: %s: %s", type(exc).__name__, exc)
             failed.append(f"{type(exc).__name__}: {exc}")
 
-    # Stable order: rule-engine detections first, then strongest score, then kind
-    # and subject so two runs over the same index produce byte-identical output.
-    # A crit/high detection must never be outranked by a heuristic lead
-    # (WO-R1F item 1) — the probe asserts it.
+    # Stable order: crit/high leads first, rule-engine detections first among them and among the rest,
+    # then strongest score, then kind and subject so two runs over the same index produce byte-identical
+    # output. A crit/high detection must never be outranked by a heuristic lead (WO-R1F item 1) — the
+    # probe asserts it. A crit/high baseline lead (D244) comes before the medium and low detections: with
+    # rule engines always first, the case's 124 Hayabusa rules filled the top 40 every mode reads.
     leads.sort(key=lambda lead: (
+        0 if (lead.extra or {}).get("crit_high") else 1,
         0 if lead.kind == "rule_engine" else 1,
         -lead.score,
         lead.kind,

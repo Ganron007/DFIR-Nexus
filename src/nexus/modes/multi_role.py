@@ -515,8 +515,8 @@ ROLES: dict[str, AgentRole] = {
           name="evidence",
           description="Family-scoped evidence retrieval and hypothesis testing.",
           tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
-                 "check_file", "check_process_tree", "check_service", "check_hash",
-                 "check_autorun", "check_registry", "analyze_filename_triage",
+                 "check_file", "check_scheduled_task", "check_process_tree", "check_service",
+                 "check_hash", "check_autorun", "check_registry", "analyze_filename_triage",
                  "check_lolbin", "check_hijackable_dll", "deobfuscate_command"),
         brief=_EVIDENCE_BRIEF,
         system_prompt=(
@@ -539,8 +539,8 @@ ROLES: dict[str, AgentRole] = {
           name="correlation",
           description="Cross-family entity/temporal corroboration.",
           tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
-                 "check_file", "check_process_tree", "check_service", "check_hash",
-                 "check_autorun", "analyze_filename_triage", "check_lolbin",
+                 "check_file", "check_scheduled_task", "check_process_tree", "check_service",
+                 "check_hash", "check_autorun", "analyze_filename_triage", "check_lolbin",
                  "deobfuscate_command"),
         brief=_CORRELATION_BRIEF,
         system_prompt=(

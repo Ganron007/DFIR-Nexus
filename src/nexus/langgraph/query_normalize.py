@@ -659,9 +659,18 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
             if isinstance(spec, dict) and any(k in spec for k in _AGG_TYPES):
                 agg_type = next(k for k in spec if k in _AGG_TYPES)
                 agg_body = spec.get(agg_type)
+                # Sub-aggregations belong BESIDE the agg type (`{"terms": {...}, "aggs": {...}}`). They were
+                # moved inside the body with the stray options, which ES and validate_aggs reject: every
+                # nested aggregation failed (6 of CASE-C5B04D31's 282 es_aggregate calls, D246). One written
+                # inside the body is moved out.
+                sub = spec.get("aggs") if isinstance(spec.get("aggs"), dict) else spec.get("aggregations")
+                if isinstance(agg_body, dict) and isinstance(agg_body.get("aggs"), dict) and not isinstance(sub, dict):
+                    sub = agg_body["aggs"]
+                    agg_body = {k: v for k, v in agg_body.items() if k != "aggs"}
+                    notes.append(f"moved `aggs` out of the `{agg_type}` body (sub-aggregations sit beside it)")
                 # Options written BESIDE the agg type, not inside it:
                 # `{"terms": {...}, "shard_size": 200}`. Move them in.
-                strag = {k: v for k, v in spec.items() if k != agg_type}
+                strag = {k: v for k, v in spec.items() if k not in (agg_type, "aggs", "aggregations")}
                 if strag and isinstance(agg_body, dict):
                     agg_body = {**agg_body, **strag}
                     notes.append(f"moved {sorted(strag)} inside the `{agg_type}` body")
@@ -691,15 +700,15 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                                 )
                                 target = kw
                         patched["field"] = target
-                    # Nested aggs / composite sources recurse.
-                    if isinstance(patched.get("aggs"), dict):
-                        patched["aggs"] = walk(patched["aggs"], depth + 1)
+                    # Composite sources recurse.
                     if isinstance(patched.get("sources"), list):
                         patched["sources"] = [
                             walk({f"s{i}": s}, depth + 1).get(f"s{i}", s)
                             for i, s in enumerate(patched["sources"])
                         ]
                     spec = {agg_type: patched}
+                    if isinstance(sub, dict):
+                        spec["aggs"] = walk(sub, depth + 1)
                 out[name] = spec
             else:
                 out[name] = walk(spec, depth + 1)

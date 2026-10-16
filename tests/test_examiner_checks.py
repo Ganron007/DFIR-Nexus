@@ -43,6 +43,7 @@ def test_every_examiner_tool_is_callable_from_the_loop():
     """Each of the ten must actually run through `backbone_call`."""
     calls = {
         "check_file": {"path": r"C:\Windows\System32\cmd.exe"},
+        "check_scheduled_task": {"task_path": r"\Microsoft\Windows\Defrag\ScheduledDefrag"},
         "check_process_tree": {"process_name": "lsass.exe", "parent_name": "services.exe"},
         "check_service": {"service_name": "Spooler"},
         "check_hash": {"hash_value": "d41d8cd98f00b204e9800998ecf8427e"},
@@ -286,6 +287,38 @@ def test_an_absent_baseline_is_unknown_not_suspicious():
     assert result["verdict"] == "UNKNOWN"
     assert "NOT suspicious" in result["interpretation_constraint"]
     assert "not found" in result["message"].lower()
+
+
+def test_a_task_is_checked_against_the_baseline_by_its_full_path():
+    """IC-8: the task check is a loop tool (no run on CASE-C5B04D31 could ask it), one implementation."""
+
+    class Tasks:
+        def lookup_task(self, path):
+            return [{"os_versions": "[\"W11\"]"}] if path.lower() == r"\microsoft\windows\mui\lpremove" else []
+
+    assert ec.check_scheduled_task(Tasks(), task_path=r"Microsoft\Windows\MUI\LPRemove")["verdict"] == "EXPECTED"
+    other = ec.check_scheduled_task(Tasks(), task_path=r"\SRL Update Service")
+    assert other["verdict"] == "UNKNOWN" and "NOT suspicious" in other["interpretation_constraint"]
+    for role in ("evidence", "correlation"):
+        assert "check_scheduled_task" in ROLES[role].tools
+
+
+def test_an_unknown_file_in_the_windows_directory_is_said_to_be_there():
+    """IC-8: "may be legitimate third-party software" was the whole answer for a file in System32 that no
+    Windows build ships. The verdict stays UNKNOWN (FD-004); the reason states where the file sits."""
+
+    class Nothing(_StubKnownGood):
+        def path_exists(self, path):
+            return False
+
+        def filename_exists(self, filename):
+            return False
+
+    in_windows = ec.check_file(Nothing(), _StubContext(), path=r"C:\Windows\System32\STUN.exe")
+    assert in_windows["verdict"] == "UNKNOWN"
+    assert "sits in the Windows directory" in in_windows["reasons"][0]
+    elsewhere = ec.check_file(Nothing(), _StubContext(), path=r"C:\Program Files\Vendor\tool.exe")
+    assert elsewhere["reasons"] == ["Not in baseline (neutral - may be legitimate third-party software)"]
 
 
 def test_an_unknown_verdict_alone_never_stages_a_draft():

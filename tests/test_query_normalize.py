@@ -244,6 +244,23 @@ def test_agg_shard_size_beside_the_type_is_moved_inside():
     assert any("shard_size" in n for n in notes)
 
 
+def test_sub_aggregations_stay_beside_the_type_and_pass_the_allowlist():
+    """D246: `aggs` beside a type is a nested aggregation, not a stray option. Moved inside the body it was
+    rejected: every nested aggregation failed (6 of CASE-C5B04D31's 282 es_aggregate calls)."""
+    from nexus.langgraph.es_native import validate_aggs
+
+    written = {"by_host": {"terms": {"field": "family"}, "aggs": {"users": {"cardinality": {"field": "family"}}}}}
+    out, notes = normalize_aggs(written, TYPES)
+    assert out == written and not notes
+    validate_aggs(out)
+    # Written inside the body, it is moved out to where ES reads it.
+    out, notes = normalize_aggs({"by_host": {"terms": {"field": "family", "aggs": {"n": {"max": {"field": "ts"}}}}}},
+                                TYPES)
+    assert out == {"by_host": {"terms": {"field": "family"}, "aggs": {"n": {"max": {"field": "ts"}}}}}
+    assert any("moved `aggs` out" in n for n in notes)
+    validate_aggs(out)
+
+
 def test_agg_on_a_text_field_uses_its_keyword():
     out, notes = normalize_aggs(
         {"by_cmd": {"terms": {"field": "fields.command_line"}}}, TYPES

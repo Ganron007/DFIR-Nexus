@@ -47,7 +47,9 @@ _AGG_BODY_KEYS = {
     "composite": {"sources", "size", "after"},
 }
 _COMPOSITE_SOURCE_KEYS = {
-    "terms": {"field", "order", "missing", "size"},
+    # missing_bucket keeps the documents a source field is absent from (a task registration names no
+    # program, D244); ES 8 composite sources take it in place of `missing`.
+    "terms": {"field", "order", "missing", "missing_bucket", "size"},
     "date_histogram": {"field", "calendar_interval", "fixed_interval",
                        "time_zone", "format", "order", "offset"},
     "histogram": {"field", "interval", "order", "missing", "offset"},

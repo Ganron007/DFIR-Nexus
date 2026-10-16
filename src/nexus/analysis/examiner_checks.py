@@ -705,10 +705,35 @@ def check_loobin(context: Any, *, binary_name: str) -> dict[str, Any]:
     }
 
 
+def check_scheduled_task(known_good: Any, *, task_path: str) -> dict[str, Any]:
+    """A scheduled task against the Windows baseline (the body of `check_scheduled_task`).
+
+    WO-K2 moved the other checks here and left this one MCP-only, so no seat could ask it: no run on
+    CASE-C5B04D31 checked a task against the baseline (IC-8, 2026-10-16). The baseline names a task by its
+    full path from the root (``\\Folder\\Name``), which is how it is looked up.
+    """
+    path = str(task_path or "").strip()
+    if not known_good:
+        return {"task_path": path, "verdict": "UNKNOWN", "message": "Triage database not found.",
+                "interpretation_constraint": UNKNOWN_CONSTRAINT}
+    key = path if path.startswith("\\") else "\\" + path
+    tasks = known_good.lookup_task(key)
+    if tasks:
+        return {"task_path": path, "verdict": "EXPECTED", "reasons": ["Task matches Windows baseline"],
+                "confidence": "high", "baseline_os_versions": [t.get("os_versions", "[]") for t in tasks],
+                "interpretation_constraint": UNKNOWN_CONSTRAINT}
+    return {"task_path": path, "verdict": "UNKNOWN",
+            "reasons": ["Task is not one of the Windows builds' own tasks in the baseline"],
+            "confidence": "low", "interpretation_constraint": UNKNOWN_CONSTRAINT,
+            "caveats": ["Third-party software and administrators register their own tasks; "
+                        "check what the task runs (check_file) and who registered it"]}
+
+
 #: Tools this module implements. Kept here so the backbone allowlist and the
 #: loop's argument table cannot disagree with the code.
 EXAMINER_CHECK_TOOLS: tuple[str, ...] = (
     "check_file",
+    "check_scheduled_task",
     "check_process_tree",
     "check_service",
     "check_hash",
