@@ -142,6 +142,55 @@ def test_orders_fill_the_remainder_from_artifact_value(tmp_path: Path):
     assert "8a1ff" not in str(orders[1:])
 
 
+def _crit(subject: str, kind: str = "rule_engine", engine: str = "hayabusa", score: float = 1.0) -> dict:
+    return {"kind": kind, "subject": subject, "family": engine, "detail": f"{subject} detail",
+            "rows": [{"loc": f"{subject}.csv:1"}], "audit_ids": [f"a-{subject}"], "score": score,
+            "extra": {"engine": engine, "crit_high": True}}
+
+
+def test_every_crit_high_lead_reaches_an_order_whatever_max_orders_says(tmp_path: Path):
+    """IC-3: CASE-C5B04D31's Mode 2 got its first four leads, all Hayabusa detections, so no persistence or
+    memory lead could reach an order. Crit/high leads are grouped by source, a few per order, all of them."""
+    leads = ([_crit(f"rule {i}") for i in range(8)]
+             + [_crit("STUN.exe (pid 1912)", engine="memprocfs-yara")]
+             + [_crit("C:\\Windows\\System32\\STUN.exe", kind="baseline", engine="triage baseline")]
+             + [{"kind": "rarity", "subject": "rare.exe", "family": "pecmd", "detail": "once", "rows": [],
+                 "audit_ids": [], "score": 1.0}])
+    orders = orders_from_leads(tmp_path, "q", families=["hayabusa", "pecmd"], leads=leads, max_orders=2)
+    crit = [o for o in orders if o.get("crit_high")]
+    covered = [s for o in crit for s in o["lead_subjects"]]
+    assert sorted(covered) == sorted(lead["subject"] for lead in leads if lead.get("extra", {}).get("crit_high"))
+    assert [len(o["lead_subjects"]) for o in crit] == [6, 2, 1, 1]  # by source, at most six per order
+    assert all("every one needs an answer" in o["task"] for o in crit)
+    assert "rare.exe" not in str(orders), "the budget was spent on the crit/high leads"
+    # The lesser leads take the room left: with a larger budget the rarity lead gets its order.
+    more = orders_from_leads(tmp_path, "q", families=["hayabusa", "pecmd"], leads=leads, max_orders=6)
+    assert any(o.get("lead_subjects") == ["rare.exe"] for o in more)
+
+
+def test_the_director_keeps_every_crit_order_and_its_fixed_orders(tmp_path: Path):
+    """The plan's size cut used to slice one list from the end, dropping the pattern order in informed runs."""
+    from unittest.mock import patch
+
+    import nexus.modes.multi_role as mr
+    from nexus.analysis.leads import Lead
+
+    leads = [Lead(kind=d["kind"], subject=d["subject"], family=d["family"], detail=d["detail"],
+                  rows=tuple(d["rows"]), audit_ids=tuple(d["audit_ids"]), score=d["score"], extra=d["extra"])
+             for d in [_crit(f"rule {i}") for i in range(7)] + [_crit("x.exe", kind="baseline", engine="tb")]]
+    case = tmp_path / "CASE-PLAN"
+    (case / "audit").mkdir(parents=True)
+    with patch("nexus.langgraph.backbone.backbone_call", return_value={"family_rows": {"hayabusa": 10}}), \
+         patch("nexus.analysis.leads.build_leads", return_value=leads):
+        orders = mr.plan_work_orders(case, "q", run_id="M2-plan", sink=mr.EventSink(case, "M2-plan"),
+                                     max_orders=3, known_findings={"approved": [{"id": "F-1", "title": "t"}]})
+    crit = [o for o in orders if o.crit_high]
+    assert sorted(s for o in crit for s in o.lead_subjects) == sorted(lead.subject for lead in leads)
+    roles = [o.role for o in orders]
+    assert roles.count("correlation") == 2 and "pattern" in roles  # correlation, feedback, pattern all kept
+    assert all(mr.validate_work_order(o) == [] for o in orders)
+
+
 def test_max_orders_is_respected(tmp_path: Path):
     orders = orders_from_leads(tmp_path, "q", families=["a", "b", "c", "d"],
                                leads=[], max_orders=2)

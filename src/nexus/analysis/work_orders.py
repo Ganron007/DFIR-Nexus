@@ -195,21 +195,30 @@ def orders_from_leads(
             leads = []
 
     known_families = {str(f) for f in (families or [])}
-    # The lead builder's own order: rule-engine detections first, then score (WO-R1F item 1: a
-    # crit/high detection is never outranked by a heuristic lead). Sorting by score alone tied a
-    # "seen once" rarity lead (1.0) with a critical detection (1.0) and broke the tie by the kind's
-    # name, so CASE-C5B04D31's Mode 2 spent four of six orders on rarity leads and none on the
-    # Cobalt Strike, password-dumper or Mimikatz detections (2026-10-14).
+    # The lead builder's own order: crit/high first, rule-engine detections first among them and among
+    # the rest, then score (WO-R1F item 1: a crit/high detection is never outranked by a heuristic lead).
+    # Sorting by score alone tied a "seen once" rarity lead (1.0) with a critical detection (1.0) and
+    # broke the tie by the kind's name, so CASE-C5B04D31's Mode 2 spent four of six orders on rarity
+    # leads and none on the Cobalt Strike, password-dumper or Mimikatz detections (2026-10-14).
     ordered_leads = sorted(
         (_lead_dict(lead) for lead in leads or []),
-        key=lambda d: (0 if str(d.get("kind") or "") == "rule_engine" else 1,
+        key=lambda d: (0 if _crit_high(d) else 1,
+                       0 if str(d.get("kind") or "") == "rule_engine" else 1,
                        -float(d.get("score") or 0.0), str(d.get("kind") or "")),
     )
 
-    orders: list[dict[str, Any]] = []
-    seen_families: set[str] = set()
+    # IC-3 (2026-10-16): every crit/high lead reaches an order. One order per lead, capped at
+    # `max_orders`, gave CASE-C5B04D31's Mode 2 its first four leads, all Hayabusa detections, so no
+    # persistence or memory lead could ever be examined. They are grouped by source instead, a few per
+    # order, and the cap applies only to the lesser leads and the coverage orders after them.
+    crit = [lead for lead in ordered_leads if _crit_high(lead)]
+    orders: list[dict[str, Any]] = _crit_orders(crit, known_families, question)
+    budget = max(len(orders), max_orders)
+    seen_families: set[str] = {str(o.get("family") or "") for o in orders} - {""}
     for lead in ordered_leads:
-        if len(orders) >= max_orders:
+        if _crit_high(lead):
+            continue
+        if len(orders) >= budget:
             break
         kind = str(lead.get("kind") or "lead")
         family = _family_for_lead(lead, known_families)
@@ -226,6 +235,7 @@ def orders_from_leads(
             "evidence_rows": lead.get("rows") or [],
             "audit_ids": lead.get("audit_ids") or [],
             "score": float(lead.get("score") or 0.0),
+            "lead_subjects": [str(lead.get("subject") or "")],
             "task": (
                 f"Test this hypothesis for the case question "
                 f"{question or '(no examiner question)'}: {hypothesis}"
@@ -236,7 +246,7 @@ def orders_from_leads(
 
     # Coverage remainder: families ranked by artifact value that no lead reached.
     for family in rank_families(known_families - seen_families):
-        if len(orders) >= max_orders:
+        if len(orders) >= budget:
             break
         orders.append({
             "role": "evidence",
@@ -253,6 +263,58 @@ def orders_from_leads(
                 f"and state coverage for: {question or '(no examiner question)'}"
             ),
         })
+    return orders
+
+
+#: Crit/high leads one order examines together: enough to keep the plan short on a case with many
+#: detections, few enough that a seat can test each within one order's budget.
+CRIT_LEADS_PER_ORDER = 6
+
+
+def _crit_high(lead: dict[str, Any]) -> bool:
+    return bool((lead.get("extra") or {}).get("crit_high"))
+
+
+def _source_of(lead: dict[str, Any]) -> str:
+    """What raised a lead: its kind and engine (`rule_engine/hayabusa`, `baseline/triage baseline`)."""
+    extra = lead.get("extra") or {}
+    return f"{lead.get('kind') or 'lead'}/{extra.get('engine') or lead.get('family') or ''}"
+
+
+def _crit_orders(crit: list[dict[str, Any]], known: set[str], question: str) -> list[dict[str, Any]]:
+    """One order per source and up to CRIT_LEADS_PER_ORDER of its crit/high leads, every lead in one."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for lead in crit:
+        groups.setdefault(_source_of(lead), []).append(lead)
+    orders: list[dict[str, Any]] = []
+    for source, leads in groups.items():
+        for start in range(0, len(leads), CRIT_LEADS_PER_ORDER):
+            chunk = leads[start:start + CRIT_LEADS_PER_ORDER]
+            kind = str(chunk[0].get("kind") or "lead")
+            families = {_family_for_lead(lead, known) for lead in chunk} - {""}
+            listed = "\n".join(
+                f"  {i}. {_hypothesis(lead)}"
+                + (f" [lead rows: audit_id {', '.join(str(a) for a in (lead.get('audit_ids') or [])[:2])}]"
+                   if lead.get("audit_ids") else "")
+                for i, lead in enumerate(chunk, 1)
+            )
+            orders.append({
+                "role": "evidence",
+                "lead_kind": kind,
+                "crit_high": True,
+                "family": next(iter(families)) if len(families) == 1 else "",
+                "hypothesis": f"{len(chunk)} crit/high lead(s) from {source}",
+                "benign_alternative": BENIGN_ALTERNATIVE.get(kind, "benign activity that resembles the pattern"),
+                "refutation": REFUTATION.get(kind, "evidence that the pattern has an innocent explanation"),
+                "evidence_rows": [row for lead in chunk for row in (lead.get("rows") or [])[:2]],
+                "audit_ids": [a for lead in chunk for a in (lead.get("audit_ids") or [])],
+                "score": max(float(lead.get("score") or 0.0) for lead in chunk),
+                "lead_subjects": [str(lead.get("subject") or "") for lead in chunk],
+                "task": (
+                    f"Test each of these crit/high leads for the case question "
+                    f"{question or '(no examiner question)'}; every one needs an answer:\n{listed}"
+                ),
+            })
     return orders
 
 

@@ -1126,6 +1126,10 @@ class WorkOrder:
     # names none of those invites the agent to summarise rows instead of testing
     # a hypothesis.
     lead_kind: str = ""
+    #: IC-3: the leads this order examines (a crit/high order carries several), and whether they are
+    #: crit/high leads, which no plan may cut.
+    lead_subjects: tuple[str, ...] = ()
+    crit_high: bool = False
     hypothesis: str = ""
     benign_alternative: str = ""
     refutation: str = ""
@@ -1724,6 +1728,8 @@ def plan_work_orders(
                 if item.get("lead_kind") else "artifact-value coverage"
             ),
             lead_kind=str(item.get("lead_kind") or ""),
+            lead_subjects=tuple(str(s) for s in (item.get("lead_subjects") or ()) if s),
+            crit_high=bool(item.get("crit_high")),
             hypothesis=str(item.get("hypothesis") or ""),
             benign_alternative=str(item.get("benign_alternative") or ""),
             refutation=str(item.get("refutation") or ""),
@@ -1733,6 +1739,11 @@ def plan_work_orders(
             # (Mode 2 run 5, 2026-10-14: 8 of 12 candidates were "Benign alternative ..." and
             # "What would refute ..." items).
             acceptance=(
+                "for EACH lead listed, one candidate finding stating whether it held, with "
+                "benign_alternative (the benign explanation that fits equally well) and "
+                "refutation (what would refute it, with the audit_ids of the rows that test it); "
+                "a lead you could not test is a candidate saying so and why"
+                if item.get("crit_high") else
                 "state whether the hypothesis held as one candidate finding; in that "
                 "candidate, fill benign_alternative (the benign explanation that fits "
                 "equally well) and refutation (what would refute it, with the audit_ids "
@@ -1740,6 +1751,10 @@ def plan_work_orders(
             ),
             skill_refs=_retrieve_skill_refs(skill_families, keywords, limit=8),
         ))
+    # IC-3: the crit/high orders are kept whole; the plan's size limit applies to the rest.
+    crit_orders = [o for o in orders if o.crit_high]
+    lead_rest = [o for o in orders if not o.crit_high]
+    orders = []
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
         role="correlation",
@@ -1805,20 +1820,26 @@ def plan_work_orders(
                 "as-is, or explicitly dropped"),
             skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
         )
-        orders = orders[: max(1, max_orders - 1)] + [feedback_order]
+        orders = orders + [feedback_order]
 
+    # IC-3: every crit/high order, then the lesser lead and coverage orders as far as the plan's size
+    # allows, then correlation, pattern and the examiner feedback. The size used to be cut from the end of
+    # one list, which could drop the pattern order and kept only the first four leads.
+    room = max(0, max_orders - len(crit_orders) - len(orders))
+    orders = crit_orders + lead_rest[:room] + orders
     for order in orders:
         sink.emit(new_event(
             run_id, "plan.work_order", actor="director",
             data={"order_id": order.order_id, "role": order.role,
                   "family": order.family, "task": order.task,
+                  "leads": list(order.lead_subjects), "crit_high": order.crit_high,
                   "skills": [
                       {"skill": r.get("skill"), "version": r.get("version"),
                        "why": r.get("why")}
                       for r in order.skill_refs
                   ]},
         ))
-    return orders[:max_orders]
+    return orders
 
 
 # ---------------------------------------------------------------------------
