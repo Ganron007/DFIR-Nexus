@@ -274,6 +274,29 @@ def _findings_message(findings: list[dict[str, Any]]) -> str:
     return "```json\n" + json.dumps(findings, ensure_ascii=False, indent=1) + "\n```"
 
 
+def _merge_extra_findings(found: list[dict[str, Any]], extra: list[dict[str, Any]],
+                          candidates: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+                          ) -> tuple[list[dict[str, Any]], list[str]]:
+    """The first pass's findings with the extra pass's applied (D255): a finding carrying `revises`: "F<n>"
+    replaces first-pass finding n, any other is new. A revision that does not parse as a finding cannot
+    replace one that does, so the first-pass finding stays."""
+    merged = {f"F{n}": f for n, f in enumerate(found, 1)}
+    revised: list[str] = []
+    new: list[dict[str, Any]] = []
+    for f in extra:
+        f = dict(f)
+        ref = str(f.pop("revises", "") or "").strip().upper()
+        if ref in merged:
+            if ref in revised:
+                log.warning("reconcile extra pass revised %s twice; the first revision stands", ref)
+            elif candidates([f]):
+                merged[ref] = f
+                revised.append(ref)
+            continue
+        new.append(f)
+    return list(merged.values()) + new, revised
+
+
 def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
     """Coerce an orient/verify JSON payload into bounded plan items."""
     plan: dict[str, list[dict[str, Any]]] = {"hypotheses": [], "items": []}
@@ -1067,6 +1090,7 @@ async def run_interpret_loop(
 
     # One bounded extra pass for whatever neither a finding nor a disposition answered.
     extra_text = ""
+    revised: list[str] = []
     if unaddressed_final:
         _progress("reconcile",
                   f"one extra pass for {len(unaddressed_final)} unaddressed digest item(s)")
@@ -1076,13 +1100,28 @@ async def run_interpret_loop(
         # The same rules and finding shape as the first pass (D213): the extra pass named neither, so
         # agnes-3.0-flash returned its findings as {id, title, detail, severity} and none could stage
         # (2026-10-15: four, among them seven denied RDP logons just before the successful one).
+        # The findings the first pass wrote, by id (D255): the pass was told to add only a claim "the
+        # findings so far do not make" without being shown them, and restated five of seven first-pass
+        # findings in new words, so each staged twice (fresh run 15d8cd92, 2026-10-16). An item that is
+        # part of a written finding's activity is named in that finding's observation (D217), so the
+        # pass returns that finding whole with `revises`, and it replaces the first-pass one.
+        findings_block = "\n".join(
+            f"- F{n}: {f.get('title')} | entity {json.dumps(f.get('entity'), ensure_ascii=False)} | "
+            f"audit_ids {', '.join(str(a) for a in _as_list(f.get('audit_ids')))}: {f.get('observation') or ''}"
+            for n, f in enumerate(found, 1)
+        ) or "(none)"
         extra_system = (
             findings_system
-            + "\nTHIS PASS: the findings so far left the DIGEST RECONCILIATION items listed under "
-            "unaddressed_items unanswered. Give each a disposition, and write a finding only when "
-            "the rows support a claim the findings so far do not make."
+            + "\nTHIS PASS: the findings listed under findings_so_far (F1, F2, ...) are written. They "
+            "left the DIGEST RECONCILIATION items listed under unaddressed_items unanswered. For each "
+            "item: when it is part of the activity of a finding in findings_so_far, return that finding "
+            "whole, its observation naming the item, with \"revises\": its id; when the rows support a "
+            "claim no finding in findings_so_far makes, write a new finding with no \"revises\"; "
+            "otherwise give the item a disposition. Never return a finding of findings_so_far again "
+            "without \"revises\", and never revise one finding twice."
         )
-        extra_sections = reconcile_extra + [(0, "unaddressed_items", items_block)]
+        extra_sections = reconcile_extra + [(0, "findings_so_far", findings_block),
+                                            (0, "unaddressed_items", items_block)]
         packed_extra, report_extra = pack_sections(
             [(0, "case_digest", digest_md), *extra_sections],
             window=ctx_window,
@@ -1097,7 +1136,7 @@ async def run_interpret_loop(
                 {"role": "user", "content": packed_extra + "\n\nEmit the JSON object."},
             ])
             extra_found, extra_dispositions = _split_reconcile_reply(extra_text)
-            found = found + extra_found
+            found, revised = _merge_extra_findings(found, extra_found, _candidates)
             dispositions = dispositions + extra_dispositions
             candidates = _candidates(found)
             checklist = reconciliation_checklist(digest, candidates, dispositions)
@@ -1118,6 +1157,7 @@ async def run_interpret_loop(
         "corrective_retry_used": correct_used,
         "reconciliation_addressed": len(checklist.get("addressed") or []),
         "extra_raw": extra_text,
+        "extra_revised": revised,
     })
     from nexus.langgraph.pipeline_runs import configured_model
 

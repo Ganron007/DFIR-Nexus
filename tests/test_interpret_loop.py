@@ -856,7 +856,62 @@ def test_the_extra_pass_answers_with_dispositions_not_findings(tmp_path):
     assert result["findings_emitted"] == 1
     assert result["unaddressed"] == []
     assert [d["status"] for d in result["dispositions"]] == ["benign", "coverage_gap"]
-    assert "Give each a disposition" in model.calls[3][0]["content"]
+    assert "give the item a disposition" in model.calls[3][0]["content"]
+
+
+def test_the_extra_pass_sees_the_findings_so_far_and_revises_one_instead_of_restating_it(tmp_path):
+    """D255 (fresh run 15d8cd92, 2026-10-16): the extra pass was told to add only a claim the findings so
+    far do not make, but was never shown them; it restated five of seven first-pass findings in new words
+    and each staged twice. It now sees them by id, and an item that belongs to one is named in that
+    finding, returned whole with `revises`, which replaces it."""
+    sent: list[str] = []
+
+    class _Recording(ScriptedModel):
+        async def ainvoke(self, messages):
+            sent.append("\n".join(str(m.get("content") or "") for m in messages))
+            return await super().ainvoke(messages)
+
+    first = json.dumps({"findings": [_claim("Mimikatz detected on ws01", "credential dumping")],
+                        "dispositions": []})
+    extra = json.dumps({"findings": [
+        {**_claim("Mimikatz detected on ws01, then psexec to the file server",
+                  "credential dumping, then psexec 9 hits from the same account"), "revises": "F1"},
+    ], "dispositions": [{"item": "[CRITICAL] Ransomware note (ws01)", "status": "benign",
+                         "reason": "lab file"}]})
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST",
+        model=_Recording([_orientation(), _verify_settled(), first, extra]),
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=FakeExecutor(),
+    ))
+    extra_call = next(s for s in sent if "THIS PASS" in s)
+    assert "findings_so_far" in extra_call
+    assert "F1: Mimikatz detected on ws01" in extra_call and "credential dumping" in extra_call
+    assert result["findings_emitted"] == 1, "the revision replaces F1; it is not a second finding"
+    assert result["unaddressed"] == []
+    final = json.loads((tmp_path / "analysis" / "interpret_rounds" / "findings-final.json")
+                       .read_text(encoding="utf-8"))
+    assert final["extra_revised"] == ["F1"]
+
+
+def test_a_revision_that_is_not_a_finding_leaves_the_first_pass_finding_standing():
+    from nexus.langgraph.hunt_parser import parse_hunt_candidates
+    from nexus.langgraph.interpret_loop import _findings_message, _merge_extra_findings
+
+    def candidates(findings):
+        return parse_hunt_candidates([{"role": "assistant", "content": _findings_message(findings)}])
+
+    first = [_claim("Mimikatz detected on ws01", "credential dumping"),
+             _claim("psexec lateral movement", "psexec 9 hits")]
+    extra = [{"revises": "F1", "detail": "no title, no observation"},
+             {**_claim("psexec to the file server", "psexec 9 hits, then a share mount"), "revises": "f2"},
+             {**_claim("psexec again", "psexec 9 hits"), "revises": "F2"},
+             _claim("Log clearing on ws01", "1102 at 03:12")]
+    merged, revised = _merge_extra_findings(first, extra, candidates)
+    assert [f["title"] for f in merged] == ["Mimikatz detected on ws01", "psexec to the file server",
+                                            "Log clearing on ws01"]
+    assert revised == ["F2"]
+    assert all("revises" not in f for f in merged)
 
 
 def test_a_bare_findings_array_is_still_read_as_findings(tmp_path):
