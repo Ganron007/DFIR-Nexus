@@ -115,6 +115,17 @@ def test_an_unreadable_synthesis_is_a_gap_not_a_fallback_to_the_claims(tmp_path)
     assert any("was not composed" in g for g in out["gaps"])
 
 
+def test_a_reply_off_the_synthesis_contract_composes_nothing_and_says_so(tmp_path):
+    """A seat's claims object returned to the synthesis seat is not a case with no findings."""
+    case = _case(tmp_path)
+    board, *_ = _board(case)
+    settled, _ = settled_candidates(board, [], case_dir=case)
+    model = _Synthesis({"claims": [], "open_questions": []})
+    out = compose_case(case, "M3-ic10", "q", settled, [], model=model, sink=_Sink())
+    assert out["findings"] == [] and out["narrative"] == ""
+    assert any("off its contract" in g for g in out["gaps"]), out["gaps"]
+
+
 def test_the_run_record_carries_the_narrative_the_case_and_the_settled_claims(tmp_path):
     case = _case(tmp_path)
     board, task, run, _none = _board(case)

@@ -498,6 +498,13 @@ def compose_case(
                            + (f" ({result.error[:160]})" if result.error else "")
                            + "; the settled claims are on the record and none is staged")
         return out
+    if "narrative" not in parsed and "findings" not in parsed:
+        # A reply off the synthesis contract (a seat's claims object, an answer envelope) composed nothing; read
+        # as a synthesis it would be a case with no narrative and no finding that nobody had concluded.
+        out["gaps"].append("the case was not composed: the synthesis seat answered off its contract (keys "
+                           + ", ".join(sorted(str(k) for k in parsed)[:8])
+                           + "); the settled claims are on the record and none is staged")
+        return out
     finals = [f for f in parsed.get("findings") or [] if isinstance(f, dict)]
     _carry_claim_tests(finals, claims)
     _backfill_audit_ids(finals, claims)
