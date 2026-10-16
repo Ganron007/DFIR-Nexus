@@ -196,11 +196,17 @@ def _match_reasons(
     return reasons[:6]
 
 
-def _playbook_triggers(family: str, limit: int = 3) -> list[str]:
-    """'Why this pattern is suspicious' bullets from family-matched playbooks."""
+def _playbook_triggers(family: str, limit: int = 3, *, case_dir: Path | None = None) -> list[str]:
+    """'Why this pattern is suspicious' bullets from family-matched playbooks.
+
+    IC-14: a trigger that names events the case's index does not hold is not about this case and is left
+    out ("LSASS access detected in Sysmon Event ID 10" on a case with no Sysmon log reached 7 of Mode 1's 9
+    calls). A trigger naming no event, or one the index cannot check, is kept.
+    """
     if not family:
         return []
     try:
+        from nexus.langgraph.named_events import events_in_case
         from nexus.langgraph.query_pack import _family_matched_playbooks
     except Exception:  # noqa: BLE001
         return []
@@ -208,8 +214,11 @@ def _playbook_triggers(family: str, limit: int = 3) -> list[str]:
     for pb in _family_matched_playbooks({family})[:4]:
         for t in (pb.get("triggers") or []):
             t = str(t).strip()
-            if t and t not in out:
-                out.append(t)
+            if not t or t in out:
+                continue
+            if case_dir is not None and events_in_case(case_dir, t) is False:
+                continue
+            out.append(t)
     return out[:limit]
 
 
@@ -240,6 +249,7 @@ def _learn(
     techniques: list[str],
     matched: list[dict[str, Any]],
     caveats: list[str],
+    case_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Plain-language "why this matters" — WP 4j.4 learning layer.
 
@@ -249,7 +259,7 @@ def _learn(
     description + caveats. Deterministic; RAG is appended by the caller.
     """
     tech_notes = _technique_notes(techniques)
-    pb_triggers = _playbook_triggers(family)
+    pb_triggers = _playbook_triggers(family, case_dir=case_dir)
 
     headline = ""
     if tech_notes:
@@ -443,7 +453,7 @@ def interpret_hit(
         meaning = f"{family} parser row — no skill covers this family yet."
 
     # WP 4j.4: plain-language "why this matters" teaching block.
-    learn = _learn(family, techniques, matched, caveats)
+    learn = _learn(family, techniques, matched, caveats, case_dir=case_dir)
 
     out: dict[str, Any] = {
         "meaning": meaning[:400],

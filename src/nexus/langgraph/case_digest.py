@@ -92,6 +92,8 @@ def _signal_map(case_dir: Path, brief: dict[str, Any]) -> dict[str, Any]:
                         "hits": int(row.get("hits") or 0),
                         "source": str(row.get("source") or ""),
                         "scanned": str(row.get("scanned") or "yes").lower() != "no",
+                        # IC-13: a map written before the column, or from the capped window, is not exact.
+                        "exact": str(row.get("exact") or "no").lower() == "yes",
                     })
         except (OSError, ValueError):
             rows = []
@@ -102,6 +104,9 @@ def _signal_map(case_dir: Path, brief: dict[str, Any]) -> dict[str, Any]:
             for s in (brief.get("needle_scan") or [])
         ]
     with_hits = sorted([r for r in rows if r["hits"] > 0], key=lambda r: -r["hits"])
+    # IC-13: a 0 is negative evidence only when it is the index's own count. A 0 inside the scan's capped
+    # window said "checked, 0 hits" for lsass, procdump and sekurlsa on CASE-C5B04D31 (18,977 rows name lsass).
+    exact = bool(rows) and all(r.get("exact") for r in rows)
     zero_hit = sorted(
         [r for r in rows if r["hits"] == 0 and r.get("scanned", True)],
         key=lambda r: r["needle"],
@@ -111,8 +116,10 @@ def _signal_map(case_dir: Path, brief: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "scanned": len(rows),
+        "exact": exact,
         "with_hits": with_hits[:150],
-        "zero_hit": [r["needle"] for r in zero_hit][:400],
+        "zero_hit": [r["needle"] for r in zero_hit][:400] if exact else [],
+        "not_in_sample": [] if exact else [r["needle"] for r in zero_hit][:400],
         "unscanned": unscanned[:400],
     }
 
@@ -389,10 +396,20 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
     with_hits = smap.get("with_hits") or []
     if with_hits:
         lines.append("")
-        lines.append(f"## Signal map — needles with hits ({len(with_hits)} shown)")
         lines.append(
-            ", ".join(f"{r['needle']}({r['hits']})" for r in with_hits[:80])
+            f"## Signal map — needles with hits ({len(with_hits)} shown; "
+            + ("exact row counts on the index)" if smap.get("exact") else
+               "AT LEAST these counts: counted inside the scan's capped sample, not on the whole index)"))
+        lines.append(
+            ", ".join(f"{r['needle']}({r['hits']}{'' if smap.get('exact') else '+'})" for r in with_hits[:80])
         )
+    not_in_sample = smap.get("not_in_sample") or []
+    if not_in_sample:
+        lines.append("")
+        lines.append(
+            f"## Not found in the sampled window ({len(not_in_sample)} needles; NOT evidence of absence: "
+            "the index was not counted):")
+        lines.append(", ".join(not_in_sample[:120]))
     zero = smap.get("zero_hit") or []
     if zero:
         lines.append("")
@@ -412,9 +429,11 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
     if stats.get("truncated"):
         lines.append("")
         lines.append(
-            "> Hit counts below are LOWER BOUNDS — the scan was truncated by: "
+            ("> The alert list below is drawn from the scan's capped sample (the needle counts above are "
+             "exact) — the scan was truncated by: " if smap.get("exact") else
+             "> Hit counts here are LOWER BOUNDS — the scan was truncated by: ")
             + "; ".join(stats.get("truncated_reasons") or ["unknown cap"])
-            + ". Do not treat counts as exact."
+            + ("." if smap.get("exact") else ". Do not treat counts as exact.")
         )
     alerts = digest.get("alerts") or []
     if alerts:

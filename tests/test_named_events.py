@@ -66,6 +66,27 @@ def test_the_forms_a_claim_names_an_event_in():
     assert named_events("EventID 4624/4625 logons") == [("", "4624"), ("", "4625")]
 
 
+def test_attacks_own_eventcode_form_names_an_event():
+    """IC-14: ATT&CK's analytics write `EventCode=4698`; the method block now carries them to the seats."""
+    assert named_events("WinEventLog:Security EventCode=4698 (Scheduled Job Creation)") == [("security", "4698")]
+    assert named_events("Event Code 4624 logons") == [("", "4624")]
+
+
+def test_whether_a_case_holds_an_event_is_asked_strictly(monkeypatch):
+    """IC-14: a row naming no provider proves nothing about a named source when the question is whether the
+    case holds the event at all (a provider-less event 10 made "Sysmon 10" read as present)."""
+    from nexus.langgraph import named_events as ne
+
+    lenient = ne.event_filter(("sysmon", "10"))["bool"]["filter"][1]["bool"]["should"]
+    strict = ne.event_filter(("sysmon", "10"), strict=True)["bool"]["filter"][1]["bool"]["should"]
+    assert len(lenient) == 3 and len(strict) == 2
+    counts = {("sysmon", "10"): 0, ("", "4624"): 40}
+    monkeypatch.setattr(ne, "_index_event_count", lambda _case, event: counts.get(event))
+    assert ne.events_in_case("CASE-X", "LSASS access detected in Sysmon Event ID 10") is False
+    assert ne.events_in_case("CASE-X", "logons, Event ID 4624") is True
+    assert ne.events_in_case("CASE-X", "Known credential tools in Prefetch") is None
+
+
 def test_an_absence_a_date_or_a_record_number_names_no_event():
     assert named_events("no Sysmon 10 events were logged on rd01") == []
     assert named_events("0 Sysmon 10 events") == []

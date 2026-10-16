@@ -29,7 +29,7 @@ from typing import Any
 #: Words in the pinned names that name no source by themselves.
 _GENERIC = frozenset({"microsoft", "windows", "operational", "analytic", "debug", "admin"})
 #: Words that introduce an event number.
-_EVENT_WORD = r"(?:event[\s_-]*ids?|eventids?|eids?|evids?|events?)"
+_EVENT_WORD = r"(?:event[\s_-]*(?:ids?|codes?)|eventids?|eventcodes?|eids?|evids?|events?)"
 #: Several ids of one event word ("4624/4625", "4698 or 4699"). Not a comma: in "EID 1116, 10 events" the
 #: second number is a count.
 _IDS = r"\d{1,5}(?:\s*(?:/|\bor\b|\band\b)\s*\d{1,5})*"
@@ -109,13 +109,13 @@ def _patterns() -> tuple[re.Pattern[str], re.Pattern[str]]:
     source = r"(?<![\w-])(" + "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in words) + r")"
     qualified = re.compile(
         source + r"(?:"
-        + r"\s*[-:]?\s*" + _EVENT_WORD + r"\s*[-#:]?\s*(" + _IDS + r")"     # Sysmon EventID 10
+        + r"\s*[-:]?\s*" + _EVENT_WORD + r"\s*[-#:=]?\s*(" + _IDS + r")"    # Sysmon EventID 10, EventCode=4698
         + r"|\s*-\s*(" + _IDS + r")" + _END                                  # Sysmon-10
         + r"|\s+(" + _IDS + r")\s+(?:[\w-]+\s+){0,2}" + _ROW_WORD           # Sysmon 10 (process-access) events
         + r")",
         re.I,
     )
-    bare = re.compile(r"(?<![\w-])" + _EVENT_WORD + r"\s*[-#:]?\s*(" + _IDS + r")" + _END, re.I)
+    bare = re.compile(r"(?<![\w-])" + _EVENT_WORD + r"\s*[-#:=]?\s*(" + _IDS + r")" + _END, re.I)
     return qualified, bare
 
 
@@ -176,18 +176,24 @@ def _records(row: dict[str, Any], event: Event) -> bool:
     return bool(wanted & names)
 
 
-def event_filter(event: Event) -> dict[str, Any]:
-    """The ES clause for rows that record ``event``; a row naming no provider or channel is kept."""
+def event_filter(event: Event, *, strict: bool = False) -> dict[str, Any]:
+    """The ES clause for rows that record ``event``.
+
+    For a claim's cited rows a row naming no provider or channel is kept (it cannot contradict the source).
+    ``strict`` asks whether the case holds the event at all, where such a row proves nothing (IC-14).
+    """
     source, event_id = event
     clause: list[dict[str, Any]] = [{"term": {"event_id": event_id}}]
     if source:
         names = sorted(_source_names().get(source, frozenset({source})))
-        clause.append({"bool": {"should": [
+        should: list[dict[str, Any]] = [
             {"terms": {"ecs.event.provider": names}},
             {"terms": {"ecs.winlog.channel": names}},
-            {"bool": {"must_not": [{"exists": {"field": "ecs.event.provider"}},
-                                   {"exists": {"field": "ecs.winlog.channel"}}]}},
-        ], "minimum_should_match": 1}})
+        ]
+        if not strict:
+            should.append({"bool": {"must_not": [{"exists": {"field": "ecs.event.provider"}},
+                                                 {"exists": {"field": "ecs.winlog.channel"}}]}})
+        clause.append({"bool": {"should": should, "minimum_should_match": 1}})
     return {"bool": {"filter": clause}}
 
 
@@ -251,6 +257,40 @@ def event_grounding(text: Any, calls: dict[str, dict[str, Any]], *, rows: list[d
         else:
             out["unrecorded"].append(label(event))
     return out
+
+
+@lru_cache(maxsize=512)
+def _index_event_count(case_id: str, event: Event) -> int | None:
+    try:
+        from nexus.langgraph.es_native import es_search
+
+        result = es_search(case_id, event_filter(event, strict=True), size=1)
+    except Exception:  # noqa: BLE001 - no index: it cannot say
+        return None
+    if result.get("error") or result.get("degraded"):
+        return None
+    try:
+        return int(result.get("total"))
+    except (TypeError, ValueError):
+        return None
+
+
+def events_in_case(case_dir: Any, text: Any) -> bool | None:
+    """Whether the case's index holds any event ``text`` names (IC-14).
+
+    True or False when the text names events and the index answers; None when it names none or the index
+    cannot say. A playbook line "LSASS access detected in Sysmon Event ID 10" was shown as why every alert of
+    CASE-C5B04D31 mattered, a case with no Sysmon log.
+    """
+    from pathlib import Path
+
+    events = named_events(text)
+    if not events or case_dir is None:
+        return None
+    answers = [_index_event_count(Path(case_dir).name, event) for event in events]
+    if any(a for a in answers):
+        return True
+    return None if any(a is None for a in answers) else False
 
 
 def downgrade_ungrounded_confirmations(verdicts: list[Any], case_dir: Any) -> list[dict[str, Any]]:

@@ -257,9 +257,37 @@ def _alert_needle(alert: dict[str, Any]) -> tuple[str, str]:
     return str(alert.get("title") or alert.get("family") or ""), str(alert.get("family") or "")
 
 
+def _exact_needle_counts(case_dir: Path, needles: list[str], scan_stats: dict[str, Any]) -> dict[str, int] | None:
+    """Each needle's exact row count on the case index (IC-13), or None when the scan did not use the index.
+
+    `count_hits` counts a term exactly as the scan matches it; four at a time, 295 needles take about a
+    minute on 7 M documents. A needle whose count fails keeps no number at all rather than a sampled one.
+    """
+    if str((scan_stats or {}).get("backend") or "") != "elasticsearch" or not needles:
+        return None
+    from concurrent.futures import ThreadPoolExecutor
+
+    from nexus.langgraph.query_pack import count_hits
+
+    def one(term: str) -> tuple[str, int | None]:
+        try:
+            result = count_hits(case_dir, [term], (None, None), backend="elasticsearch")
+            return term, int(result["count"]) if result.get("exact") else None
+        except Exception:  # noqa: BLE001 - one needle's failure is recorded below
+            return term, None
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = dict(pool.map(one, needles))
+    failed = sorted(t for t, n in results.items() if n is None)
+    if failed:
+        scan_stats["count_failed"] = failed[:200]
+    return {t: n for t, n in results.items() if n is not None}
+
+
 def _walkthrough_learn(
     families: list[str],
     alerts: list[dict[str, Any]],
+    case_dir: Path | None = None,
 ) -> tuple[list[dict[str, str]], list[str]]:
     """Technique notes + playbook triggers for the case, for teaching steps.
 
@@ -280,7 +308,7 @@ def _walkthrough_learn(
 
     triggers: list[str] = []
     for fam in families[:8]:
-        for t in _playbook_triggers(fam, limit=2):
+        for t in _playbook_triggers(fam, limit=2, case_dir=case_dir):
             if t not in triggers:
                 triggers.append(t)
     return notes, triggers
@@ -293,6 +321,7 @@ def _guided_first_pass(
     needle_scan: list[dict[str, Any]],
     hosts: list[str],
     families: list[str],
+    case_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """The deterministic Mode 1 walkthrough.
 
@@ -302,7 +331,7 @@ def _guided_first_pass(
     thinking about query syntax. Ranking is by real counts, never invented.
     """
     steps: list[dict[str, Any]] = []
-    tech_notes, pb_triggers = _walkthrough_learn(families, alerts)
+    tech_notes, pb_triggers = _walkthrough_learn(families, alerts, case_dir)
     tech_caveats = [str(t.get("caveat") or "") for t in tech_notes if t.get("caveat")]
 
     # 1) Triage — the signatures already fired.
@@ -633,8 +662,15 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             t = str(t).strip().lower()
             if t in counts:
                 counts[t] += 1
+    # IC-13: the counts above are taken inside the scan's capped window. Shown as hit counts, they read
+    # `lsass` 0 and `shell` 89 on CASE-C5B04D31, whose index holds 18,977 and 249,419 such rows; Mode 1 read
+    # the signal map in every call. On the index each needle is counted exactly instead.
+    exact = _exact_needle_counts(case_dir, list(counts), scan_stats)
+    if exact is not None:
+        counts = exact
+    scan_stats["counts_exact"] = exact is not None
     needle_scan = [
-        {"needle": n, "hits": c, "source": needle_map[n]}
+        {"needle": n, "hits": c, "source": needle_map[n], "exact": exact is not None}
         for n, c in counts.items()
         if c > 0
     ]
@@ -860,6 +896,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         needle_scan=needle_scan[:80],
         hosts=hosts,
         families=families,
+        case_dir=case_dir,
     )
 
     # Mode 2 verdict surface: the LLM interpretation, TI context, and staged
@@ -1014,16 +1051,22 @@ def _write_briefing_artifacts(
             str(t).lower()
             for t in (brief.get("scan_stats") or {}).get("needles_dropped_cap") or []
         }
+        # IC-13: `exact` says whether a count is the index's own (yes) or taken inside the scan's capped
+        # window (no: "at least", and a 0 there is not absence). A needle whose exact count failed is
+        # written as not scanned rather than with a sampled number.
+        stats = brief.get("scan_stats") or {}
+        exact = "yes" if stats.get("counts_exact") else "no"
+        count_failed = [str(t) for t in stats.get("count_failed") or []]
         csv_path = analysis_dir / "signal_map.csv"
         with csv_path.open("w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["needle", "hits", "source", "scanned"])
+            w.writerow(["needle", "hits", "source", "scanned", "exact"])
             for needle, count in sorted(needle_counts.items(), key=lambda kv: -kv[1]):
                 low = str(needle).lower()
                 scanned = "no" if (low in failed_terms or low in dropped_terms) else "yes"
-                w.writerow([needle, count, needle_map.get(needle, ""), scanned])
-            for needle in (brief.get("scan_stats") or {}).get("needles_dropped_cap") or []:
-                w.writerow([needle, 0, needle_map.get(needle, "playbook"), "no"])
+                w.writerow([needle, count, needle_map.get(needle, ""), scanned, exact])
+            for needle in [*(stats.get("needles_dropped_cap") or []), *count_failed]:
+                w.writerow([needle, 0, needle_map.get(needle, "playbook"), "no", exact])
 
         # Match-site facts (EventId/RecordNumber/label cells): recorded apart
         # from the signal map so a bare value is never read as behaviour.

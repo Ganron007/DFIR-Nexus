@@ -134,6 +134,8 @@ def test_the_evidence_and_correlation_roles_carry_the_examiner_toolkit():
     for role in ("evidence", "correlation"):
         tools = set(ROLES[role].tools)
         assert {"check_file", "check_lolbin"} <= tools, role
+        # IC-12: the method knowledge for the seats that read the rows (run 4's evidence seats could not ask).
+        assert "rag_search" in tools, role
         unreachable = tools - set(MODE2_TOOL_ALLOWLIST) - set(_CONTEXT_TOOL_NAMES)
         assert not unreachable, f"{role} names tools the loop cannot run: {unreachable}"
 

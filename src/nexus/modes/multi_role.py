@@ -517,7 +517,10 @@ ROLES: dict[str, AgentRole] = {
           tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
                  "check_file", "check_scheduled_task", "check_process_tree", "check_service",
                  "check_hash", "check_autorun", "check_registry", "analyze_filename_triage",
-                 "check_lolbin", "check_hijackable_dll", "deobfuscate_command"),
+                 "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
+                 # IC-12: the method knowledge (how to read a 4648, an SI<FN, a type-9 logon) for the
+                 # seats that read the rows; run 4's evidence seats could not ask it.
+                 "rag_search"),
         brief=_EVIDENCE_BRIEF,
         system_prompt=(
             _EVIDENCE_BRIEF + " Return JSON: "
@@ -541,7 +544,7 @@ ROLES: dict[str, AgentRole] = {
           tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
                  "check_file", "check_scheduled_task", "check_process_tree", "check_service",
                  "check_hash", "check_autorun", "analyze_filename_triage", "check_lolbin",
-                 "deobfuscate_command"),
+                 "deobfuscate_command", "rag_search"),
         brief=_CORRELATION_BRIEF,
         system_prompt=(
             _CORRELATION_BRIEF + " Return JSON with keys: corroborated_entities, chains, "

@@ -141,7 +141,8 @@ def test_signal_map_zero_hits_are_negative_evidence(tmp_path):
     analysis = tmp_path / "analysis"
     analysis.mkdir(parents=True)
     (analysis / "signal_map.csv").write_text(
-        "needle,hits,source\nmimikatz,4,playbook\nsdelete,0,playbook\n", encoding="utf-8"
+        "needle,hits,source,scanned,exact\nmimikatz,4,playbook,yes,yes\nsdelete,0,playbook,yes,yes\n",
+        encoding="utf-8",
     )
     smap = _signal_map(tmp_path, {})
     assert [r["needle"] for r in smap["with_hits"]] == ["mimikatz"]
@@ -150,15 +151,29 @@ def test_signal_map_zero_hits_are_negative_evidence(tmp_path):
     assert smap["unscanned"] == []
 
 
+def test_a_zero_counted_in_a_capped_sample_is_not_negative_evidence(tmp_path):
+    """IC-13: a map counted inside the scan's capped window (or written before the `exact` column) said
+    "checked, 0 hits" for lsass on CASE-C5B04D31, whose index holds 18,977 rows naming it."""
+    analysis = tmp_path / "analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "signal_map.csv").write_text(
+        "needle,hits,source,scanned,exact\nshell,89,sigma,yes,no\nlsass,0,playbook,yes,no\n", encoding="utf-8")
+    smap = _signal_map(tmp_path, {})
+    assert smap["exact"] is False and smap["zero_hit"] == [] and smap["not_in_sample"] == ["lsass"]
+    md = render_digest_markdown({"case_id": "CASE-X", "signal_map": smap, "scope": {}, "inventory": {}})
+    assert "AT LEAST these counts" in md and "shell(89+)" in md
+    assert "Negative evidence" not in md and "NOT evidence of absence" in md
+
+
 def test_signal_map_unscanned_is_not_negative_evidence(tmp_path):
     """scanned=no must never masquerade as 'checked, absent'."""
     analysis = tmp_path / "analysis"
     analysis.mkdir(parents=True)
     (analysis / "signal_map.csv").write_text(
-        "needle,hits,source,scanned\n"
-        "mimikatz,4,playbook,yes\n"
-        "sdelete,0,playbook,yes\n"
-        "rdp,0,playbook,no\n",
+        "needle,hits,source,scanned,exact\n"
+        "mimikatz,4,playbook,yes,yes\n"
+        "sdelete,0,playbook,yes,yes\n"
+        "rdp,0,playbook,no,yes\n",
         encoding="utf-8",
     )
     smap = _signal_map(tmp_path, {})
@@ -195,7 +210,8 @@ def test_render_and_write_digest(tmp_path, monkeypatch):
     analysis = tmp_path / "analysis"
     analysis.mkdir(parents=True)
     (analysis / "signal_map.csv").write_text(
-        "needle,hits,source\nmimikatz,4,playbook\nsdelete,0,playbook\n", encoding="utf-8"
+        "needle,hits,source,scanned,exact\nmimikatz,4,playbook,yes,yes\nsdelete,0,playbook,yes,yes\n",
+        encoding="utf-8",
     )
     digest = build_case_digest(tmp_path)
     md = render_digest_markdown(digest)

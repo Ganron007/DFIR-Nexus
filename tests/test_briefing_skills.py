@@ -281,6 +281,47 @@ def test_briefing_directions_endpoint_no_model(tmp_path):
     assert resp.json() == {"directions": []}
 
 
+def test_needles_are_counted_exactly_on_the_index(monkeypatch):
+    """IC-13: on the index each needle's count is the index's own, not a count inside the scan's capped
+    window (`lsass` 0 there, 18,977 rows on CASE-C5B04D31). A failed count is named, never sampled."""
+    from nexus.langgraph import briefing, query_pack
+
+    exact = {"lsass": 18977, "shell": 249419}
+
+    def count_hits(_case, terms, _window, **_kw):
+        term = terms[0]
+        if term == "broken":
+            raise RuntimeError("es down")
+        return {"count": exact.get(term, 0), "exact": True, "backend": "elasticsearch"}
+
+    monkeypatch.setattr(query_pack, "count_hits", count_hits)
+    stats = {"backend": "elasticsearch"}
+    counts = briefing._exact_needle_counts(Path("."), ["lsass", "shell", "procdump", "broken"], stats)
+    assert counts == {"lsass": 18977, "shell": 249419, "procdump": 0}
+    assert stats["count_failed"] == ["broken"]
+    # Without the index nothing is claimed exact.
+    assert briefing._exact_needle_counts(Path("."), ["lsass"], {"backend": "csv"}) is None
+
+
+def test_a_playbook_line_about_events_the_case_lacks_is_not_shown(monkeypatch):
+    """IC-14: "LSASS access detected in Sysmon Event ID 10" was why every alert of a case with no Sysmon log
+    mattered, in 7 of Mode 1's 9 calls. A line naming events the index does not hold is left out."""
+    from nexus.langgraph import interpret, named_events, query_pack
+
+    monkeypatch.setattr(query_pack, "_family_matched_playbooks", lambda _f: [{"triggers": [
+        "LSASS access detected in Sysmon Event ID 10",
+        "Known credential tools in Prefetch (mimikatz, procdump, comsvcs.dll)",
+        "Logons with explicit credentials, Event ID 4648",
+    ]}])
+    present = {("sysmon", "10"): 0, ("", "4648"): 21}
+    monkeypatch.setattr(named_events, "_index_event_count", lambda _c, event: present.get(event))
+    shown = interpret._playbook_triggers("hayabusa", limit=5, case_dir=Path("CASE-X"))
+    assert shown == ["Known credential tools in Prefetch (mimikatz, procdump, comsvcs.dll)",
+                     "Logons with explicit credentials, Event ID 4648"]
+    # Without a case nothing can be checked, and every line stays.
+    assert len(interpret._playbook_triggers("hayabusa", limit=5)) == 3
+
+
 def test_briefing_writes_offline_artifacts(tmp_path):
     """WP 4j.5c — briefing persists analysis/briefing.md + signal_map.csv so the
     examiner can review the analysis even when the UI isn't usable."""
@@ -296,7 +337,8 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     assert md.exists() and csv_path.exists()
     assert "# Case Briefing" in md.read_text(encoding="utf-8")
     rows = csv_path.read_text(encoding="utf-8").splitlines()
-    assert rows[0] == "needle,hits,source,scanned"
+    # IC-13: `exact` says whether the counts are the index's own or a capped sample's.
+    assert rows[0] == "needle,hits,source,scanned,exact"
     # every scanned needle is recorded — including 0-hit ones (negative evidence)
     assert len(rows) - 1 == b["scanned_needles"]
     # EventId cells are field facts — a 4624 row may remain in the map as a
@@ -310,8 +352,13 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     fact_rows = facts_path.read_text(encoding="utf-8").splitlines()
     assert fact_rows[0] == "needle,rows,field,class"
     assert any(r.startswith("4624,2,") for r in fact_rows), fact_rows
-    # this scan covered all needles — nothing is marked unscanned
-    assert all(r.endswith(",yes") for r in rows[1:])
+    # this scan covered all needles — nothing is marked unscanned; without an index the counts are a
+    # sample's (IC-13), and say so
+    import csv as _csv
+
+    records = list(_csv.DictReader(csv_path.read_text(encoding="utf-8").splitlines()))
+    assert all(r["scanned"] == "yes" for r in records)
+    assert all(r["exact"] == "no" for r in records)
 
 
 def test_briefing_artifact_write_failure_is_nonfatal(tmp_path):
