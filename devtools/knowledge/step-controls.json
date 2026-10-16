@@ -51,6 +51,7 @@
    "query_sha": "9c659662f249b810"
   },
   "analytic:ba-cred-kerberoast": {
+   "case_refused": "ecs.winlog.event_data.TicketEncryptionType (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -87,6 +88,7 @@
    "query_sha": "4baf67f2e9fadaab"
   },
   "analytic:ba-cred-lsass-nonsystem": {
+   "case_refused": "ecs.winlog.event_data.TargetImage.wc (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -435,6 +437,7 @@
    "query_sha": "fced94958fca5dbb"
   },
   "skill:ad_credential_attacks/asrep_roast": {
+   "case_refused": "ecs.winlog.event_data.PreAuthType (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -459,6 +462,7 @@
    "query_sha": "9c659662f249b810"
   },
   "skill:ad_credential_attacks/delegation_abuse": {
+   "case_refused": "ecs.winlog.event_data.AllowedToDelegateTo (unknown_field); ecs.winlog.event_data.AttributeLDAPDisplayName (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -496,6 +500,7 @@
    "query_sha": "349736857d765446"
   },
   "skill:ad_credential_attacks/kerberoast_tgs": {
+   "case_refused": "ecs.winlog.event_data.TicketEncryptionType (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -785,6 +790,7 @@
    "query_sha": "2148c251e34247bf"
   },
   "skill:defense_evasion/timestomp": {
+   "case_refused": "ecs.winlog.event_data.TargetFilename.wc (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -1054,6 +1060,7 @@
    "query_sha": "954bfccab7696cf0"
   },
   "skill:execution_anomaly/unsigned_execution": {
+   "case_refused": "ecs.winlog.event_data.Signed (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -1240,7 +1247,9 @@
    "query_sha": "40202c98805f92f4"
   },
   "skill:ics_ot_forensics/control_protocol_analysis": {
+   "case_refused": "ecs.network.protocol (unknown_field)",
    "case_total": 0,
+   "control_refused": "ecs.network.protocol (unknown_field)",
    "control_total": 0,
    "kind": "search",
    "query_sha": "d553217b85a884ea"
@@ -1728,6 +1737,7 @@
    "query_sha": "4c82961875c7820e"
   },
   "skill:lsass_credential_access/sysmon_lsass_access": {
+   "case_refused": "ecs.winlog.event_data.TargetImage.wc (unknown_field)",
    "case_total": 0,
    "control_row": {
     "family": "evtxecmd",
@@ -1890,6 +1900,7 @@
    "query_sha": "a1ef08c39307cca2"
   },
   "skill:network_session_analysis/dns_tunnel_volume": {
+   "case_refused": "ecs.dns.question.name (unknown_field)",
    "case_total": 0,
    "control_buckets": 0,
    "control_total": 0,
@@ -2528,7 +2539,6 @@
    "skill:execution_artifact_analysis/pca_applaunch",
    "skill:execution_artifact_analysis/muicache_gui",
    "skill:exfiltration/ftp_exfil",
-   "skill:ics_ot_forensics/control_protocol_analysis",
    "skill:impact_ransomware/crypto_process",
    "skill:initial_access/lnk_artifacts",
    "skill:lateral_movement/ual_client_access",
@@ -2556,6 +2566,9 @@
    "analytic:ba-persist-task-hidden"
   ],
   "normalized": [],
-  "proved": 181
+  "proved": 181,
+  "refused": [
+   "skill:ics_ot_forensics/control_protocol_analysis: ecs.network.protocol (unknown_field)"
+  ]
  }
 }

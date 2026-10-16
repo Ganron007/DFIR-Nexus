@@ -112,6 +112,30 @@ packs:
                 value: '*\\PerfLogs\\*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
 - id: ba-exec-temp
   name: Execution from a temporary directory
   families:
@@ -177,6 +201,30 @@ packs:
               ecs.process.executable.wc:
                 value: '*\\Windows\\Temp\\*'
                 case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
           minimum_should_match: 1
 - id: ba-exec-programdata
   name: Execution from ProgramData
@@ -250,6 +298,30 @@ packs:
               ecs.process.executable.wc:
                 value: '*\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\*'
                 case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
           minimum_should_match: 1
 - id: ba-exec-script-host
   name: Script host executing a script
@@ -372,6 +444,30 @@ packs:
                 value: '*javascript:*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
 - id: ba-exec-encoded-command
   name: Encoded or hidden command line
   families:
@@ -469,6 +565,30 @@ packs:
                 value: '* -en *'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
 - id: ba-exec-lolbin-download
   name: LOLBin used to fetch a remote payload
   families:
@@ -550,6 +670,30 @@ packs:
               ecs.process.command_line.wc:
                 value: '*-verifyctl*'
                 case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
           minimum_should_match: 1
 - id: ba-persist-service-temp
   name: Service binary in a user-writable path
@@ -664,6 +808,30 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
 - id: ba-persist-service-new
   name: Service created or its ImagePath changed
   families:
@@ -690,6 +858,30 @@ packs:
       codes:
       - '4697'
   es:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
+  es_source:
     bool:
       filter:
       - bool:
@@ -794,6 +986,24 @@ packs:
                 value: '*\\PerfLogs\\*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '13'
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
 - id: ba-persist-runonce
   name: RunOnce key written
   families:
@@ -844,6 +1054,24 @@ packs:
           ecs.registry.path.wc:
             value: '*\\CurrentVersion\\RunOnce*'
             case_insensitive: true
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '13'
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
 - id: ba-persist-task-script-host
   name: Scheduled task running a script host or encoded command
   families:
@@ -1003,6 +1231,25 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4698'
+                  - '4702'
+          - terms:
+              family:
+              - scheduled_tasks
+          minimum_should_match: 1
 - id: ba-persist-task-hidden
   name: Scheduled task hidden or authored out of band
   families:
@@ -1047,6 +1294,12 @@ packs:
           fields.task_uri.kw:
             value: \\Microsoft\\*
             case_insensitive: true
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - scheduled_tasks
 - id: ba-persist-wmi-subscription
   name: WMI event subscription persistence
   families:
@@ -1078,6 +1331,38 @@ packs:
     families:
     - wmi_parser
   es:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '19'
+                      - '20'
+                      - '21'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-WMI-Activity/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '5861'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - wmi_parser
+          minimum_should_match: 1
+  es_source:
     bool:
       filter:
       - bool:
@@ -1209,6 +1494,24 @@ packs:
                 value: scr
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
 - id: ba-cred-lsass-nonsystem
   name: Non-system process accessing lsass
   families:
@@ -1294,6 +1597,18 @@ packs:
                 value: '*\\svchost.exe'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-Sysmon/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '10'
 - id: ba-cred-lsass-path
   name: lsass referenced from a user-writable path
   families:
@@ -1375,6 +1690,24 @@ packs:
                 value: '*\\Windows\\Prefetch\\*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
 - id: ba-cred-dcsync-nondc
   name: Replication rights used off a domain controller
   families:
@@ -1433,6 +1766,18 @@ packs:
           ecs.winlog.event_data.SubjectUserName.wc:
             value: '*$'
             case_insensitive: true
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4662'
 - id: ba-cred-new-local-admin
   name: Account added to the local administrators group
   families:
@@ -1476,6 +1821,18 @@ packs:
           ecs.winlog.event_data.TargetSid:
             value: S-1-5-32-544
             case_insensitive: true
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4732'
 - id: ba-cred-logon-type3
   name: Network logon to a workstation
   families:
@@ -1562,6 +1919,18 @@ packs:
                 value: '-'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
 - id: ba-cred-rdp-firstseen
   name: RDP session from a source not seen before
   families:
@@ -1603,6 +1972,18 @@ packs:
           ecs.winlog.logon.type:
             value: '10'
             case_insensitive: true
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4624'
 - id: ba-cred-kerberoast
   name: Service ticket requested with RC4
   families:
@@ -1660,6 +2041,18 @@ packs:
           ecs.winlog.event_data.ServiceName:
             value: krbtgt
             case_insensitive: true
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4769'
 - id: ba-eva-log-cleared
   name: Security log cleared
   families:
@@ -1710,6 +2103,30 @@ packs:
                   event_id:
                   - '104'
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1102'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '104'
+          minimum_should_match: 1
 - id: ba-eva-audit-policy
   name: Audit policy changed
   families:
@@ -1733,6 +2150,18 @@ packs:
       codes:
       - '4719'
   es:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4719'
+  es_source:
     bool:
       filter:
       - bool:
@@ -1833,6 +2262,37 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              should:
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Windows Defender/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '5001'
+                      - '5007'
+              - bool:
+                  filter:
+                  - term:
+                      ecs.winlog.channel:
+                        value: Microsoft-Windows-Sysmon/Operational
+                        case_insensitive: true
+                  - terms:
+                      event_id:
+                      - '13'
+              minimum_should_match: 1
+          - terms:
+              family:
+              - recmd
+          minimum_should_match: 1
 - id: ba-eva-service-stopped
   name: Security service stopped
   families:
@@ -1919,6 +2379,18 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: System
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '7036'
 - id: ba-eva-timestomp
   name: Executable whose $SI creation predates its $FN creation, set to whole seconds
   families:
@@ -2032,6 +2504,12 @@ packs:
                 value: '*\\Windows\\SoftwareDistribution\\*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
 - id: ba-lat-smb-admin-share
   name: Administrative share accessed remotely
   families:
@@ -2084,6 +2562,19 @@ packs:
                 value: '*C$'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Security
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '5140'
+              - '5145'
 - id: ba-lat-remote-service-create
   name: Service created by a remote logon
   families:
@@ -2208,6 +2699,30 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: System
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '7045'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4697'
+          minimum_should_match: 1
 - id: ba-lat-wmi-exec
   name: WMI used to start a process
   families:
@@ -2320,6 +2835,30 @@ packs:
                 value: '*\\WmiPrvSE.exe'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
 - id: ba-col-powershell-transcript
   name: PowerShell script block logging with a download or exec
   families:
@@ -2391,6 +2930,18 @@ packs:
                 value: '*Invoke-RestMethod*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          filter:
+          - term:
+              ecs.winlog.channel:
+                value: Microsoft-Windows-PowerShell/Operational
+                case_insensitive: true
+          - terms:
+              event_id:
+              - '4104'
 - id: ba-col-archive-staging
   name: Archive created in a staging directory
   families:
@@ -2496,6 +3047,24 @@ packs:
                 value: '*\\$Recycle.Bin\\*'
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
+          - terms:
+              family:
+              - mftecmd
+          minimum_should_match: 1
 - id: ba-lat-wmi-process-create
   name: Process creation via WMI command execution
   families:
@@ -2552,6 +3121,30 @@ packs:
           minimum_should_match: 1
       - match_phrase:
           ecs.process.command_line.text: process call create
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
 - id: ba-pers-schtask-reg-mod
   name: Scheduled task creation or modification via registry or schtasks
   families:
@@ -2638,6 +3231,31 @@ packs:
               ecs.registry.path.wc:
                 value: '*\\Schedule\\TaskCache\\Tree\\*'
                 case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '13'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
           minimum_should_match: 1
 - id: ba-c2-living-off-trusted-sites
   name: C2 and payload transfer via living off trusted sites
@@ -2776,6 +3394,31 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+                  - '22'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          minimum_should_match: 1
 - id: ba-priv-printspooler-exploit
   name: Print Spooler driver exploitation (PrintNightmare)
   families:
@@ -2841,6 +3484,30 @@ packs:
               ecs.file.path.wc:
                 value: '*\\System32\\spool\\drivers\\*'
                 case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PrintService/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '316'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '11'
           minimum_should_match: 1
 - id: ba-cred-lsass-minidump-write
   name: LSASS memory dumping via MiniDumpWriteDump or comsvcs
@@ -2938,6 +3605,39 @@ packs:
                     case_insensitive: true
               minimum_should_match: 1
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - bool:
+          should:
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-Sysmon/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '1'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Security
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4688'
+          - bool:
+              filter:
+              - term:
+                  ecs.winlog.channel:
+                    value: Microsoft-Windows-PowerShell/Operational
+                    case_insensitive: true
+              - terms:
+                  event_id:
+                  - '4104'
+          minimum_should_match: 1
 - id: ba-eva-timestomp-usn
   name: Timestamp change recorded on an executable (USN BasicInfoChange)
   families:
@@ -3022,3 +3722,9 @@ packs:
                 value: hta
                 case_insensitive: true
           minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd

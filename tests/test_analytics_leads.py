@@ -129,3 +129,23 @@ def test_the_analytics_layer_can_be_ablated(tmp_path: Path, monkeypatch):
     source = inspect.getsource(leads_mod.build_leads)
     # Guarded by the same layer_status lookup as the other builders.
     assert 'active.get("analytics", {}).get("enabled")' in source
+
+
+def test_an_analytic_whose_log_the_case_lacks_is_not_run_and_not_reported(tmp_path: Path, monkeypatch, caplog):
+    """IC-7: a Sysmon analytic on a case with no Sysmon log reads fields the index does not hold; the surface
+    refuses them. That is the analytic not applying, not a failure: it is skipped before it runs, quietly."""
+    from nexus.analysis import leads as leads_mod
+    from nexus.analysis import skill_steps
+
+    monkeypatch.setattr(skill_steps, "_source_rows", lambda _case, _source: 0)
+    ran: list[dict] = []
+
+    def _never(case_dir, clause, *, probe=None):
+        ran.append(clause)
+        return 0, []
+
+    monkeypatch.setattr(leads_mod, "_analytic_matches", _never)
+    with caplog.at_level("WARNING"):
+        out = leads_mod.behavioural_analytics_leads(tmp_path / "CASE-NOSYSMON", probe=leads_mod.EsProbe(tmp_path))
+    assert out == [] and ran == []
+    assert "not run" not in caplog.text

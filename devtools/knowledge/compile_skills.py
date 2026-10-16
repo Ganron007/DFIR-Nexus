@@ -170,7 +170,8 @@ def run_analytics(check: bool = False) -> dict[str, Any]:
         stats["problems"].extend(f"{ident}: {p}" for p in problems)
         search = item["search"]
         families = search_families(search)
-        want = {"es": compiled.get("es"), "families": families}
+        # The analytic's source alone, so the lead builder asks whether a case holds that log before running it.
+        want = {"es": compiled.get("es"), "es_source": compiled.get("es_source"), "families": families}
         for key, value in want.items():
             if item.get(key) != value:
                 if check:

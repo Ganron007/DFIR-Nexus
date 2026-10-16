@@ -548,6 +548,14 @@ def behavioural_analytics_leads(
         clause = analytic.get("es")
         if not name or not isinstance(clause, dict) or not clause:
             continue
+        if not (hasattr(probe, "count_analytic") or hasattr(probe, "analytic_hits")):
+            # A case that holds none of the log the analytic reads (Sysmon on a case without it) is not a
+            # place it applies: the index refuses its fields, which is not a failure to report (IC-7).
+            from nexus.analysis.skill_steps import step_source_present
+
+            if step_source_present(analytic, Path(case_dir).name) is False:
+                log.debug("analytic %s not applicable: the case holds none of its source", name)
+                continue
         try:
             count, samples = _analytic_matches(case_dir, clause, probe=probe)
         except Exception as exc:  # noqa: BLE001 — one analytic must not lose the rest

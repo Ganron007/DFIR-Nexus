@@ -59,6 +59,13 @@ def _items() -> list[tuple[str, str, dict[str, Any]]]:
     return out
 
 
+def _refusal(result: dict[str, Any]) -> str:
+    """Why the surface refused: the fields it could not match (a case without that log has no such field)."""
+    terms = result.get("failed_terms") or []
+    named = sorted({f"{t.get('field')} ({t.get('reason')})" for t in terms if isinstance(t, dict)})
+    return "; ".join(named) or str(result.get("error") or "degraded")[:200]
+
+
 def prove() -> dict[str, Any]:
     from nexus.langgraph.es_native import es_aggregate, es_search
 
@@ -71,6 +78,9 @@ def prove() -> dict[str, Any]:
         try:
             ctl = es_search(CONTROL_CASE, es, size=1)
             entry["control_total"] = int(ctl.get("total") or 0)
+            if ctl.get("error") or ctl.get("degraded"):
+                # A refusal answers total 0; it is not "no row matched".
+                entry["control_refused"] = _refusal(ctl)
             if ctl.get("normalized"):
                 entry["normalized"] = ctl["normalized"]
             hits = ctl.get("hits") or []
@@ -90,6 +100,8 @@ def prove() -> dict[str, Any]:
         try:
             case = es_search(MEASURE_CASE, es, size=1)
             entry["case_total"] = int(case.get("total") or 0)
+            if case.get("error") or case.get("degraded"):
+                entry["case_refused"] = _refusal(case)
         except Exception as exc:  # noqa: BLE001
             entry["case_error"] = f"{type(exc).__name__}: {exc}"[:300]
         record["items"][ident] = entry
@@ -98,10 +110,13 @@ def prove() -> dict[str, Any]:
 
 def summary(record: dict[str, Any]) -> dict[str, Any]:
     items = record["items"]
-    out = {"items": len(items), "proved": 0, "no_control": [], "errors": [], "floods": [], "normalized": []}
+    out = {"items": len(items), "proved": 0, "no_control": [], "errors": [], "refused": [], "floods": [],
+           "normalized": []}
     for ident, e in items.items():
         if e.get("control_error") or e.get("case_error"):
             out["errors"].append(ident)
+        elif e.get("control_refused"):
+            out["refused"].append(f"{ident}: {e['control_refused']}")
         elif e.get("control_total", 0) >= 1:
             out["proved"] += 1
         else:
@@ -121,8 +136,9 @@ def main() -> int:
     RECORD.write_text(json.dumps(record, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     s = record["summary"]
     print(f"{s['items']} stored queries: {s['proved']} proved on real rows; {len(s['no_control'])} without a "
-          f"control; {len(s['errors'])} errors; {len(s['floods'])} search floods; {len(s['normalized'])} normalized")
-    for key in ("no_control", "errors", "floods", "normalized"):
+          f"control; {len(s['refused'])} refused on the control index; {len(s['errors'])} errors; "
+          f"{len(s['floods'])} search floods; {len(s['normalized'])} normalized")
+    for key in ("no_control", "refused", "errors", "floods", "normalized"):
         for line in s[key]:
             print(f"  {key}: {line}")
     return 0
