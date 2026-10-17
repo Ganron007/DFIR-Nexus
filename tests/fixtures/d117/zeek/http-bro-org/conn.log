@@ -1,0 +1,22 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	conn
+#open	2026-10-13-11-11-46
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	conn_state	local_orig	local_resp	missed_bytes	history	orig_pkts	orig_ip_bytes	resp_pkts	resp_ip_bytes	tunnel_parents	ip_proto
+#types	time	string	addr	port	addr	port	enum	string	interval	count	count	string	bool	bool	count	string	count	count	count	count	set[string]	count
+1389719042.006633	CfwmQi2Bty6Eqymu52	10.0.2.15	55083	192.150.187.43	80	tcp	http	5.391660	839	17540	SF	T	F	0	ShADadfF	16	1499	21	18384	-	6
+1389719042.006181	CjZSkB3h2iwFNKVHjd	10.0.2.15	55082	192.150.187.43	80	tcp	http	5.392216	844	20292	SF	T	F	0	ShADadfF	22	1744	31	21536	-	6
+1389719042.007579	CxmYD61LdP97vTo8Ud	10.0.2.15	55085	192.150.187.43	80	tcp	http	5.391096	819	32910	SF	T	F	0	ShADadfF	24	1799	39	34474	-	6
+1389719042.004547	C9G33t1qliMNkBzxD9	10.0.2.15	55080	192.150.187.43	80	tcp	http	8.118468	1741	235084	SF	T	F	0	ShADadfF	76	4801	239	244648	-	6
+1389719041.819644	CRFCgn3O3nle4aBDB7	10.0.2.15	55079	192.150.187.43	80	tcp	http	8.303572	1932	83457	SF	T	F	0	ShADadfF	45	3752	88	86981	-	6
+1389719042.005362	CJxWt41Pk2Jg28jdK4	10.0.2.15	55081	192.150.187.43	80	tcp	http	8.194231	1709	55545	SF	T	F	7240	ShADadgfF	30	2929	58	50629	-	6
+1389719053.185297	CyLZbz2CWwm3lQLhze	10.0.2.15	55129	192.150.187.43	80	tcp	-	6.126390	0	0	SF	T	F	0	ShAFaf	4	180	3	124	-	6
+1389719053.184706	CLqeXI2zXXbuCa3Hmk	10.0.2.15	55128	192.150.187.43	80	tcp	-	6.126937	0	0	SF	T	F	0	ShAFaf	4	180	3	124	-	6
+1389719053.175317	CLNxkm4nf4jx2Q3FCh	10.0.2.15	55127	192.150.187.43	80	tcp	http	3.860107	347	4213	S1	T	F	0	ShADad	6	607	5	4417	-	6
+1389719050.348896	Cs5kji3ttG4FYcEGf1	10.0.2.15	55120	192.150.187.43	80	tcp	http	5.411318	654	2585	SF	T	F	0	ShADadfF	8	994	8	2909	-	6
+1389719053.186187	CCaf8H3zNs6fqwYaw6	10.0.2.15	55131	192.150.187.43	80	tcp	-	6.125366	0	0	SF	T	F	0	ShAFaf	4	180	3	124	-	6
+1389719053.187820	CnEUY413gxG2i0KDHe	10.0.2.15	55132	192.150.187.43	80	tcp	-	6.123639	0	0	SF	T	F	0	ShAFaf	4	180	3	124	-	6
+1389719053.185772	CA9d5F1QiePo7PGE8i	10.0.2.15	55130	192.150.187.43	80	tcp	-	6.125828	0	0	SF	T	F	0	ShAFaf	4	180	3	124	-	6
+#close	2026-10-13-11-11-46
