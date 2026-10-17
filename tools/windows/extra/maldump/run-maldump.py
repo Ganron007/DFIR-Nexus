@@ -10,11 +10,20 @@ unread quarantine as clear.
 
 Output: `quarantine.csv` (metadata) in the output directory. Quarantined samples
 are not extracted here (`-q`); extracting samples is an examiner decision.
+
+maldump turns each quarantine time into the local time of the host that runs it
+(`datetime.fromtimestamp`, parsers/windef_parser.py:37) and writes it with no
+offset, so on a lane host at +05:30 Defender's 00:41:57Z quarantine read 06:11:57
+and was indexed as UTC (D259). maldump therefore runs in its own process whose
+zone is UTC (`TZ=UTC0`, read by the Windows C runtime and by POSIX alike), and
+`quarantine.csv` holds UTC. The zone has to be set before that process starts:
+the C runtime reads it once.
 """
 from __future__ import annotations
 
 import ctypes
-import runpy
+import os
+import subprocess
 import sys
 
 
@@ -27,18 +36,17 @@ def _is_admin() -> bool:
         return False
 
 
+def utc_env() -> dict[str, str]:
+    """This environment, in UTC: the one maldump runs in."""
+    return {**os.environ, "TZ": "UTC0"}
+
+
 def main(argv: list[str]) -> int:
     if not _is_admin():
         print("maldump needs an elevated (Administrator) session; quarantine not read.",
               file=sys.stderr)
         return 2
-    sys.argv = ["maldump", *argv]
-    try:
-        runpy.run_module("maldump", run_name="__main__", alter_sys=True)
-    except SystemExit as exc:
-        code = exc.code
-        return int(code) if isinstance(code, int) else (0 if code is None else 1)
-    return 0
+    return subprocess.run([sys.executable, "-m", "maldump", *argv], env=utc_env()).returncode
 
 
 if __name__ == "__main__":
