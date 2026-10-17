@@ -142,7 +142,9 @@ _FORENSIC_TEXT_ANALYSIS = {
 # row of any length (see WILDCARD_IGNORE_ABOVE). An index built before it must be rebuilt.
 # v14 (2026-10-13, D120): an event time is a time column's whole value, or a time read from the row's text; a bare
 # number inside text is never a time. An index built before it carries fabricated times and must be rebuilt.
-INDEX_SCHEMA_VERSION = 14
+# v15 (2026-10-17, D260): .NET's JSON date, /Date(<ms>)/, is a time column's whole value. An index built before it has
+# no time on any DeepBlueCLI row and must be rebuilt.
+INDEX_SCHEMA_VERSION = 15
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")

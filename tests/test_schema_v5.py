@@ -72,7 +72,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # v13: the wildcard subfields carry no ignore_above, so a substring search reaches a row of any
     # length (measured on ES 8.17.4). An index built before it must be rebuilt.
     # v14: an event time is never a bare number inside text (D120). An index built before it must be rebuilt.
-    assert INDEX_SCHEMA_VERSION == 14
+    # v15: .NET's JSON date, /Date(<ms>)/, is a time column's whole value (D260). An index built before it must be
+    # rebuilt.
+    assert INDEX_SCHEMA_VERSION == 15
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

@@ -6,7 +6,8 @@ Policy (never guess silently):
 - syslog lacks a year: year comes from the case window (or current year) and is
   flagged `year_assumed`;
 - unparseable stays empty — never epoch-0, never a local-time guess;
-- a number is a time only as the whole value of a time column, never inside free text (D120).
+- a number is a time only as the whole value of a time column, never inside free text (D120);
+- .NET's JSON date, `/Date(<ms>)/`, is such a whole value (D260).
 
 Every returned time carries its origin (`event` | `synthesized`) and precision
 so queries, digests and reports can be exact about what the time means.
@@ -48,6 +49,12 @@ _SYSLOG_RE = re.compile(
 # in a registry JSON line. Epoch seconds before 2001-09-09 have nine digits, so the cell form accepts nine.
 _CELL_EPOCH_RE = re.compile(r"(\d{13}|\d{9,10})(?:\.\d+)?")
 _CELL_FILETIME_RE = re.compile(r"1\d{16,17}")
+# D260 (2026-10-17): .NET's JSON date, as Windows PowerShell's ConvertTo-Json writes a DateTime (DeepBlueCLI's JSON):
+# "/Date(1661972283182)/", the slashes escaped as "\/" in the raw JSON. The number is milliseconds since 1970-01-01
+# UTC; an optional "+hhmm"/"-hhmm" only marks a local-kind value and does not move the instant (Microsoft Learn,
+# "Stand-Alone JSON Serialization using DataContractJsonSerializer", Dates/Times and JSON). Unread, every DeepBlueCLI
+# row had no time: PsShutdown's 7045 at 2022-08-31T18:58:03.182Z sorted nowhere.
+_CELL_DOTNET_DATE_RE = re.compile(r"\\?/Date\((-?\d+)(?:[+-]\d{4})?\)\\?/")
 
 #: A reader sets this field on a row that has no event time of its own: a YARA match, a registry value row. Its dates
 #: stay searchable as fields, but none is read as the time the row happened (D120, 2026-10-13).
@@ -131,12 +138,21 @@ def _parse_us(m: re.Match[str]) -> datetime | None:
 def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
     """Parse one whole value (a column cell or a typed filter) → dict or None (never a guess).
 
-    A value that is only a number is a time: epoch seconds (9, 10 or 13 digits) or a FILETIME. Anything else is read
-    as text (:func:`parse_text_time`). Numbers inside text are never times (D120).
+    A value that is only a number is a time: epoch seconds (9, 10 or 13 digits) or a FILETIME, and so is .NET's
+    `/Date(<ms>)/`. Anything else is read as text (:func:`parse_text_time`). Numbers inside text are never times (D120).
     """
     text = str(raw or "").strip()
     if not text:
         return None
+    m = _CELL_DOTNET_DATE_RE.fullmatch(text)
+    if m:
+        try:
+            dt = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(milliseconds=int(m.group(1)))
+        except OverflowError:
+            return None
+        if not _plausible(dt):
+            return None
+        return {"dt": dt, "raw": text, "precision": "ms", "tz_assumed": False, "year_assumed": False}
     m = _CELL_EPOCH_RE.fullmatch(text)
     if m:
         dt = _from_epoch(int(m.group(1)))
