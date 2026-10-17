@@ -66,6 +66,7 @@ class ArtifactSource(StrEnum):
     THEHIVE = "thehive"
     WIRESHARK = "wireshark"
     NETFLOW = "netflow"
+    BIND = "bind"
     VOLATILITY = "volatility"
     CLOUDTRAIL = "cloudtrail"
     AZURE = "azure"

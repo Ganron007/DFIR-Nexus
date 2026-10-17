@@ -49,6 +49,42 @@ def is_raw_container(path: Path) -> bool:
     return any(head.startswith(m) for m in _RAW_CONTAINER_MAGICS)
 
 
+def _syslog_shape(head: str, name_lower: str) -> ArtifactSource | None:
+    """SYSLOG (or AUTHLOG) when most leading lines are RFC 3164 / RFC 5424 syslog lines, else None.
+
+    The line shapes are the syslog importer's own, so what is detected here is what it parses.
+    """
+    from nexus.ingest.linux.syslog import SyslogImporter
+
+    lines = [ln for ln in head.splitlines()[:20] if ln.strip()]
+    if len(lines) > 1 and not head.endswith("\n"):
+        lines = lines[:-1]  # the last line of the sniffed head may be cut
+    if not lines:
+        return None
+    shaped = sum(1 for ln in lines if SyslogImporter.RFC3164_RE.match(ln) or SyslogImporter.RFC5424_RE.match(ln))
+    if not (SyslogImporter.RFC3164_RE.match(lines[0]) or SyslogImporter.RFC5424_RE.match(lines[0])):
+        return None
+    if shaped * 2 <= len(lines):
+        return None
+    auth_filename = any(kw in name_lower for kw in ("auth", "secure"))
+    if auth_filename and any(kw in head for kw in ("sshd", "sudo", "su[", "login", "pam_unix")):
+        return ArtifactSource.AUTHLOG
+    return ArtifactSource.SYSLOG
+
+
+def _confirmed(source: ArtifactSource, path: Path) -> bool:
+    """Whether an importer registered for ``source`` recognises the file's content (its ``can_handle``)."""
+    from nexus.ingest.registry import get_registry
+
+    for cls in get_registry().candidates(source):
+        try:
+            if cls.can_handle(path):
+                return True
+        except Exception:  # noqa: BLE001 - an importer that cannot look is not a confirmation
+            continue
+    return False
+
+
 def detect_format(path: Path) -> ArtifactSource | None:
     """Sniff a file and return the best-matching ArtifactSource.
 
@@ -136,16 +172,20 @@ def detect_format(path: Path) -> ArtifactSource | None:
         ".bash_history": ArtifactSource.BASH_HISTORY,
         "bash_history": ArtifactSource.BASH_HISTORY,
     }
-    if name_lower in _EXACT_NAME_HINTS:
+    # A name is a hint that the hinted importer confirms on the content: a mail server's syslog named
+    # smtp.log (sample S03, 2026-10-18) went to the Zeek importer by its name and gave 0 rows. When the
+    # importer does not recognise the file, detection goes on to the content signatures below.
+    if name_lower in _EXACT_NAME_HINTS and _confirmed(_EXACT_NAME_HINTS[name_lower], path):
         return _EXACT_NAME_HINTS[name_lower]
-    if name_lower.startswith("eve.json."):
+    if name_lower.startswith("eve.json.") and _confirmed(ArtifactSource.SURICATA, path):
         return ArtifactSource.SURICATA
     # Zeek rotated spool: conn-20260803.log / kerberos-20260804.log
     _ZEEK_ROTATED = (
         "conn-", "dns-", "http-", "tls-", "ssl-", "notice-", "ssh-",
         "weird-", "kerberos-", "files-", "smtp-", "ftp-",
     )
-    if name_lower.endswith(".log") and name_lower.startswith(_ZEEK_ROTATED):
+    if (name_lower.endswith(".log") and name_lower.startswith(_ZEEK_ROTATED)
+            and _confirmed(ArtifactSource.ZEEK, path)):
         return ArtifactSource.ZEEK
 
     # --- Prefix hints (long distinctive tokens + separator) ---
@@ -248,6 +288,17 @@ def detect_format(path: Path) -> ArtifactSource | None:
         # parse above usually fails on truncation; sniff the shape directly.
         if '"_source"' in head and '"layers"' in head:
             return ArtifactSource.WIRESHARK
+
+        # Syslog lines before the delimited branches: a message holds commas, and a comma anywhere in the
+        # head made a mail server's syslog a CSV whose first line was its header (sample S03, 2026-10-18).
+        syslog_source = _syslog_shape(head, name_lower)
+        if syslog_source is not None:
+            return syslog_source
+        # A BIND query log has no importer by name or extension, only by its lines.
+        from nexus.ingest.network.bind import BindQueryLogImporter
+
+        if BindQueryLogImporter.can_handle(path):
+            return ArtifactSource.BIND
 
         # CSV/TSV-based formats
         if "\t" in head[:2000] and "\n" in head[:2000]:
