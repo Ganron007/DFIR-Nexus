@@ -511,7 +511,7 @@ def compose_case(
     finals = [f for f in parsed.get("findings") or [] if isinstance(f, dict)]
     _carry_claim_tests(finals, claims)
     _backfill_audit_ids(finals, claims)
-    from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+    from nexus.langgraph.evidence_rows import subject_rows_for_audit_ids
     from nexus.langgraph.subject import derive_subject
 
     for final in finals:
@@ -521,7 +521,7 @@ def compose_case(
                                "(every call it cites returned 0 rows)")
             continue
         # The subject is the one its cited rows give, by the rule every mode uses (operator, 2026-10-12).
-        subject = derive_subject(evidence_rows_for_audit_ids(case_dir, ids)) if ids else {}
+        subject = derive_subject(subject_rows_for_audit_ids(case_dir, ids)) if ids else {}  # D256
         if subject and not final.get("entity"):
             final["entity"], final["category"] = subject.get("entity"), subject.get("category")
         out["findings"].append(final)
@@ -629,12 +629,12 @@ def settled_candidates(
             if verifier_basis:
                 justification = f"{justification}\nVerifier: {verifier_basis}"
             from nexus.analysis.titles import claim_title
-            from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+            from nexus.langgraph.evidence_rows import subject_rows_for_audit_ids
             from nexus.langgraph.subject import derive_subject
 
             # Operator decision 2026-10-12: the subject is derived from the rows this claim cites,
-            # by the rule every mode uses. The model's entity labels are not the identity.
-            audit_rows = (evidence_rows_for_audit_ids(case_dir, _audit_ids(claim))
+            # by the rule every mode uses, all of them (D256). The model's entity labels are not the identity.
+            audit_rows = (subject_rows_for_audit_ids(case_dir, _audit_ids(claim))
                           if case_dir is not None else [])
             subject = derive_subject(audit_rows)
             # The text names the subject the candidate carries, so its title and its identity cannot

@@ -168,8 +168,12 @@ def _same_claim(existing: dict, finding: dict) -> bool:
     key = subject_key(finding.get("entity"), finding.get("category"))
     if not key or key != subject_key(existing.get("entity"), existing.get("category")):
         return False
+    # Most of the claim's rows, not one of them (D256): a claim that cites a call another claim cites for context
+    # shares a row with it. Run 15d8cd92's Defender-tampering claim shared 2 of its 11 rows with the initial-access
+    # finding (two context calls), was linked to it, and never staged; the same claim restated shares 9 of its 12.
     rows = {_evidence_row_identity(e) for e in (finding.get("evidence") or []) if e}
-    return bool(rows & {_evidence_row_identity(e) for e in (existing.get("evidence") or []) if e})
+    shared = rows & {_evidence_row_identity(e) for e in (existing.get("evidence") or []) if e}
+    return bool(shared) and 2 * len(shared) >= len(rows)
 
 
 def _find_same_claim(findings: list[dict], finding: dict) -> dict | None:

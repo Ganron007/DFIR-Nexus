@@ -307,7 +307,7 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
     it does not cite, or with an answer its cited call did not give, ``ungrounded_verdicts`` (D258). The
     audit trail is read once.
     """
-    from nexus.langgraph.evidence_rows import cited_calls, rows_of_calls, unique_rows
+    from nexus.langgraph.evidence_rows import all_rows, cited_calls, rows_of_calls
     from nexus.langgraph.named_events import es_replay, event_grounding
     from nexus.langgraph.named_verdicts import verdict_grounding
 
@@ -333,7 +333,7 @@ def attach_subjects(claims: list[dict[str, Any]], case_dir: Path | None) -> None
         ungrounded = verdict_grounding(stated, own)["ungrounded"]
         if ungrounded:
             claim["ungrounded_verdicts"] = ungrounded
-        rows = unique_rows(stored, _claim_audit_ids(claim))
+        rows = all_rows(stored, _claim_audit_ids(claim))  # every cited row, not a cut of them (D256)
         subject = derive_subject(rows)
         entity = subject["entity"]
         claim["subject"] = (

@@ -800,7 +800,7 @@ def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
     title. The audit log is read once for all the items.
     """
     from nexus.case_manager import _duplicate_key
-    from nexus.langgraph.evidence_rows import stored_rows_by_audit_id, unique_rows
+    from nexus.langgraph.evidence_rows import all_rows, stored_rows_by_audit_id, unique_rows
     from nexus.langgraph.subject import derive_subject
 
     wanted = [a for item in items for a in _candidate_audit_ids(item)]
@@ -811,7 +811,8 @@ def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
         if not rows:
             keys.append(_title_key(item))
             continue
-        subject = derive_subject(rows)
+        # The subject from every cited row, the evidence from the DRAFT's cut of them (D256).
+        subject = derive_subject(all_rows(stored, _candidate_audit_ids(item)))
         keys.append(json.dumps(_duplicate_key({
             "title": item.get("title"), "entity": subject["entity"],
             "category": subject["category"], "evidence": rows,
@@ -989,7 +990,10 @@ def stage_run_candidates(
     ``record`` is the run record when the caller holds it: Mode 3's lives in
     ``analysis/mode3_runs``, which this module does not read (D243).
     """
-    from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+    from nexus.langgraph.evidence_rows import (
+        evidence_rows_for_audit_ids,
+        subject_rows_for_audit_ids,
+    )
     from nexus.langgraph.subject import derive_subject
     from nexus.modes.llm_desk import save_draft_finding
 
@@ -1082,7 +1086,7 @@ def stage_run_candidates(
         ]
         # D70: the rows the cited calls stored; model text only when none were stored.
         audit_rows = evidence_rows_for_audit_ids(case_dir, audit_ids)
-        subject = derive_subject(audit_rows)
+        subject = derive_subject(subject_rows_for_audit_ids(case_dir, audit_ids))  # every cited row (D256)
         staged_rows = audit_rows or _normalise_evidence(candidate, source=run_mode)
         draft = {
             "title": title,

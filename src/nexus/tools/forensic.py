@@ -138,14 +138,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             target = _target_case_dir(case_id)
         except ValueError as e:
             return {"error": str(e)}
-        from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+        from nexus.langgraph.evidence_rows import subject_rows_for_audit_ids
         from nexus.langgraph.subject import derive_subject
 
         try:
             case_root = target if target is not None else manager.require_active_case()
         except Exception:  # noqa: BLE001 - no case: the manager below reports it
             case_root = None
-        cited = evidence_rows_for_audit_ids(case_root, audit_ids or []) if case_root is not None else []
+        # Every row the cited calls stored, not the DRAFT's cut of them (D256).
+        cited = subject_rows_for_audit_ids(case_root, audit_ids or []) if case_root is not None else []
         subject = derive_subject(cited)
         finding_data["entity"] = subject["entity"]
         finding_data["category"] = subject["category"]

@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.langgraph.event_categories import OTHER
-from nexus.langgraph.evidence_rows import evidence_rows_for_audit_ids
+from nexus.langgraph.evidence_rows import subject_rows_for_audit_ids
 from nexus.langgraph.subject import derive_subject
 
 __all__ = [
@@ -274,9 +274,11 @@ def _claim_from_finding(
             "title": _norm(f.get("title"))[:160],
             "confidence": f.get("confidence"),
         }]
-    rows = f.get("evidence") if isinstance(f.get("evidence"), list) else []
-    if not rows and case_dir is not None:
-        rows = evidence_rows_for_audit_ids(Path(case_dir), _audit_ids(f))
+    # The subject from every row its cited calls stored, as staging derives it (D256); the shown evidence
+    # rows only when the calls cannot be read.
+    rows = subject_rows_for_audit_ids(Path(case_dir), _audit_ids(f)) if case_dir is not None else []
+    if not rows and isinstance(f.get("evidence"), list):
+        rows = f["evidence"]
     subject = derive_subject(rows)
     entity = subject["entity"]
     if not entity:

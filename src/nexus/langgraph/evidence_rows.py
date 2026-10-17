@@ -182,6 +182,34 @@ def unique_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict
     return out
 
 
+def all_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict[str, Any]]:
+    """Every stored row of the given ids, duplicates dropped, in citation order: what a subject is derived from.
+
+    A DRAFT shows at most ``EVIDENCE_ROW_CAP`` rows, taken in turn from each cited id (``unique_rows``). Its
+    subject was derived from that cut as well, so it depended on how many calls the claim cited (D256): run
+    15d8cd92's initial-access claim cited four calls, three of them context, and read ``other``; restated with
+    three it read ``ps_script`` and was staged a second time (F-claudebot-072). Every cited row gives one subject.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[Any, Any, Any]] = set()
+    for aid in dict.fromkeys(audit_ids):
+        for row in stored.get(aid, []):
+            if not isinstance(row, dict):
+                continue
+            key = (row.get("source"), row.get("loc"), row.get("detail"))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(row)
+    return out
+
+
+def subject_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:
+    """Every row the cited audit entries stored (``all_rows``): the rows a claim's subject is derived from."""
+    wanted = [a for a in audit_ids if a]
+    return all_rows(stored_rows_by_audit_id(case_dir, wanted), wanted)
+
+
 def evidence_rows_for_audit_ids(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:
     """The rows the cited audit entries returned, in citation order (D70).
 
