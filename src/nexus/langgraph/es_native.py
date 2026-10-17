@@ -804,6 +804,13 @@ def es_search(
         note = _unpopulated_field_note(case_id, query)
         if note:
             result["field_population_note"] = note
+        diagnosis = _zero_hit_diagnosis(case_id, query)
+        if diagnosis:
+            result["zero_hit"] = diagnosis
+    elif total > FLOOD_ROWS and not search_after:
+        composition = _flood_composition(case_id, query, total)
+        if composition:
+            result["flood"] = composition
     return result
 
 
@@ -854,6 +861,189 @@ def _unpopulated_field_note(case_id: str, query: dict[str, Any]) -> str:
         return "; ".join(lines)
     except Exception:  # noqa: BLE001 - feedback is best-effort, never fatal
         return ""
+
+
+#: More rows than this and a page of them says nothing about what they hold (IC-9). 10,000 is Elasticsearch's own
+#: result window; a search over it is answered with what the rows are made of, by family and by event.
+FLOOD_ROWS = 10_000
+#: The most clauses of one zero-hit query that are counted one by one.
+_DIAGNOSED_CLAUSES = 8
+_VALUE_CLAUSES = ("term", "terms", "wildcard", "prefix", "match", "match_phrase")
+
+
+def _positive_clauses(query: Any) -> list[dict[str, Any]]:
+    """The clauses a row must match: a bool's must and filter, nested bools walked; never should or must_not.
+
+    A bool that needs one of its ``should`` clauses is one clause as a whole (an either-or a row must meet).
+    """
+    out: list[dict[str, Any]] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+            return
+        if not isinstance(node, dict) or len(node) != 1:
+            return
+        (kind, body), = node.items()
+        if kind == "bool" and isinstance(body, dict):
+            walk(body.get("must"))
+            walk(body.get("filter"))
+            if _should_required(body):
+                out.append({"bool": {"should": body.get("should"), "minimum_should_match": 1}})
+            return
+        if kind == "match_all":
+            return
+        out.append(node)
+
+    walk(query)
+    return out
+
+
+def _clause_field(clause: dict[str, Any]) -> str:
+    (kind, body), = clause.items()
+    if kind == "exists" and isinstance(body, dict):
+        return str(body.get("field") or "")
+    if kind in (*_VALUE_CLAUSES, "range", "regexp") and isinstance(body, dict) and body:
+        return str(next(iter(body)))
+    return ""
+
+
+def _clause_values(clause: dict[str, Any]) -> tuple[str, str, list[str]]:
+    """(kind, field, the string values it asks for) of a value clause; ("", "", []) for any other."""
+    (kind, body), = clause.items()
+    if kind not in _VALUE_CLAUSES or not isinstance(body, dict) or len(body) != 1:
+        return "", "", []
+    (field, spec), = body.items()
+    if isinstance(spec, dict):
+        spec = spec.get("value", spec.get("query"))
+    values = spec if isinstance(spec, list) else [spec]
+    return kind, str(field), [v for v in values if isinstance(v, str) and v][:10]
+
+
+def _ignoring_case(kind: str, field: str, values: list[str]) -> dict[str, Any] | None:
+    if kind in ("term", "terms"):
+        return {"bool": {"should": [{"term": {field: {"value": v, "case_insensitive": True}}} for v in values],
+                         "minimum_should_match": 1}}
+    if kind in ("wildcard", "prefix"):
+        return {"bool": {"should": [{kind: {field: {"value": v, "case_insensitive": True}}} for v in values],
+                         "minimum_should_match": 1}}
+    return None
+
+
+def _in_row_text(kind: str, field: str, values: list[str]) -> dict[str, Any] | None:
+    if field in ("text", "text.wc"):
+        return None
+    if kind in ("wildcard", "prefix"):
+        patterns = [v if kind == "wildcard" else f"{v}*" for v in values]
+        return {"bool": {"should": [{"wildcard": {"text.wc": {"value": p, "case_insensitive": True}}}
+                                    for p in patterns], "minimum_should_match": 1}}
+    return {"bool": {"should": [{"match_phrase": {"text": v}} for v in values], "minimum_should_match": 1}}
+
+
+def _zero_hit_diagnosis(case_id: str, query: dict[str, Any]) -> dict[str, Any] | None:
+    """Which clause of a zero-hit query matches nothing, counted on this index (IC-9).
+
+    A zero answers a question only when each clause could have matched. The rows each clause matches on its own
+    are counted, and within the query's family filter when it has one; a value that matches nothing is counted
+    again ignoring case and as a phrase in the row text. Counts only, never values: the seat learns which clause
+    to fix, not what to find. The fresh Mode 3 run had 178 zero-hit searches of 815 and saw nothing but
+    ``total: 0`` for any of them. None when the index cannot be counted.
+    """
+    import json
+
+    clauses = _positive_clauses(query)
+    if not clauses:
+        return None
+    families = [c for c in clauses if _clause_field(c) == "family"]
+    try:
+        client, name = _client_and_index(case_id)
+        with client() as c:
+            def count(q: dict[str, Any]) -> int | None:
+                r = c.post(f"/{name}/_count", json={"query": _with_lenient(q)})
+                return int(r.json().get("count", 0)) if r.status_code < 400 else None
+
+            rows: list[dict[str, Any]] = []
+            for clause in clauses[:_DIAGNOSED_CLAUSES]:
+                entry: dict[str, Any] = {"clause": json.dumps(clause, sort_keys=True, default=str)[:240],
+                                         "rows": count(clause)}
+                if families and clause not in families and entry["rows"]:
+                    entry["rows_in_family"] = count({"bool": {"filter": [*families, clause]}})
+                kind, field, values = _clause_values(clause)
+                if entry["rows"] == 0 and values and field != "family":
+                    variant = _ignoring_case(kind, field, values)
+                    if variant is not None:
+                        entry["rows_ignoring_case"] = count(variant)
+                    in_text = _in_row_text(kind, field, values)
+                    if in_text is not None:
+                        entry["rows_with_the_value_in_their_text"] = count(in_text)
+                rows.append(entry)
+    except Exception:  # noqa: BLE001 - feedback is best-effort, never fatal
+        log.debug("zero-hit diagnosis failed", exc_info=True)
+        return None
+    if any(r.get("rows") is None for r in rows):
+        return None
+    return {"clauses": rows, "note": _zero_hit_note(rows)}
+
+
+def _rows(n: int) -> str:
+    return f"{n:,} row" if n == 1 else f"{n:,} rows"
+
+
+def _zero_hit_note(rows: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for r in rows:
+        if r["rows"] == 0:
+            text = f"{r['clause']} matches no row on its own"
+            if r.get("rows_ignoring_case"):
+                n = r["rows_ignoring_case"]
+                text += f"; {_rows(n)} {'matches' if n == 1 else 'match'} it ignoring case"
+            if r.get("rows_with_the_value_in_their_text"):
+                n = r["rows_with_the_value_in_their_text"]
+                text += (f"; {_rows(n)} {'holds' if n == 1 else 'hold'} the value in the row text "
+                         "(another column, or another form of the value)")
+            parts.append(text)
+        elif r.get("rows_in_family") == 0:
+            parts.append(f"{r['clause']} matches {_rows(r['rows'])} in the case and none in the family the query "
+                         "names")
+    if not parts:
+        counts = ", ".join(f"{r['rows']:,}" for r in rows)
+        parts.append(f"each clause matches rows on its own ({counts}); no row matches all of them together")
+    return "; ".join(parts) + "."
+
+
+def _flood_composition(case_id: str, query: dict[str, Any], total: int) -> dict[str, Any] | None:
+    """What a search of more than ``FLOOD_ROWS`` rows matched, by family and by event (IC-9).
+
+    The fresh Mode 3 run had 80 such searches of 815 (one family alone: 1,242,657 rows) and read the first page of
+    each. A page is not a sample of a flood; its make-up is, and it says how to narrow the query.
+    """
+    try:
+        client, name = _client_and_index(case_id)
+        with client() as c:
+            r = c.post(f"/{name}/_search", json={
+                "size": 0, "query": _with_lenient(query),
+                "aggs": {"family": {"terms": {"field": "family", "size": 10}},
+                         "event_id": {"terms": {"field": "event_id", "size": 10}}},
+            })
+        if r.status_code >= 400:
+            return None
+        aggs = r.json().get("aggregations") or {}
+    except Exception:  # noqa: BLE001 - feedback is best-effort, never fatal
+        log.debug("flood composition failed", exc_info=True)
+        return None
+
+    def buckets(key: str) -> list[dict[str, Any]]:
+        return [{key: b.get("key"), "rows": b.get("doc_count")}
+                for b in ((aggs.get(key) or {}).get("buckets") or []) if isinstance(b, dict)]
+
+    return {
+        "rows": total,
+        "by_family": buckets("family"),
+        "by_event_id": buckets("event_id"),
+        "note": (f"{total:,} rows match; the rows shown are the first page, not a sample of them. Narrow the query "
+                 "to the family, event or time that answers the question, or count it with es_aggregate."),
+    }
 
 
 def _field_refs(query: dict[str, Any]) -> list[str]:

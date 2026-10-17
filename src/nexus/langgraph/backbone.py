@@ -135,7 +135,7 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
     lines = [
         "You investigate through these READ-ONLY tools only (you cannot mutate case state):",
         "- es_mappings(case_id) — per-case field catalog: families, row counts, typed core fields, every parsed column. Call this first when you need to know where the data is.",
-        "- es_search(case_id, query, size, sort, search_after) — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; use a range clause on ts for time filters and fields.<Name>/fields.<Name>.kw for parsed columns.",
+        "- es_search(case_id, query, size, sort, search_after) — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; use a range clause on ts for time filters and fields.<Name>/fields.<Name>.kw for parsed columns. A zero-hit result says which clause matched nothing (`zero_hit`); a result of more than 10,000 rows says what they are made of (`flood`).",
         "  FIELD CHOICE (WO-CS1): prefer ecs.* for cross-source questions "
         "(ecs.process.command_line, ecs.user.name, ecs.source.ip, ecs.file.path, "
         "ecs.registry.path, ecs.process.executable, ecs.host.name); use "
