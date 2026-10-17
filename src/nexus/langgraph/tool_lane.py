@@ -462,7 +462,7 @@ def schedule_evtx_parsers(
             f"Parse all EVTX {label} ({n} logs)",
             1800,
         )
-        # DeepBlueCLI runs once per channel below (WO-TA item 2), not per directory here.
+        # DeepBlueCLI runs once per channel file after this loop (WO-TA item 2), not per directory.
         # Zircolite against its own bundled Windows ruleset - it ships
         # rules/rules_windows_generic_high.json, so no external rule path is
         # needed. The ES-Mapping table lists it as its own EVTX pair.
@@ -488,6 +488,40 @@ def schedule_evtx_parsers(
             )
         elif _lane_opted_in("zircolite"):
             skip("zircolite", "bundled Windows ruleset not found under Tools/windows/extra/zircolite")
+
+    # DeepBlueCLI: one job per channel file its own switch handles (WO-TA item 2); its wrapper reads one file
+    # at a time. It is planned here, where every EVTX source is, and not only on a Windows image: a folder of
+    # EVTX (sample S01, 361 logs) got Hayabusa and EvtxECmd and no DeepBlueCLI, because the job sat in the
+    # image-only planner (2026-10-18).
+    if _windows_tool_available("deepbluecli"):
+        channel_files: list[tuple[str, Path]] = []
+        seen_files: set[Path] = set()
+        for evtx_dir in evtx_dirs:
+            for evtx in _deepblue_channel_files(evtx_dir):
+                key = evtx.resolve()
+                if key not in seen_files:
+                    seen_files.add(key)
+                    channel_files.append((_evtx_label(evtx_dir), evtx))
+        if channel_files:
+            for label, evtx in channel_files:
+                d = extractions / "deepbluecli" / label if many else extractions / "deepbluecli"
+                d.mkdir(parents=True, exist_ok=True)
+                try:
+                    nbytes = evtx.stat().st_size
+                except OSError:
+                    nbytes = 0
+                # A flat 300s killed Security.evtx (115 MB, 280s when the host
+                # was idle, timeout under load). Scale from the file size.
+                add(
+                    "deepbluecli",
+                    ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
+                    f"DeepBlueCLI attack patterns ({evtx.name})",
+                    timeout_for_bytes(nbytes, base=300, per_mb=30, cap=3600),
+                )
+        else:
+            skip("deepbluecli", "no EVTX for a channel DeepBlueCLI handles (" + ", ".join(DEEPBLUE_LOGNAMES) + ")")
+    else:
+        skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
     if not _lane_opted_in("chainsaw"):
         skip("chainsaw", "not in the default lane; set NEXUS_LANE_OPT_IN=chainsaw")
@@ -2461,34 +2495,7 @@ def _plan_gap_parsers(
     else:
         skip("zircolite", "zircolite not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
-    # DeepBlueCLI: one job per channel its own switch handles (WO-TA item 2). Its wrapper
-    # reads one file at a time, so each channel file is a job. Before this, every .evtx on
-    # the volume ran (361 jobs, 64% of the tool time), and most of them are channels
-    # DeepBlueCLI cannot process.
-    if _windows_tool_available("deepbluecli"):
-        evtx_files: list[Path] = []
-        if root.is_dir():
-            evtx_files = _deepblue_channel_files(root)
-        if evtx_files:
-            d = extractions / "deepbluecli"
-            d.mkdir(parents=True, exist_ok=True)
-            for evtx in evtx_files:
-                try:
-                    nbytes = evtx.stat().st_size
-                except OSError:
-                    nbytes = 0
-                # A flat 300s killed Security.evtx (115 MB, 280s when the host
-                # was idle, timeout under load). Scale from the file size.
-                add(
-                    "deepbluecli",
-                    ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
-                    f"DeepBlueCLI attack patterns ({evtx.name})",
-                    timeout_for_bytes(nbytes, base=300, per_mb=30, cap=3600),
-                )
-        else:
-            skip("deepbluecli", "no EVTX for a channel DeepBlueCLI handles (" + ", ".join(DEEPBLUE_LOGNAMES) + ")")
-    else:
-        skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+    # DeepBlueCLI is planned with the other EVTX parsers (schedule_evtx_parsers), for every EVTX source.
 
     samples = list(sample_files or [])
     env_samples = os.environ.get("NEXUS_SAMPLE_FILES", "").strip()
@@ -2803,6 +2810,11 @@ DEEPBLUE_LOGNAMES = (
     "Microsoft-Windows-Sysmon/Operational",
     "Microsoft-Windows-WMI-Activity/Operational",
 )
+
+
+def _sift_jobs_ran(jobs: list[ToolJob]) -> bool:
+    """Whether this run sent any job to the SIFT host (a skipped, blocked or unsent one is not sent)."""
+    return any(j.host == "sift" and str(j.status).upper() not in ("SKIP", "BLOCKED", "PENDING") for j in jobs)
 
 
 def _deepblue_channel_files(root: Path) -> list[Path]:
@@ -4429,23 +4441,27 @@ async def run_tool_lane(
     except Exception as exc:  # noqa: BLE001
         log.warning("artifact completeness refresh failed: %s", exc)
 
-    # Pull SIFT extractions onto examiner case (scp) so LLM + report see them
-    try:
-        from nexus.case.sift_sync import pull_sift_extractions
+    # Pull SIFT extractions onto examiner case (scp) so LLM + report see them. Only a run that sent jobs to the
+    # SIFT host has SIFT output of its own: the pull used to run for every lane run, and on a Windows-only sample
+    # (S01, 2026-10-18) it reached for a remote case folder that did not exist; on a case that had one it would
+    # have filed an earlier run's output under this run.
+    if _sift_jobs_ran(jobs):
+        try:
+            from nexus.case.sift_sync import pull_sift_extractions
 
-        pulled = pull_sift_extractions(
-            case_id,
-            case_dir,
-            pipeline_run.path / "sift" / "extractions",
-        )
-        if pulled:
-            promoted = _promote_sift_pull(Path(pulled))
-            summary = f"{summary}; sift_pull={pulled}"
-            if promoted:
-                summary = f"{summary} promoted={len(promoted)}"
-    except Exception as exc:  # noqa: BLE001
-        log.warning("SIFT pull failed: %s", exc)
-        summary = f"{summary}; sift_pull_error={exc}"
+            pulled = pull_sift_extractions(
+                case_id,
+                case_dir,
+                pipeline_run.path / "sift" / "extractions",
+            )
+            if pulled:
+                promoted = _promote_sift_pull(Path(pulled))
+                summary = f"{summary}; sift_pull={pulled}"
+                if promoted:
+                    summary = f"{summary} promoted={len(promoted)}"
+        except Exception as exc:  # noqa: BLE001
+            log.warning("SIFT pull failed: %s", exc)
+            summary = f"{summary}; sift_pull_error={exc}"
 
     try:
         from nexus.langgraph.snippets import write_snippets
