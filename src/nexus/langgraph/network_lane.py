@@ -31,17 +31,29 @@ _FLOW_FIELDS = (
 
 
 def discover_network_inputs(paths: list[str]) -> dict[str, list[str]]:
-    """Split registered paths into {'pcap': [...], 'nfcapd': [...]} (pure)."""
+    """Split registered paths into {'pcap': [...], 'nfcapd': [...]}; a registered folder is walked.
+
+    Only files were looked at, so a capture registered inside a folder (samples S03 and S04) was never a network
+    input and no SIFT job could be planned for it (2026-10-18).
+    """
     out: dict[str, list[str]] = {"pcap": [], "nfcapd": []}
     for raw in paths:
         p = Path(str(raw))
-        if not p.is_file():
+        if p.is_dir():
+            try:
+                files = sorted(f for f in p.rglob("*") if f.is_file())
+            except OSError:
+                files = []
+        elif p.is_file():
+            files = [p]
+        else:
             continue
-        name = p.name.lower()
-        if p.suffix.lower() in PCAP_SUFFIXES:
-            out["pcap"].append(str(p))
-        elif p.suffix.lower() in NFDUMP_SUFFIXES or name.startswith("nfcapd"):
-            out["nfcapd"].append(str(p))
+        for f in files:
+            name = f.name.lower()
+            if f.suffix.lower() in PCAP_SUFFIXES:
+                out["pcap"].append(str(f))
+            elif f.suffix.lower() in NFDUMP_SUFFIXES or name.startswith("nfcapd"):
+                out["nfcapd"].append(str(f))
     return out
 
 
@@ -51,13 +63,19 @@ def plan_network_triage(
     remote_root: str,
     *,
     has_sift_mcp: bool,
+    remote_extractions: str = "",
 ) -> list:
-    """SIFT-host jobs for captures visible under ``remote_root`` (EH-14b).
+    """SIFT-host jobs for captures on the SIFT host (EH-14b).
 
     Zeek and Suricata are installed on the SIFT host (2026-10-13) and run only when opted in
     (``NEXUS_SIFT_ZEEK=1`` / ``NEXUS_SIFT_SURICATA=1``); otherwise they produce one honest SKIP row
     (never a guaranteed FAIL). ``nfdump`` ships with SIFT and runs for NetFlow.
-    Captures outside the SIFT root get a SKIP row. Never silence.
+
+    A capture is read on SIFT from under ``remote_root``: its own path when it is there, else its staged copy,
+    which the staging step (``scripts/stage-sift-evidence.ps1``) puts in that folder by its file name. A capture
+    registered on this host used to be planned only if its local path began with the remote root, which a
+    Windows path never does. The outputs go to ``remote_extractions`` (the remote case's extractions, which the
+    lane pulls); they used to go under the evidence root, which no pull reads. Never silence.
     """
     from nexus.langgraph.tool_lane import ToolJob
 
@@ -69,6 +87,10 @@ def plan_network_triage(
     zeek_on = os.environ.get("NEXUS_SIFT_ZEEK", "").strip().lower() in ("1", "true", "yes")
     suricata_on = os.environ.get("NEXUS_SIFT_SURICATA", "").strip().lower() in ("1", "true", "yes")
 
+    names: dict[str, int] = {}
+    for p in [*pcap_paths, *nfcapd_paths]:
+        names[Path(p).name.lower()] = names.get(Path(p).name.lower(), 0) + 1
+
     def _remote(p: str) -> str | None:
         if not root:
             return None
@@ -76,22 +98,28 @@ def plan_network_triage(
         root_s = root.replace("\\", "/")
         if s.lower().startswith(root_s.lower() + "/"):
             return s
+        if names.get(Path(p).name.lower()) == 1:
+            return f"{root_s}/{Path(p).name}"
         return None
 
+    def _not_on_sift(p: str) -> str:
+        if not root:
+            return (f"{Path(p).name}: no SIFT evidence root (set case_context.sift_evidence_root / "
+                    "NEXUS_SIFT_EVIDENCE_ROOT) — local flow projection still runs")
+        return (f"{Path(p).name}: another registered file has the same name, so its staged copy on SIFT is "
+                "ambiguous — stage them under distinct names; local flow projection still runs")
+
+    out_base = (remote_extractions or "").strip().rstrip("/")
     pcap_under_root = False
     for p in pcap_paths:
         rp = _remote(p)
         stem = Path(p).stem
-        out_dir = f"{root or '/tmp'}/nexus-network/{stem}"
+        out_dir = f"{out_base}/network/{stem}" if out_base else f"{root or '/tmp'}/nexus-network/{stem}"
         if rp is None:
             jobs.append(ToolJob(
                 host="sift", tool="(network)", argv=[],
                 purpose="Network parser visibility", status="SKIP",
-                reason=(
-                    f"{Path(p).name} is not under the SIFT evidence root "
-                    "(set case_context.sift_evidence_root / NEXUS_SIFT_EVIDENCE_ROOT "
-                    "with the remote path) — local flow projection still runs"
-                ),
+                reason=_not_on_sift(p),
             ))
             continue
         pcap_under_root = True
@@ -102,6 +130,7 @@ def plan_network_triage(
                       f"Log::default_logdir={out_dir}/zeek"],
                 purpose=f"Zeek conn/dns/http/ssl/files logs ({Path(p).name})",
                 timeout=1800,
+                prep_dirs=[f"{out_dir}/zeek"],
             ))
         if suricata_on:
             jobs.append(ToolJob(
@@ -136,10 +165,8 @@ def plan_network_triage(
             jobs.append(ToolJob(
                 host="sift", tool="(network)", argv=[],
                 purpose="Netflow visibility", status="SKIP",
-                reason=(
-                    f"{Path(p).name} is not under the SIFT evidence root — "
-                    "the nfdump importer can still parse it locally/registered"
-                ),
+                reason=_not_on_sift(p).replace("local flow projection still runs",
+                                               "the nfdump importer can still parse it locally"),
             ))
             continue
         stem = Path(p).stem

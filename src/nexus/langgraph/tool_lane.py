@@ -2812,6 +2812,13 @@ DEEPBLUE_LOGNAMES = (
 )
 
 
+def _remote_cases_root() -> str:
+    """The SIFT host's cases folder, as the pull names it."""
+    from nexus.case.sift_sync import _ssh_opts
+
+    return _ssh_opts()["remote_cases"]
+
+
 def _sift_jobs_ran(jobs: list[ToolJob]) -> bool:
     """Whether this run sent any job to the SIFT host (a skipped, blocked or unsent one is not sent)."""
     return any(j.host == "sift" and str(j.status).upper() not in ("SKIP", "BLOCKED", "PENDING") for j in jobs)
@@ -3550,6 +3557,7 @@ def sift_jobs_for_lane(
     disk_offset: str | int | None = None,
     declared: bool = False,
     network_inputs: dict[str, list[str]] | None = None,
+    remote_extractions: str = "",
 ) -> list[ToolJob]:
     """Schedule SIFT jobs only when a root is named or a SIFT MCP exists.
 
@@ -3579,6 +3587,7 @@ def sift_jobs_for_lane(
             network_inputs.get("nfcapd") or [],
             root,
             has_sift_mcp=has_sift_mcp,
+            remote_extractions=remote_extractions,
         ))
     if declared:
         # Scoping rule (operator 2026-09-29): when SIFT is down, ONLY evidence
@@ -3890,6 +3899,8 @@ async def run_tool_lane(
         disk_offset=str(ctx.get("sift_disk_offset") or "").strip() or None,
         declared=str(ctx.get("sift_required") or "").strip().lower() in ("1", "true", "yes"),
         network_inputs=_net_inputs,
+        # Where the pull reads (sift_sync.pull_sift_extractions): the remote case's extractions.
+        remote_extractions=f"{_remote_cases_root()}/{Path(case_dir).name}/extractions",
     ))
     # The SIFT jobs, planned just above, take the same reuse; the retry's rules apply to every job.
     apply_prior_ok(

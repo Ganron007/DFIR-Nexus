@@ -112,9 +112,9 @@ def test_plan_network_triage_default_toolset_and_honest_skip(tmp_path, monkeypat
     suricata = next(j for j in jobs if j.tool == "suricata")
     assert zeek.status == "SKIP" and "NEXUS_SIFT_ZEEK=1" in zeek.reason
     assert suricata.status == "SKIP" and "NEXUS_SIFT_SURICATA=1" in suricata.reason
+    # A capture registered on this host is read from its staged copy on SIFT, so it is no SKIP of its own.
     skips = [j for j in jobs if j.status == "SKIP"]
-    assert len(skips) == 3  # outside-root + zeek + suricata
-    assert any("SIFT evidence root" in j.reason for j in skips)
+    assert len(skips) == 2  # zeek + suricata
     assert not [j for j in jobs if j.status == "PENDING"]
 
 
