@@ -46,13 +46,14 @@ class ImportResult:
     def success(self) -> bool:
         """True only when artifacts parsed AND nothing failed — a partial
         parse is reported as failure with errors, never as clean success."""
-        return len(self.artifacts) > 0 and not self.errors
+        # Rows streamed to a sink are counted, not kept (D263).
+        return (self.parsed_lines > 0 or len(self.artifacts) > 0) and not self.errors
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dict."""
         return {
             "source": self.source.value,
-            "total_artifacts": len(self.artifacts),
+            "total_artifacts": max(len(self.artifacts), self.parsed_lines),
             "total_lines": self.total_lines,
             "parsed_lines": self.parsed_lines,
             "skipped_lines": self.skipped_lines,
@@ -93,11 +94,14 @@ class Importer(ABC):
         raise NotImplementedError
         yield  # pragma: no cover  (makes this a generator for type-checkers)
 
-    def ingest(self, path: Path, limit: int = 0) -> ImportResult:
+    def ingest(self, path: Path, limit: int = 0, on_batch=None, batch_size: int = 5000) -> ImportResult:
         """Top-level import: parse all input, return ImportResult.
 
         ``limit`` (0 = unlimited) caps artifacts WHILE parsing — a multi-GB
         capture must not be materialized entirely before the cap is applied.
+        ``on_batch`` (D263): artifacts are handed to it ``batch_size`` at a time as they are parsed and are
+        not kept on the result, so a file of any size is read whole without being held in memory;
+        ``result.parsed_lines`` counts them.
         """
         result = ImportResult(source=self.source_class())
         path = Path(path)
@@ -108,21 +112,30 @@ class Importer(ABC):
         self.skipped_lines = 0
         files = self._discover_files(path)
         result.source_files = [str(f) for f in files]
+        pending: list[Artifact] = []
 
         for file in files:
-            if limit and len(result.artifacts) >= limit:
+            if limit and result.parsed_lines >= limit:
                 break
             try:
                 stream = self.parse(file)
                 if limit:
-                    remaining = max(0, limit - len(result.artifacts))
+                    remaining = max(0, limit - result.parsed_lines)
                     stream = itertools.islice(stream, remaining)
-                for _line_num, artifact in enumerate(stream, start=1):
+                for artifact in stream:
                     result.parsed_lines += 1
-                    result.artifacts.append(artifact)
+                    if on_batch is None:
+                        result.artifacts.append(artifact)
+                        continue
+                    pending.append(artifact)
+                    if len(pending) >= batch_size:
+                        on_batch(pending)
+                        pending = []
             except Exception as e:  # noqa: BLE001
                 log.warning("Failed to parse %s: %s", file, e)
                 result.errors.append(f"{file}: {e}")
+        if pending:
+            on_batch(pending)
 
         result.skipped_lines = self.skipped_lines
         result.total_lines = result.parsed_lines + result.skipped_lines

@@ -184,9 +184,10 @@ def test_ingest_into_case_writes_audit(tmp_path, monkeypatch):
         source = ArtifactSource.ZEEK
         artifacts = []
         errors: list = []
+        parsed_lines = 0
 
     class _FakeRegistry:
-        def import_path(self, path, source=None, limit=0):
+        def import_path(self, path, source=None, limit=0, on_batch=None):
             return _Result()
 
     monkeypatch.setattr(registry_mod, "get_registry", lambda: _FakeRegistry())

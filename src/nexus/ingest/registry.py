@@ -110,7 +110,7 @@ class ImporterRegistry:
         return None
 
     def import_path(
-        self, path: Path, source: ArtifactSource | None = None, limit: int = 0
+        self, path: Path, source: ArtifactSource | None = None, limit: int = 0, on_batch=None,
     ) -> ImportResult:
         """Import a path using the specified or auto-detected importer.
 
@@ -140,13 +140,14 @@ class ImporterRegistry:
             return result
 
         importer = importer_cls()
-        result = importer.ingest(path, limit=limit)
+        result = importer.ingest(path, limit=limit, on_batch=on_batch)
         return result
 
 
 _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.generic.jsonl", "JSONLImporter"),
     ("nexus.ingest.generic.csv", "CSVImporter"),
+    ("nexus.ingest.generic.spreadsheet", "SpreadsheetImporter"),
     ("nexus.ingest.cloud.azure", "AzureImporter"),
     ("nexus.ingest.cloud.cloudtrail", "CloudTrailImporter"),
     ("nexus.ingest.df.amcache", "AmCacheImporter"),

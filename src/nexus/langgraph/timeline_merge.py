@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -321,21 +322,103 @@ def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     return path
 
 
-def _ingest_limit() -> int:
-    """Bound on artifacts stored per ingested file (env-configurable).
+def anchor_assumed_years(case_dir: Path) -> dict[str, Any]:
+    """Give a yearless time (RFC 3164 syslog) the year of the case's own dated evidence (D262).
 
-    ``NEXUS_INGEST_MAX_ARTIFACTS=0`` means unlimited (a bare ``0`` used to be
-    clamped to 1 — silently storing a single row).
+    The importer gives such a time the current year and flags it ``ts_year_assumed``. On sample S03 a mail
+    server's and a firewall's syslog read 2026-07-12 beside the BIND queries and packets of 2016-07-12, so no time
+    window held the three together. After the importer pass, each assumed row takes the year that puts its month,
+    day and time inside the span of the case's dated rows (a month either side), the nearest to their middle when
+    more than one does; the examiner's window, when set, is that span. The row stays flagged and says where its
+    year came from. With no dated row, or no year that fits, the row is left as it was.
+    """
+    from datetime import timedelta
+
+    path = Path(case_dir) / "ingest" / "artifacts.jsonl"
+    if not path.is_file():
+        return {"anchored": 0, "unresolved": 0}
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.strip():
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    continue
+
+    def _flag(d: dict, key: str) -> bool:
+        return str(d.get(key) or "").lower() in ("true", "1", "yes")
+
+    def _dt(d: dict) -> datetime | None:
+        try:
+            got = datetime.fromisoformat(str(d.get("timestamp") or "").replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return got if got.tzinfo else got.replace(tzinfo=UTC)
+
+    assumed = [d for d in rows if _flag(d, "ts_year_assumed") and not d.get("ts_year_from")]
+    if not assumed:
+        return {"anchored": 0, "unresolved": 0}
+    span: tuple[datetime, datetime] | None = None
+    basis = ""
+    try:
+        start, end = parse_intake_window(load_case_intake(Path(case_dir)))
+        if start and end:
+            span, basis = (start, end), "the examiner's window"
+    except Exception:  # noqa: BLE001 - the window is optional
+        span = None
+    if span is None:
+        dated = sorted(t for d in rows if not _flag(d, "ts_year_assumed") and not _flag(d, "ts_synthesized")
+                       for t in [_dt(d)] if t is not None)
+        if not dated:
+            return {"anchored": 0, "unresolved": len(assumed)}
+        span, basis = (dated[0], dated[-1]), "the case's dated rows"
+    low, high = span[0] - timedelta(days=31), span[1] + timedelta(days=31)
+    middle = span[0] + (span[1] - span[0]) / 2
+    anchored = unresolved = 0
+    for d in assumed:
+        t = _dt(d)
+        if t is None:
+            unresolved += 1
+            continue
+        fits = []
+        for year in range(span[0].year - 1, span[1].year + 2):
+            try:
+                candidate = t.replace(year=year)
+            except ValueError:  # 29 February in a year without one
+                continue
+            if low <= candidate <= high:
+                fits.append(candidate)
+        if not fits:
+            unresolved += 1
+            continue
+        best = min(fits, key=lambda c: abs(c - middle))
+        d["timestamp"] = best.isoformat()
+        d["ts_year_from"] = f"{basis} {span[0].date()}..{span[1].date()}"
+        anchored += 1
+    if anchored:
+        tmp = path.with_suffix(".jsonl.tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            fh.write("\n".join(json.dumps(d, default=str) for d in rows) + "\n")
+        os.replace(tmp, path)
+        _STORE_KEYS.pop(str(path), None)
+    return {"anchored": anchored, "unresolved": unresolved, "basis": basis}
+
+
+def _ingest_limit() -> int:
+    """Bound on artifacts stored per ingested file: 0, every row, unless the examiner sets one.
+
+    ``NEXUS_INGEST_MAX_ARTIFACTS`` defaulted to 20,000 (D263): a file's rows past it were dropped and only the
+    step log said "(capped)", against the index's rule of no cap on valid evidence. Rows are now streamed to the
+    store in batches, so a file is read whole without being held in memory.
     """
     import os
 
     try:
-        raw = int(os.environ.get("NEXUS_INGEST_MAX_ARTIFACTS", "20000"))
+        raw = int(os.environ.get("NEXUS_INGEST_MAX_ARTIFACTS", "0"))
     except ValueError:
-        raw = 20000
-    if raw <= 0:
-        return 2**31 - 1
-    return raw
+        raw = 0
+    return max(raw, 0)
 
 
 @lock_case_writes(case_arg=1)
@@ -368,11 +451,15 @@ def ingest_into_case(
             "path": str(path),
         }
     cap = limit if limit > 0 else _ingest_limit()
-    result = get_registry().import_path(path, source=resolved, limit=cap)
-    arts = list(result.artifacts or [])
-    if arts:
-        append_ingest_artifacts(case_dir, arts)
-    capped = len(arts) >= cap
+    stored = 0
+
+    def _store(batch: list[Any]) -> None:
+        nonlocal stored
+        append_ingest_artifacts(case_dir, batch)
+        stored += len(batch)
+
+    result = get_registry().import_path(path, source=resolved, limit=cap, on_batch=_store)
+    capped = bool(cap) and result.parsed_lines >= cap
     if audit:
         with contextlib.suppress(Exception):
             from nexus.audit import AuditWriter
@@ -382,9 +469,9 @@ def ingest_into_case(
                 params={"path": str(path), "source": source or ""},
                 result_summary={
                     "success": result.success,
-                    "artifacts": len(arts),
+                    "artifacts": result.parsed_lines,
                     "source": result.source.value,
-                    "persisted": bool(arts),
+                    "persisted": bool(stored),
                 },
                 source="pipeline",
                 input_files=[str(path)],
@@ -392,8 +479,8 @@ def ingest_into_case(
     return {
         "success": result.success,
         "source": result.source.value,
-        "artifacts": len(arts),
-        "artifacts_total": len(arts),
+        "artifacts": result.parsed_lines,
+        "artifacts_total": result.parsed_lines,
         "artifacts_capped": capped,
         "errors": result.errors[:5],
         "path": str(path),

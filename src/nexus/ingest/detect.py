@@ -133,6 +133,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
     }
     if suffix in _EXT_HINTS:
         return _EXT_HINTS[suffix]
+    # A workbook (an examiner's tool report, e.g. SRUM-DUMP's) is read when its importer can open it.
+    if suffix in (".xlsx", ".xlsm") and _confirmed(ArtifactSource.SPREADSHEET, path):
+        return ArtifactSource.SPREADSHEET
     if suffix == ".gz":
         if name_lower.endswith(".log.gz"):
             return ArtifactSource.ZEEK

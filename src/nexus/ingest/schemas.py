@@ -67,6 +67,7 @@ class ArtifactSource(StrEnum):
     WIRESHARK = "wireshark"
     NETFLOW = "netflow"
     BIND = "bind"
+    SPREADSHEET = "spreadsheet"
     VOLATILITY = "volatility"
     CLOUDTRAIL = "cloudtrail"
     AZURE = "azure"

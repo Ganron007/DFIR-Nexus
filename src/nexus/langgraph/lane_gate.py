@@ -417,6 +417,52 @@ def write_lane_gate(
     return gate
 
 
+def import_row(path: Path | str, info: dict[str, Any] | None, network: dict[str, Any] | None = None) -> dict[str, str]:
+    """The gate row for one file of the importer pass (I1): read, empty, or not read.
+
+    A file is processed when its importer stored rows from it (or, for a capture, the flow projection did) and
+    when it is empty; a file with content that no importer read, or read to nothing, is unprocessed.
+    """
+    path = Path(path)
+    info = info or {}
+    rows = int(info.get("artifacts") or 0)
+    flows = int((network or {}).get("flows_rows") or 0)
+    source = str(info.get("source") or "")
+    row = {"tool": f"import:{source}" if source else "import", "purpose": f"import {path}", "family": source}
+    try:
+        empty = path.stat().st_size == 0
+    except OSError:
+        empty = False
+    if rows or flows:
+        parts = [f"{rows} row(s)" if rows else "", f"{flows} flow(s)" if flows else ""]
+        return {**row, "status": "OK", "reason": ", ".join(p for p in parts if p)}
+    if empty:
+        return {**row, "status": "OK", "reason": "empty file"}
+    problem = str(info.get("error") or "; ".join(str(e) for e in info.get("errors") or []) or "").strip()
+    return {**row, "status": "FAIL",
+            "reason": problem or f"{source or 'no importer'} read 0 rows from a file with content"}
+
+
+def record_import_results(case_dir: Path | str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Add the importer pass to the gate the tool lane wrote (2026-10-18).
+
+    The importer pass reads what the tool lane does not (captures, text logs, reports) and runs after the gate is
+    written, so a network-only case read as "nothing processed" and was blocked with nothing unprocessed (sample
+    S03: 19,911 rows indexed), and a file no importer read was never unprocessed. Each file is now a job of the
+    pass; one it could not read is unprocessed, and an examiner skip of it still holds.
+    """
+    gate = dict(read_lane_gate(case_dir))
+    if not gate or not rows:
+        return gate
+    keys = {_key(r) for r in rows}
+    gate["jobs"] = [j for j in gate.get("jobs") or [] if _key(j) not in keys] + _jobs_from_ledger(rows)
+    gate["unprocessed"] = [u for u in gate.get("unprocessed") or [] if _key(u) not in keys] + [
+        _pending_entry(r) for r in rows if _job_state(str(r.get("status") or "")) in ("failed", "blocked")]
+    _recompute(gate)
+    _atomic_write(gate_path(case_dir), gate)
+    return gate
+
+
 def examiner_skip(
     case_dir: Path | str,
     *,

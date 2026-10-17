@@ -1014,7 +1014,11 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
 
         from nexus.config import settings as _settings
         from nexus.langgraph.network_lane import enrich_local_network
-        from nexus.langgraph.timeline_merge import ingest_into_case, rebuild_case_timeline
+        from nexus.langgraph.timeline_merge import (
+            anchor_assumed_years,
+            ingest_into_case,
+            rebuild_case_timeline,
+        )
         from nexus.langgraph.tool_lane import _lane_concurrency, find_windows_root
 
         case_dir = _settings.cases_root / case_id
@@ -1023,9 +1027,15 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         # parsing/enrichment may overlap up to NEXUS_TOOL_LANE_CONCURRENCY.
         write_lock = _threading.Lock()
 
+        from nexus.langgraph.lane_gate import import_row, record_import_results
+
+        # Every file of the pass is a gate row: read, empty, or not read (2026-10-18).
+        import_rows: list[dict[str, str]] = []
+
         def _process(p: str) -> list[str]:
             lines: list[str] = []
             path = Path(p)
+            net: dict | None = None
             # EH-14b session guarantee: Zeek/Suricata when available locally +
             # tshark flow projection always. Runs before import so the flows
             # CSV is part of the same evidence pass.
@@ -1047,7 +1057,9 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                     info = ingest_into_case(path, case_dir)
             except Exception as exc:  # noqa: BLE001 — one bad path must not sink the lane
                 lines.append(f"I1 ingest extra path {p} failed: {exc}")
+                import_rows.append(import_row(path, {"error": str(exc)}, net))
                 return lines
+            import_rows.append(import_row(path, info, net))
             capped = " (capped)" if info.get("artifacts_capped") else ""
             err_note = ""
             problems = list(info.get("errors") or [])
@@ -1089,6 +1101,26 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 steps.extend(lines)
         except Exception as exc:  # noqa: BLE001
             steps.append(f"I1 ingest lane failed: {exc}")
+        try:
+            gate = record_import_results(case_dir, import_rows)
+            if gate:
+                failed = [r for r in import_rows if r.get("status") == "FAIL"]
+                steps.append(
+                    f"N2 gate with the importer pass: {gate.get('status')} ({len(import_rows)} file(s) read, "
+                    f"{len(failed)} not read)"
+                )
+        except Exception as exc:  # noqa: BLE001 - the gate keeps its tool-lane state
+            steps.append(f"N2 gate update from the importer pass failed: {exc}")
+        try:
+            # D262: a yearless time takes the year of the case's dated evidence, before the timeline is built.
+            years = anchor_assumed_years(case_dir)
+            if years.get("anchored") or years.get("unresolved"):
+                steps.append(
+                    f"I1 yearless times: {years.get('anchored', 0)} given the year of {years.get('basis') or '-'}; "
+                    f"{years.get('unresolved', 0)} left with the current year (flagged)"
+                )
+        except Exception as exc:  # noqa: BLE001
+            steps.append(f"I1 yearless-time anchoring failed: {exc}")
         try:
             rebuild_case_timeline(case_dir)
         except Exception as exc:  # noqa: BLE001
