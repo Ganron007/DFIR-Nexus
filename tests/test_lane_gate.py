@@ -66,8 +66,8 @@ def test_skip_survives_a_rerun_that_still_fails(tmp_path: Path):
 def test_a_skipped_job_blocks_when_nothing_else_processed(tmp_path: Path):
     """The K1 shape: a SIFT discovery skip and no parser run.
 
-    SIFT may wait, but this case had no evidence root *and* nothing processed, so
-    the run examined nothing. It must not read as a clean pass.
+    The case names no SIFT evidence root, so SIFT has nothing to wait for (D270), and nothing
+    processed: the run examined nothing. It must not read as a clean pass; it blocks.
     """
     gate = write_lane_gate(tmp_path, "RUN-1", [{
         "tool": "(discovery)",
@@ -76,9 +76,9 @@ def test_a_skipped_job_blocks_when_nothing_else_processed(tmp_path: Path):
         "status": "SKIP",
         "reason": "No SIFT evidence root - set NEXUS_SIFT_EVIDENCE_ROOT",
     }])
-    assert gate["status"] == "waiting", "SIFT-deferred, not clean"
+    assert gate["status"] == "blocked", "nothing examined, not clean"
     assert gate["processed_count"] == 0
-    assert gate["waiting_count"] == 1
+    assert gate["waiting_count"] == 0
 
 
 def test_a_pass_that_processed_nothing_is_never_clear(tmp_path: Path):
@@ -130,11 +130,14 @@ def test_a_processed_job_clears_without_a_skip(tmp_path: Path):
     assert gate["no_evidence_processed"] is False
 
 
+# SIFT work that waits: a job planned with its command that the host could not take (D270). A SIFT row skipped at
+# planning, with no command, does not apply and waits for nothing.
 _SIFT_SKIP_ROW = {
-    "tool": "(discovery)",
-    "purpose": "SIFT evidence root",
+    "tool": "vol",
+    "purpose": "Volatility3 windows.pslist",
     "host": "sift",
-    "reason": "No SIFT evidence root - set NEXUS_SIFT_EVIDENCE_ROOT",
+    "argv": ["vol", "-f", "/home/sansforensics/.nexus/cases/CASE-X/evidence/mem.raw", "windows.pslist"],
+    "reason": "run_command not available on MCP",
     "status": "SKIP",
 }
 
@@ -154,7 +157,7 @@ def test_sift_work_waits_and_is_never_reported_as_clear(tmp_path: Path):
     assert len(gate["waiting_sift"]) == 1
     assert gate["unprocessed"] == [], "SIFT items are not 'unprocessed', they are waiting"
     assert gate["waiting_count"] == 1
-    assert "SIFT evidence root" in sift_waiting_message(gate)
+    assert "Volatility3 windows.pslist" in sift_waiting_message(gate)
 
 
 def test_a_lone_skip_with_nothing_processed_is_not_clear(tmp_path: Path):
@@ -222,8 +225,8 @@ def test_waiting_sift_families_are_named_as_pending_to_a_model(tmp_path: Path):
     write_lane_gate(tmp_path, "RUN-1", [_SIFT_SKIP_ROW])
     snap = coverage_snapshot(tmp_path)
     assert snap["status"] == "waiting"
-    assert snap["waiting_sift"] == ["SIFT evidence root"]
-    assert "SIFT evidence root" in pending_family_notice(tmp_path)
+    assert snap["waiting_sift"] == ["Volatility3 windows.pslist"]
+    assert "Volatility3 windows.pslist" in pending_family_notice(tmp_path)
     assert "absent" in pending_family_notice(tmp_path).lower()
 
 
@@ -314,3 +317,18 @@ def test_a_skip_for_a_present_artifact_is_still_not_applicable(tmp_path: Path):
     gate = write_lane_gate(tmp_path, "RUN-1", [ok_row, skip_row])
     assert gate["status"] == "clear"
     assert gate["unprocessed"] == []
+
+
+def test_a_sift_row_that_does_not_apply_waits_for_nothing(tmp_path: Path):
+    """D270: sample S04's gate waited on two rows that never could run, so every analysis run asked for SIFT."""
+    gate = write_lane_gate(tmp_path, "RUN-1", [
+        {"tool": "zeek", "purpose": "Zeek conn/dns/http/ssl/files logs (capture.pcap)", "host": "sift",
+         "argv": ["zeek", "-Cr", "/home/sansforensics/.nexus/cases/CASE-5891325B/evidence/capture.pcap", "local"],
+         "status": "OK"},
+        {"tool": "vol", "purpose": "Volatility3 memory", "host": "sift", "argv": [], "status": "SKIP",
+         "reason": "No memory image declared"},
+        {"tool": "suricata", "purpose": "Suricata eve.json alerts/flows", "host": "sift", "argv": [], "status": "SKIP",
+         "reason": "installed on SIFT; runs only when NEXUS_SIFT_SURICATA=1 is set (opt-in)"},
+    ])
+    assert gate["status"] == "clear" and gate["waiting_sift"] == []
+    assert [n["tool"] for n in gate["not_applicable"]] == ["vol", "suricata"]

@@ -374,7 +374,13 @@ def write_lane_gate(
     for row in ledger:
         state = _job_state(str(row.get("status") or ""))
         if _is_sift_row(row):
-            if state in {"failed", "skipped"}:
+            # Waiting is SIFT work that did not run: a job planned with its command that the host could not take.
+            # A SIFT row skipped at planning, with no command (no memory image declared, a tool not opted in),
+            # does not apply and waits for nothing (D270): sample S04 waited on two such rows, so every analysis
+            # run asked for the SIFT host, and with the VM off the case could not be analysed at all.
+            if state == "skipped" and not row.get("argv"):
+                not_applicable.append(_pending_entry(row))
+            elif state in {"failed", "skipped"}:
                 waiting_sift.append(_pending_entry(row))
             continue
         if state in ("failed", "blocked"):
@@ -458,6 +464,26 @@ def record_import_results(case_dir: Path | str, rows: list[dict[str, Any]]) -> d
     gate["jobs"] = [j for j in gate.get("jobs") or [] if _key(j) not in keys] + _jobs_from_ledger(rows)
     gate["unprocessed"] = [u for u in gate.get("unprocessed") or [] if _key(u) not in keys] + [
         _pending_entry(r) for r in rows if _job_state(str(r.get("status") or "")) in ("failed", "blocked")]
+    _recompute(gate)
+    _atomic_write(gate_path(case_dir), gate)
+    return gate
+
+
+def record_index_rejections(case_dir: Path | str, rejected: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Hold each file whose rows Elasticsearch refused as unprocessed (D271).
+
+    Parsed rows that are not in the index are evidence no mode can search. The index's earlier rejections are
+    replaced by this pass's, so a file that now indexes whole clears.
+    """
+    gate = dict(read_lane_gate(case_dir))
+    if not gate:
+        return gate
+    rows = [{"tool": "index", "purpose": f"index {name}", "status": "FAIL",
+             "reason": f"{entry.get('rows')} row(s) rejected by Elasticsearch: {entry.get('reason')}"}
+            for name, entry in (rejected or {}).items()]
+    gate["jobs"] = [j for j in gate.get("jobs") or [] if j.get("tool") != "index"] + _jobs_from_ledger(rows)
+    gate["unprocessed"] = [u for u in gate.get("unprocessed") or [] if u.get("tool") != "index"] + [
+        _pending_entry(r) for r in rows]
     _recompute(gate)
     _atomic_write(gate_path(case_dir), gate)
     return gate
