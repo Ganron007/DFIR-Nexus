@@ -1,0 +1,11 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	dns
+#open	2026-10-17-19-39-25
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	trans_id	rtt	query	qclass	qclass_name	qtype	qtype_name	rcode	rcode_name	AA	TC	RD	RA	Z	answers	TTLs	rejected	opcode	opcode_name
+#types	time	string	addr	port	addr	port	enum	count	interval	string	count	string	count	string	count	string	bool	bool	bool	bool	count	vector[string]	vector[interval]	bool	count	string
+1453750175.012522	CiZpst4XFfWCI6jewc	10.0.2.107	56376	8.8.4.4	53	udp	38893	0.001049	dns.msftncsi.com	1	C_INTERNET	1	A	0	NOERROR	F	F	T	T	0	131.107.255.255	8.000000	F	0	query
+1453750175.014277	C2op4nByNgWhFxjlf	10.0.2.107	54428	8.8.4.4	53	udp	44818	0.001025	dns.msftncsi.com	1	C_INTERNET	28	AAAA	0	NOERROR	F	F	T	T	0	fd3e:4f5a:5b81::1	2843.000000	F	0	query
+1453750174.015535	CbwVan2Xqg3QMl1V3	10.0.2.107	56376	8.8.8.8	53	udp	38893	-	dns.msftncsi.com	1	C_INTERNET	1	A	-	-	F	F	T	F	0	-	-	F	0	query

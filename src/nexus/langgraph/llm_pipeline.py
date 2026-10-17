@@ -1501,7 +1501,19 @@ def _autoindex_case(case_dir: Path, run_id: str = "") -> list[str]:
         # B6: incremental by default — only files whose mtime advanced since
         # the last build are re-indexed (full rebuild on fresh/absent state).
         meta = index_case(case_dir, extra_needles=extra_needles, incremental=True, run_id=run_id)
-        return [f"N3 auto-index: {meta.get('docs')} docs -> {meta.get('index')}"]
+        # D271: rows Elasticsearch refused are not indexed, whatever was sent. The line used to count them as
+        # indexed; they are now named, and the gate holds each file as unprocessed until it indexes whole.
+        rejected = meta.get("rejected") or {}
+        from nexus.langgraph.lane_gate import record_index_rejections
+
+        record_index_rejections(case_dir, rejected)
+        refused = sum(int(r.get("rows") or 0) for r in rejected.values())
+        line = f"N3 auto-index: {int(meta.get('docs') or 0) - refused} docs -> {meta.get('index')}"
+        if refused:
+            first_file, first = next(iter(rejected.items()))
+            line += (f"; {refused} row(s) of {len(rejected)} file(s) REJECTED by Elasticsearch, not indexed "
+                     f"(e.g. {first_file}: {first.get('reason')})")
+        return [line]
     except Exception as exc:  # noqa: BLE001
         if case_mode in ("2", "3"):
             return [

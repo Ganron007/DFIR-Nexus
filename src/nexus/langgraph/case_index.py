@@ -144,7 +144,10 @@ _FORENSIC_TEXT_ANALYSIS = {
 # number inside text is never a time. An index built before it carries fabricated times and must be rebuilt.
 # v15 (2026-10-17, D260): .NET's JSON date, /Date(<ms>)/, is a time column's whole value. An index built before it has
 # no time on any DeepBlueCLI row and must be rebuilt.
-INDEX_SCHEMA_VERSION = 15
+# v16 (2026-10-18, D271): `fields` holds column names, not paths (`subobjects: false`): Zeek's `id.orig_h` beside the
+# importers' `id` column made Elasticsearch reject every Zeek row with an address. An index built before it must be
+# rebuilt.
+INDEX_SCHEMA_VERSION = 16
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -1173,9 +1176,12 @@ def _mapping_body() -> dict[str, Any]:
     from nexus.langgraph.field_registry import field_properties
 
     props = field_properties()
-    fields_spec: dict[str, Any] = (
-        {"type": "object", "properties": props} if props else {"type": "object"}
-    )
+    # A column's name is its own field, dots and all (D271): with sub-objects on, Zeek's `id.orig_h` became the path
+    # `fields.id` -> `orig_h`, the importers' `id` column had typed `fields.id` as text, and Elasticsearch rejected
+    # every Zeek conn, dns, http and files row of sample S04 (3,556 rows).
+    fields_spec: dict[str, Any] = {"type": "object", "subobjects": False}
+    if props:
+        fields_spec["properties"] = props
     return {
         "settings": {
             "number_of_shards": 1,
@@ -1412,20 +1418,32 @@ def _bulk_insert(
     chunk: int = 2000,
     *,
     id_field: str = "",
+    rejected: dict[str, dict[str, Any]] | None = None,
 ) -> int:
-    """Bulk-index docs; returns the number of item-level errors."""
+    """Bulk-index docs; returns the number of item-level errors.
+
+    ``rejected`` collects, per file, how many of its rows Elasticsearch refused and the first reason (D271): the
+    count alone was kept, and the run said every row was indexed.
+    """
     errors = 0
     for i in range(0, len(docs), chunk):
-        body = _bulk_ndjson(name, docs[i:i + chunk], id_field=id_field)
+        part = docs[i:i + chunk]
+        body = _bulk_ndjson(name, part, id_field=id_field)
         r = client.post("/_bulk", content=body, headers={"Content-Type": "application/x-ndjson"})
         if r.status_code >= 400:
             raise RuntimeError(f"bulk failed: {r.status_code} {r.text[:300]}")
         payload = r.json()
         if payload.get("errors"):
-            errors += sum(
-                1 for item in payload.get("items") or []
-                if item.get("index", {}).get("error")
-            )
+            for doc, item in zip(part, payload.get("items") or [], strict=False):
+                error = (item.get("index") or {}).get("error")
+                if not error:
+                    continue
+                errors += 1
+                if rejected is not None:
+                    entry = rejected.setdefault(str(doc.get("file") or ""), {"rows": 0, "reason": ""})
+                    entry["rows"] += 1
+                    entry["reason"] = entry["reason"] or str(
+                        (error.get("reason") if isinstance(error, dict) else error) or "")[:300]
     return errors
 
 
@@ -1513,6 +1531,7 @@ def index_case(
         }
         removed = set(prior_mtimes) - set(current_mtimes)
         errors = 0
+        rejected: dict[str, dict[str, Any]] = {}
         # A resolution of ZERO indexable files is never "the examiner deleted
         # every artifact" — it is a resolver/run-pointer failure (e.g. a
         # --from-case run that owns no extractions). Purging here would make
@@ -1541,11 +1560,12 @@ def index_case(
                 cap_stats: dict[str, Any] = {}
                 docs = 0
                 errors = 0
+                rejected: dict[str, dict[str, Any]] = {}
                 for batch_docs in iter_index_doc_batches(
                     case_dir, only_files=changed, stats=cap_stats, run_id=run_id
                 ):
                     docs += len(batch_docs)
-                    errors += _bulk_insert(client, name, batch_docs)
+                    errors += _bulk_insert(client, name, batch_docs, rejected=rejected)
                 refreshed = client.post(f"/{name}/_refresh")
                 if refreshed.status_code >= 400:
                     raise RuntimeError(
@@ -1591,6 +1611,7 @@ def index_case(
             "index": name,
             "docs": docs_total,
             "errors": errors,
+            "rejected": rejected,
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": True,
@@ -1614,6 +1635,7 @@ def index_case(
         cap_stats = {}
         docs_total = 0
         errors = 0
+        rejected: dict[str, dict[str, Any]] = {}
         purge_refused = False
         purge_refused_reason = ""
         # The full branch used to purge unconditionally. On an EMPTY resolution
@@ -1646,11 +1668,12 @@ def index_case(
                     )
                 name = ensure_index(case_dir.name)
                 errors = 0
+                rejected: dict[str, dict[str, Any]] = {}
                 # EH-11: stream batches — a million-row case must not be
                 # materialized in memory before the first bulk request.
                 for batch_docs in iter_index_doc_batches(case_dir, stats=cap_stats, run_id=run_id):
                     docs_total += len(batch_docs)
-                    errors += _bulk_insert(client, name, batch_docs)
+                    errors += _bulk_insert(client, name, batch_docs, rejected=rejected)
                     if docs_total % 50_000 < len(batch_docs):
                         log.info("indexed %d docs…", docs_total)
                 refreshed = client.post(f"/{name}/_refresh")
@@ -1662,6 +1685,7 @@ def index_case(
             "index": name,
             "docs": docs_total,
             "errors": errors,
+            "rejected": rejected,
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": False,
