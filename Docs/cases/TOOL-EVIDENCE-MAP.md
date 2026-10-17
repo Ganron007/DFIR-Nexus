@@ -139,7 +139,7 @@ additionally mounted: `H:\` (KAPE triage volume) and `E:\Evidence_files\500`
 | Kansa / KAPE pre-collected | `01-windows/{kansa,services,tasks}/**` CSVs, `kape-out/` | N2 pre-collected lane | — |
 | USN `$J` (parsed) | `02-memory/508-precooked/ntfs-anti-forensics/usnjrnl-rd01.csv` | MFTECmd `-f $J` needs the raw file | — |
 | WER minidump | `02-memory/dumps/minidump.dmp`, `rocba-508/minidump.dmp` | strings, YARA (on-demand) | — |
-| Defender quarantine | `02-memory/508-precooked/malware/quarantine.{csv,tar}` | maldump not-wired (CSV present) | — |
+| Defender quarantine | `02-memory/508-precooked/malware/quarantine.{csv,tar}` | not read by the lane by design (CSV present) | — |
 | PowerShell transcript | `04-network/572/.../tshark_objects/...PowerShell_transcript*.txt` | copy into extractions (plain text) | grep / strings |
 | Linux logs | `03-linux/{auth.log,syslog,audit.log,bash_history,journal.json}`, `04-network/572/.../var/log/{secure,audit.log,wtmp,lastlog,btmp}` | — | grep, awk, plaso |
 | Linux collect / plaso store | `03-linux/528/{collect,plaso,psort,mft}.tar.gz` | — | plaso `log2timeline.py`, `psort.py` |
@@ -184,7 +184,7 @@ exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
 | Family | Consuming tool | Source | Action |
 |---|---|---|---|
 | BITS `qmgr*` | BitsParser | `H:\` E01: `ProgramData\Microsoft\Network\Downloader` | elevated read, or SIFT `fls`/`icat` |
-| Defender quarantine | maldump / ingest | `H:\` E01: `...\Windows Defender\Quarantine` | elevated read, or SIFT `fls`/`icat` |
+| Defender quarantine | not read by the lane | `H:\` E01: `...\Windows Defender\Quarantine` | not in the lane by design (operator 2026-10-17): the store holds the quarantined files; Defender's detections come from its Operational log, DetectionHistory and MPLog |
 | VSS snapshots | vshadowinfo / mount | `H:\` E01: `System Volume Information` | elevated read; confirm store exists |
 | WER report contents | strings / YARA | `H:\` E01: `...\WER\ReportArchive\*` | ACL denied — operator copy |
 | `iconcache_*.db` | thumbcache_viewer_cmd | `H:\` E01: `Windows\Explorer` (denied); `I:\` has thumbcache only | elevated read, or SIFT `fls`/`icat` |

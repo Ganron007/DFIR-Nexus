@@ -460,7 +460,6 @@ def doctor(
         ("zircolite", extra / "zircolite"),
         ("yara", extra / "yara"),
         # WO-TA items 5-6: the lane wrappers are tracked source; the binary or package they call is pinned.
-        ("maldump wrapper", extra / "maldump" / "run-maldump.py"),
         ("pff-ost wrapper", extra / "pff" / "run-pff-ost.py"),
         ("wmi-parser wrapper", extra / "wmi-parser" / "run-wmi-parser.py"),
         ("memprocfs wrapper", extra / "memprocfs" / "run-memprocfs.py"),
@@ -474,7 +473,7 @@ def doctor(
     except Exception as exc:  # noqa: BLE001
         typer.echo(f"  [miss] pin memprocfs python: {exc}")
     import importlib.metadata as _meta
-    for dist in ("maldump", "pyhindsight", "libpff-python"):
+    for dist in ("pyhindsight", "libpff-python"):
         try:
             typer.echo(f"  [ok] pin {dist}: {_meta.version(dist)}")
         except Exception as exc:  # noqa: BLE001

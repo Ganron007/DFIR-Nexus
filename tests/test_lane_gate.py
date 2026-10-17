@@ -287,12 +287,12 @@ def test_failed_job_is_named_as_pending(tmp_path: Path):
 
 
 def test_a_blocked_parser_on_present_evidence_is_never_clear(tmp_path: Path):
-    """D43/D53: a parser that could not run on evidence that IS present (maldump not
-    elevated) is BLOCKED. A SKIP would read as not applicable and clear the gate."""
+    """D43/D53: a parser that could not run on evidence that IS present (dhparser not
+    installed) is BLOCKED. A SKIP would read as not applicable and clear the gate."""
     blocked_row = {
-        "tool": "maldump",
-        "purpose": "Defender quarantine metadata (maldump)",
-        "reason": "Defender quarantine present, but this lane is not elevated",
+        "tool": "dhparser",
+        "purpose": "Defender DetectionHistory (dhparser)",
+        "reason": "dhparser not installed: the evidence is present and was not examined",
         "status": "BLOCKED",
     }
     gate = write_lane_gate(tmp_path, "RUN-1", [blocked_row], ts="2026-10-10T00:00:00Z")

@@ -110,35 +110,6 @@ function Install-WoTaPins {
         Copy-Item (Join-Path $mpDest $dll) -Destination $pkg -Force
     }
 
-    Install-PinnedWheel "maldump" "0.5.0" `
-        "https://files.pythonhosted.org/packages/27/22/2d94b48d2ed4948f3324232b5a60dca3fdefaf91dd049e4de82b0e75e8f5/maldump-0.5.0-py3-none-any.whl" `
-        "5c7ed44d408fe6a454dbca3bc47795d09cdf0601035fd8fa0dc6004e730c5d6e" "GPL-3.0"
-    # Declared runtime deps of maldump 0.5.0, which pins kaitaistruct==0.10 and arc4==0.4.0 exactly, so these two
-    # do not move until maldump does. arc4 0.4.0 has no Python 3.14 wheel either (0.5.0 has none).
-    Install-PinnedWheel "colorama" "0.4.6" `
-        "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl" `
-        "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6" "BSD-3-Clause"
-    Install-PinnedWheel "defusedxml" "0.7.1" `
-        "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl" `
-        "a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61" "PSF-2.0"
-    Install-PinnedWheel "kaitaistruct" "0.10" `
-        "https://files.pythonhosted.org/packages/4e/bf/88ad23efc08708bda9a2647169828e3553bb2093a473801db61f75356395/kaitaistruct-0.10-py2.py3-none-any.whl" `
-        "a97350919adbf37fda881f75e9365e2fb88d04832b7a4e57106ec70119efb235" "MIT"
-    # maldump 0.5.0 declares these. arc4 0.4.0 publishes no cp314 wheel, so the
-    # pinned sdist is built for this interpreter. types-colorama is a stub only.
-    Install-PinnedWheel "colorama" "0.4.6" `
-        "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl" `
-        "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6" "BSD-3-Clause"
-    Install-PinnedWheel "defusedxml" "0.7.1" `
-        "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl" `
-        "a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61" "PSF-2.0"
-    Install-PinnedWheel "kaitaistruct" "0.10" `
-        "https://files.pythonhosted.org/packages/4e/bf/88ad23efc08708bda9a2647169828e3553bb2093a473801db61f75356395/kaitaistruct-0.10-py2.py3-none-any.whl" `
-        "a97350919adbf37fda881f75e9365e2fb88d04832b7a4e57106ec70119efb235" "MIT"
-    Install-PinnedWheel "arc4" "0.4.0" `
-        "https://files.pythonhosted.org/packages/63/2d/abd2c4d7ac0b515c63787a32e7ccb47c6a66fb4cd33ac5ad159fb2bf64b2/arc4-0.4.0.tar.gz" `
-        "d431b53d11b24d62521dbbd06d755bf9d6d11a03cc7bbbdf37a13a12ee0747b6" "MIT"
-
     Write-Host "==> mplog_parser v1.0 (MIT)"
     $mplog = Join-Path $Ext "mplog_parser.exe"
     Save-PinnedFile "mplog_parser" `

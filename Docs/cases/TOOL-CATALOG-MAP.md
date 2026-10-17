@@ -69,7 +69,7 @@ Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the bin
 | `mactime` | mactime.pl | `tools/timeline/mactime.yaml` | `mft` | Windows catalog has the Perl script; **lane runs mactime on SIFT** after MFTECmd `--body` |
 | `kape` | KAPE | `tools/triage/kape.yaml` | `bits_jobs`, `ual` | **on-demand** collection (not a host-triage parser) |
 | `capa` | capa | `tools/malware/capa.yaml` | — | **on-demand** (named executable) |
-| `yara` | yara64 | `tools/malware/yara.yaml` | `wer`, `defender_quarantine` (with maldump) | **on-demand** |
+| `yara` | yara64 | `tools/malware/yara.yaml` | `wer`, `defender_quarantine` | **on-demand** |
 | `densityscout` | densityscout | `tools/malware/densityscout.yaml` | — | **on-demand** (intake `sample_files`) |
 | `thumbcache_viewer` | thumbcache_viewer_cmd | `tools/analysis/thumbcache_viewer.yaml` | `thumbcache` | **extra** — fetched v1.0.2.1 (official CMD release), CLI verified; not auto-run until a lane job is wired |
 | `bmc-tools` | bmc-tools.py | `tools/analysis/bmc_tools.yaml` | `rdp_bitmap_cache` | if Cache tiles present **and** installed; else one SKIP |
@@ -129,7 +129,7 @@ These teach the examiner; they are **not** in `_WIN_CATALOG` or SIFT `catalog/*.
 | Card | Why it exists | Lane |
 |------|----------------|------|
 | Hindsight | Browser alternative; Windows path is SQLECmd | **wired** per Chrome profile (`-i <profile> -o <file> -f jsonl`); fetched via `Tools/fetch-windows-tools.ps1` (pip pyhindsight + ccl_chromium_reader) |
-| maldump | Defender quarantine | on-demand if binary added later; YAML lists it honestly |
+| maldump | Defender quarantine | not in the lane by design (operator 2026-10-17): the store holds the quarantined files; Defender's detections come from its Operational log, DetectionHistory and MPLog |
 | Photorec, CyLR, LogParser, MemProcFS, AppCompat Processor, 1768_cobalt | Reference / predecessor coverage | not-wired |
 | MCP cards (`search`, `check_file`, …) | Nexus MCP, not host binaries | N/A |
 
@@ -166,7 +166,7 @@ Presence comes from `locations` globbed against the image root (`artifact_map.py
 | setupapi, powershell_transcripts, psreadline | — (plain text) | **copy** into extractions; no parser |
 | wer | strings, YARA | on-demand via `sample_files` (minidumps are file-targeted) |
 | digital_signatures | sigcheck, exiftool | on-demand (named file) |
-| defender_quarantine | EvtxECmd, Hayabusa, maldump | EVTX scheduled; maldump still not-wired |
+| defender_quarantine | EvtxECmd, Hayabusa, mplog, dhparser | EVTX, MPLog and DetectionHistory scheduled; the quarantine store is not read |
 | bits_jobs | BitsParser, esedbexport | BitsParser if `qmgr.db` present **and** installed |
 | ual | KStrike, esedbexport | KStrike if SUM `*.mdb` present **and** installed (Server) |
 | volume_shadow_copies | vshadowinfo, vshadowmount, vssadmin | on-demand SIFT; vssadmin live |
@@ -224,7 +224,7 @@ These need a **named file** (and yara needs a rules path). Scanning `C:\Windows`
 |------|------------------------------|
 | streams.exe / osslsigncode | ADS / Authenticode — MFTECmd lists streams; sigcheck is on-demand for a named file |
 | wmi_persistence.py | WMI subscriptions are already RECmd + WMI EVTX |
-| maldump | Defender quarantine blobs; EVTX still runs; binary not fetched |
+| maldump | not in the lane by design (operator 2026-10-17): the store holds the quarantined files; Defender's detections come from its Operational log, DetectionHistory and MPLog |
 | Suzaku + Chainsaw + Hayabusa all three | All cataloged; lane keeps Hayabusa + EvtxECmd so we do not triple-parse EVTX |
 | NTFS Log Tracker GUI / Thumbcache Viewer GUI | CLI counterparts are cataloged; not auto-run until argv is verified |
 

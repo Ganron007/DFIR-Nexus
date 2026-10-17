@@ -18,7 +18,6 @@ The LLM does **not** choose whether mandatory parsers run.
 from __future__ import annotations
 
 import contextlib
-import ctypes
 import hashlib
 import logging
 import os
@@ -2073,16 +2072,6 @@ def _usb_serials_from_setupapi(path: Path) -> list[str]:
     return found
 
 
-def _is_elevated() -> bool:
-    """True when this process holds Administrator rights (always True off Windows)."""
-    if os.name != "nt":
-        return True
-    try:
-        return bool(ctypes.windll.shell32.IsUserAnAdmin())
-    except (AttributeError, OSError):
-        return False
-
-
 def _unique_name(src: Path) -> str:
     """A file name that cannot collide with another source file (R11).
 
@@ -2129,18 +2118,9 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
     else:
         skip("dhparser", "no Defender DetectionHistory folder")
 
-    quarantine = root / "ProgramData/Microsoft/Windows Defender/Quarantine"
-    if quarantine.is_dir() and any(p.is_file() for p in quarantine.rglob("*")):
-        if not _is_elevated():
-            blocked("maldump", "Defender quarantine present, but this lane is not elevated: "
-                            "maldump needs Administrator rights and was not run")
-        else:
-            out = extractions / "maldump"
-            out.mkdir(parents=True, exist_ok=True)
-            present_tool("maldump", ["maldump", str(root), "-m", "-d", str(out)],
-                          "Defender quarantine metadata (maldump)", 900)
-    else:
-        skip("maldump", "no Defender quarantine entries")
+    # The Defender quarantine store is not read: it holds the quarantined files themselves, and the lane does not
+    # handle samples. What Defender detected, where, when and what it did is in its Operational log (1116/1117,
+    # EvtxECmd and Hayabusa), DetectionHistory and MPLog above (operator 2026-10-17).
 
     wmi = root / "Windows/System32/wbem/Repository/OBJECTS.DATA"
     if wmi.is_file():

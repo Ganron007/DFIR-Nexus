@@ -38,9 +38,8 @@ def triage(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def planned(triage, tmp_path, monkeypatch):
-    """Run the planner with the lane elevated; tool presence is the caller's add_installed."""
-    monkeypatch.setattr(tool_lane, "_is_elevated", lambda: True)
+def planned(triage, tmp_path):
+    """Run the planner; tool presence is the caller's add_installed."""
     extractions = tmp_path / "extractions"
     jobs: list = []
 
@@ -78,32 +77,16 @@ def test_dhparser_is_recursive_over_detection_history(planned, triage):
     assert Path(job.argv[job.argv.index("-o") + 1]) == extractions / "defender_detectionhistory"
 
 
-def test_maldump_is_metadata_only_and_runs_on_the_os_root(planned, triage):
-    jobs, _ = planned
-    job = _job(jobs, "maldump")
-    assert job.argv[:2] == ["maldump", str(triage)]
-    assert "-m" in job.argv and "-q" not in job.argv and "-a" not in job.argv
-
-
-def test_maldump_is_blocked_with_a_reason_when_not_elevated(triage, tmp_path, monkeypatch):
-    monkeypatch.setattr(tool_lane, "_windows_tool_available", lambda key: True)
-    monkeypatch.setattr(tool_lane, "_is_elevated", lambda: False)
-    jobs: list = []
-    tool_lane._plan_defender_and_search(
-        triage, tmp_path / "e",
-        lambda key, argv, purpose, timeout=600, *, source="": jobs.append((key, argv)),
-        lambda tool, reason: jobs.append(("SKIP", tool, reason)),
-        lambda tool, reason: jobs.append(("BLOCKED", tool, reason)),
-    )
-    # Quarantine is present but unreadable: BLOCKED (the gate counts it), never SKIP.
-    assert ("BLOCKED", "maldump",
-            "Defender quarantine present, but this lane is not elevated: "
-            "maldump needs Administrator rights and was not run") in jobs
-    assert not any(entry[0] == "SKIP" and entry[1] == "maldump" for entry in jobs)
+def test_the_quarantine_store_is_not_read(planned):
+    """The lane reads Defender's records, not the files it quarantined (operator 2026-10-17)."""
+    jobs, extractions = planned
+    assert not any("Quarantine" in arg for job in jobs for arg in job.argv)
+    assert not any(job.tool == "maldump" for job in jobs)
+    assert {"mplog", "dhparser"} <= {job.tool for job in jobs if job.status == "PENDING"}
+    assert not (extractions / "maldump").exists()
 
 
 def test_a_missing_parser_on_present_evidence_is_blocked_not_skipped(triage, tmp_path, monkeypatch):
-    monkeypatch.setattr(tool_lane, "_is_elevated", lambda: True)
     monkeypatch.setattr(tool_lane, "_windows_tool_available", lambda key: key != "mplog")
     blocked: dict[str, str] = {}
     tool_lane._plan_defender_and_search(
@@ -177,7 +160,7 @@ def test_absent_artifacts_are_named_skips(tmp_path):
         lambda tool, reason: reasons.setdefault(tool, reason),
         lambda tool, reason: reasons.setdefault(tool, reason),
     )
-    for tool in ("mplog", "dhparser", "maldump", "wmi-parser", "sidr", "pstranscript", "wer", "pff-ost"):
+    for tool in ("mplog", "dhparser", "wmi-parser", "sidr", "pstranscript", "wer", "pff-ost"):
         assert reasons.get(tool), tool
 
 

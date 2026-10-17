@@ -288,7 +288,6 @@ def invokable_tool_key(name: str) -> str:
         "mactime": "mactime",
         "kape": "kape",
         "sigcheck": "sigcheck",
-        "maldump": "maldump",
         "strings": "strings",
         "yara": "yara",
         "icat": "icat",
