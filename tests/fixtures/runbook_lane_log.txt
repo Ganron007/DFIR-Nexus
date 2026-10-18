@@ -1,0 +1,3 @@
+11:53:49  tool RUNNING: logfileparser /LogFileFile:C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\cases\CASE-230BD8C3\evidence\_expanded\sam-adragoon-l-45a05a3adf\sam-adragoon-l\C\$LogFile /OutputPath:C:\STUDY\Github\CADRE-Platfo
+12:03:49  tool FAIL: Command timed out after 600s
+12:04:55  tool RUNNING: logfileparser /LogFileFile:C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\cases\CASE-230BD8C3\evidence\_expanded\sam-ccrocomir-l-996c63e5f0\sam-ccrocomir-l\C\$LogFile /OutputPath:C:\STUDY\Github\CADRE-Plat
