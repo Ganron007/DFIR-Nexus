@@ -49,6 +49,26 @@ def repair_path_escapes(text: str) -> str:
     return _NAME_ESCAPE.sub(fix, text)
 
 
+def json_error_note(text: str) -> str:
+    """Where a reply stops being JSON: the decoder's message and the text around it, for a corrective retry.
+
+    A retry that said only "could not be read" got the same mistake back: on sample S03 (2026-10-18) Muse Spark
+    closed a nested query clause one brace short in its notes, and again in its retry, and the Mode 1 loop stopped
+    after one round. The retry now shows the place. "" when the reply parses.
+    """
+    text = (text or "").strip()
+    start = min((i for i in (text.find("{"), text.find("[")) if i != -1), default=-1)
+    blob = text[start:] if start != -1 else text
+    try:
+        loads_model_json(blob)
+    except json.JSONDecodeError as exc:
+        before, after = blob[max(0, exc.pos - 100):exc.pos], blob[exc.pos:exc.pos + 40]
+        return f"{exc.msg} at character {exc.pos}: ...{before}<<HERE>>{after}..."
+    except ValueError as exc:
+        return str(exc)[:200]
+    return ""
+
+
 def loads_model_json(text: str) -> Any:
     """``json.loads`` of a reply whose path separators are repaired, retried once with invalid
     escapes repaired when that is the error."""

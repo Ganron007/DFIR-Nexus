@@ -32,7 +32,7 @@ from uuid import uuid4
 from nexus.audit import AuditWriter
 from nexus.langgraph import backbone as backbone_module
 from nexus.langgraph.backbone import bind_case_args, tool_contracts_block
-from nexus.langgraph.model_json import loads_model_json
+from nexus.langgraph.model_json import json_error_note, loads_model_json
 from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
@@ -928,7 +928,8 @@ def run_context_loop(
                     "summary": {
                         "error": (
                             "malformed tool-call JSON rejected — resend ONE valid "
-                            "JSON object (no trailing commas, no fence)."
+                            "JSON object (no trailing commas, no fence; close every { and [ you open)."
+                            + (f" Where it broke: {note}" if (note := json_error_note(raw)) else "")
                         ),
                     },
                 })

@@ -223,6 +223,14 @@ def _parse_json_blob(text: str) -> Any:
         return None
 
 
+def _where_it_broke(raw: str) -> str:
+    """The decoder's message and the text around it, for the corrective retry ("" when it parses) (D274)."""
+    from nexus.langgraph.model_json import json_error_note
+
+    note = json_error_note(raw)
+    return f" ({note})" if note else ""
+
+
 def _as_list(value: Any) -> list[Any]:
     """LLM JSON often returns an id-keyed object where a list was asked for —
     accept both, never raise."""
@@ -753,10 +761,11 @@ async def run_interpret_loop(
         raw = await _call_model(model, [
             {"role": "system", "content": orient_system},
             {"role": "user", "content": (
-                packed + "\n\nYour previous reply could not be read as the plan JSON. Return ONLY "
+                packed + "\n\nYour previous reply could not be read as the plan JSON"
+                + _where_it_broke(raw) + ". Return ONLY "
                 "one JSON object with the keys hypotheses, queries, aggregates, samples and tools. "
                 "Every value must be valid JSON: no comments, no trailing commas and no '...' "
-                "placeholders.")},
+                "placeholders; close every { and [ you open.")},
         ])
         plan_data = _parse_json_blob(raw)
         plan = _normalize_plan(plan_data)
@@ -898,9 +907,11 @@ async def run_interpret_loop(
             raw = await _call_model(model, [
                 {"role": "system", "content": verify_system},
                 {"role": "user", "content": (
-                    packed + "\n\nYour previous reply could not be read as the notes JSON. "
+                    packed + "\n\nYour previous reply could not be read as the notes JSON"
+                    + _where_it_broke(raw) + ". "
                     "Return ONLY one JSON object with the keys notes and next. Every value must "
-                    "be valid JSON: no comments, no trailing commas and no '...' placeholders.")},
+                    "be valid JSON: no comments, no trailing commas and no '...' placeholders; close "
+                    "every { and [ you open.")},
             ])
             data = _parse_json_blob(raw)
         if raw.strip() and not (isinstance(data, dict) and ("notes" in data or "next" in data)):
