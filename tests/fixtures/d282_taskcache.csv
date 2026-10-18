@@ -1,0 +1,3 @@
+﻿Version,BatchKeyPath,KeyName,BatchValueName,Path,CreatedOn,LastStart,LastStop,TaskState,LastActionResult,Source,Description,Author
+3,,{0016B09F-CFDA-4F5B-A70B-84A75599B89B},,\Microsoft\Windows\DeviceDirectoryClient\HandleWnsCommand,2020-09-27 14:34:08.2417281,,,0,0,,,
+3,,{00446CF1-8668-472D-BEDD-D0BB88DBA009},,\Microsoft\Windows\Registry\RegIdleBackup,2020-09-22 14:34:08.2573369,2020-11-11 22:25:42.1635239,2020-11-11 22:25:42.1829303,0,0,"$(@%systemroot%\system32\regidle.dll,-601)","$(@%systemroot%\system32\regidle.dll,-602)","$(@%systemroot%\system32\regidle.dll,-600)"

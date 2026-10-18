@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import csv
 import json
 import os
 import re
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -459,6 +461,27 @@ def _ingest_limit() -> int:
 
 
 @lock_case_writes(case_arg=1)
+def _placed_tool_csv(path: Path, case_dir: Path) -> tuple[str, Path, int] | None:
+    """A tool's CSV the examiner already ran, placed for the index as that tool's output (D283, 2026-10-18).
+
+    EvtxECmd, MFTECmd, PECmd or RECmd output is indexed as its family from ``ingest/<family>/``, the copy that
+    registering the CSV on its own makes. A CSV inside a registered folder was read again as generic rows (sample
+    S09: 626,255 rows under no family) or failed on an importer the family does not have. Returns the family, the
+    placed copy and its row count, or None when the CSV is no known tool's.
+    """
+    from nexus.ingest.fingerprint import place_recognized_csv
+
+    if path.suffix.lower() != ".csv":
+        return None
+    dest = place_recognized_csv(path, case_dir / "ingest")
+    if dest is None:
+        return None
+    csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
+    with dest.open(encoding="utf-8-sig", errors="replace", newline="") as fh:
+        rows = max(sum(1 for _ in csv.reader(fh)) - 1, 0)
+    return dest.parent.name, dest, rows
+
+
 def ingest_into_case(
     path: Path,
     case_dir: Path,
@@ -482,6 +505,25 @@ def ingest_into_case(
     except (OSError, EOFError) as exc:
         return {"success": False, "error": f"gzip: {exc}", "artifacts": 0, "path": str(original)}
     path = working or original
+    if source is None:
+        placed = _placed_tool_csv(path, Path(case_dir))
+        if placed is not None:
+            family, dest, rows = placed
+            if audit:
+                with contextlib.suppress(Exception):
+                    from nexus.audit import AuditWriter
+
+                    AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").log(
+                        tool="ingest_auto",
+                        params={"path": str(original), "source": "",
+                                **({"working_copy": str(working)} if working else {})},
+                        result_summary={"success": True, "artifacts": rows, "source": family,
+                                        "placed_at": str(dest)},
+                        source="pipeline",
+                        input_files=[str(original)],
+                    )
+            return {"success": True, "source": family, "artifacts": rows, "artifacts_total": rows,
+                    "artifacts_capped": False, "errors": [], "placed_at": str(dest), "path": str(original)}
     resolved, err = resolve_ingest_source(path, source)
     if err:
         return {"success": False, "error": err, "artifacts": 0, "path": str(original)}

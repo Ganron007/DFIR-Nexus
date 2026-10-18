@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import shutil
 from pathlib import Path
 
 
@@ -53,9 +54,10 @@ def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
     if not source.is_file() or source.suffix.lower() != ".csv":
         return None
     try:
-        # utf-8-sig: a BOM-prefixed header is still the same header (R12).
-        lines = source.read_text(encoding="utf-8-sig", errors="replace").splitlines()
-        header = lines[0] if lines else ""
+        # utf-8-sig: a BOM-prefixed header is still the same header (R12). Only
+        # the first line is read: a tool CSV can be gigabytes (EvtxECmd, 1.8 GB).
+        with source.open(encoding="utf-8-sig", errors="replace", newline="") as fh:
+            header = fh.readline().rstrip("\r\n")
     except OSError:
         return None
     family = family_for_csv_header(header)
@@ -68,21 +70,28 @@ def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
         return source
     except ValueError:
         pass
-    data = source.read_bytes()
-    digest = hashlib.sha256(data).hexdigest()
+    digest = _sha256(source)
     dest = dest_dir / source.name
     if dest.exists():
         # Two different files that share a name (two hosts' parsed.csv) must
         # not overwrite each other (R11). Equal bytes are one copy, deduplicated;
         # different bytes get a content-named sibling, and the original stays
         # registered under its own evidence id.
-        if hashlib.sha256(dest.read_bytes()).hexdigest() == digest:
+        if _sha256(dest) == digest:
             return dest
         dest = dest_dir / f"{source.stem}-{digest[:12]}{source.suffix}"
         if dest.exists():
             return dest
-    dest.write_bytes(data)
+    shutil.copyfile(source, dest)
     return dest
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 _RAW_HINTS: dict[str, tuple[str, ...]] = {

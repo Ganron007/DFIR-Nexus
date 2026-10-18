@@ -85,6 +85,13 @@ def _confirmed(source: ArtifactSource, path: Path) -> bool:
     return False
 
 
+def _confirmed_or_generic(source: ArtifactSource | None, path: Path) -> ArtifactSource | None:
+    """A header-detected source when its importer recognises the file, else the generic CSV reader."""
+    if source in (None, ArtifactSource.GENERIC_CSV) or _confirmed(source, path):
+        return source
+    return ArtifactSource.GENERIC_CSV
+
+
 def detect_format(path: Path) -> ArtifactSource | None:
     """Sniff a file and return the best-matching ArtifactSource.
 
@@ -313,11 +320,13 @@ def detect_format(path: Path) -> ArtifactSource | None:
         if VpcFlowLogImporter.can_handle(path):
             return ArtifactSource.AWS_VPC_FLOW
 
-        # CSV/TSV-based formats
+        # CSV/TSV-based formats. A header word is a hint the hinted importer confirms on the content, as a name
+        # is: RECmd's TaskCache CSV has an Author column, went to the task-XML importer by it, and gave 0 rows
+        # (sample S09, 2026-10-18). An importer that does not recognise the file leaves it to the generic reader.
         if "\t" in head[:2000] and "\n" in head[:2000]:
-            return _detect_tsv_format(head, name_lower)
+            return _confirmed_or_generic(_detect_tsv_format(head, name_lower), path)
         if "," in head[:2000] and "\n" in head[:2000]:
-            return _detect_csv_format(head, name_lower)
+            return _confirmed_or_generic(_detect_csv_format(head, name_lower), path)
 
         # XML-based formats
         stripped_head = head.lstrip()
