@@ -272,6 +272,9 @@ family_columns:
     proto: ecs.network.transport
     service: ecs.network.protocol
     query: ecs.dns.question.name
+    # D287 (2026-10-18): ftp.log's FTP login, as Elastic's Zeek integration maps `ftp.user`. Zeek's "no USER seen"
+    # default is an absent value (`absent_values` below).
+    user: ecs.user.name
   suricata:
     src_ip: ecs.source.ip
     src_port: ecs.source.port
@@ -307,6 +310,25 @@ family_columns:
     user: ecs.user.name
     host: ecs.host.name
     process_id: ecs.process.pid
+
+# ── A row's host and user, for tool families whose column names do not say it (D287, 2026-10-18) ──
+# The importer's slots (`family_columns.ingest`) name a row's host and user for rows the importer pass wrote. A tool's
+# own output is read by name (`computer`, `host`, `user`, ...) unless its family is listed here: then only the columns
+# named here are its host and user, and none when the list is empty.
+event_host_user:
+  # Zeek: `host` is the HTTP Host header in http.log and a network address in known_hosts.log and software.log, so no
+  # Zeek column is the row's host; `user` is ftp.log's FTP login.
+  zeek: {host: [], user: [user]}
+  # Hindsight (browser history): `host` is a cookie's or a visited URL's domain, not the machine.
+  hindsight: {host: [], user: []}
+
+# ── Values a tool writes for "none" (D287) ──
+# Each from the producing tool's own source, pinned; such a value is not mapped and is not a row's host or user.
+absent_values:
+  zeek:
+    # Zeek 9.0.0 base/protocols/ftp/info.zeek:34 `user: string &log &default="<unknown>";`
+    # (sha256 cbf5333fa4c33927e59d73ef6434ebb8e4254382fc457e27efd54275b1b19b93): no USER command was seen.
+    user: ["<unknown>"]
 
 # ── Fields that must be keyword-typed with a wildcard subfield ──
 # (command lines and paths are searched by wildcard).

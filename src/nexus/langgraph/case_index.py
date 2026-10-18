@@ -147,7 +147,10 @@ _FORENSIC_TEXT_ANALYSIS = {
 # v16 (2026-10-18, D271): `fields` holds column names, not paths (`subobjects: false`): Zeek's `id.orig_h` beside the
 # importers' `id` column made Elasticsearch reject every Zeek row with an address. An index built before it must be
 # rebuilt.
-INDEX_SCHEMA_VERSION = 16
+# v17 (2026-10-18, D287): a tool family's host and user come from the columns its ECS map names (Zeek's HTTP Host
+# header and FTP default, Hindsight's cookie domains are no row's host or user). An index built before it must be
+# rebuilt.
+INDEX_SCHEMA_VERSION = 17
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -774,7 +777,20 @@ _USER_KEYS = frozenset((
 _EVENT_KEYS = frozenset(("eventid", "event_id", "eventcode"))
 
 
-def _host_user_event(fields: dict[str, str]) -> tuple[str, str, str]:
+def _host_user_event(fields: dict[str, str], family: str = "", importer: bool = False) -> tuple[str, str, str]:
+    """A row's host, user and event id. A tool family whose ECS map names its host and user columns is read only
+    through those (D287: Zeek's `host` is an HTTP Host header, its FTP `user` default `<unknown>`); otherwise, and for a
+    row the importer pass wrote, by the generic column names."""
+    from nexus.langgraph.ecs_normalize import declared_host_user, is_absent
+
+    declared = None if importer else declared_host_user(family)
+    if declared is not None:
+        host_cols, user_cols = declared
+
+        def _first(cols: tuple[str, ...]) -> str:
+            return next((str(fields[c]) for c in cols if fields.get(c) and not is_absent(family, c, fields[c])), "")
+
+        return _first(host_cols), _first(user_cols), _pick_field(fields, _EVENT_KEYS)
     host = _pick_field(fields, _HOST_KEYS)
     user = ""
     for name, value in fields.items():
@@ -907,7 +923,7 @@ def iter_index_doc_batches(
         })
 
     def _add(path: Path, root: Path, fam: str, i: int, line: str,
-             fields: dict[str, str] | None = None, count_key: str | None = None) -> bool:
+             fields: dict[str, str] | None = None, count_key: str | None = None, importer: bool = False) -> bool:
         nonlocal total
         # Source/provenance columns carry the machine path the parser read
         # (EvtxECmd SourceFile, RECmd HivePath, ...) — that is routing
@@ -943,7 +959,7 @@ def iter_index_doc_batches(
             # it whole). The storage cap is applied only to `doc["fields"]` below.
             full_fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
                                              family=fam)
-            host, user, event = _host_user_event(full_fields)
+            host, user, event = _host_user_event(full_fields, fam, importer)
             doc["fields"] = _stored_field_values(full_fields)
             if host:
                 doc["host"] = host.lower()
@@ -952,11 +968,11 @@ def iter_index_doc_batches(
             if event:
                 doc["event_id"] = str(event)[:40]
             # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
-            ecs = normalize(fam, full_fields, None)
+            ecs = normalize(fam, full_fields, None, importer=importer)
             if ecs:
                 doc["ecs"] = ecs
         else:
-            ecs = normalize(fam, fields, None)
+            ecs = normalize(fam, fields, None, importer=importer)
             if ecs:
                 doc["ecs"] = ecs
         # 4k.4: parsed time columns first (TimeCreated/ts/…), then row text;
@@ -1114,7 +1130,7 @@ def iter_index_doc_batches(
                         art_fields[key_name] = str(value)
             family_key = (fam.replace("/", "_").replace("\\", "_") or "ingest")
             if _add(ingest_store, case_dir, fam, n, text, art_fields or None,
-                    count_key=f"{family_key}/artifacts.jsonl"):
+                    count_key=f"{family_key}/artifacts.jsonl", importer=True):
                 family_counts[fam] = family_counts.get(fam, 0) + 1
             if len(out) >= batch:
                 yield out

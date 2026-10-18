@@ -28,7 +28,8 @@ def _network_fixture_columns() -> dict[str, set[str]]:
 
     fx = REPO / "tests/fixtures/d117"
     out: dict[str, set[str]] = {"zeek": set(), "suricata": set(), "network": set()}
-    for name in ("zeek/http-bro-org/conn.log", "zeek/dns53/dns.log"):
+    # D287: the header of a real Zeek 9.0.0 ftp.log (its column names only, no rows).
+    for name in ("zeek/http-bro-org/conn.log", "zeek/dns53/dns.log", "zeek/ftp-header/ftp.log"):
         for line in (fx / name).read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith("#fields"):
                 out["zeek"].update(line.split("\t")[1:])

@@ -43,6 +43,20 @@ MAX_EVENT_DATA = None
 MAX_GENERIC = None
 
 
+def declared_host_user(family: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """The (host, user) columns a tool family's map names (`event_host_user`), or None when it names none (D287)."""
+    entry = (load_ecs_map().get("event_host_user") or {}).get(str(family or "").strip().lower())
+    if not isinstance(entry, dict):
+        return None
+    return (tuple(str(c) for c in entry.get("host") or ()), tuple(str(c) for c in entry.get("user") or ()))
+
+
+def is_absent(family: str, column: str, value: Any) -> bool:
+    """True when ``value`` is what the family's tool writes for "none" in ``column`` (`absent_values`, D287)."""
+    table = (load_ecs_map().get("absent_values") or {}).get(str(family or "").strip().lower()) or {}
+    return str(value).strip() in {str(v) for v in table.get(column) or ()}
+
+
 def _set(doc: dict[str, Any], path: str, value: Any, limit: int | None = None) -> None:
     """Set a dotted path, creating intermediate dicts. Empty/None is skipped.
 
@@ -202,8 +216,15 @@ def normalize(
     family: str,
     fields: dict[str, Any] | None,
     record: dict[str, Any] | None = None,
+    *,
+    importer: bool = False,
 ) -> dict[str, Any]:
-    """The `ecs` sub-document for one row (empty dict when nothing maps)."""
+    """The `ecs` sub-document for one row (empty dict when nothing maps).
+
+    ``importer`` marks a row the importer pass wrote: its `host` and `user` are the importer's typed slots. In a
+    tool's own output they are the tool's column names, and a family whose map names its host and user columns
+    (`event_host_user`) is read only through those (D287).
+    """
     emap = load_ecs_map()
     if not emap:
         return {}
@@ -268,12 +289,17 @@ def normalize(
     path_transform = str(fam_table.get("__path_transform__") or "first")
     ingest_table = tables.get("ingest") if isinstance(tables.get("ingest"), dict) else {}
 
+    declared = None if importer else declared_host_user(fam)
     file_path_parts: list[str] = []
     for table in (fam_table, ingest_table):
         for column, dst in table.items():
             if str(column).startswith("__") or column not in fields:
                 continue
             value = fields[column]
+            if is_absent(fam, str(column), value):
+                continue
+            if declared is not None and table is ingest_table and dst in ("ecs.host.name", "ecs.user.name"):
+                continue  # this family names its own host and user columns (D287)
             if fam == "hayabusa" and dst in from_event:
                 continue  # its Channel column is the abbreviation; the channel read back stands (D232)
             if fam == "evtxecmd":
@@ -312,7 +338,9 @@ def normalize(
     # 3. Core envelope always present.
     for key, dst in (("family", "ecs.event.dataset"), ("host", "ecs.host.name"),
                      ("user", "ecs.user.name"), ("event_id", "ecs.event.code")):
-        if fields.get(key):
+        if declared is not None and key in ("host", "user"):
+            continue  # read above, from the columns this family's map names (D287)
+        if fields.get(key) and not is_absent(fam, key, fields[key]):
             _set(ecs, dst, str(fields[key])[:512])
     for key, dst in (("host", "ecs.host.name"), ("user", "ecs.user.name")):
         if record.get(key):
