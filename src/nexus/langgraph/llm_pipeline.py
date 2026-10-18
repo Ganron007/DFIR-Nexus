@@ -937,6 +937,17 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         """Per-job tool events -> the same live feed the stages use."""
         emit_stage(state, "tool", status, detail, **extra)
 
+    # D276: an archive in the evidence is expanded first, and the tree it holds is planned like registered evidence;
+    # the archive file itself is then not an importer's input.
+    from nexus.config import settings as _arch_settings
+    from nexus.langgraph.evidence_archives import archive_gate_rows, expand_archives
+
+    registered = [p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p]
+    expansions = expand_archives([str(p) for p in registered], _arch_settings.cases_root / case_id)
+    expanded_roots = [e["root"] for e in expansions if e["status"] == "OK"]
+    consumed_archives = {str(Path(e["archive"])) for e in expansions}
+    lane_paths = [*registered, *expanded_roots]
+
     result = await run_tool_lane(
         tools=tools,
         evidence_path=state.get("evidence_path") or "",
@@ -946,17 +957,22 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         parse_result=_parse_tool_result,
         skip_rag=True,
         pipeline_mode=mode,
-        evidence_paths=state.get("evidence_paths") or None,
+        evidence_paths=(lane_paths if expansions else state.get("evidence_paths")) or None,
         on_event=_lane_event,
     )
+    if expansions:
+        from nexus.langgraph.lane_gate import record_import_results
+
+        record_import_results(_arch_settings.cases_root / case_id, archive_gate_rows(expansions))
+        result.setdefault("step_log", [])
+        result["step_log"] = [*result["step_log"], *(
+            f"I0 archive {Path(e['archive']).name}: {e['status']} - {e['reason']}" for e in expansions)]
     # Phase 4h: every registered path is planned by the lane; paths the Windows
     # tool lane cannot parse (PCAP/Zeek/Suricata/cloud/syslog) go to importers.
     from nexus.ingest.detect import is_raw_container
     from nexus.langgraph.tool_lane import is_host_evidence
 
-    all_paths = [
-        p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p
-    ]
+    all_paths = lane_paths
     # Directories are routed PER FILE: a mixed tree (one EVTX + pcaps/zeek
     # logs) used to send the WHOLE tree to the host lane, silently skipping
     # every non-host file.
@@ -983,6 +999,8 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                             _import_truncated += 1
                             continue
                         fp = str(Path(root_dir) / fname)
+                        if fp in consumed_archives:
+                            continue  # expanded above (D276): its contents are planned, not the file
                         if is_raw_container(Path(fp)):
                             raw_skipped.append(fname)
                             continue
@@ -990,6 +1008,8 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                             ingest_paths.append(fp)
             except OSError:
                 continue
+        elif str(p_path) in consumed_archives:
+            continue
         elif is_raw_container(p_path):
             raw_skipped.append(p_path.name)
         elif not is_host_evidence(p):
