@@ -119,9 +119,12 @@ def _evidence_digests(paths: list[str], archives: set[Path]) -> set[tuple[int, s
     return out
 
 
-def expand_archives(paths: list[str], case_dir: Path) -> list[dict[str, Any]]:
-    """Expand each archive in the registered evidence; one record per archive (status OK or FAIL, with the root)."""
-    archives = find_archives(paths)
+def expand_archives(paths: list[str], case_dir: Path, exclude: set[Path] | None = None) -> list[dict[str, Any]]:
+    """Expand each archive in the registered evidence; one record per archive (status OK or FAIL, with the root).
+
+    ``exclude`` holds files that belong to something read another way, such as an AXIOM case's own log archive.
+    """
+    archives = [a for a in find_archives(paths) if a not in (exclude or set())]
     if not archives:
         return []
     base = Path(case_dir) / "evidence" / "_expanded"

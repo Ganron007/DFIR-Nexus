@@ -173,6 +173,7 @@ _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.network.zeek", "ZeekImporter"),
     ("nexus.ingest.network.bind", "BindQueryLogImporter"),
     ("nexus.ingest.siem.ossec", "OssecAlertsImporter"),
+    ("nexus.ingest.df.axiom", "AxiomCaseImporter"),
     ("nexus.ingest.siem.elastic", "ElasticImporter"),
     ("nexus.ingest.siem.splunk", "SplunkImporter"),
     ("nexus.ingest.ti.abuseipdb", "AbuseIPDBImporter"),

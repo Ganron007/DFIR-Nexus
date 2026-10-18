@@ -68,6 +68,7 @@ class ArtifactSource(StrEnum):
     NETFLOW = "netflow"
     BIND = "bind"
     OSSEC = "ossec"
+    AXIOM = "axiom"
     SPREADSHEET = "spreadsheet"
     AWS_VPC_FLOW = "aws_vpc_flow"
     AWS_S3_ACCESS = "aws_s3_access"

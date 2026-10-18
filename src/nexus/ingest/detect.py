@@ -143,6 +143,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
     # A workbook (an examiner's tool report, e.g. SRUM-DUMP's) is read when its importer can open it.
     if suffix in (".xlsx", ".xlsm") and _confirmed(ArtifactSource.SPREADSHEET, path):
         return ArtifactSource.SPREADSHEET
+    # A Magnet AXIOM case database, when its tables say so.
+    if suffix == ".mfdb" and _confirmed(ArtifactSource.AXIOM, path):
+        return ArtifactSource.AXIOM
     if suffix == ".gz":
         if name_lower.endswith(".log.gz"):
             return ArtifactSource.ZEEK
