@@ -311,6 +311,11 @@ def detect_format(path: Path) -> ArtifactSource | None:
 
         if BindQueryLogImporter.can_handle(path):
             return ArtifactSource.BIND
+        # An OSSEC alerts.log, or the Windows events an OSSEC agent forwards, by its lines.
+        from nexus.ingest.siem.ossec import OssecAlertsImporter
+
+        if OssecAlertsImporter.can_handle(path):
+            return ArtifactSource.OSSEC
         # AWS logs read by their lines: an S3 access log's user agent holds commas, a VPC flow log is a header line.
         from nexus.ingest.cloud.aws_s3_access import S3AccessLogImporter
         from nexus.ingest.cloud.aws_vpc_flow import VpcFlowLogImporter
