@@ -23,7 +23,10 @@ if ($Sift) {
     if (-not $Capture) { throw '-Sift needs -Capture <the capture file to stage>' }
     $env:NEXUS_SIFT_SSH_HOST = $SiftHost
     pwsh -NoProfile -File scripts/stage-sift-evidence.ps1 -CaseId $CaseId -Evidence $Capture
-    python -m nexus sift setup --case $CaseId
+    # The host runs this tree's code: setup refuses to start the MCP on stale code, and --sync-code pushes this
+    # tree (the host's previous src is kept as src.bak-<stamp>).
+    python -m nexus sift setup --case $CaseId --sync-code
+    if ($LASTEXITCODE -ne 0) { throw "nexus sift setup failed for $CaseId (exit $LASTEXITCODE): the SIFT lane cannot run" }
     $env:NEXUS_SIFT_MCP_URL = "http://${SiftHost}:4508/mcp"
     $env:NEXUS_SIFT_ZEEK = '1'
     # Set here, in PowerShell: Git Bash rewrites a /home/... value into a Windows path.
