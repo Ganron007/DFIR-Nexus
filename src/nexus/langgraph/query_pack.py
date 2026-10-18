@@ -136,7 +136,14 @@ _SKIP_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 #: the evidence holds. LogFileParser 2.0.0.53 writes `debug.log` into its output folder (its version
 #: banner, its settings and its progress); CASE-C5B04D31's index held 5,135 of its lines, 27 of
 #: them dated by the run.
-_TOOL_OWN_LOGS: dict[str, frozenset[str]] = {"logfileparser": frozenset({"debug.log"})}
+# The files a tool writes about its own run, not about the evidence (D229). D273 (2026-10-18): Suricata's engine log and
+# counters and Zeek's packet filter and loaded scripts are dated by when the tool ran, so samples S03 and S04 read as
+# active on the day of their lane run.
+_TOOL_OWN_LOGS: dict[str, frozenset[str]] = {
+    "logfileparser": frozenset({"debug.log"}),
+    "suricata": frozenset({"suricata.log", "stats.log"}),
+    "zeek": frozenset({"packet_filter.log", "loaded_scripts.log"}),
+}
 _MAX_COLLECT_PER_FILE = _env_int("NEXUS_N4_COLLECT_PER_FILE", 200)
 _USB_TERMS = frozenset({"usbstor", "mountpoints2"})
 _CLOUD_TERMS = frozenset({"googledrive", "drivefs", "my drive"})

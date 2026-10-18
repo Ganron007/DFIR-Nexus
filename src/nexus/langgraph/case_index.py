@@ -573,6 +573,10 @@ def iter_indexable_rows(
         row = _record_fields(line, flatten=_is_suricata_eve(path)) if json_records else _row_fields(line, header)
         if json_records and _is_registry_value(row):
             row[NO_EVENT_TIME_FIELD] = "true"
+        # A Suricata stats event is the engine's counters, stamped when the engine ran, not an event of the evidence
+        # (D273).
+        if json_records and str(row.get("event_type") or "") == "stats" and _is_suricata_eve(path):
+            row[NO_EVENT_TIME_FIELD] = "true"
         yield i, line, row
 
 
