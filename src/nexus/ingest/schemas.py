@@ -68,6 +68,8 @@ class ArtifactSource(StrEnum):
     NETFLOW = "netflow"
     BIND = "bind"
     SPREADSHEET = "spreadsheet"
+    AWS_VPC_FLOW = "aws_vpc_flow"
+    AWS_S3_ACCESS = "aws_s3_access"
     VOLATILITY = "volatility"
     CLOUDTRAIL = "cloudtrail"
     AZURE = "azure"

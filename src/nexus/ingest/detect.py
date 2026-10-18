@@ -139,7 +139,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
     if suffix == ".gz":
         if name_lower.endswith(".log.gz"):
             return ArtifactSource.ZEEK
-        return None  # no importer reads gzip JSON — say so instead of failing silently
+        # The importer pass reads a gzipped file through its decompressed copy (D275); here a .gz is only a
+        # Zeek log by name.
+        return None
     if name_lower.endswith(".tshark.json"):
         return ArtifactSource.WIRESHARK
     # Volatility 3 plugin dumps: windows.psscan.json / windows.pslist.txt
@@ -302,6 +304,14 @@ def detect_format(path: Path) -> ArtifactSource | None:
 
         if BindQueryLogImporter.can_handle(path):
             return ArtifactSource.BIND
+        # AWS logs read by their lines: an S3 access log's user agent holds commas, a VPC flow log is a header line.
+        from nexus.ingest.cloud.aws_s3_access import S3AccessLogImporter
+        from nexus.ingest.cloud.aws_vpc_flow import VpcFlowLogImporter
+
+        if S3AccessLogImporter.can_handle(path):
+            return ArtifactSource.AWS_S3_ACCESS
+        if VpcFlowLogImporter.can_handle(path):
+            return ArtifactSource.AWS_VPC_FLOW
 
         # CSV/TSV-based formats
         if "\t" in head[:2000] and "\n" in head[:2000]:

@@ -405,6 +405,43 @@ def anchor_assumed_years(case_dir: Path) -> dict[str, Any]:
     return {"anchored": anchored, "unresolved": unresolved, "basis": basis}
 
 
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def gunzipped_working_copy(path: Path, case_dir: Path) -> Path | None:
+    """A decompressed working copy of a gzipped file, or None when the file is not gzip (D275).
+
+    Cloud and log exports arrive gzipped: sample S07's CloudTrail records and VPC flow logs are 3,900 ``.gz``
+    files, which no importer read (detection returned "no importer" for any ``.gz`` but a Zeek log). The copy is
+    the inner file, under the case's ingest ``_staged`` folder (never indexed as rows of its own), so every importer
+    reads it as it reads any file; the original stays where it is and the import names it.
+    """
+    import gzip
+    import hashlib
+    import shutil
+
+    try:
+        with path.open("rb") as fh:
+            if fh.read(2) != _GZIP_MAGIC:
+                return None
+    except OSError:
+        return None
+    name = path.name
+    lowered = name.lower()
+    if lowered.endswith(".tgz"):
+        name = name[:-4] + ".tar"
+    elif lowered.endswith(".gz"):
+        name = name[:-3]
+    digest = hashlib.sha1(str(path.resolve()).encode("utf-8", "replace")).hexdigest()[:12]
+    dest = Path(case_dir) / "ingest" / "_staged" / "gunzip" / digest / name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    with gzip.open(path, "rb") as src, part.open("wb") as out:
+        shutil.copyfileobj(src, out, 1 << 20)
+    os.replace(part, dest)
+    return dest
+
+
 def _ingest_limit() -> int:
     """Bound on artifacts stored per ingested file: 0, every row, unless the examiner sets one.
 
@@ -439,16 +476,21 @@ def ingest_into_case(
     from nexus.ingest.detect import resolve_ingest_source
     from nexus.ingest.registry import get_registry
 
-    path = Path(path)
+    original = Path(path)
+    try:
+        working = gunzipped_working_copy(original, Path(case_dir))
+    except (OSError, EOFError) as exc:
+        return {"success": False, "error": f"gzip: {exc}", "artifacts": 0, "path": str(original)}
+    path = working or original
     resolved, err = resolve_ingest_source(path, source)
     if err:
-        return {"success": False, "error": err, "artifacts": 0, "path": str(path)}
+        return {"success": False, "error": err, "artifacts": 0, "path": str(original)}
     if resolved is None:
         return {
             "success": False,
-            "error": f"Could not detect format for {path.name}",
+            "error": f"Could not detect format for {original.name}",
             "artifacts": 0,
-            "path": str(path),
+            "path": str(original),
         }
     cap = limit if limit > 0 else _ingest_limit()
     stored = 0
@@ -466,7 +508,8 @@ def ingest_into_case(
 
             AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").log(
                 tool="ingest_auto",
-                params={"path": str(path), "source": source or ""},
+                params={"path": str(original), "source": source or "",
+                        **({"working_copy": str(working)} if working else {})},
                 result_summary={
                     "success": result.success,
                     "artifacts": result.parsed_lines,
@@ -474,7 +517,7 @@ def ingest_into_case(
                     "persisted": bool(stored),
                 },
                 source="pipeline",
-                input_files=[str(path)],
+                input_files=[str(original)],
             )
     return {
         "success": result.success,
@@ -483,7 +526,7 @@ def ingest_into_case(
         "artifacts_total": result.parsed_lines,
         "artifacts_capped": capped,
         "errors": result.errors[:5],
-        "path": str(path),
+        "path": str(original),
     }
 
 

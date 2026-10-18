@@ -150,6 +150,8 @@ _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.generic.spreadsheet", "SpreadsheetImporter"),
     ("nexus.ingest.cloud.azure", "AzureImporter"),
     ("nexus.ingest.cloud.cloudtrail", "CloudTrailImporter"),
+    ("nexus.ingest.cloud.aws_vpc_flow", "VpcFlowLogImporter"),
+    ("nexus.ingest.cloud.aws_s3_access", "S3AccessLogImporter"),
     ("nexus.ingest.df.amcache", "AmCacheImporter"),
     ("nexus.ingest.df.hayabusa", "HayabusaImporter"),
     ("nexus.ingest.df.kape", "KAPEImporter"),
