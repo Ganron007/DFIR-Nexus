@@ -43,7 +43,7 @@ def family_for_csv_header(header: str) -> str | None:
         return "plaso"
     # D289 (2026-10-18): the other Zimmerman tools, named as the lane names their outputs' folders. Each column set is
     # one that the tool's real output carries in its 2020 and 2026 versions (sample S09's processed outputs and the
-    # ES-Mapping outputs; tests/fixtures/d289_tool_headers). A Jump List's Custom Destinations carry LECmd's target
+    # ES-Mapping outputs; their header lines are kept with the tests). A Jump List's Custom Destinations carry LECmd's target
     # columns too, so the Jump List test comes first.
     if {"sourcefile", "appid", "appiddescription"} <= cols:
         return "jlecmd"
