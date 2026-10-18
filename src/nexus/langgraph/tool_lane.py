@@ -715,6 +715,20 @@ def _plan_single_artifact(
         d = out_dir("lecmd")
         add("lecmd", ["lecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "LNK target/usage", 300)
+    elif suffix in (".ost", ".pst"):
+        # An Outlook store registered on its own (sample S09's Email folder) is
+        # the store the drive-tree plan reads under Users: the same job (D280).
+        if not _windows_tool_available("pff-ost"):
+            jobs.append(ToolJob(
+                host="windows", tool="pff-ost", argv=[], purpose=f"Outlook store {evidence.name} (libpff)",
+                status="BLOCKED",
+                reason="pff-ost not installed: the evidence is present and was not examined. "
+                       "Run tools/fetch-windows-tools.ps1 then nexus doctor",
+            ))
+            return jobs
+        d = out_dir("email")
+        add("pff-ost", ["pff-ost", str(evidence), str(d / f"{_unique_name(evidence)}.csv")],
+            f"Outlook store {evidence.name} (libpff)", 1800)
     elif name.startswith("$mft") or suffix == ".mft":
         d = out_dir("mftecmd")
         add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
@@ -873,7 +887,7 @@ def _plan_single_artifact(
         # SYSTEM/SOFTWARE/SAM/SECURITY are handled by the branch above, which
         # also schedules the AppCompatCache parse for SYSTEM. Letting the generic
         # branch claim them dropped that job silently.
-        and not _has_specific_hive_handler(name)
+        and not _has_specific_hive_handler(_hive_kind(evidence))
     ):
         # Cut a RECmd batch for this hive by name; the batch path is how recmd
         # is meant to be driven and a bare -f fails with "One of the following
@@ -898,7 +912,7 @@ def _plan_single_artifact(
         # the default hive parse.
         if _lane_opted_in("regripper"):
             out_dir("regripper")
-            add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
+            add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(_hive_kind(evidence) or name)],
                 f"RegRipper plugins ({evidence.name})", 600)
     elif _artifact_class(evidence) == "jumplist":
         d = out_dir("jlecmd")
@@ -1018,10 +1032,14 @@ def _plan_single_artifact(
             return jobs
         add("srumecmd", ["srumecmd", "-f", str(staged), "--csv", str(d)],
             "SRUM database", 600, source=str(evidence))
-    elif name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat"):
+    elif _hive_kind(evidence) in _NAMED_HIVE_KINDS:
+        # The kind, not the name: NTUSER-fredr.DAT and S09's SYSTEM_clean are the
+        # same hives as NTUSER.DAT and SYSTEM, and SYSTEM_clean needs the
+        # AppCompatCache parse as much as SYSTEM does (D279).
+        kind = _hive_kind(evidence)
         # RECmd needs a batch (--bn) or a search switch; single-hive runs without
         # it fail with "One of the following switches is required" (W2 finding).
-        user_hive = name in ("ntuser.dat", "usrclass.dat")
+        user_hive = kind in ("ntuser", "usrclass")
         batch = _find_recmd_user_batch() if user_hive else _find_recmd_batch()
         if not batch:
             jobs.append(ToolJob(
@@ -1042,9 +1060,9 @@ def _plan_single_artifact(
         # RegRipper as its own tool/evidence pair.
         if _lane_opted_in("regripper"):
             out_dir("regripper")
-            add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
+            add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(kind)],
                 f"RegRipper plugins ({evidence.name})", 600)
-        if name == "system":
+        if kind == "system":
             ad = out_dir("appcompat")
             add("appcompatcacheparser",
                 ["appcompatcacheparser", "-f", str(evidence), "--csv", str(ad), "--csvf", f"{_stem(evidence)}.csv"],
@@ -1068,6 +1086,48 @@ _CHROME_SQLITE = {
 _JUMPLIST_SUFFIXES = (".automaticdestinations-ms", ".customdestinations-ms")
 _HIVE_NAMES = {"system", "software", "sam", "security", "default",
                "ntuser", "usrclass"}
+# The hives with a branch of their own in `_plan_single_artifact` (SYSTEM also gets AppCompatCache).
+_NAMED_HIVE_KINDS = ("system", "software", "sam", "security", "ntuser", "usrclass")
+
+
+def _hive_kind_by_name(path: Path) -> str:
+    """The hive kind a file's name gives (SYSTEM, NTUSER.DAT, NTUSER-fredr.DAT, UsrClass-srl-h.dat), or ""."""
+    # `name.endswith(("", ...))` is ALWAYS true, which made the extension guard a
+    # no-op and let the stem decide: `System.evtx` and `Security.evtx` were both
+    # classified as registry hives, so an EVTX-only case scheduled RECmd and
+    # RegRipper against Windows event logs and recorded `regripper OK` on a log
+    # file - a false OK. Test the actual suffix.
+    if path.suffix == "" or path.suffix.lower() in (".dat", ".hve", ".hive"):
+        stem = path.name.lower().split(".")[0].split("-")[0]
+        if stem in _HIVE_NAMES:
+            return stem
+    return ""
+
+
+def _hive_kind_by_header(path: Path) -> str:
+    """The hive kind a primary hive file records in its base block, "hive" when it names none, or "" for no hive.
+
+    A primary hive starts with the base block: ``regf`` at 0, the file type at 0x1C (0 for the primary file; the
+    transaction logs carry the same signature with type 1, 2 or 6) and, at 0x30, the last 32 characters of the hive's
+    own path in UTF-16LE. An exported hive keeps that name whatever the file is called: sample S09's
+    ``SOFTWARE_clean`` holds ``emRoot\\System32\\Config\\SOFTWARE`` and ``NTUSER.DAT_clean`` holds
+    ``\\??\\C:\\Users\\fredr\\ntuser.dat`` (2026-10-18).
+    """
+    try:
+        with path.open("rb") as fh:
+            block = fh.read(0x70)
+    except OSError:
+        return ""
+    if len(block) < 0x70 or block[:4] != b"regf" or int.from_bytes(block[0x1C:0x20], "little") != 0:
+        return ""
+    recorded = block[0x30:0x70].decode("utf-16-le", "replace").split("\x00")[0]
+    leaf = recorded.replace("/", "\\").rsplit("\\", 1)[-1].lower().split(".")[0]
+    return leaf if leaf in _HIVE_NAMES else "hive"
+
+
+def _hive_kind(path: Path) -> str:
+    """The registry hive kind of a file: by its name, else by its base block; "" when it is not a hive."""
+    return _hive_kind_by_name(path) or (_hive_kind_by_header(path) if path.is_file() else "")
 
 
 def _artifact_class(path: Path) -> str:
@@ -1111,20 +1171,17 @@ def _artifact_class(path: Path) -> str:
     # User and machine hives whose names carry a suffix (NTUSER-fredr.DAT).
     # Hives are exported with the user in the name: NTUSER-fredr.DAT,
     # UsrClass-srl-h.dat, or with no extension at all (the live hive names).
-    #
-    # `name.endswith(("", ...))` is ALWAYS true, which made the extension guard a
-    # no-op and let the stem decide: `System.evtx` and `Security.evtx` were both
-    # classified as registry hives, so an EVTX-only case scheduled RECmd and
-    # RegRipper against Windows event logs and recorded `regripper OK` on a log
-    # file - a false OK. Test the actual suffix.
-    if (path.suffix == "" or path.suffix.lower() in (".dat", ".hve", ".hive")) \
-            and name.split(".")[0].split("-")[0] in _HIVE_NAMES:
+    if _hive_kind_by_name(path):
         return "registry_hive"
     if suffix in _JUMPLIST_SUFFIXES:
         return "jumplist"
     # RDP bitmap cache, named Cache0000.bin etc.
     if name.startswith("cache0") and suffix == ".bin":
         return "rdp"
+    # A hive exported under a name of its own (SOFTWARE_clean, a case number) is
+    # still a hive: its base block says so (D279).
+    if path.is_file() and _hive_kind_by_header(path):
+        return "registry_hive"
     return ""
 
 
@@ -1400,15 +1457,14 @@ def _python_script(tool: str) -> str:
     return _find_binary(name) or tool
 
 
-def _has_specific_hive_handler(name: str) -> bool:
-    """True for the hive names that already have a dedicated branch above.
+def _has_specific_hive_handler(kind: str) -> bool:
+    """True for the hive kinds that already have a dedicated branch above.
 
     Kept as a function so the two places cannot drift: the generic hive branch
-    exists for names nobody handled, and claiming a handled name loses whatever
+    exists for kinds nobody handled, and claiming a handled kind loses whatever
     extra that branch scheduled.
     """
-    return name in ("system", "software", "sam", "security", "ntuser.dat",
-                    "usrclass.dat")
+    return kind in _NAMED_HIVE_KINDS
 
 
 def is_host_evidence(path: str | Path) -> bool:
@@ -1424,7 +1480,7 @@ def is_host_evidence(path: str | Path) -> bool:
         name = p.name.lower()
         suffix = p.suffix.lower()
         return (
-            suffix in (".pf", ".lnk", ".evtx", ".mft")
+            suffix in (".pf", ".lnk", ".evtx", ".mft", ".ost", ".pst")
             or name.startswith("$mft")
             or name.startswith("amcache")
             or name == "srudb.dat"
@@ -4675,7 +4731,7 @@ def _recmd_batch_for(hive: Path) -> Path | None:
     RECmd build - HiveType 'User' not in enum), and rewriting that logic to add a
     hive argument is how working behaviour gets lost.
     """
-    name = hive.name.lower()
+    name = _hive_kind(hive) or hive.name.lower()
     if name.startswith("default"):
         return (_find_recmd_dfir_batch() or _find_recmd_batch()
                 or _find_recmd_user_batch())
