@@ -75,7 +75,7 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # v15: .NET's JSON date, /Date(<ms>)/, is a time column's whole value (D260). An index built before it must be
     # rebuilt.
     # v16: `fields` holds column names, not paths (`subobjects: false`, D271).
-    assert INDEX_SCHEMA_VERSION == 17
+    assert INDEX_SCHEMA_VERSION == 18
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

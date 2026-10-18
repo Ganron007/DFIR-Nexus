@@ -150,7 +150,9 @@ _FORENSIC_TEXT_ANALYSIS = {
 # v17 (2026-10-18, D287): a tool family's host and user come from the columns its ECS map names (Zeek's HTTP Host
 # header and FTP default, Hindsight's cookie domains are no row's host or user). An index built before it must be
 # rebuilt.
-INDEX_SCHEMA_VERSION = 17
+# v18 (2026-10-18, D250): an imported capture's DNS packets carry their query name (`dns_query`,
+# `ecs.dns.question.name`). An index built before it must be rebuilt.
+INDEX_SCHEMA_VERSION = 18
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -1125,6 +1127,8 @@ def iter_index_doc_batches(
                     ("trigger_type", first_trigger.get("type")),
                     ("trigger_start_boundary", first_trigger.get("start_boundary")),
                     ("trigger_enabled", first_trigger.get("enabled")),
+                    # D250: an imported capture's DNS query name.
+                    ("dns_query", raw.get("dns_query")),
                 ):
                     if value not in (None, "", []):
                         art_fields[key_name] = str(value)

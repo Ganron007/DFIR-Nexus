@@ -180,6 +180,14 @@ class WiresharkImporter(Importer):
         elif "rdp" in layers:
             artifact_type = ArtifactType.RDP
 
+        # D250 (2026-10-18): a DNS packet's query name (`dns.qry.name`; `dns_dns_qry_name` in `-T ek`, a list when the
+        # packet asks several). It reaches the index as the record's `dns_query`, beside the packet as tshark wrote it.
+        dns_query = ""
+        if "dns" in layers:
+            names = self._field(layers.get("dns", {}), "dns", "dns.qry.name")
+            names = names if isinstance(names, list) else [names] if names else []
+            dns_query = ", ".join(str(n) for n in names if n)
+
         # Severity: suspicious ports/flags
         severity = Severity.INFORMATIONAL
         if dst_port in (4444, 31337, 1337, 6667, 6668, 6669):
@@ -187,6 +195,9 @@ class WiresharkImporter(Importer):
         if flags and ("SYN" in flags and "ACK" not in flags and dst_port not in (80, 443, 22, 53)):
             severity = max(severity, Severity.LOW, key=lambda s: ["informational", "low", "medium", "high", "critical"].index(s.value))
 
+        endpoints = f"{src_ip}:{src_port} -> {dst_ip}:{dst_port}"
+        description = (f"Wireshark {protocol.value if protocol else 'unknown'} {endpoints}"
+                       + (f" [{flags}]" if flags else "") + (f" DNS query {dns_query}" if dns_query else ""))
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=artifact_type,
@@ -199,8 +210,8 @@ class WiresharkImporter(Importer):
             dest_ip=dst_ip,
             dest_port=dst_port,
             protocol=protocol,
-            description=f"Wireshark {protocol.value if protocol else 'unknown'} {src_ip}:{src_port} -> {dst_ip}:{dst_port} [{flags}]" if flags else f"Wireshark {protocol.value if protocol else 'unknown'} {src_ip}:{src_port} -> {dst_ip}:{dst_port}",
-            raw=packet,
+            description=description,
+            raw={**packet, "dns_query": dns_query} if dns_query else packet,
             tags=["wireshark", f"proto.{protocol.value}" if protocol else "wireshark"],
         )
 

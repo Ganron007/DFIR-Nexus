@@ -310,6 +310,8 @@ family_columns:
     user: ecs.user.name
     host: ecs.host.name
     process_id: ecs.process.pid
+    # D250: an imported capture's DNS query name (the Wireshark importer's record).
+    dns_query: ecs.dns.question.name
 
 # ── A row's host and user, for tool families whose column names do not say it (D287, 2026-10-18) ──
 # The importer's slots (`family_columns.ingest`) name a row's host and user for rows the importer pass wrote. A tool's
