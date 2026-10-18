@@ -245,18 +245,19 @@ def project_flows(
     return {"rows": rows, "path": str(out_csv), "error": ""}
 
 
-def enrich_local_network(pcap: str | Path, case_dir: str | Path) -> dict:
+def enrich_local_network(pcap: str | Path, case_dir: str | Path, extractions: str | Path | None = None) -> dict:
     """Local app-layer + flow enrichment for one capture (sync; thread me).
 
     - Zeek/Suricata run when their binaries resolve locally (Nexus-on-SIFT).
     - Flow projection always runs when tshark exists.
-    Outputs land under ``case/ingest/network/`` (scan-indexed) or
-    ``case/extractions/network/`` (pulled/uncapped scan for app logs).
+    The flows land under ``case/ingest/network/``; the app logs under ``<extractions>/network/<capture>``, the run's own
+    extractions, which the index reads (D272). They went to the case's own ``extractions`` folder, which the index does
+    not read once a run holds data of its own: sample S03's local Suricata alerts were written and never indexed.
     """
     pcap = Path(pcap)
     case_dir = Path(case_dir)
     result: dict = {"pcap": str(pcap), "steps": [], "errors": []}
-    app_root = case_dir / "extractions" / "network" / pcap.stem
+    app_root = Path(extractions or case_dir / "extractions") / "network" / pcap.stem
     zeek = resolve_local_tool("zeek")
     if zeek:
         out = app_root / "zeek"

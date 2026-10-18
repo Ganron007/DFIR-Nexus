@@ -66,3 +66,23 @@ def test_the_lane_plans_into_the_remote_case_extractions(tmp_path, monkeypatch):
                               remote_extractions=EXTRACTIONS)
     zeek = next(j for j in jobs if j.tool == "zeek")
     assert zeek.status == "PENDING" and zeek.prep_dirs == [f"{EXTRACTIONS}/network/capture/zeek"]
+
+
+def test_local_app_logs_go_to_the_runs_extractions(tmp_path, monkeypatch):
+    """D272: S03's local Suricata alerts were written to the case's own extractions, which the index does not read
+    once a run holds data of its own (here, Zeek's logs from SIFT)."""
+    import subprocess
+
+    from nexus.langgraph import network_lane as lane
+
+    monkeypatch.setattr(lane, "resolve_local_tool", lambda name: "suricata" if name == "suricata" else None)
+    seen: list[list[str]] = []
+    monkeypatch.setattr(lane.subprocess, "run",
+                        lambda cmd, **_k: seen.append(list(cmd)) or subprocess.CompletedProcess(cmd, 0, "", ""))
+    pcap = _sample(tmp_path) / "capture" / "capture.pcap"
+    case = tmp_path / "CASE-EA24B279"
+    run_extractions = case / "runs" / "RUN-1-tools-x" / "extractions"
+    lane.enrich_local_network(pcap, case, run_extractions)
+    suricata = next(cmd for cmd in seen if cmd[0] == "suricata")
+    assert Path(suricata[suricata.index("-l") + 1]) == run_extractions / "network" / "capture" / "suricata"
+    assert not (case / "extractions").exists()

@@ -1028,9 +1028,12 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         write_lock = _threading.Lock()
 
         from nexus.langgraph.lane_gate import import_row, record_import_results
+        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
         # Every file of the pass is a gate row: read, empty, or not read (2026-10-18).
         import_rows: list[dict[str, str]] = []
+        # A capture's local app logs go to this run's extractions, which the index reads (D272).
+        run_extractions = resolve_tools_extractions(case_dir, str(state.get("run_id") or ""))
 
         def _process(p: str) -> list[str]:
             lines: list[str] = []
@@ -1041,7 +1044,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
             # CSV is part of the same evidence pass.
             if path.suffix.lower() in (".pcap", ".pcapng", ".cap"):
                 try:
-                    net = enrich_local_network(path, case_dir)
+                    net = enrich_local_network(path, case_dir, run_extractions)
                     lines.extend(str(s) for s in (net.get("steps") or []))
                     for err in net.get("errors") or []:
                         lines.append(f"I1 network warning: {err}")
