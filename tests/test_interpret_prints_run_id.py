@@ -6,10 +6,23 @@ The sample runner had to infer a Mode 1 run from the newest run folder; a failed
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import patch
 
+import pytest
 import yaml
 from typer.testing import CliRunner
+
+
+@pytest.fixture(autouse=True)
+def _progress_logger_restored():
+    """The CLI gives `nexus.progress` its own handler and stops it propagating, as a process should; a test that runs
+    the CLI in-process puts the logger back, or every later test reading progress lines through caplog sees none."""
+    progress = logging.getLogger("nexus.progress")
+    saved = (list(progress.handlers), progress.propagate, progress.level)
+    yield
+    progress.handlers[:] = saved[0]
+    progress.propagate, progress.level = saved[1], saved[2]
 
 
 def _case(case_id: str):
