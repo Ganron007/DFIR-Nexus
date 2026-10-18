@@ -444,6 +444,10 @@ def import_row(path: Path | str, info: dict[str, Any] | None, network: dict[str,
         return {**row, "status": "OK", "reason": ", ".join(p for p in parts if p)}
     if empty:
         return {**row, "status": "OK", "reason": "empty file"}
+    if info.get("placed_at"):
+        # A tool's own CSV, placed for the index as that tool's output (D283), that holds its header only: the tool
+        # ran and found nothing, which is a result, not a file left unread (D289).
+        return {**row, "status": "OK", "reason": f"a {source} output with no records"}
     problem = str(info.get("error") or "; ".join(str(e) for e in info.get("errors") or []) or "").strip()
     return {**row, "status": "FAIL",
             "reason": problem or f"{source or 'no importer'} read 0 rows from a file with content"}

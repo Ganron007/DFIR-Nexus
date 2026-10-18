@@ -41,6 +41,29 @@ def family_for_csv_header(header: str) -> str | None:
         return "recmd"
     if {"date", "time", "timezone", "macb", "source", "sourcetype"} <= cols:
         return "plaso"
+    # D289 (2026-10-18): the other Zimmerman tools, named as the lane names their outputs' folders. Each column set is
+    # one that the tool's real output carries in its 2020 and 2026 versions (sample S09's processed outputs and the
+    # ES-Mapping outputs; tests/fixtures/d289_tool_headers). A Jump List's Custom Destinations carry LECmd's target
+    # columns too, so the Jump List test comes first.
+    if {"sourcefile", "appid", "appiddescription"} <= cols:
+        return "jlecmd"
+    if {"sourcefile", "targetcreated", "targetmodified", "targetaccessed", "workingdirectory"} <= cols:
+        return "lecmd"
+    if {"bagpath", "slot", "nodeslot", "mruposition", "absolutepath", "shelltype"} <= cols:
+        return "sbecmd"
+    if {"sourcename", "filetype", "filename", "filesize", "deletedon"} <= cols:
+        return "rbcmd"
+    if {"activitytypeorg", "activitytype", "executable", "displaytext", "contentinfo"} <= cols or cols == {
+            "id", "platform", "name", "additionalinformation", "expires"}:
+        return "wxtcmd"
+    if {"exeinfo", "exeinfodescription", "exetimestamp", "sidtype", "sid", "appid"} <= cols:
+        return "srum"
+    if {"controlset", "cacheentryposition", "path", "lastmodifiedtimeutc", "executed"} <= cols:
+        return "appcompat"
+    if {"keyname", "keylastwritetimestamp"} <= cols or {"programid", "fullpath", "sha1", "longpathhash"} <= cols:
+        return "amcache"
+    if cols == {"runtime", "executablename"}:
+        return "pecmd"  # PECmd's timeline file, beside its main output
     return None
 
 
