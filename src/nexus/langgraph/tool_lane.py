@@ -3696,6 +3696,32 @@ def sift_jobs_for_lane(
     return jobs
 
 
+def _hold_sift_jobs_on_stale_code(jobs: list[ToolJob], case_id: str, *, has_sift_mcp: bool) -> None:
+    """A SIFT job waits, with the reason, when the host does not run this tree's code (D148).
+
+    `nexus sift setup` refuses to start the host's server on stale code, but the host's systemd unit restarts it with
+    no check. The lane compares the code once before it hands the host anything; on a difference each planned SIFT job
+    keeps its command and waits (the gate's waiting state, D270) for the examiner to sync and re-run. A host whose
+    code cannot be read is left to the dispatch, which reports an unreachable host as it always has.
+    """
+    pending = [j for j in jobs if j.host == "sift" and j.status == "PENDING" and j.argv]
+    if not pending or not has_sift_mcp:
+        return
+    from nexus.case.sift_parity import drift_reason, host_code_drift
+
+    drift, why = host_code_drift()
+    if drift is None:
+        log.warning("SIFT code parity not checked: %s", why)
+        return
+    if not any(drift.values()):
+        return
+    reason = drift_reason(drift, case_id)
+    log.warning("SIFT jobs held: %s", reason)
+    for job in pending:
+        job.status = "SKIP"
+        job.reason = reason
+
+
 def _lane_concurrency() -> int:
     """Tool-lane parallelism from NEXUS_TOOL_LANE_CONCURRENCY (1..4, default 1).
 
@@ -4000,6 +4026,7 @@ async def run_tool_lane(
         rerun_tools=rerun_tools, carry=carry_ok,
     )
     _one_engine_per_plugin(jobs)
+    _hold_sift_jobs_on_stale_code(jobs, case_id, has_sift_mcp=sift_tool is not None)
     carried_rows = _settle_prior_rows(
         jobs, case_dir, extractions, carry_ok=carry_ok, only_tools=only_tools,
     )
