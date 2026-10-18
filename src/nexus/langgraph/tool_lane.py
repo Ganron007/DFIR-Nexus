@@ -143,6 +143,19 @@ def timeout_for_bytes(
     return min(cap, max(base, base + mb * per_mb))
 
 
+def _logfileparser_timeout(logfile: Path) -> int:
+    """LogFileParser's budget for a $LogFile, on every path that schedules it (D288).
+
+    The drive-tree plan gave it a fixed 600 s while a registered $LogFile got this; sample S08's 57 MB $LogFile ran
+    past 600 s on three of its fifteen hosts and each was killed.
+    """
+    try:
+        nbytes = logfile.stat().st_size
+    except OSError:
+        nbytes = 0
+    return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=3600)
+
+
 def _stem(evidence: Path) -> str:
     """A filesystem-safe output stem for a per-file parser invocation.
 
@@ -890,8 +903,7 @@ def _plan_single_artifact(
                  f"/LogFileFile:{evidence}",
                  f"/OutputPath:{d}"],
                 f"NTFS $LogFile ({evidence.name})",
-                timeout_for_bytes(evidence.stat().st_size, base=900, per_mb=60,
-                                  cap=3600),
+                _logfileparser_timeout(evidence),
                 optional_output=True)
     elif _artifact_class(evidence) == "ntfs_meta":
         d = out_dir("mftecmd")
@@ -2481,7 +2493,7 @@ def _plan_gap_parsers(
             "logfileparser",
             ["logfileparser", f"/LogFileFile:{logfile}", f"/OutputPath:{d}"],
             "NTFS $LogFile (transaction journal, LogFileParser)",
-            600,
+            _logfileparser_timeout(logfile),
         )
     elif logfile.is_file() and quick:
         skip("logfileparser", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
