@@ -38,3 +38,5 @@ phases:
   - phase: "Correlate"
     steps:
       - "Map beaconing process to execution artifacts (Prefetch/Amcache/4688)"
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): network <- step "Histogram outbound connection intervals per destination"; suricata <- step "Histogram outbound connection intervals per destination"; zeek <- step "Histogram outbound connection intervals per destination"
+families: [network, suricata, zeek]

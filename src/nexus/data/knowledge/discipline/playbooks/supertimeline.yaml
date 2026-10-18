@@ -49,3 +49,5 @@ caveats:
   - "Plaso storage files can be multi-GB; keep them out of the case extractions directory."
   - "Timesketch is the interactive exploration layer for large Plaso timelines when available."
   - "MACB from TSK bodyfiles is UTC; Prefetch/registry-derived rows may be local — Plaso normalizes, hand-built bodyfiles may not."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; lecmd <- names LECmd; mftecmd <- artifact MFT (MFTECmd); pecmd <- artifact Prefetch (PECmd); recmd <- names RECmd; srum <- names SrumECmd; zircolite <- event logs
+families: [chainsaw, deepbluecli, evtxecmd, hayabusa, lecmd, mftecmd, pecmd, recmd, srum, zircolite]

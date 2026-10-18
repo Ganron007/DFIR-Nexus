@@ -51,3 +51,5 @@ caveats:
   - "Sync can populate history from OTHER devices — a URL in local history may have been visited on a phone; check the sync metadata before attributing to this host."
   - "The 13Cubed source uses BrowsingHistoryView for cross-browser parsing; Hindsight is Chrome-focused (history + extensions + cache)."
   - "Deleted rows can persist in SQLite freelist pages — carve the DB file, do not rely only on query results."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): hindsight <- artifact Browser History (Hindsight); sqlecmd <- artifact Browser History (SQLECmd)
+families: [hindsight, sqlecmd]

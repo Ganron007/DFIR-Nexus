@@ -39,3 +39,5 @@ phases:
   - phase: "Correlate"
     steps:
       - "Correlate web access logs with the script path and source IP"
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- step "Look for w3wp.exe -> cmd.exe/powershell.exe process chains"; evtxecmd <- step "Look for w3wp.exe -> cmd.exe/powershell.exe process chains"; hayabusa <- step "Look for w3wp.exe -> cmd.exe/powershell.exe process chains"; mftecmd <- step "Find script files written to the web root and their creation time"
+families: [chainsaw, evtxecmd, hayabusa, mftecmd]

@@ -38,3 +38,5 @@ phases:
   - phase: "Correlate"
     steps:
       - "Match successful remote logon to RDP artifacts and subsequent process execution"
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; zircolite <- event logs
+families: [chainsaw, deepbluecli, evtxecmd, hayabusa, zircolite]

@@ -50,3 +50,5 @@ caveats:
   - "Endpoint DNS artifacts (Sysmon 22) tie queries to a process; network-only DNS logs cannot attribute to a process."
   - "RITA DNS tunneling workflow: 'rita show-exploded-dns <db> -H' (exploded subdomain view) and 'rita show-beacons-fqdn <db> -H'; massive queries to one second-level domain with NO matching HTTP traffic is the strong exfil indicator (CCD labs 34-35)."
   - "Exfil channels beyond DNS: FTP/SFTP/TFTP, cloud sync (Dropbox/Drive/OneDrive), email, steganography, RAT/VPN tunneling — check SRUM data volumes and Packetbeat flows, not just DNS (CCD Module 8)."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; srum <- artifact SRUM (SrumECmd); zeek <- names zeek; zircolite <- event logs
+families: [chainsaw, deepbluecli, evtxecmd, hayabusa, srum, zeek, zircolite]

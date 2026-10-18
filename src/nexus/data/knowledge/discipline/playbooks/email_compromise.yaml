@@ -48,3 +48,5 @@ caveats:
   - "Impossible-travel determinations require BOTH the geolocation confidence and the session token context — VPNs and mobile IPs create false positives."
   - "Mailbox rule creation timestamps come from the cloud audit log, not the host — host artifacts cannot prove rule creation time."
   - "Internal spearphishing from a compromised account shows up in Sent Items AND in recipients' mailboxes — check both sides when scope allows."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): azure <- step "Check mailbox rules for forwarding rules"; email <- step "Review sent items for phishing emails or fraudulent messages"; hindsight <- artifact Browser History (Hindsight); sqlecmd <- artifact Browser History (SQLECmd)
+families: [azure, email, hindsight, sqlecmd]

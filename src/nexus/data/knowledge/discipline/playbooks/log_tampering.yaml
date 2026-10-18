@@ -64,3 +64,5 @@ caveats:
   - "If the Security log was cleared, the 1102 event itself is usually the LAST surviving record — treat everything before it as potentially missing."
   - "LINUX hosts: attackers truncate /var/log/auth.log, secure, syslog, messages, or the journal. auditd (/var/log/audit/audit.log, epoch timestamps) is a separate tamper-resistant source that often survives; rotated .1/.2.gz logs (~4-week retention) still hold the window — zgrep them."
   - "VSS caveat: client Windows 8+ ScopeSnapshots limits shadow copies to boot-volume system files, degrading non-system artifact recovery; Servers keep fuller snapshots (SANS 508.5)."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; mftecmd <- artifact MFT (MFTECmd); pecmd <- artifact Prefetch (PECmd); zircolite <- event logs
+families: [chainsaw, deepbluecli, evtxecmd, hayabusa, mftecmd, pecmd, zircolite]

@@ -60,3 +60,5 @@ caveats:
   - "UserAssist quirks: modern Windows often shows run count 0 with a valid last-executed time, and service/scheduled-task/startup launches get a bogus 1601-01-01 timestamp — corroborate before citing."
   - "Thumbcache can retain thumbnails for images/PDFs that were deleted or securely wiped — strong anti-forensics counter-artifact."
   - "Registry MRU last-write times are single timestamps ('no later than'), not event times."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): recmd <- artifact MountPoints2 (RECmd); regripper <- artifact MountPoints2 (RegRipper); sbecmd <- artifact ShellBags (SBECmd)
+families: [recmd, regripper, sbecmd]
