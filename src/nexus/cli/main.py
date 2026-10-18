@@ -841,6 +841,11 @@ def pipeline(
     ))
     # A failed node is a failed run: say why, and exit non-zero, never a silent success.
     node_error = str(result.get("error") or "").strip() if isinstance(result, dict) else ""
+    # The run this was, as `nexus mode2 run` and `nexus mode3 run` print theirs (D290): a caller finds its record
+    # and its trace by this id.
+    run_id = str(result.get("run_id") or "") if isinstance(result, dict) else ""
+    if run_id:
+        typer.echo(f"run_id={run_id} status={'failed' if node_error else 'completed'} mode={resolved_mode}")
     if node_error:
         typer.echo(f"Pipeline failed: {node_error}", err=True)
         raise typer.Exit(1)
