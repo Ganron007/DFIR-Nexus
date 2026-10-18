@@ -158,6 +158,29 @@ def _stem(evidence: Path) -> str:
     return f"{safe[:60]}-{digest}"
 
 
+_SQLITE_COMPANIONS = ("-wal", "-shm", "-journal")
+
+
+def _staged_sqlite(db: Path, extractions: Path) -> Path:
+    """A copy of a SQLite database with its write-ahead log, shared memory and journal, for a tool to read (D291).
+
+    WxTCmd deletes the ``-wal`` and ``-shm`` files of the ActivitiesCache.db it opens (measured 2026-10-18 on two
+    real databases): with a log that holds pages it would first checkpoint them into the database, and either way the
+    evidence is changed. Evidence is read only, so the tool reads this copy, beside the run's other staged inputs
+    (``_staged``, never indexed); each run copies afresh, so a staged copy is never a previous run's.
+    """
+    digest = hashlib.sha1(str(db.resolve()).encode("utf-8", "replace")).hexdigest()[:10]
+    work = extractions / "_staged" / "sqlite" / f"{db.stem}-{digest}"
+    work.mkdir(parents=True, exist_ok=True)
+    for f in (db, *(db.with_name(db.name + suffix) for suffix in _SQLITE_COMPANIONS)):
+        target = work / f.name
+        if f.is_file():
+            shutil.copyfile(f, target)
+        elif target.is_file():
+            target.unlink()  # a companion the evidence no longer has is not this run's input
+    return work / db.name
+
+
 def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> None:
     """Copy ESE database + log siblings onto a writable local workdir, starting from an empty one.
 
@@ -797,8 +820,8 @@ def _plan_single_artifact(
         # file gets its own output directory instead.
         d = out_dir("wxtcmd") / (out_name or _stem(evidence))
         d.mkdir(parents=True, exist_ok=True)
-        add("wxtcmd", ["wxtcmd", "-f", str(evidence), "--csv", str(d)],
-            "Windows Timeline activities", 600)
+        add("wxtcmd", ["wxtcmd", "-f", str(_staged_sqlite(evidence, extractions)), "--csv", str(d)],
+            "Windows Timeline activities", 600, source=str(evidence))
     elif _artifact_class(evidence) == "browser_sqlite":
         d = out_dir("sqlecmd")
         # SQLECmd works once the current build is used. The bundle's 2022 copy
@@ -1887,9 +1910,10 @@ def plan_windows_triage(
                     d.mkdir(parents=True, exist_ok=True)
                     add(
                         "wxtcmd",
-                        ["wxtcmd", "-f", str(act), "--csv", str(d)],
+                        ["wxtcmd", "-f", str(_staged_sqlite(act, extractions)), "--csv", str(d)],
                         f"ActivitiesCache ({uname})",
                         300,
+                        source=str(act),
                     )
                     wxtcmd_n += 1
                     break
