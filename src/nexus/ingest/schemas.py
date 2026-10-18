@@ -69,6 +69,7 @@ class ArtifactSource(StrEnum):
     BIND = "bind"
     OSSEC = "ossec"
     AXIOM = "axiom"
+    ENCODED_FILE = "encoded_file"
     SPREADSHEET = "spreadsheet"
     AWS_VPC_FLOW = "aws_vpc_flow"
     AWS_S3_ACCESS = "aws_s3_access"
