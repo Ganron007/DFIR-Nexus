@@ -1,2 +1,4 @@
 # Pinned sources are checked by SHA-256: keep their bytes exactly as exported (D95).
 devtools/knowledge/pinned/** -text
+# Shell scripts run under bash on Windows too: a CRLF checkout breaks every line ($'\r': command not found).
+*.sh text eol=lf
