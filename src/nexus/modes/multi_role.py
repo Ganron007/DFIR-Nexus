@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -2189,6 +2190,11 @@ def run_mode2(
                 state.setdefault("examiner_feedback", {})
         except (OSError, ValueError):
             pass
+
+    # Let the shared preflight distinguish a live dashboard worker thread from
+    # a dead worker inside the still-running web-server process.
+    state["process_pid"] = os.getpid()
+    state["process_thread_id"] = threading.get_native_id()
 
     # Elasticsearch is required for a Mode 2 run (the workers query the N3
     # index). Refuse before any work starts instead of producing a hollow run.

@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,95}$")
+_LEGACY_MODE_RUN_IDLE_SECONDS = 24 * 60 * 60
 
 
 def configured_model() -> dict[str, str]:
@@ -149,13 +151,89 @@ def process_alive(pid: Any) -> bool:
     return True
 
 
+def run_owner_alive(pid: Any, thread_id: Any = None) -> bool:
+    """Whether a run's recorded process/thread owner is still executing.
+
+    Mode 2/3 can run in dashboard worker threads inside the long-lived web
+    server. A PID-only check would keep those records busy after their worker
+    thread exits, so same-process records also name the owning native thread.
+    For a different process, the PID remains the available liveness signal.
+    """
+    if not process_alive(pid):
+        return False
+    try:
+        owner_pid = int(pid)
+        owner_thread_id = int(thread_id)
+    except (TypeError, ValueError):
+        return True
+    if owner_pid == os.getpid():
+        return any(getattr(thread, "native_id", None) == owner_thread_id
+                   for thread in threading.enumerate())
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenThread.restype = wintypes.HANDLE
+        kernel32.OpenThread.argtypes = [
+            wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
+        ]
+        kernel32.GetProcessIdOfThread.restype = wintypes.DWORD
+        kernel32.GetProcessIdOfThread.argtypes = [wintypes.HANDLE]
+        kernel32.GetExitCodeThread.restype = wintypes.BOOL
+        kernel32.GetExitCodeThread.argtypes = [
+            wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.OpenThread(0x0800, False, owner_thread_id)  # THREAD_QUERY_LIMITED_INFORMATION
+        if not handle:
+            # Access denied is inconclusive; other errors mean that native
+            # thread no longer exists. Preserve the busy state if uncertain.
+            return ctypes.get_last_error() == 5
+        try:
+            if kernel32.GetProcessIdOfThread(handle) != owner_pid:
+                return False
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeThread(handle, ctypes.byref(code)):
+                return True
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    task_dir = Path(f"/proc/{owner_pid}/task/{owner_thread_id}")
+    if Path("/proc").is_dir():
+        return task_dir.is_dir()
+    # On platforms without a cross-process thread query, keep the conservative
+    # process-level answer rather than interrupting a possibly live run.
+    return process_alive(owner_pid)
+
+
+def _legacy_mode_run_is_stale(record_path: Path) -> bool:
+    """Reap pre-owner Mode 2/3 records only after a long period without activity.
+
+    Old records do not identify their process, and the recorded wall budget is
+    not a guaranteed timeout. Use both the record and event journal mtimes as
+    heartbeat evidence, with a conservative 24-hour idle window.
+    """
+    if record_path.parent.name not in {"mode2_runs", "mode3_runs"}:
+        return False
+    journal = record_path.with_suffix(".jsonl")
+    try:
+        last_activity = record_path.stat().st_mtime
+        if journal.is_file():
+            last_activity = max(last_activity, journal.stat().st_mtime)
+    except OSError:
+        return False
+    return datetime.now(UTC).timestamp() - last_activity > _LEGACY_MODE_RUN_IDLE_SECONDS
+
+
 def reap_dead_runs(case_dir: Path) -> list[str]:
-    """Mark a run whose manifest says 'running' and whose process has exited as interrupted.
+    """Mark dead Mode 1/2/3 runs interrupted before the busy guard reads them.
 
     A CLI run that is stopped (Ctrl+C, a closed terminal, a crash) leaves its manifest at
     'running', and no server reaps it: the 2026-10-14 Mode 1 run read 'running' after its
-    process was gone. Only a manifest that names its process is judged; one with no pid is left
-    to the server's startup reaper.
+    process was gone. Mode 2/3 records similarly outlive failed CLI processes and dashboard
+    worker threads. Legacy Mode 2/3 records without owner metadata are reaped only after 24 h
+    without record or event-journal activity.
     """
     reaped: list[str] = []
     for manifest_path in sorted((Path(case_dir) / "runs").glob("*/manifest.json")):
@@ -176,6 +254,39 @@ def reap_dead_runs(case_dir: Path) -> list[str]:
         except OSError:
             continue
         reaped.append(str(manifest.get("run_id") or manifest_path.parent.name))
+
+    for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
+        records_dir = Path(case_dir) / "analysis" / sub
+        for record_path in sorted(records_dir.glob(f"{prefix}*.json")):
+            try:
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(record, dict) or record.get("status") not in {
+                "running", "planned",
+            }:
+                continue
+            pid = record.get("process_pid")
+            thread_id = record.get("process_thread_id")
+            if pid is not None:
+                if run_owner_alive(pid, thread_id):
+                    continue
+                if process_alive(pid):
+                    reason = f"its worker thread (native id {thread_id}) exited"
+                else:
+                    reason = f"its process (pid {pid}) exited"
+            elif _legacy_mode_run_is_stale(record_path):
+                reason = "no run activity was recorded for more than 24 hours"
+            else:
+                continue
+            record["status"] = "interrupted"
+            record["finished_at"] = datetime.now(UTC).isoformat()
+            record["error"] = reason
+            try:
+                _atomic_json(record_path, record)
+            except OSError:
+                continue
+            reaped.append(str(record.get("run_id") or record_path.stem))
     return reaped
 
 

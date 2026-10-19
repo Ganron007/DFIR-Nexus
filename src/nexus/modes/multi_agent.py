@@ -2018,6 +2018,10 @@ def run_mode3(
             record["stop_reason"] = ""
             record.pop("resume_state", None)
             record.pop("completed_at", None)
+    # Dashboard runs execute in worker threads inside a long-lived server;
+    # recording only its PID cannot expose a worker that exited unexpectedly.
+    record["process_pid"] = os.getpid()
+    record["process_thread_id"] = threading.get_native_id()
     # What an informed run adds, read once for every seat (D235): the case's report and pending DRAFTs,
     # labelled as not evidence. Empty for an independent run.
     from nexus.analysis.context_policy import context_sections
