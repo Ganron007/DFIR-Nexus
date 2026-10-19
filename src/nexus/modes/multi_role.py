@@ -2036,11 +2036,10 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
         log.warning("run state persist failed: %s", exc)
 
 
-#: Statuses in which a Mode 2/3 run is still writing to the case. ``planned``
-#: belongs here: the director node writes it as soon as the work orders exist
-#: and it stays for the whole investigation, so a guard that only accepts
-#: ``running`` is blind to every in-flight run.
-MODE_LIVE_STATUSES = ("running", "planned")
+#: Every nonterminal status in which a Mode 2/3 run is still writing to this
+#: case. Mode 2 persists ``verified`` and ``assessed`` between follow-up work
+#: orders too; those states are not completion.
+MODE_LIVE_STATUSES = ("running", "planned", "verified", "assessed")
 
 
 def busy_runs(case_dir: Path | str, own_run_id: str = "") -> list[dict[str, str]]:
