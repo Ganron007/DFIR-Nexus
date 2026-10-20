@@ -519,6 +519,54 @@ def test_result_summary_carries_rag_content():
     assert "reg save" in summary["results"][0]["text"]
 
 
+def test_aggregate_summary_preserves_each_named_aggregation():
+    from nexus.langgraph.context_loop import _append_tool_observation, _result_summary
+
+    result = {
+        "aggregations": {
+            "by_user": {"buckets": [
+                {"key": "analyst-a", "doc_count": 7},
+                {"key": "role-b", "doc_count": 5},
+            ]},
+            "by_action": {"buckets": [
+                {"key": "write-object", "doc_count": 6},
+                {"key": "delete-object", "doc_count": 5},
+            ]},
+            "total": {"value": 11},
+        },
+        "next_after_key": None,
+    }
+    summary = _result_summary("es_aggregate", result)
+
+    assert summary["buckets"] == [
+        {"key": "analyst-a", "count": 7},
+        {"key": "role-b", "count": 5},
+    ]
+    assert summary["aggregations"]["by_action"]["buckets"] == [
+        {"key": "write-object", "count": 6},
+        {"key": "delete-object", "count": 5},
+    ]
+    assert summary["aggregations"]["total"]["value"] == 11
+
+    tool_calls: list[dict[str, Any]] = []
+    all_hits: list[dict[str, Any]] = []
+    collected: list[dict[str, Any]] = []
+    record = _append_tool_observation(
+        tool_calls=tool_calls,
+        all_hits=all_hits,
+        aggregations=collected,
+        name="es_aggregate",
+        args={"aggs": {"by_user": {}, "by_action": {}, "total": {}}},
+        why="verify aggregation visibility",
+        result=result,
+        elapsed_ms=1.0,
+    )
+    assert set(record["summary"]["aggregations"]) == {"by_user", "by_action", "total"}
+    assert [item["field"] for item in collected] == ["by_user", "by_action", "total"]
+    assert collected[1]["top"][0] == {"value": "write-object", "count": 6}
+    assert collected[2]["value"] == 11
+
+
 def test_force_answer_rejects_empty_json():
     from nexus.langgraph.context_loop import _force_answer
 

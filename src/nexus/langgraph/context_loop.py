@@ -373,19 +373,66 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
                 summary[key] = result[key]
         return summary
     if name == "es_aggregate":
-        buckets: list[dict[str, Any]] = []
-        for spec in (result.get("aggregations") or {}).values():
-            if isinstance(spec, dict):
-                buckets = spec.get("buckets") or []
-                break
-        return {
-            "bucket_count": len(buckets),
-            "buckets": [
-                {"key": b.get("key"), "count": b.get("doc_count")}
-                for b in buckets[:40] if isinstance(b, dict)
-            ],
+        def summarize_aggregation(spec: Any, budget: list[int], depth: int = 0) -> dict[str, Any]:
+            """Keep each named aggregation's bounded result, including nested metrics."""
+            if not isinstance(spec, dict):
+                return {}
+            if depth > 4:
+                return {"truncated": True}
+            summary: dict[str, Any] = {}
+            buckets = spec.get("buckets")
+            if isinstance(buckets, list):
+                summary["bucket_count"] = len(buckets)
+                summary["buckets"] = []
+                for bucket in buckets[:40]:
+                    if budget[0] <= 0:
+                        break
+                    if not isinstance(bucket, dict):
+                        continue
+                    budget[0] -= 1
+                    item = {
+                        "key": bucket.get("key"),
+                        "count": bucket.get("doc_count"),
+                    }
+                    if "key_as_string" in bucket:
+                        item["key_as_string"] = bucket["key_as_string"]
+                    for key, value in bucket.items():
+                        if key not in {"key", "key_as_string", "doc_count"} and isinstance(value, dict):
+                            item[key] = summarize_aggregation(value, budget, depth + 1)
+                    summary["buckets"].append(item)
+                if len(summary["buckets"]) < len(buckets):
+                    summary["buckets_truncated"] = True
+            for key in ("value", "value_as_string", "after_key", "sum_other_doc_count",
+                        "doc_count_error_upper_bound"):
+                if key in spec:
+                    summary[key] = spec[key]
+            for key, value in spec.items():
+                if key not in {"buckets", "value", "value_as_string", "after_key",
+                               "sum_other_doc_count", "doc_count_error_upper_bound"} and isinstance(value, dict):
+                    summary[key] = summarize_aggregation(value, budget, depth + 1)
+            return summary
+
+        aggregations = result.get("aggregations") or {}
+        raw_named = aggregations if isinstance(aggregations, dict) else {}
+        per_aggregation_budget = max(1, min(40, 400 // max(1, len(raw_named))))
+        named = {
+            str(name): summarize_aggregation(spec, [per_aggregation_budget])
+            for name, spec in raw_named.items()
+            if isinstance(spec, dict)
+        }
+        first = next(iter(named.values()), {})
+        summary = {
+            **first,
+            "bucket_count": first.get("bucket_count", 0),
+            "buckets": first.get("buckets", []),
             "next_after_key": result.get("next_after_key"),
         }
+        # Preserve the historic single-aggregation shape. For multiple named
+        # aggregations, expose every result under its own name; selecting only
+        # the first made later buckets silently invisible to the model.
+        if len(named) > 1:
+            summary["aggregations"] = named
+        return summary
     if name == "run_record":
         return {
             "available": result.get("available"),
@@ -493,19 +540,27 @@ def _append_tool_observation(
                 seen.add(key)
                 all_hits.append(hit)
     if name == "es_aggregate" and isinstance(result, dict):
-        for spec in (result.get("aggregations") or {}).values():
-            if isinstance(spec, dict):
-                buckets = spec.get("buckets") or []
-                aggregations.append({
-                    "field": ", ".join(sorted((args.get("aggs") or {}).keys())),
-                    "distinct": len(buckets),
-                    "top": [
-                        {"value": b.get("key"), "count": b.get("doc_count")}
-                        for b in buckets[:15] if isinstance(b, dict)
-                    ],
-                    "audit_id": audit_id,
-                })
-                break
+        raw_aggs = result.get("aggregations") or {}
+        named = summary.get("aggregations")
+        if not isinstance(named, dict) and isinstance(raw_aggs, dict) and raw_aggs:
+            first_name = next(iter(raw_aggs))
+            named = {str(first_name): summary}
+        for agg_name, agg_summary in (named or {}).items():
+            if not isinstance(agg_summary, dict):
+                continue
+            buckets = agg_summary.get("buckets") or []
+            item = {
+                "field": str(agg_name),
+                "distinct": agg_summary.get("bucket_count", len(buckets)),
+                "top": [
+                    {"value": b.get("key"), "count": b.get("count")}
+                    for b in buckets[:15] if isinstance(b, dict)
+                ],
+                "audit_id": audit_id,
+            }
+            if "value" in agg_summary:
+                item["value"] = agg_summary["value"]
+            aggregations.append(item)
     return record
 
 
