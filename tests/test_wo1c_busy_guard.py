@@ -153,16 +153,6 @@ def test_busy_guard_sees_a_planned_mode3_run(tmp_path: Path):
     assert err.status_code == 409
 
 
-def test_busy_guard_sees_mode2_verification_and_assessment_states(tmp_path: Path):
-    """Mode 2 persists these between verifier/follow-up workers; neither is terminal."""
-    from nexus.dashboard.app import _busy_run_error
-
-    for status in ("verified", "assessed"):
-        _write_run(tmp_path, "mode2_runs", f"M2-{status}", status)
-        err = _busy_run_error(tmp_path)
-        assert err is not None, f"Mode 2 {status} state did not block a second run"
-        assert err.status_code == 409
-
 
 def test_busy_runs_reports_the_blocking_run_id(tmp_path: Path):
     """The refusal must NAME the run, so the operator can find and stop it."""

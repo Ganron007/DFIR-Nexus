@@ -148,6 +148,29 @@ def run(
 
 
 @app.command()
+def recover(
+    run_id: str = typer.Option(..., "--run-id", help="Ownerless Mode 2 run id"),
+    case: str = typer.Option(..., "--case", help="Case id (required)"),
+    confirm_no_worker: bool = typer.Option(
+        False, "--confirm-no-worker",
+        help="Confirm the examiner checked that this ownerless run has no live worker"),
+):
+    """Record an interrupted transition without rewriting a legacy run record."""
+    from nexus.langgraph.pipeline_runs import recover_mode_run
+
+    case_dir = _case_dir(case)
+    try:
+        recovery = recover_mode_run(
+            case_dir, run_id.strip(), confirmed_no_worker=confirm_no_worker)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Recovery refused: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(
+        f"recovered {recovery['run_id']} status=interrupted "
+        "record=preserved recovery_event=appended")
+
+
+@app.command()
 def status(
     case: str = typer.Option("", "--case", help="Case id (required)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),

@@ -218,11 +218,25 @@ def test_supervisor_followup_then_converges(tmp_path):
             reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1",
         )
 
+    observed_active_states: set[str] = set()
+
+    def inspect_persisted_state(event: dict) -> None:
+        record = m3.read_run_record(case, event["run_id"])
+        status = str((record or {}).get("status") or "")
+        if status in {"verified", "assessed"}:
+            busy_ids = {entry["run_id"] for entry in m3.busy_runs(case)}
+            assert event["run_id"] in busy_ids, (
+                f"the live Mode 2 {status} phase did not keep the case busy")
+            observed_active_states.add(status)
+
     with patch.object(m3, "run_work_order", side_effect=fake_work), \
          patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
              order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
-        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
+        state = m3.run_mode2(
+            case, "what happened", model=object(), es_ok=True,
+            on_event=inspect_persisted_state)
 
+    assert observed_active_states == {"verified", "assessed"}
     assert [o["role"] for o in state["orders"]] == ["evidence", "correlation"]
     assert state["followup_rounds"] == 1
     assert state["status"] == "completed"
