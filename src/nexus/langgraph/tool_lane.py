@@ -3035,6 +3035,10 @@ EMPTY_OUTPUT_FAIL_MARKER = "exited cleanly but produced no output file"
 #: entries here are the tools whose own capture proves the artifact is empty.
 _EMPTY_OUTPUT_MARKERS: dict[str, tuple[str, ...]] = {
     "thumbcache_viewer": ("there are no more entries",),
+    # RECmd reports this after processing a hive and finding no key/value pairs
+    # for the batch. On S08 it wrote no CSV for 13 such hives; the captured
+    # stdout is the tool's proof that the evidence was read, not a silent miss.
+    "recmd": ("found 0 key/value pairs across",),
     # "Found 0 files" (a directory of a supported type with nothing in it) and
     # "Processed 0 out of 0 files" (the summary line). Both appear together; the
     # pair means no .lnk was present, not that LECmd failed. Measured on the
@@ -4638,6 +4642,9 @@ _OUTPUT_FLAGS = frozenset(
     {"--csv", "--json", "--jsonl", "--out", "-out", "-o", "--output", "-output"}
 )
 _NAMED_OUTPUT_FLAGS = frozenset({"--csvf", "--jsonf"})
+# AmcacheParser uses --csvf as a basename for a family of CSVs, e.g.
+# `amcache.csv` produces `amcache_DevicePnps.csv`, not one exact file.
+_PREFIXED_NAMED_OUTPUT_TOOLS = frozenset({"amcacheparser"})
 
 #: Windows-style `<tool>.exe /flag:<path>` switches that name an output file or
 #: directory. NirSoft tools use these (`usbdeview /scomma:<file>`,
@@ -4987,11 +4994,12 @@ def _produced_expected_output(job: ToolJob) -> bool:
     """
     argv = list(job.argv or ())
 
-    # Honour `--csvf`/`--jsonf` first: it names the one file this job owns. Per-file
-    # jobs share an output directory, so "the directory has files" is true for
-    # whichever job wrote last and false for the one that ran first - which is how
-    # a recmd job that had written a 13 KB CSV was marked FAIL while its sibling
-    # held the directory.
+    # Honour `--csvf`/`--jsonf` first: it normally names the one file this job
+    # owns. Per-file jobs share an output directory, so "the directory has
+    # files" is true for whichever job wrote last and false for the one that ran
+    # first. AmcacheParser treats --csvf as a basename for several files, while
+    # RECmd batch mode (--bn) writes its own timestamped CSV name; handle those
+    # tool contracts below rather than accepting unrelated files in the folder.
     named = ""
     for i, arg in enumerate(argv):
         if _flag(arg) in _NAMED_OUTPUT_FLAGS and i + 1 < len(argv):
@@ -5000,9 +5008,36 @@ def _produced_expected_output(job: ToolJob) -> bool:
     if named:
         for i, arg in enumerate(argv):
             if _flag(arg) in ("--csv", "--json") and i + 1 < len(argv):
-                cand = Path(argv[i + 1]) / named
+                target = Path(argv[i + 1])
+                cand = target / named
                 if cand.is_file():
                     return cand.stat().st_size > 0
+                if job.tool in _PREFIXED_NAMED_OUTPUT_TOOLS:
+                    prefix = f"{Path(named).stem}_".lower()
+                    with contextlib.suppress(OSError):
+                        if any(
+                            f.is_file()
+                            and f.suffix.lower() == ".csv"
+                            and f.name.lower().startswith(prefix)
+                            and f.stat().st_size > 0
+                            for f in target.iterdir()
+                        ):
+                            return True
+                if job.tool == "recmd" and any(
+                    _flag(a) == "--bn" for a in argv
+                ):
+                    # RECmd's batch mode ignores --csvf and writes a timestamped
+                    # `<timestamp>_RECmd_Batch_<batch>_Output.csv` in --csv.
+                    # Each hive job has its own output directory, so a non-empty
+                    # CSV there belongs to this job even though its name differs.
+                    with contextlib.suppress(OSError):
+                        if any(
+                            f.is_file()
+                            and f.suffix.lower() == ".csv"
+                            and f.stat().st_size > 0
+                            for f in target.rglob("*")
+                        ):
+                            return True
         return False
 
     produced = False

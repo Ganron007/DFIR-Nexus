@@ -41,8 +41,16 @@ class VirusTotalImporter(Importer):
         try:
             with path.open("r", encoding="utf-8", errors="replace") as f:
                 head = f.read(8192)
+            if path.stat().st_size <= 8192:
+                payload = json.loads(head)
+                if isinstance(payload, dict):
+                    data = payload.get("data")
+                    if isinstance(data, dict) and isinstance(data.get("attributes"), dict):
+                        return True
         except OSError:
             return False
+        except json.JSONDecodeError:
+            pass
         return (
             "virustotal" in head.lower()
             or ("last_analysis_stats" in head and "data" in head)

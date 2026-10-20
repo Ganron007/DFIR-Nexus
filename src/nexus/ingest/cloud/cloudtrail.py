@@ -63,8 +63,8 @@ class CloudTrailImporter(Importer):
             return False
         return (
             "Records" in head
-            and ("eventTime" in head or "eventName" in head)
-        ) or "eventSource" in head
+            and any(key in head for key in ("eventTime", "eventName", "eventSource"))
+        ) or ("eventTime" in head and "eventName" in head)
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per CloudTrail record."""

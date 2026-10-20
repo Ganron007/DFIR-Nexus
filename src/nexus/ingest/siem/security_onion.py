@@ -9,6 +9,7 @@ network or process telemetry.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from datetime import datetime
@@ -46,6 +47,15 @@ _CATEGORY_TYPE_MAP: dict[str, ArtifactType] = {
 }
 
 
+def _is_security_onion_record(record: Any) -> bool:
+    if not isinstance(record, dict):
+        return False
+    event = record.get("event")
+    return isinstance(event, dict) and (
+        "severity_label" in event or event.get("kind") == "alert"
+    )
+
+
 class SecurityOnionImporter(Importer):
     """Parser for Security Onion ECS-formatted alert exports."""
 
@@ -55,21 +65,27 @@ class SecurityOnionImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Heuristic: filename contains 'security_onion'/'soc' or JSON has
-        event.severity_label."""
+        """Confirm a parseable Security Onion ECS alert record."""
         if not path.is_file():
             return False
         name = path.name.lower()
-        if "security_onion" in name or "soc" in name:
-            return True
         if not (name.endswith(".json") or name.endswith(".jsonl") or name.endswith(".ndjson")):
             return False
         try:
-            with path.open("r", encoding="utf-8", errors="replace") as f:
-                head = f.read(8192)
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if _is_security_onion_record(record):
+                        return True
         except OSError:
             return False
-        return "event.severity_label" in head or "severity_label" in head
+        return False
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per Security Onion ECS alert."""

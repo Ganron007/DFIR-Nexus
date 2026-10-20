@@ -30,6 +30,18 @@ ARCHIVE_SUFFIXES = (".7z", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.
 _MARKER = ".expanded.json"
 
 
+def is_expansion_marker(path: Path) -> bool:
+    """True only for this lane's manifest inside an evidence expansion tree."""
+    path = Path(path)
+    parts = [part.lower() for part in path.parts]
+    return (
+        path.name.lower() == _MARKER
+        and len(parts) >= 4
+        and parts[-3] == "_expanded"
+        and parts[-4] == "evidence"
+    )
+
+
 def is_archive(path: Path) -> bool:
     name = path.name.lower()
     return path.is_file() and name.endswith(ARCHIVE_SUFFIXES)

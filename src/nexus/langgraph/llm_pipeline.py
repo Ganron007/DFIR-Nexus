@@ -923,6 +923,37 @@ def _import_file_cap() -> int:
         return 0
 
 
+def _i1_route(path: str | Path, *, windows_root: Path | None = None) -> str:
+    """Assign an evidence file to the host lane or the confirmed importer lane."""
+    from nexus.ingest.detect import has_importer
+    from nexus.langgraph.tool_lane import is_host_evidence
+
+    candidate = Path(path)
+    if is_host_evidence(candidate):
+        return "host"
+    if windows_root is None:
+        # A registered single file may be nested inside a drive tree rather
+        # than reached by walking the tree. Bound discovery to this case's
+        # evidence directory; an unbounded ancestor search can mistake the
+        # analyst workstation's own C:\Windows for the evidence image.
+        from nexus.langgraph.tool_lane import find_windows_root
+
+        evidence_dir = next(
+            (parent for parent in candidate.parents if parent.name.lower() == "evidence"),
+            None,
+        )
+        if evidence_dir is not None:
+            windows_root = find_windows_root(evidence_dir)
+    if windows_root is not None:
+        try:
+            candidate.relative_to(windows_root)
+        except ValueError:
+            pass
+        else:
+            return "importer" if has_importer(candidate) else "host-unconfirmed"
+    return "importer"
+
+
 async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     """Deterministic MCP triage - all applicable tools run (coverage/tools)."""
     from nexus.langgraph.tool_lane import run_tool_lane
@@ -940,7 +971,11 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     # D276: an archive in the evidence is expanded first, and the tree it holds is planned like registered evidence;
     # the archive file itself is then not an importer's input.
     from nexus.config import settings as _arch_settings
-    from nexus.langgraph.evidence_archives import archive_gate_rows, expand_archives
+    from nexus.langgraph.evidence_archives import (
+        archive_gate_rows,
+        expand_archives,
+        is_expansion_marker,
+    )
 
     registered = [p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p]
     # D285: a Magnet AXIOM case is read from its Case.mfdb; its own index, logs, log archive and attachment store
@@ -981,7 +1016,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     # Phase 4h: every registered path is planned by the lane; paths the Windows
     # tool lane cannot parse (PCAP/Zeek/Suricata/cloud/syslog) go to importers.
     from nexus.ingest.detect import is_raw_container
-    from nexus.langgraph.tool_lane import is_host_evidence
 
     all_paths = lane_paths
     # Directories are routed PER FILE: a mixed tree (one EVTX + pcaps/zeek
@@ -998,18 +1032,25 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     _import_truncated = 0
     ingest_paths: list[str] = []
     raw_skipped: list[str] = []
+    windows_unconfirmed: list[str] = []
     for p in all_paths:
         p_path = Path(p)
         if p_path.is_dir():
             try:
                 import os as _os
 
+                from nexus.langgraph.tool_lane import find_windows_root
+
+                windows_root = find_windows_root(p_path)
+
                 for root_dir, _dirs, files in _os.walk(p_path, followlinks=False):
                     for fname in files:
+                        fp = str(Path(root_dir) / fname)
+                        if is_expansion_marker(Path(fp)):
+                            continue  # D295: lane-generated expansion metadata is not evidence
                         if _MAX_IMPORTED_FILES and len(ingest_paths) >= _MAX_IMPORTED_FILES:
                             _import_truncated += 1
                             continue
-                        fp = str(Path(root_dir) / fname)
                         if fp in consumed_archives:
                             continue  # expanded above (D276): its contents are planned, not the file
                         if Path(fp) in axiom_parts:
@@ -1017,21 +1058,38 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                         if is_raw_container(Path(fp)):
                             raw_skipped.append(fname)
                             continue
-                        if not is_host_evidence(fp):
+                        route = _i1_route(fp, windows_root=windows_root)
+                        if route == "importer":
                             ingest_paths.append(fp)
+                        elif route == "host-unconfirmed":
+                            windows_unconfirmed.append(fp)
             except OSError:
                 continue
-        elif str(p_path) in consumed_archives or p_path in axiom_parts:
+        elif (
+            str(p_path) in consumed_archives
+            or p_path in axiom_parts
+            or is_expansion_marker(p_path)
+        ):
             continue
         elif is_raw_container(p_path):
             raw_skipped.append(p_path.name)
-        elif not is_host_evidence(p):
-            ingest_paths.append(p)
+        else:
+            route = _i1_route(p)
+            if route == "importer":
+                ingest_paths.append(p)
+            elif route == "host-unconfirmed":
+                windows_unconfirmed.append(p)
     if raw_skipped:
         # Recorded now, appended to the step log once `steps` exists below.
         result["_raw_skipped_note"] = (
             "I1 skipped raw container(s) (SIFT/imager lane, not importers): "
             + ", ".join(sorted(set(raw_skipped))[:6])
+        )
+    if windows_unconfirmed:
+        examples = ", ".join(Path(item).name for item in windows_unconfirmed[:5])
+        result["_windows_unconfirmed_note"] = (
+            f"I1 left {len(windows_unconfirmed)} file(s) inside a recognised Windows root on the host lane "
+            f"because no importer confirmed them; check the Windows-lane completeness rows. Examples: {examples}"
         )
     if _import_truncated:
         # A cap the operator set is reported, not hidden: the gate and the
@@ -1168,6 +1226,9 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     raw_note = str(result.pop("_raw_skipped_note", "") or "")
     if raw_note:
         steps.append(raw_note)
+    windows_note = str(result.pop("_windows_unconfirmed_note", "") or "")
+    if windows_note:
+        steps.append(windows_note)
     result["step_log"] = steps
     try:
         from nexus.config import settings as _set

@@ -34,7 +34,7 @@ class VelociraptorImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Heuristic: JSON with Velociraptor-shape (Records, _Source, or columns)."""
+        """Confirm an export envelope that the parser can turn into records."""
         if not path.is_file():
             return False
         name = path.name.lower()
@@ -45,8 +45,32 @@ class VelociraptorImporter(Importer):
                 head = f.read(8192)
         except OSError:
             return False
-        # Velociraptor signatures
-        return "velociraptor" in head.lower() or "_Source" in head or "Artifact" in head and "Records" in head
+        # Strong envelope markers match the branches in _extract_records; a
+        # filename or mention of the product name alone is not confirmation.
+        try:
+            data = json.loads(head)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict) and ("Artifact" in data or "_Source" in data):
+            return True
+        if isinstance(data, list) and any(
+            isinstance(row, dict) and ("Artifact" in row or "_Source" in row)
+            for row in data[:3]
+        ):
+            return True
+        if '"Artifact"' in head and '"Records"' in head:
+            return True
+        if '"_Source"' in head:
+            return True
+        if name.endswith((".jsonl", ".ndjson")):
+            for line in head.splitlines()[:30]:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict) and ("Artifact" in row or "_Source" in row):
+                    return True
+        return False
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield Artifact objects from a Velociraptor JSON export.

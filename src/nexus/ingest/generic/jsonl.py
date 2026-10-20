@@ -6,6 +6,7 @@ record is wrapped in an Artifact with the raw data preserved.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -54,11 +55,27 @@ class JSONLImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Accept any .jsonl/.ndjson file as a fallback."""
+        """Accept line-oriented JSON the parser can read.
+
+        A .json suffix is allowed only when its first non-empty line is a
+        complete object. Pretty-printed JSON is not JSONL and the line parser
+        would silently emit no records from it.
+        """
         if not path.is_file():
             return False
         name = path.name.lower()
-        return name.endswith(".jsonl") or name.endswith(".ndjson")
+        if not name.endswith((".json", ".jsonl", ".ndjson")):
+            return False
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    record = json.loads(line)
+                    return isinstance(record, dict)
+        except (OSError, json.JSONDecodeError):
+            return False
+        return False
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield Artifact objects from a generic JSONL file."""

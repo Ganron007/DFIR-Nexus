@@ -92,6 +92,31 @@ def _confirmed_or_generic(source: ArtifactSource | None, path: Path) -> Artifact
     return ArtifactSource.GENERIC_CSV
 
 
+def _confirmed_json_source(source: ArtifactSource | None, path: Path) -> ArtifactSource | None:
+    """Return a JSON source only when its importer recognises the file.
+
+    Content signatures and filename hints narrow the candidates; they are not
+    proof that the selected parser can read the file. JSONL is the fallback
+    only when its importer confirms the line-oriented shape.
+    """
+    if source is not None and _confirmed(source, path):
+        return source
+    if source != ArtifactSource.GENERIC_JSONL and _confirmed(ArtifactSource.GENERIC_JSONL, path):
+        return ArtifactSource.GENERIC_JSONL
+    return None
+
+
+def has_importer(path: Path) -> bool:
+    """Whether detection resolves to a source with a matching importer.
+
+    Used by the evidence router to keep unsupported files inside a recognised
+    Windows image on the host-tool lane instead of creating guaranteed FAIL
+    rows in the importer lane.
+    """
+    source = detect_format(Path(path))
+    return source is not None and _confirmed(source, Path(path))
+
+
 def detect_format(path: Path) -> ArtifactSource | None:
     """Sniff a file and return the best-matching ArtifactSource.
 
@@ -153,10 +178,14 @@ def detect_format(path: Path) -> ArtifactSource | None:
         # Zeek log by name.
         return None
     if name_lower.endswith(".tshark.json"):
-        return ArtifactSource.WIRESHARK
+        return _confirmed_json_source(ArtifactSource.WIRESHARK, path)
     # Volatility 3 plugin dumps: windows.psscan.json / windows.pslist.txt
     if name_lower.startswith("windows.") and suffix in {".json", ".jsonl", ".txt", ".log"}:
-        return ArtifactSource.VOLATILITY
+        if _confirmed(ArtifactSource.VOLATILITY, path):
+            return ArtifactSource.VOLATILITY
+        if suffix in {".json", ".jsonl"}:
+            return _confirmed_json_source(None, path)
+        return None
     if name_lower.endswith((".tar.gz", ".tar.xz", ".tar.bz2")):
         return ArtifactSource.GENERIC_JSONL
 
@@ -238,7 +267,12 @@ def detect_format(path: Path) -> ArtifactSource | None:
     for token, source in _PREFIX_HINTS:
         if name_lower.startswith(token + "-") or name_lower.startswith(token + "_") \
                 or name_lower.startswith(token + "."):
-            return source
+            if suffix in {".json", ".jsonl", ".ndjson"}:
+                confirmed = _confirmed_json_source(source, path)
+                if confirmed is not None:
+                    return confirmed
+            else:
+                return source
 
     # --- Content signature matching ---
     try:
@@ -262,7 +296,14 @@ def detect_format(path: Path) -> ArtifactSource | None:
         # ELASTIC; a pretty-printed array short-circuits before the later
         # layers check).
         if '"_source"' in head and '"layers"' in head:
-            return ArtifactSource.WIRESHARK
+            return _confirmed_json_source(ArtifactSource.WIRESHARK, path)
+        # Large CloudTrail files often exceed the bounded JSON decode window.
+        # Their first event row still carries the specific eventTime/eventName
+        # fields; the CloudTrail importer confirms the complete file shape.
+        if '"eventTime"' in head and '"eventName"' in head:
+            cloudtrail = _confirmed_json_source(ArtifactSource.CLOUDTRAIL, path)
+            if cloudtrail is not None:
+                return cloudtrail
         # JSON-based formats (check most-specific first). For NDJSON the
         # whole head is not valid JSON — sniff the first non-empty line.
         stripped = head.lstrip()
@@ -277,9 +318,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
                 except json.JSONDecodeError:
                     sample = None
             if isinstance(sample, dict):
-                return _detect_json_format(sample, name_lower)
+                return _confirmed_json_source(_detect_json_format(sample, name_lower), path)
             elif isinstance(sample, list) and sample and isinstance(sample[0], dict):
-                return _detect_json_format(sample[0], name_lower)
+                return _confirmed_json_source(_detect_json_format(sample[0], name_lower), path)
             # Truncated pretty-printed JSON array (vol3 / tshark). Do not
             # fall through to CSV just because the snippet contains commas.
             if stripped.startswith("["):
@@ -287,8 +328,13 @@ def detect_format(path: Path) -> ArtifactSource | None:
                 if isinstance(first_obj, dict):
                     detected = _detect_json_format(first_obj, name_lower)
                     if detected:
-                        return detected
-                return ArtifactSource.GENERIC_JSONL
+                        return _confirmed_json_source(detected, path)
+                return _confirmed_json_source(ArtifactSource.GENERIC_JSONL, path)
+            # A large or truncated JSON object must not fall through to the
+            # comma-based CSV detector. Keep it only if the line-oriented JSON
+            # importer confirms a record; otherwise report no importer.
+            if stripped.startswith("{"):
+                return _confirmed_json_source(ArtifactSource.GENERIC_JSONL, path)
 
         # Mid-stream NDJSON — `tail` captures begin inside a JSON object and
         # logs sometimes carry a preamble. Route by the first line that
@@ -297,12 +343,12 @@ def detect_format(path: Path) -> ArtifactSource | None:
             sample = _first_json_line(head)
             if sample is not None:
                 detected = _detect_json_format(sample, name_lower)
-                return detected or ArtifactSource.GENERIC_JSONL
+                return _confirmed_json_source(detected or ArtifactSource.GENERIC_JSONL, path)
 
         # tshark / Wireshark JSON export — pretty-printed, so the whole-head
         # parse above usually fails on truncation; sniff the shape directly.
         if '"_source"' in head and '"layers"' in head:
-            return ArtifactSource.WIRESHARK
+            return _confirmed_json_source(ArtifactSource.WIRESHARK, path)
 
         # Syslog lines before the delimited branches: a message holds commas, and a comma anywhere in the
         # head made a mail server's syslog a CSV whose first line was its header (sample S03, 2026-10-18).
@@ -424,6 +470,10 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
 
     # CloudTrail: has Records array (non-empty)
     if "Records" in keys and isinstance(sample.get("Records"), list) and sample.get("Records"):
+        return ArtifactSource.CLOUDTRAIL
+    # A CloudTrail record exported on its own (or the first row of a large
+    # Records array) is also supported by CloudTrailImporter.
+    if {"eventTime", "eventName"} <= keys:
         return ArtifactSource.CLOUDTRAIL
 
     # M365 Unified Audit Log: RecordType + UserId (shared AZURE lane —

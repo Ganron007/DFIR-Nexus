@@ -164,3 +164,84 @@ def test_empty_output_is_fail_by_default_and_skip_when_opted_in():
     opt.optional_output = True
     status2, reason2 = _empty_output_status(opt)
     assert status2 == "SKIP" and "found nothing" in reason2
+
+
+def test_recmd_zero_key_value_capture_is_an_explained_empty_result(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _empty_output_status
+
+    # Verbatim RECmd summary observed in S08's saved stdout captures.
+    capture = tmp_path / "recmd_stdout.txt"
+    capture.write_text(
+        "RECmd version 2026.5.0\\nFound 0 key/value pairs across 1 file\\n",
+        encoding="utf-8",
+    )
+    job = ToolJob(host="windows", tool="recmd", argv=["recmd"], purpose="hive")
+    status, reason = _empty_output_status(job, {"output_saved_to": str(capture)})
+    assert status == "SKIP"
+    assert "found zero entries" in reason
+
+
+def test_amcacheparser_prefixed_csv_outputs_count_as_produced(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    out = tmp_path / "amcache"
+    out.mkdir()
+    (out / "amcache_DevicePnps.csv").write_text("DeviceId\\nrow\\n", encoding="utf-8")
+    (out / "unrelated.csv").write_text("header\\n", encoding="utf-8")
+    job = ToolJob(
+        host="windows",
+        tool="amcacheparser",
+        argv=["amcacheparser", "--csv", str(out), "--csvf", "amcache.csv"],
+        purpose="Amcache",
+    )
+    assert _produced_expected_output(job) is True
+
+
+def test_amcacheparser_empty_or_unrelated_csv_does_not_count_as_output(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    out = tmp_path / "amcache"
+    out.mkdir()
+    (out / "amcache_DevicePnps.csv").write_text("", encoding="utf-8")
+    (out / "other.csv").write_text("header\\nrow\\n", encoding="utf-8")
+    job = ToolJob(
+        host="windows",
+        tool="amcacheparser",
+        argv=["amcacheparser", "--csv", str(out), "--csvf", "amcache.csv"],
+        purpose="Amcache",
+    )
+    assert _produced_expected_output(job) is False
+
+
+def test_recmd_batch_csv_with_generated_name_counts_as_output(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    out = tmp_path / "recmd" / "user" / "profile"
+    out.mkdir(parents=True)
+    (out / "20261018145436_RECmd_Batch_DFIRBatch_Output.csv").write_text(
+        "Key,Value\\nSoftware\\Google\\Chrome,445\\n", encoding="utf-8"
+    )
+    job = ToolJob(
+        host="windows",
+        tool="recmd",
+        argv=[
+            "recmd", "-f", "NTUSER.DAT", "--bn", "DFIRBatch.reb",
+            "--nl", "true", "--csv", str(out), "--csvf", "NTUSER.csv",
+        ],
+        purpose="Registry hive",
+    )
+    assert _produced_expected_output(job) is True
+
+
+def test_recmd_batch_silent_output_remains_unproduced(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    out = tmp_path / "recmd"
+    out.mkdir()
+    job = ToolJob(
+        host="windows",
+        tool="recmd",
+        argv=["recmd", "--bn", "DFIRBatch.reb", "--csv", str(out), "--csvf", "hive.csv"],
+        purpose="Registry hive",
+    )
+    assert _produced_expected_output(job) is False

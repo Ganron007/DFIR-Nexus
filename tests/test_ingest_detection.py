@@ -5,6 +5,7 @@ fragment was misrouted to `generic_csv` and the Suricata parser never ran.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -64,6 +65,35 @@ def test_unknown_ndjson_is_not_csv(tmp_path):
     path = tmp_path / "mystery.json"
     path.write_text('{"foo": 1, "bar": "x"}\n{"foo": 2, "bar": "y"}\n', encoding="utf-8")
     assert detect_format(path) == ArtifactSource.GENERIC_JSONL
+
+
+def test_pretty_unknown_json_is_not_claimed_by_the_line_importer(tmp_path):
+    from nexus.ingest.detect import detect_format
+
+    path = tmp_path / "pretty.json"
+    path.write_text('{\n  "event": {\n    "message": "ordinary JSON"\n  }\n}\n', encoding="utf-8")
+    assert detect_format(path) is None
+
+
+def test_large_pretty_json_does_not_fall_through_to_csv(tmp_path):
+    from nexus.ingest.detect import detect_format
+
+    path = tmp_path / "large-unknown.json"
+    payload = {f"record-{i}": {"value": i, "detail": "x" * 80} for i in range(200)}
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    assert detect_format(path) is None
+
+
+def test_security_onion_requires_ecs_alert_shape(tmp_path):
+    from nexus.ingest.siem.security_onion import SecurityOnionImporter
+
+    social = tmp_path / "SocialFacebook.json"
+    social.write_text('{"message":"ordinary social event"}\n', encoding="utf-8")
+    assert SecurityOnionImporter.can_handle(social) is False
+
+    alert = tmp_path / "export.json"
+    alert.write_text('{"event":{"severity_label":"high","kind":"alert"}}\n', encoding="utf-8")
+    assert SecurityOnionImporter.can_handle(alert) is True
 
 
 def test_detection_sniffs_only_a_bounded_binary_prefix(tmp_path, monkeypatch):

@@ -25,6 +25,72 @@ def looks_like_volatility_text(text: str) -> bool:
     return "volatility" in head or "volshell" in head or bool(re.search(r"^\s*pid\s+", text, re.M))
 
 
+def _looks_like_volatility_row(row: dict[str, Any]) -> bool:
+    cols = {str(key).lower() for key in row}
+    return (
+        {"pid", "imagefilename"} <= cols
+        or {"pid", "ppid", "offset(v)"} <= cols
+        or {"protection", "commit_charge"} <= cols
+        or bool({"localaddress", "foreignaddress"} & cols)
+    )
+
+
+def _first_json_object(text: str) -> dict[str, Any] | None:
+    """Decode the first complete object from a bounded JSON prefix."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = json.loads(text[start:index + 1])
+                except json.JSONDecodeError:
+                    return None
+                return value if isinstance(value, dict) else None
+    return None
+
+
+def _supported_json_payload(data: Any, *, plugin_hint: str = "") -> bool:
+    """Whether parse_volatility_content can emit rows from this JSON shape."""
+    hint = plugin_hint.lower()
+    named_plugin = hint.startswith("windows.") or hint.startswith("linux.")
+    if isinstance(data, list):
+        rows = [row for row in data if isinstance(row, dict)]
+        return bool(rows) and (named_plugin or any(_looks_like_volatility_row(row) for row in rows[:3]))
+    if not isinstance(data, dict):
+        return False
+    if _looks_like_volatility_row(data):
+        return True
+    for plugin, value in data.items():
+        if not isinstance(value, list):
+            continue
+        rows = [row for row in value if isinstance(row, dict)]
+        if rows and (
+            str(plugin).lower().startswith(("windows.", "linux."))
+            or any(_looks_like_volatility_row(row) for row in rows[:3])
+        ):
+            return True
+    return False
+
+
 def _severity_for_plugin(plugin: str, row: dict[str, Any]) -> Severity:
     p = plugin.lower()
     if "malfind" in p or "inject" in p:
@@ -134,11 +200,15 @@ def parse_volatility_content(text: str, *, filename: str = "") -> list[Artifact]
         plugin = _classify_rows(data, Path(filename).stem)
         artifacts.extend(_row_to_artifact(r, plugin, path) for r in data if isinstance(r, dict))
     elif isinstance(data, dict):
-        for plugin, rows in data.items():
-            if isinstance(rows, list):
-                for r in rows:
-                    if isinstance(r, dict):
-                        artifacts.append(_row_to_artifact(r, str(plugin), path))
+        if _looks_like_volatility_row(data):
+            plugin = _classify_rows([data], Path(filename).stem)
+            artifacts.append(_row_to_artifact(data, plugin, path))
+        else:
+            for plugin, rows in data.items():
+                if isinstance(rows, list):
+                    for r in rows:
+                        if isinstance(r, dict):
+                            artifacts.append(_row_to_artifact(r, str(plugin), path))
     return artifacts
 
 
@@ -156,11 +226,44 @@ class VolatilityImporter(Importer):
         if path.suffix.lower() not in {".json", ".jsonl", ".txt", ".log"}:
             return False
         try:
-            head = path.read_text(encoding="utf-8", errors="replace")[:4096]
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                head = handle.read(65536)
+            full_file = path.stat().st_size <= 65536
         except OSError:
             return False
         if path.suffix.lower() in {".json", ".jsonl"}:
-            return head.lstrip().startswith(("[", "{"))
+            plugin_hint = path.stem.lower()
+            try:
+                data = json.loads(head) if full_file else None
+            except json.JSONDecodeError:
+                data = None
+            if data is not None:
+                return _supported_json_payload(data, plugin_hint=plugin_hint)
+            if head.lstrip().startswith(("[", "{")):
+                first = _first_json_object(head)
+                if first is not None:
+                    if _supported_json_payload(first, plugin_hint=plugin_hint):
+                        return True
+                    if (
+                        plugin_hint.startswith(("windows.", "linux."))
+                        and head.lstrip().startswith("[")
+                    ):
+                        return True
+            for line in head.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict) and (
+                    plugin_hint.startswith(("windows.", "linux."))
+                    or _looks_like_volatility_row(row)
+                ):
+                    return True
+                break
+            return False
         return looks_like_volatility_text(head)
 
     def parse(self, path: Path) -> Iterator[Artifact]:

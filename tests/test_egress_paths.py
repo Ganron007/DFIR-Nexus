@@ -224,6 +224,51 @@ def test_loopback_and_raw_are_not_wrapped(monkeypatch: pytest.MonkeyPatch):
     assert egress_required("https://api.example.com/v1") is False
 
 
+def test_token_file_replace_retries_transient_windows_lock(tmp_path, monkeypatch):
+    import nexus.llm.egress as egress
+
+    target = tmp_path / "analysis" / "egress_tokens.json"
+    target.parent.mkdir()
+    target.write_text('{"old": "{{HOST_1}}"}', encoding="utf-8")
+    real_replace = egress.os.replace
+    attempts = 0
+
+    def replace_with_brief_lock(src, dst):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise PermissionError(5, "Access is denied", str(dst))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(egress.os, "replace", replace_with_brief_lock)
+    monkeypatch.setattr(egress.time, "sleep", lambda _seconds: None)
+    egress._write_tokens(target, {"new": "{{HOST_2}}"})
+
+    assert attempts == 3
+    assert json.loads(target.read_text(encoding="utf-8")) == {"new": "{{HOST_2}}"}
+    assert not list(target.parent.glob("*.tmp"))
+
+
+def test_token_file_replace_reports_target_after_retries_exhaust(tmp_path, monkeypatch):
+    import nexus.llm.egress as egress
+
+    target = tmp_path / "analysis" / "egress_tokens.json"
+    target.parent.mkdir()
+    original = '{"old": "{{HOST_1}}"}'
+    target.write_text(original, encoding="utf-8")
+
+    def always_locked(src, dst):
+        raise PermissionError(5, "Access is denied", str(dst))
+
+    monkeypatch.setattr(egress.os, "replace", always_locked)
+    monkeypatch.setattr(egress.time, "sleep", lambda _seconds: None)
+    with pytest.raises(PermissionError, match="egress_tokens.json"):
+        egress._write_tokens(target, {"new": "{{HOST_2}}"})
+
+    assert target.read_text(encoding="utf-8") == original
+    assert not list(target.parent.glob("*.tmp"))
+
+
 def test_attached_model_is_still_a_chat_model_and_binds_tools():
     """create_react_agent needs a BaseChatModel and calls bind_tools.
 

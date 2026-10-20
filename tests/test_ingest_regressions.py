@@ -149,7 +149,7 @@ class TestTsharkJsonDetection:
     def test_tshark_json_suffix_hint(self, tmp_path):
         p = tmp_path / "weird-name.tshark.json"
         p.write_text("not json at all", encoding="utf-8")
-        assert detect_format(p) == ArtifactSource.WIRESHARK
+        assert detect_format(p) is None
 
 
 class TestNdjsonWithJsonExtension:
@@ -192,6 +192,14 @@ class TestNdjsonWithJsonExtension:
 
         result = VelociraptorImporter().ingest(p)
         assert len(result.artifacts) == 2
+
+    def test_velociraptor_single_record_envelope_is_confirmed(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "hunt.jsonl",
+            '{"Artifact":"Windows.System.Pslist","ClientId":"C.1","Pid":4}\n',
+        )
+        assert detect_format(p) == ArtifactSource.VELOCIRAPTOR
 
 
 class TestWrappedCaseExports:
@@ -270,7 +278,24 @@ class TestVolatility3JsonLane:
 
     def test_windows_psscan_filename_hint(self, tmp_path):
         p = _write(tmp_path, "windows.psscan.json", "not even json")
+        assert detect_format(p) is None
+
+    def test_windows_psscan_valid_rows_confirm_volatility(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "windows.psscan.json",
+            '[{"PID":4,"PPID":0,"ImageFileName":"System","Offset(V)":"0x123"}]',
+        )
         assert detect_format(p) == ArtifactSource.VOLATILITY
+
+    def test_browser_json_object_is_not_volatility(self, tmp_path):
+        p = _write(tmp_path, "56VJUPMA.json", '{"videos":{"https://cdn.example/video.mp4":{"lastAccessed":1}}}')
+        assert detect_format(p) == ArtifactSource.GENERIC_JSONL
+
+    def test_social_svg_name_is_not_security_onion(self, tmp_path):
+        p = tmp_path / "MWF_SocialFacebook.svg.blue42"
+        p.write_text('<svg><text>Social graph</text></svg>', encoding="utf-8")
+        assert detect_format(p) is None
 
     def test_truncated_pretty_json_not_csv(self, tmp_path):
         # Mimic sniff-window truncation: leading newline + partial array.
@@ -282,6 +307,28 @@ class TestVolatility3JsonLane:
         p = tmp_path / "memory-dump.json"
         p.write_text(body, encoding="utf-8")
         assert detect_format(p) == ArtifactSource.VOLATILITY
+
+    def test_windows_info_jsonl_is_confirmed_by_plugin_name(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "windows.info.jsonl",
+            '{"Plugin":"windows.info","Field":"Kernel Base","Value":"0xfffff80000000000"}\n'
+            '{"Plugin":"windows.info","Field":"System Time","Value":"2026-01-01T00:00:00Z"}\n',
+        )
+        assert detect_format(p) == ArtifactSource.VOLATILITY
+
+
+class TestCloudTrailLargeJsonDetection:
+    def test_large_cloudtrail_parent_is_confirmed_from_its_first_event(self, tmp_path):
+        p = tmp_path / "cloudtrail-export.json"
+        record = {
+            "eventVersion": "1.08",
+            "eventTime": "2026-01-01T00:00:00Z",
+            "eventName": "DescribeInstances",
+            "eventSource": "ec2.amazonaws.com",
+        }
+        p.write_text(json.dumps({"Records": [record], "padding": "x" * 12000}), encoding="utf-8")
+        assert detect_format(p) == ArtifactSource.CLOUDTRAIL
 
     def test_ingest_auto_psscan(self):
         from nexus.ingest.detect import ingest_auto

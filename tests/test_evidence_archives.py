@@ -33,8 +33,12 @@ def test_a_collection_archive_is_expanded_and_its_tree_planned(tmp_path, monkeyp
     assert [r["status"] for r in records] == ["OK"] and records[0]["files"] == 1
     root = Path(records[0]["root"])
     assert root.is_relative_to(case / "evidence" / "_expanded") and (root / TREE).is_file()
-    marker = json.loads((root / ".expanded.json").read_text(encoding="utf-8"))
+    marker_path = root / ".expanded.json"
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
     assert marker["kept"][0]["path"] == TREE and len(marker["archive_sha256"]) == 64
+    assert ea.is_expansion_marker(marker_path)
+    assert not ea.is_expansion_marker(tmp_path / "user" / "evidence" / "notes.json")
+    assert not ea.is_expansion_marker(tmp_path / "evidence" / "ordinary" / ".expanded.json")
     # The lane plans the expanded tree like a registered drive tree.
     jobs = plan_windows_triage(str(root), tmp_path / "x")
     assert {"hayabusa", "evtxecmd"} <= {j.tool for j in jobs if j.status == "PENDING"}
