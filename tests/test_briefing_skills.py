@@ -339,8 +339,8 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     rows = csv_path.read_text(encoding="utf-8").splitlines()
     # IC-13: `exact` says whether the counts are the index's own or a capped sample's.
     assert rows[0] == "needle,hits,source,scanned,exact"
-    # every scanned needle is recorded — including 0-hit ones (negative evidence)
-    assert len(rows) - 1 == b["scanned_needles"]
+    # Scanned terms include 0-hit rows. Terms over the scan cap stay visible as
+    # explicitly unscanned rows, so they cannot be mistaken for checked absence.
     # EventId cells are field facts — a 4624 row may remain in the map as a
     # scanned-with-0-signal entry (negative evidence), never with signal hits
     assert not any(
@@ -357,7 +357,11 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     import csv as _csv
 
     records = list(_csv.DictReader(csv_path.read_text(encoding="utf-8").splitlines()))
-    assert all(r["scanned"] == "yes" for r in records)
+    scanned = [r for r in records if r["scanned"] == "yes"]
+    unscanned = [r for r in records if r["scanned"] == "no"]
+    assert len(scanned) == b["scanned_needles"]
+    assert len(scanned) + len(unscanned) == len(records)
+    assert all(r["hits"] == "0" for r in unscanned)
     assert all(r["exact"] == "no" for r in records)
 
 
