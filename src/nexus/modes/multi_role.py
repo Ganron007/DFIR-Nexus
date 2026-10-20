@@ -1660,13 +1660,17 @@ def run_work_order(
                 data={"args": event.get("args") or {}},
             ))
         elif kind == "tool_result":
+            summary = event.get("summary") or {}
+            error = str(event.get("error") or (
+                summary.get("error") if isinstance(summary, dict) else ""
+            ) or "")
             sink.emit(new_event(
                 run_id, "tool.result", actor="agent", turn_id=turn_id,
                 agent_id=agent_id, tool=str(event.get("tool") or ""),
                 audit_id=str(event.get("audit_id") or ""),
-                status="error" if event.get("error") else "ok",
-                detail=str(event.get("error") or ""),
-                data={"summary": event.get("summary") or {}},
+                status="error" if error else "ok",
+                detail=error,
+                data={"summary": summary, "replayed": bool(event.get("replayed"))},
             ))
         elif kind == "round":
             sink.emit(new_event(

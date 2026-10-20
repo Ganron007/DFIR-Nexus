@@ -117,6 +117,105 @@ def test_run_work_order_emits_events_and_parses_json(tmp_path):
     assert any(e["event_type"] == "work_order.completed" for e in stored)
 
 
+def test_run_work_order_marks_replayed_tool_result_and_keeps_one_audit(tmp_path, monkeypatch):
+    from nexus.langgraph import es_native
+
+    case = _case(tmp_path / "cases")
+    order = m3.WorkOrder(order_id="wo-replay", role="evidence", task="count rows")
+    call = {
+        "tool": "es_search",
+        "args": {"query": {"match_all": {}}, "size": 5},
+        "why": "check whether rows exist",
+    }
+    answer = json.dumps({"notes": [], "candidate_findings": [],
+                         "coverage": {"checked": [], "not_checked": []}})
+
+    class ScriptedModel:
+        def __init__(self):
+            self.responses = [
+                {"tool_calls": [call]},
+                {"tool_calls": [call]},
+                {"answer": answer},
+            ]
+
+        def invoke(self, _messages):
+            return type("Response", (), {"content": json.dumps(self.responses.pop(0))})()
+
+    def empty_search(_case_id, **_kwargs):
+        return {"case_id": case.name, "total": 0, "returned": 0, "hits": [],
+                "has_more": False, "next_search_after": None}
+
+    monkeypatch.setattr(es_native, "es_search", empty_search)
+    events = []
+    result = m3.run_work_order(
+        order, case_dir=case, model=ScriptedModel(), run_id="M2-replay",
+        sink=m3.EventSink(case, "M2-replay", callback=events.append),
+    )
+
+    assert result.status == "ok"
+    calls = [event for event in events if event["event_type"] == "tool.call"]
+    results = [event for event in events if event["event_type"] == "tool.result"]
+    assert len(calls) == 1, "the identical query must execute once"
+    assert len(results) == 2
+    assert results[0]["audit_id"] == results[1]["audit_id"]
+    assert results[0]["data"]["replayed"] is False
+    assert results[1]["data"]["replayed"] is True
+    audit_rows = [json.loads(line) for line in (case / "audit" / "nexus.jsonl").read_text().splitlines()]
+    assert len([row for row in audit_rows if row.get("tool") == "es_search"]) == 1
+
+
+def test_run_work_order_records_failed_search_status_and_audit_provenance(tmp_path, monkeypatch):
+    from nexus.langgraph import es_native
+
+    case = _case(tmp_path / "cases")
+    order = m3.WorkOrder(order_id="wo-error", role="evidence", task="search rows")
+    answer = json.dumps({"notes": [], "candidate_findings": [],
+                         "coverage": {"checked": [], "not_checked": []}})
+
+    class ScriptedModel:
+        def __init__(self):
+            self.responses = [
+                {"tool_calls": [{
+                    "tool": "es_search",
+                    "args": {"query": {"match_all": {}}, "size": 5},
+                    "why": "exercise audited query failure",
+                }]},
+                {"answer": answer},
+            ]
+
+        def invoke(self, _messages):
+            return type("Response", (), {"content": json.dumps(self.responses.pop(0))})()
+
+    def fail_search(_case_id, **_kwargs):
+        raise es_native.ESQueryError("wildcard takes exactly one field")
+
+    monkeypatch.setattr(es_native, "es_search", fail_search)
+    events = []
+    result = m3.run_work_order(
+        order, case_dir=case, model=ScriptedModel(), run_id="M2-error",
+        sink=m3.EventSink(case, "M2-error", callback=events.append),
+    )
+
+    assert result.status == "ok"
+    failed_calls = [call for call in result.tool_calls if call["tool"] == "es_search"]
+    assert len(failed_calls) == 1
+    call = failed_calls[0]
+    assert call["read_evidence"] is False
+    assert "ESQueryError: wildcard takes exactly one field" in call["summary"]["error"]
+    assert call["audit_id"]
+    tool_result = next(event for event in events if event["event_type"] == "tool.result")
+    assert tool_result["status"] == "error"
+    assert tool_result["audit_id"] == call["audit_id"]
+    assert "ESQueryError: wildcard takes exactly one field" in tool_result["detail"]
+    assert tool_result["data"]["replayed"] is False
+    assert tool_result["data"]["summary"]["error"] == call["summary"]["error"]
+    audit_rows = [json.loads(line) for line in (case / "audit" / "nexus.jsonl").read_text().splitlines()]
+    search_rows = [row for row in audit_rows if row.get("tool") == "es_search"]
+    assert len(search_rows) == 1
+    assert search_rows[0]["audit_id"] == call["audit_id"]
+    assert search_rows[0]["result_summary"]["error"]
+
+
 def test_run_work_order_falls_back_without_black_box(tmp_path):
     case = _case(tmp_path)
     order = m3.WorkOrder(order_id="wo-fb", role="evidence", task="find x")
