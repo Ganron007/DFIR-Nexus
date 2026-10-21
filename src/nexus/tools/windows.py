@@ -241,7 +241,8 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
     # Which copy of a tool to run when the tree ships several. This used to be
     # extension then alphabetical order, which meant `Tools/windows/kape/...`
     # always won over `Tools/windows/zimmerman/...` purely on the letter "k":
-    # the KAPE bundle is from 2022-10 and the Zimmerman net9 set from 2026-05, so
+    # the KAPE bundle is from 2022-10 and the Zimmerman net9/net10 releases are
+    # the current vendor builds, so
     # every Zimmerman parser we ran was four years old.
     #
     # Measured consequences: MFTECmd 1.2.2.1 does not accept `$LogFile` (the
@@ -253,7 +254,8 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
     # Preferring by toolset is deliberate rather than by mtime: copy operations
     # rewrite mtimes, so "newest file" is not a reliable version signal.
     _TOOLSET_RANK = (
-        "zimmerman\\net9", "zimmerman/net9",     # current Zimmerman release
+        "zimmerman\\net10", "zimmerman/net10",   # current .NET 10 Zimmerman release
+        "zimmerman\\net9", "zimmerman/net9",     # prior current Zimmerman release
         "zimmerman",                              # other Zimmerman copies
         "extra",                                  # curated extras (bmc-tools, hindsight, ...)
         "sysinternals",
@@ -277,7 +279,7 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
 def _find_binary(name: str) -> str | None:
     """Resolve a catalog binary from NEXUS_TOOL_PATHS, then repo Tools/windows.
 
-    Does not search PATH. Walks a few levels so Zimmerman net9/EvtxeCmd/EvtxECmd.exe
+    Does not search PATH. Walks a few levels so Zimmerman runtime-specific tool folders
     and versioned Hayabusa/Suzaku names resolve. Skips rule/sigma trees.
     """
     if not name:
