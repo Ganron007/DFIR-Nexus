@@ -583,6 +583,7 @@ def behavioural_analytics_leads(
                 "count": count,
                 "techniques": techniques,
                 "citation": analytic.get("citation") or {},
+                "pinned_source_facts": list(analytic.get("pinned_source_facts") or []),
             },
         ))
     return out

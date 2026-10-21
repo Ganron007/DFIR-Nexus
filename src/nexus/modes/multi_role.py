@@ -1494,6 +1494,11 @@ def _skill_procedure_block(order: WorkOrder, case_dir: Path | None = None) -> st
             if not isinstance(step, dict):
                 continue
             name = str(step.get("name") or "")
+            fact_errors = [str(value) for value in (step.get("pinned_source_fact_errors") or [])]
+            if fact_errors:
+                lines.append(f"    * {name} | required pinned source facts unavailable: "
+                             f"{', '.join(fact_errors)} - guidance withheld")
+                continue
             look = str(step.get("look_for") or "")
             corrob = str(step.get("corroborate") or "")
             result = str(step.get("result") or "")
@@ -1508,6 +1513,18 @@ def _skill_procedure_block(order: WorkOrder, case_dir: Path | None = None) -> st
                                  f"and nothing to claim from this step")
                     continue
                 parts.append(f"reads {source}" + (" (this case holds it)" if present else ""))
+            for fact in (step.get("pinned_source_facts") or []):
+                if not isinstance(fact, dict):
+                    continue
+                claim = str(fact.get("claim") or "").strip()
+                cite = "@".join(part for part in (
+                    str(fact.get("source") or "").strip(),
+                    str(fact.get("source_version") or "").strip(),
+                ) if part)
+                key = str(fact.get("source_key") or "").strip()
+                digest = str(fact.get("source_sha256") or "").strip()
+                if claim:
+                    parts.append(f"pinned source fact: {claim} [source: {cite}#{key}; source_sha256={digest}]")
             if look:
                 parts.append(f"look_for: {look}")
             if corrob:

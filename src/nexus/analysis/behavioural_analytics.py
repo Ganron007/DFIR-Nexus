@@ -76,6 +76,9 @@ def analytics(path: Path | str | None = None) -> list[dict[str, Any]]:
     for one in paths:
         raw_items.extend(a for a in (load_pack(one).get("packs") or []) if isinstance(a, dict))
 
+    from nexus.knowledge.loader import get_pinned_source_facts
+
+    pinned_facts = get_pinned_source_facts()
     valid: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in raw_items:
@@ -92,6 +95,13 @@ def analytics(path: Path | str | None = None) -> list[dict[str, Any]]:
         if problems:
             log.warning("Analytic %s rejected: %s", ident, "; ".join(problems))
             continue
+        fact_ids = [str(value) for value in (item.get("source_fact_ids") or [])]
+        missing_facts = [fact_id for fact_id in fact_ids if fact_id not in pinned_facts]
+        if missing_facts:
+            log.warning("Analytic %s rejected: missing pinned source facts: %s", ident, ", ".join(missing_facts))
+            continue
+        if fact_ids:
+            item["pinned_source_facts"] = [pinned_facts[fact_id] for fact_id in fact_ids]
         if ident:
             seen.add(ident)
         valid.append(item)

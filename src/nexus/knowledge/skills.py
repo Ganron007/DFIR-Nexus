@@ -325,7 +325,14 @@ def skill_version(skill: dict[str, Any]) -> str:
             {"name": st.get("name"), "query": st.get("query"),
              "look_for": st.get("look_for"), "corroborate": st.get("corroborate"),
              # IC-6: what a step searches is its authored `search` (and its kind), not its free text.
-             "kind": st.get("kind") or "search", "search": st.get("search") or {}}
+             "kind": st.get("kind") or "search", "search": st.get("search") or {},
+             "source_fact_ids": st.get("source_fact_ids") or [],
+             "pinned_source_facts": [
+                 {key: fact.get(key) for key in (
+                     "id", "claim", "source", "source_version", "source_key", "source_sha256", "product_version",
+                 )}
+                 for fact in (st.get("pinned_source_facts") or []) if isinstance(fact, dict)
+             ]}
             for st in (skill.get("steps") or []) if isinstance(st, dict)
         ],
         "mitre": [str(t) for t in (skill.get("mitre") or [])],
