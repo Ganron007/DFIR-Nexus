@@ -4,7 +4,7 @@ Provides run_command with:
 1. Hardcoded binary denylist
 2. Path validation (input/output)
 3. Argument sanitization (dangerous flags, shell metacharacters)
-4. subprocess.run with shell=False, timeout, byte cap
+4. subprocess.run with shell=False and timeout; retain complete stdout/stderr
 5. FK-enriched response envelopes with caveats/advisories
 """
 
@@ -317,17 +317,16 @@ def _find_binary(name: str) -> str | None:
 
 def _execute(cmd_list: list[str], timeout: int = 600,
              cwd: str | None = None) -> dict:
-    """Execute a command with timeout and byte cap.
+    """Execute a command with a timeout and retain its complete output.
 
     Returns dict with: exit_code, stdout, stderr, elapsed_seconds,
     command, truncated status.
     """
-    max_bytes = settings.max_output_bytes
     response_budget = settings.response_byte_budget
 
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
-    mutex = threading.Lock()
+    capture_errors: list[str] = []
 
     try:
         proc = subprocess.Popen(
@@ -348,66 +347,28 @@ def _execute(cmd_list: list[str], timeout: int = 600,
                 "elapsed_seconds": 0, "command": " ".join(cmd_list),
                 "truncated": False, "persist_truncated": False}
 
-    def _reader(stream, chunks, total, truncated_flag, limit):
+    def _reader(stream, chunks):
         try:
             for chunk in iter(lambda: stream.read(65536), b""):
-                with mutex:
-                    new_total = total[0] + len(chunk)
-                    if new_total > limit:
-                        remaining = limit - total[0]
-                        if remaining > 0:
-                            chunks.append(chunk[:remaining])
-                        truncated_flag[0] = True
-                        break
-                    chunks.append(chunk)
-                    total[0] = new_total
+                chunks.append(chunk)
         except (OSError, ValueError):
-            pass
+            capture_errors.append("output stream could not be read completely")
 
-    stdout_total_arr = [0]
-    stderr_total_arr = [0]
-    stdout_truncated_arr = [False]
-    stderr_truncated_arr = [False]
-
-    stdout_thread = threading.Thread(
-        target=_reader, args=(proc.stdout, stdout_chunks, stdout_total_arr,
-                              stdout_truncated_arr, max_bytes))
-    stderr_thread = threading.Thread(
-        target=_reader, args=(proc.stderr, stderr_chunks, stderr_total_arr,
-                              stderr_truncated_arr, max_bytes))
+    stdout_thread = threading.Thread(target=_reader, args=(proc.stdout, stdout_chunks))
+    stderr_thread = threading.Thread(target=_reader, args=(proc.stderr, stderr_chunks))
     stdout_thread.daemon = True
     stderr_thread.daemon = True
     stdout_thread.start()
     stderr_thread.start()
 
     start_time = time.time()
-    # Poll so a filled stdout cap cannot deadlock wait() (writer blocked on pipe).
+    # Drain both pipes while polling so neither stream can block the child.
     try:
         while True:
             elapsed = time.time() - start_time
             remaining = timeout - elapsed
             if remaining <= 0:
                 raise subprocess.TimeoutExpired(cmd_list, timeout)
-            if stdout_truncated_arr[0] or stderr_truncated_arr[0]:
-                proc.kill()
-                proc.wait()
-                stdout_thread.join(timeout=2)
-                stderr_thread.join(timeout=2)
-                captured = b"".join(stdout_chunks).decode("utf-8", errors="replace")
-                return {
-                    "exit_code": -9,
-                    "stdout": captured[:response_budget],
-                    "stdout_full": captured,
-                    "stdout_full_length": len(captured),
-                    "stderr": (
-                        f"TRUNCATED: output exceeded cap ({max_bytes} bytes); "
-                        "process killed to avoid pipe deadlock"
-                    ),
-                    "elapsed_seconds": round(time.time() - start_time, 1),
-                    "command": " ".join(cmd_list),
-                    "truncated": len(captured) > response_budget,
-                    "persist_truncated": True,
-                }
             try:
                 proc.wait(timeout=min(1.0, max(remaining, 0.05)))
                 break
@@ -417,8 +378,8 @@ def _execute(cmd_list: list[str], timeout: int = 600,
         proc.kill()
         proc.wait()
         elapsed = time.time() - start_time
-        stdout_thread.join(timeout=2)
-        stderr_thread.join(timeout=2)
+        stdout_thread.join()
+        stderr_thread.join()
         captured = b"".join(stdout_chunks).decode("utf-8", errors="replace")
         return {
             "exit_code": -9,
@@ -433,20 +394,14 @@ def _execute(cmd_list: list[str], timeout: int = 600,
         }
 
     elapsed = time.time() - start_time
-    stdout_thread.join(timeout=2)
-    stderr_thread.join(timeout=2)
+    stdout_thread.join()
+    stderr_thread.join()
 
     stdout_text = b"".join(stdout_chunks).decode("utf-8", errors="replace")
     stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
 
-    # Two different cuts, and they must not be conflated:
-    #   * the response slice — the MCP reply has a byte budget;
-    #   * the capture itself — the command outran max_output_bytes.
-    # The capture is what gets persisted, so a small reply must never shrink the
-    # case file. It did: every SIFT tool that writes to stdout was stored as a
-    # 10 KB slice while the audit recorded the full length, and the comment
-    # claiming the full text was kept "for audit" was simply false.
-    persist_truncated = stdout_truncated_arr[0] or stderr_truncated_arr[0]
+    # The reply is a preview; the complete command output is retained for the
+    # case extraction. A preview budget must never truncate the saved capture.
     response_truncated = len(stdout_text) > response_budget
     response_stdout = stdout_text[:response_budget]
     if response_truncated:
@@ -457,11 +412,11 @@ def _execute(cmd_list: list[str], timeout: int = 600,
         "stdout": response_stdout,
         "stdout_full": stdout_text,
         "stdout_full_length": len(stdout_text),
-        "stderr": stderr_text[:5000],
+        "stderr": "\n".join(filter(None, [stderr_text, *capture_errors])),
         "elapsed_seconds": round(elapsed, 1),
         "command": " ".join(cmd_list),
         "truncated": response_truncated,
-        "persist_truncated": persist_truncated,
+        "persist_truncated": bool(capture_errors),
     }
 
 
@@ -792,7 +747,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         )
         if result.get("persist_truncated"):
             response["persist_truncation_note"] = (
-                f"The command outran the {settings.max_output_bytes}-byte capture cap, "
+                "The command output capture was truncated, "
                 "so the saved output is incomplete. Treat this evidence as unparsed."
             )
         if output_file:

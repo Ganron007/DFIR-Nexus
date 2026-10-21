@@ -29,9 +29,6 @@ _MAX_QUERIES = 4
 # Row WINDOW sent to the answer LLM: no small artificial cap — the
 # prompt_budget allocator (window × fill) decides how much fits. Row chars
 # remain a per-row rendering choice so one giant CSV line cannot dominate.
-_MAX_HITS_IN_CONTEXT = 400
-_MAX_ROW_CHARS = 400
-_MAX_HITS_TOTAL = 500
 
 _EXE_RE = re.compile(r"[A-Za-z0-9_\-.]+\.exe\b", re.IGNORECASE)
 _USER_RE = re.compile(r"(?:user|account)[=:\s]+([A-Za-z0-9_.\\$-]{2,64})", re.IGNORECASE)
@@ -73,25 +70,19 @@ def _history_block(history: list[dict[str, str]] | None) -> str:
     return "Prior conversation context (context only; current question controls):\n" + "\n".join(lines)
 
 
-def _format_hits_for_llm(hits: list[dict[str, Any]], cap: int = _MAX_HITS_IN_CONTEXT) -> str:
-    """Compact hit table for the LLM to read — parsed columns, not raw CSV."""
-    lines: list[str] = []
-    for h in hits[:cap]:
-        fam = str(h.get("family") or "")
-        text = str(h.get("text") or "")[:_MAX_ROW_CHARS]
-        fields = h.get("fields") or {}
-        salient = " | ".join(f"{k}={str(v)[:80]}" for k, v in list(fields.items())[:6] if v)
-        lines.append(f"[{fam}] {text}" + (f"\n         fields: {salient}" if salient else ""))
-    if len(hits) > cap:
-        lines.append(f"... and {len(hits) - cap} more matched row(s)")
-    return "\n".join(lines) or "(no results)"
+def _format_hits_for_llm(hits: list[dict[str, Any]]) -> str:
+    """Serialize every returned row; the shared prompt budget handles model limits."""
+    return "\n".join(
+        json.dumps(hit, ensure_ascii=False, sort_keys=True, default=str)
+        for hit in hits
+    ) or "(no results)"
 
 
-def _extract_tokens(hits: list[dict[str, Any]], pattern: re.Pattern[str], cap: int = 40) -> list[tuple[str, int]]:
+def _extract_tokens(hits: list[dict[str, Any]], pattern: re.Pattern[str]) -> list[tuple[str, int]]:
     """Deterministic token census across ALL matched rows (not just the LLM's window).
 
     For "list all X" questions this gives the model a complete, verifiable list
-    even when the row window is capped.
+    over every row returned by the paged search.
     """
     counts: dict[str, int] = {}
     for h in hits:
@@ -104,7 +95,7 @@ def _extract_tokens(hits: list[dict[str, Any]], pattern: re.Pattern[str], cap: i
             if key:
                 counts[key] = counts.get(key, 0) + 1
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return ranked[:cap]
+    return ranked
 
 
 def _case_entity_vocabulary(case_dir: Path) -> dict[str, list[str]]:
@@ -312,6 +303,37 @@ def _looks_like_match_all(dsl: str) -> bool:
     return dsl.strip().lower() in ("", "match_all", "*", "all", "everything")
 
 
+def _es_search_all(query: dict[str, Any], case_id: str, audit: AuditWriter,
+                   case_dir: Path | None) -> dict[str, Any]:
+    """Follow every ES response cursor; page size is only a transfer batch."""
+    from nexus.langgraph.backbone import backbone_call
+
+    hits: list[dict[str, Any]] = []
+    cursor: list[Any] | None = None
+    total = 0
+    first_result: dict[str, Any] = {}
+    while True:
+        result = backbone_call(
+            "es_search", audit=audit, case_id=case_id, case_dir=case_dir,
+            query=query, size=1000, sort=["_doc"], search_after=cursor,
+        )
+        if result.get("error"):
+            return result
+        if not first_result:
+            first_result = result
+        page = [h for h in result.get("hits") or [] if isinstance(h, dict)]
+        hits.extend(page)
+        total = int(result.get("total") or total)
+        if not result.get("has_more"):
+            break
+        next_cursor = result.get("next_search_after")
+        if not isinstance(next_cursor, list) or not next_cursor or next_cursor == cursor:
+            return {"error": "ES response was incomplete: missing or repeated search cursor"}
+        cursor = next_cursor
+    return {**first_result, "hits": hits, "returned": len(hits), "total": total,
+            "has_more": False, "next_search_after": None}
+
+
 def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWriter,
                      case_dir: Path) -> tuple[
     list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]],
@@ -371,10 +393,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
         if isinstance(item.get("es"), dict) and item["es"]:
             es = item["es"]
             query = es.get("query") if isinstance(es.get("query"), dict) else es
-            result = backbone_call(
-                "es_search", audit=audit, case_id=case_id, case_dir=case_dir,
-                query=query or {"match_all": {}}, size=100,
-            )
+            result = _es_search_all(query or {"match_all": {}}, case_id, audit, case_dir)
             if result.get("error"):
                 log.warning("ES query failed: %s", result["error"])
                 failures.append(str(result["error"]))
@@ -395,8 +414,6 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
                 "hits": result.get("total", 0),
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
-            if len(all_hits) >= _MAX_HITS_TOTAL:
-                break
             continue
         q = str(item.get("dsl") or "").strip()
         if not q:
@@ -444,10 +461,9 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             })
         else:
             match_all = _looks_like_match_all(q)
-            result = backbone_call(
-                "es_search", audit=audit, case_id=case_id, case_dir=case_dir,
-                query={"match_all": {}} if match_all else _es_from_expr(q),
-                size=100,
+            result = _es_search_all(
+                {"match_all": {}} if match_all else _es_from_expr(q),
+                case_id, audit, case_dir,
             )
             if result.get("error"):
                 log.warning("Query failed: %s → %s", q, result["error"])
@@ -471,8 +487,6 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
                 "hits": result.get("total", 0),
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
-            if len(all_hits) >= _MAX_HITS_TOTAL:
-                break
     # Honesty: if every planned query failed on the backend, say so — never
     # let an ES outage read as "no evidence".
     if queries and not queries_executed and failures:
@@ -548,7 +562,7 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
     1M × 0.7) — evidence rows outrank helper context, and every pack is
     persisted to analysis/llm_context/ for audit.
     """
-    hits_block = _format_hits_for_llm(hits, cap=_MAX_HITS_IN_CONTEXT)
+    hits_block = _format_hits_for_llm(hits)
     agg_block = ""
     if aggregations:
         agg_block = "\nAggregations (grounded over ALL matched rows):\n" + "\n".join(
@@ -767,7 +781,7 @@ def _suggest_followups(question: str, families: list[str],
         top_host = max(hosts, key=lambda k: hosts[k])
         if top_host.lower() not in q_low:
             add(f"Drill into {top_host}", f"What else happened on host {top_host}?")
-    exes = _extract_tokens(all_hits, _EXE_RE, cap=5)
+    exes = _extract_tokens(all_hits, _EXE_RE)
     if exes:
         name = exes[0][0]
         if name.lower() not in q_low:
@@ -860,7 +874,7 @@ def _run_context_loop_turn(
         "total_hits": len(hits),
         "rows_scanned": 0,
         "aggregations": aggregations,
-        "hits": hits[:20],
+        "hits": hits,
         "turns": int(result.get("rounds") or 0),
         "confidence": (
             "low" if result.get("partial") or not hits else "medium"
@@ -1041,7 +1055,7 @@ def run_steer_agent(
         reply = (
             f"Found {len(all_hits)} evidence row(s) from "
             f"{len(queries_executed)} query/queries.\n\n"
-            + _format_hits_for_llm(all_hits, cap=40)
+            + _format_hits_for_llm(all_hits)
         )
         if aggregations:
             reply += "\n\n" + "\n".join(
@@ -1059,7 +1073,7 @@ def run_steer_agent(
         "total_hits": len(all_hits),
         "rows_scanned": agg_rows,
         "aggregations": aggregations,
-        "hits": all_hits[:20],
+        "hits": all_hits,
         "turns": 2,
         # The deterministic fallback formats the rows itself; that is a low
         # confidence result, not a medium one, and with no model it must not

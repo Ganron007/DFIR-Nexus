@@ -9,7 +9,27 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from nexus.langgraph.interpret_loop import _parse_json_blob, _resolve_rounds, run_interpret_loop
+from nexus.langgraph.interpret_loop import (
+    _parse_json_blob,
+    _render_results,
+    _resolve_rounds,
+    run_interpret_loop,
+)
+
+
+def test_interpret_result_rendering_keeps_all_rows_and_full_fields():
+    value = "complete-row-value-" * 50
+    hits = [
+        {"family": "evtxecmd", "line": i, "text": value, "fields": {"Payload": value}}
+        for i in range(12)
+    ]
+    rendered = _render_results([{
+        "kind": "es_query", "count": 12, "hits": hits,
+        "has_more": True, "next_search_after": [11, "cursor"],
+    }])
+    assert '"line": 11' in rendered
+    assert f'"Payload": "{value}"' in rendered
+    assert "search_after=[11, 'cursor']" in rendered
 
 
 class ScriptedModel:

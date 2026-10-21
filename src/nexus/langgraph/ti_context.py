@@ -42,7 +42,7 @@ def _is_code_name(name: str) -> bool:
     labels = name.split(".")
     return any(re.search(r"[a-z][A-Z]", label) for label in labels) or all(
         re.fullmatch(r"[A-Z][a-z0-9]+", label) for label in labels)
-_URL_RE = re.compile(r"https?://[^\s\"'<>|)]{6,200}", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s\"'<>|)]{6,}", re.IGNORECASE)
 
 _SYSTEM_DOMAINS = {
     "microsoft.com", "windows.com", "windowsupdate.com", "msftncsi.com",
@@ -50,9 +50,6 @@ _SYSTEM_DOMAINS = {
     "globalsign.com", "sectigo.com", "local", "localhost",
 }
 _NOISE_URL_PARTS = ("schemas.", "w3.org", "xmlns", "schemas.microsoft.com")
-
-_MAX_PER_KIND = 6
-
 
 def _is_private_ip(value: str) -> bool:
     try:
@@ -90,7 +87,7 @@ def _address_quads(text: str) -> list[str]:
     return quads
 
 
-def extract_iocs(texts: list[str], *, cap: int = 12) -> dict[str, list[str]]:
+def extract_iocs(texts: list[str]) -> dict[str, list[str]]:
     """Deterministic IOC census over evidence text (hashes > IPs > domains > URLs)."""
     found: dict[str, set[str]] = {"sha256": set(), "sha1": set(), "md5": set(),
                                   "ipv4": set(), "domain": set(), "url": set()}
@@ -120,36 +117,33 @@ def extract_iocs(texts: list[str], *, cap: int = 12) -> dict[str, list[str]]:
             u = m.rstrip(".,;:)")
             if any(part in u.lower() for part in _NOISE_URL_PARTS):
                 continue
-            found["url"].add(u[:200])
+            found["url"].add(u)
     out: dict[str, list[str]] = {}
     for kind, values in found.items():
         # hashes first by kind priority; drop hashes that are substrings of
         # longer hashes seen (md5 inside sha1/sha256 hex strings is common)
-        out[kind] = sorted(values)[:cap]
+        out[kind] = sorted(values)
     sha256_set = set(out["sha256"])
     all_hex = " ".join(sha256_set)
-    out["sha1"] = [h for h in out["sha1"] if h not in all_hex][:_MAX_PER_KIND]
+    out["sha1"] = [h for h in out["sha1"] if h not in all_hex]
     sha1_joined = " ".join(out["sha1"])
     out["md5"] = [h for h in out["md5"]
-                  if h not in all_hex and h not in sha1_joined][:_MAX_PER_KIND]
+                  if h not in all_hex and h not in sha1_joined]
     return out
 
 
-def _ordered_iocs(iocs: dict[str, list[str]], cap: int) -> list[str]:
+def _ordered_iocs(iocs: dict[str, list[str]]) -> list[str]:
     ordered: list[str] = []
     for kind in ("sha256", "sha1", "md5", "ipv4", "domain", "url"):
         for value in iocs.get(kind, []):
             if value not in ordered:
                 ordered.append(value)
-            if len(ordered) >= cap:
-                return ordered
     return ordered
 
 
 def sweep_case_iocs(
     case_id: str = "",
     *,
-    cap: int = 12,
     hits: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Extract IOCs from the case's indexed evidence rows (deterministic, no LLM).
@@ -163,7 +157,7 @@ def sweep_case_iocs(
     if hits is None:
         from nexus.tools.evidence_index import do_n4_query
 
-        result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
+        result = do_n4_query(case_id=case_id, dsl="", limit=None, match_all=True)
         hits = result.get("hits") or []
         error = str(result.get("error") or "")
         capped = bool(result.get("count_lower_bound"))
@@ -176,7 +170,7 @@ def sweep_case_iocs(
         fields = h.get("fields") or {}
         if isinstance(fields, dict):
             texts.extend(str(v) for v in fields.values() if v)
-    iocs = extract_iocs(texts, cap=cap)
+    iocs = extract_iocs(texts)
     return {
         "hits_scanned": len(hits),
         "hits_capped": capped,
@@ -185,14 +179,14 @@ def sweep_case_iocs(
     }
 
 
-def enrich_iocs(iocs: list[str], *, max_iocs: int = 6) -> list[dict[str, Any]]:
+def enrich_iocs(iocs: list[str]) -> list[dict[str, Any]]:
     """Run the TI router for each IOC (mock/local by default; external w/ keys)."""
     from nexus.ti import create_default_router
     from nexus.ti.enrich import _run_async
 
     router = create_default_router()
     results: list[dict[str, Any]] = []
-    for ioc in iocs[:max_iocs]:
+    for ioc in iocs:
         try:
             res = _run_async(router.lookup(ioc))
             if isinstance(res, dict):
@@ -215,7 +209,7 @@ def _result_line(res: dict[str, Any]) -> str:
         ) and res.get("results") else "n/a"
     )
     tags: list[str] = []
-    for p in (res.get("results") or [])[:5]:
+    for p in res.get("results") or []:
         if not isinstance(p, dict):
             continue
         name = str(p.get("provider") or "")
@@ -225,7 +219,7 @@ def _result_line(res: dict[str, Any]) -> str:
             else "clean" if p_status == "ok"
             else p_status or "n/a"
         )
-        summary = re.sub(r"\s+", " ", str(p.get("summary") or ""))[:80]
+        summary = re.sub(r"\s+", " ", str(p.get("summary") or ""))
         piece = f"{name}:{p_verdict}"
         if summary and p.get("malicious") is True:
             piece += f" ({summary})"
@@ -269,13 +263,12 @@ def render_ti_markdown(sweep: dict[str, Any], results: list[dict[str, Any]]) -> 
 def build_case_ti_context(
     case_id: str,
     *,
-    max_iocs: int = 6,
     hits: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Sweep the case's evidence for IOCs and enrich the top ones."""
+    """Sweep the case's evidence for IOCs and enrich every extracted IOC."""
     sweep = sweep_case_iocs(case_id, hits=hits)
-    ordered = _ordered_iocs(sweep.get("iocs") or {}, max_iocs)
-    results = enrich_iocs(ordered, max_iocs=max_iocs)
+    ordered = _ordered_iocs(sweep.get("iocs") or {})
+    results = enrich_iocs(ordered)
     return {
         "sweep": sweep,
         "iocs": ordered,

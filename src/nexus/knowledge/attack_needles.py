@@ -40,7 +40,7 @@ def _matches(pack: dict[str, Any], families: set[str], techniques: set[str]) -> 
 def attack_packs_for(
     families: set[str] | list[str] | None = None,
     techniques: set[str] | list[str] | None = None,
-    limit: int = 4,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Packs matching the case's technique ids first, then its families."""
     fams = {str(f).lower() for f in (families or []) if str(f).strip()}
@@ -50,14 +50,14 @@ def attack_packs_for(
         0 if str(p.get("technique", "")).upper() in techs else 1,
         str(p.get("technique", "")),
     ))
-    return selected[: max(1, limit)]
+    return selected if limit is None else selected[: max(1, limit)]
 
 
 def attack_needles_for(
     families: set[str] | list[str] | None = None,
     techniques: set[str] | list[str] | None = None,
-    limit: int = 4,
-    cap: int = 30,
+    limit: int | None = None,
+    cap: int | None = None,
 ) -> list[str]:
     """Flattened needles from the selected packs (order preserved, deduped)."""
     needles: list[str] = []
@@ -72,7 +72,8 @@ def attack_needles_for(
             out.append(needle.strip())
     from nexus.knowledge.needle_terms import filter_scannable
 
-    return filter_scannable(out)[:cap]
+    filtered = filter_scannable(out)
+    return filtered if cap is None else filtered[:cap]
 
 
 def attack_detections_for(

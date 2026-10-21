@@ -72,7 +72,6 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     def convert_pcap(
         pcap_path: str,
         display_filter: str = "",
-        max_packets: int = 0,
     ) -> dict:
         """Convert a raw PCAP/PCAPNG capture to tshark JSON for ingestion.
 
@@ -83,8 +82,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         Args:
             pcap_path: Path to the .pcap/.pcapng file.
             display_filter: Optional tshark display filter (e.g. "dns",
-                "http.request"). Recommended for large captures.
-            max_packets: Optional packet limit (0 = all).
+                "http.request"). Use only when the investigation specifically
+                selects packet families; otherwise every packet is converted.
         """
         import re
 
@@ -109,10 +108,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         out_path = out_dir / f"{safe_stem}.tshark.json"
 
         result: dict = {"pcap": str(src), "output_path": str(out_path)}
-        if src.stat().st_size > 100 * 1024 * 1024 and not display_filter and not max_packets:
+        if src.stat().st_size > 100 * 1024 * 1024 and not display_filter:
             result["warning"] = (
                 "Large capture without a filter — JSON output can be several "
-                "times the pcap size. Consider display_filter or max_packets."
+                "times the pcap size. Consider a display_filter when the investigation "
+                "requires a selected packet family."
             )
 
         from nexus.ingest.base import ImporterError
@@ -122,7 +122,6 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             convert_pcap_to_json(
                 src, out_path,
                 display_filter=display_filter,
-                max_packets=max_packets,
                 timeout=settings.command_timeout,
             )
         except (ImporterError, OSError) as exc:
@@ -139,8 +138,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         })
         result["audit_id"] = audit.log(
             tool="convert_pcap",
-            params={"pcap_path": str(src), "display_filter": display_filter,
-                    "max_packets": max_packets},
+            params={"pcap_path": str(src), "display_filter": display_filter},
             result_summary={"success": True, "output_path": str(out_path),
                             "size_bytes": result["size_bytes"]})
         return result

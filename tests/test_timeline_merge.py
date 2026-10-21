@@ -167,7 +167,7 @@ def test_rebuild_includes_finding_evidence(tmp_path: Path):
         "severity": "high",
         "evidence": [{
             "time": "2019-05-21T15:32:57", "source": "hayabusa/evtx.csv",
-            "detail": "RuleTitle: MSHTA exec", "loc": "hayabusa\evtx.csv:3",
+            "detail": "RuleTitle: MSHTA exec", "loc": "hayabusa\\evtx.csv:3",
         }],
     }]), encoding="utf-8")
     events = rebuild_case_timeline(tmp_path)

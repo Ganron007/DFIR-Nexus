@@ -74,6 +74,7 @@ class _FakeClient:
     def __init__(self, search_payload: dict | None = None, status: int = 200):
         self.search_payload = search_payload or {"hits": {"total": {"value": 0}, "hits": []}}
         self.status = status
+        self.last_search_body = None
 
     def __enter__(self):
         return self
@@ -92,6 +93,8 @@ class _FakeClient:
         }}}})
 
     def post(self, path, json=None):
+        if "_search" in path:
+            self.last_search_body = json
         if "_search" in path and (json or {}).get("aggs"):
             return _Resp(200, {
                 "took": 3,
@@ -139,9 +142,17 @@ def test_es_search_shapes_hits_and_reports_exact_total(fake_es):
     assert hit["ts_tz_assumed"] is True and hit["terms_list"] == []
 
 
-def test_es_search_size_cap_and_index_missing(fake_es):
-    with pytest.raises(es_native.ESQueryError):
-        es_native.es_search("CASE-X", {"match_all": {}}, size=5000)
+def test_es_search_has_no_application_size_ceiling_and_index_missing(fake_es):
+    fake_es.search_payload = {
+        "hits": {"total": {"value": 5000}, "hits": [{
+            "_source": {"family": "evtxecmd", "file": "x.csv", "line": 1, "text": "row"},
+            "sort": [1],
+        }]},
+    }
+    es_native.es_search("CASE-X", {"match_all": {}}, size=5000)
+    assert fake_es.last_search_body["size"] == 5000
+    with pytest.raises(es_native.ESQueryError, match="at least 1"):
+        es_native.es_search("CASE-X", {"match_all": {}}, size=0)
     fake_es.status = 404
     with pytest.raises(es_native.ESQueryError) as exc:
         es_native.es_search("CASE-X", {"match_all": {}})

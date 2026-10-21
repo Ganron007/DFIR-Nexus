@@ -19,7 +19,6 @@ class Settings(BaseModel):
     audit_dir: Path = Path.home() / ".nexus" / "audit"
 
     command_timeout: int = 600
-    max_output_bytes: int = 50 * 1024 * 1024
     response_byte_budget: int = 10 * 1024
     preview_lines: int = 50
 

@@ -25,7 +25,7 @@ def _pcap(tmp_path: Path) -> Path:
 def test_a_dns_packet_names_its_query(tmp_path, monkeypatch):
     from nexus.ingest.network import pcap as pcap_mod
 
-    def real_ek(src_path, out_path, *, display_filter="", max_packets=0, timeout=None):
+    def real_ek(src_path, out_path, *, display_filter="", timeout=None):
         shutil.copyfile(FIXTURE, out_path)
 
     monkeypatch.setattr(pcap_mod, "convert_pcap_to_json", real_ek)
@@ -43,7 +43,7 @@ def test_the_ingest_projection_carries_the_query(tmp_path, monkeypatch):
     from nexus.langgraph.query_pack import iter_ingest_records
     from nexus.langgraph.timeline_merge import ingest_into_case
 
-    def real_ek(src_path, out_path, *, display_filter="", max_packets=0, timeout=None):
+    def real_ek(src_path, out_path, *, display_filter="", timeout=None):
         shutil.copyfile(FIXTURE, out_path)
 
     monkeypatch.setattr(pcap_mod, "convert_pcap_to_json", real_ek)

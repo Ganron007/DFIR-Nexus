@@ -87,6 +87,25 @@ def _windows_tool(tmp_path):
     return server._tool_manager._tools["run_windows_command"].fn
 
 
+def test_batch_scan_processes_every_matching_file_by_default(tmp_path):
+    scan_dir = tmp_path / "evidence"
+    scan_dir.mkdir()
+    for i in range(55):
+        (scan_dir / f"evidence-{i:03d}.evtx").touch()
+
+    seen: list[str] = []
+
+    def fake_run(command, purpose, timeout):
+        seen.append(command)
+        return {"success": True}
+
+    result = windows._batch_scan_files("evtxecmd", scan_dir, "", 600, fake_run)
+
+    assert result["files_processed"] == 55
+    assert result["successful"] == 55
+    assert len(seen) == 55
+
+
 def test_a_run_saves_its_output_into_its_own_case_not_the_active_one(cases, tmp_path, monkeypatch):
     """Reproduced 2026-10-10: a run bound to one case registered its stdout as evidence in the
     active case (run_windows_command passed _active_case_dir() to persist_tool_output)."""

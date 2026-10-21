@@ -129,7 +129,7 @@ def test_es_aggregate_bucket_keys_match_csv_format(monkeypatch):
                     return {
                         "hits": {"total": {"value": 2}},
                         "aggregations": {"v": {"buckets": [
-                            {"key_as_string": "2026-01-01T10:00:00.000Z", "doc_count": 2},
+                            {"key": {"time": 1767261600000}, "doc_count": 2},
                         ]}},
                     }
 

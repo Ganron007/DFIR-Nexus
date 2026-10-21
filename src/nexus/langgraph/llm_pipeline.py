@@ -907,22 +907,6 @@ async def scope(state: InvestigationState, tools: dict, model) -> dict:
     }
 
 
-def _import_file_cap() -> int:
-    """Optional operator cap on files routed to importers. 0 = unlimited.
-
-    D50's lesson: a silent cap drops evidence while the gate still reports the
-    lane complete. If the operator sets one, every file it drops is counted and
-    reported - never skipped quietly.
-    """
-    raw = os.environ.get("NEXUS_IMPORT_FILE_CAP", "").strip()
-    if not raw:
-        return 0
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return 0
-
-
 def _i1_route(path: str | Path, *, windows_root: Path | None = None) -> str:
     """Assign an evidence file to the host lane or the confirmed importer lane."""
     from nexus.ingest.detect import has_importer
@@ -1028,8 +1012,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     # the lane complete. A cap that drops evidence without recording it is the
     # same defect as D50's copy cap, one level up. The walk is now bounded only
     # by what is on the evidence, and every file it drops is recorded.
-    _MAX_IMPORTED_FILES = _import_file_cap()
-    _import_truncated = 0
     ingest_paths: list[str] = []
     raw_skipped: list[str] = []
     windows_unconfirmed: list[str] = []
@@ -1048,9 +1030,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                         fp = str(Path(root_dir) / fname)
                         if is_expansion_marker(Path(fp)):
                             continue  # D295: lane-generated expansion metadata is not evidence
-                        if _MAX_IMPORTED_FILES and len(ingest_paths) >= _MAX_IMPORTED_FILES:
-                            _import_truncated += 1
-                            continue
                         if fp in consumed_archives:
                             continue  # expanded above (D276): its contents are planned, not the file
                         if Path(fp) in axiom_parts:
@@ -1090,14 +1069,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         result["_windows_unconfirmed_note"] = (
             f"I1 left {len(windows_unconfirmed)} file(s) inside a recognised Windows root on the host lane "
             f"because no importer confirmed them; check the Windows-lane completeness rows. Examples: {examples}"
-        )
-    if _import_truncated:
-        # A cap the operator set is reported, not hidden: the gate and the
-        # briefing must both show that evidence was left unrouted.
-        result["_import_truncated_note"] = (
-            f"I1 routed {len(ingest_paths)} file(s) to importers; "
-            f"{_import_truncated} more were left unrouted by "
-            f"NEXUS_IMPORT_FILE_CAP={_MAX_IMPORTED_FILES}."
         )
     if ingest_paths:
         import asyncio as _asyncio
@@ -1154,7 +1125,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 import_rows.append(import_row(path, {"error": str(exc)}, net))
                 return lines
             import_rows.append(import_row(path, info, net))
-            capped = " (capped)" if info.get("artifacts_capped") else ""
             err_note = ""
             problems = list(info.get("errors") or [])
             if info.get("error"):
@@ -1163,7 +1133,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 err_note = " errors=" + " | ".join(str(e)[:120] for e in problems[:2])
             lines.append(
                 f"I1 ingest extra path {p}: {info.get('source')} "
-                f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')}{capped} "
+                f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')} "
                 f"ok={info.get('success')}{err_note}"
             )
             if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and path.suffix.lower() in (
@@ -1850,7 +1820,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         try:
             from nexus.tools.evidence_index import do_n4_query as _wide_query
 
-            _wide = _wide_query(case_id=case_id, dsl="", limit=400, match_all=True)
+            _wide = _wide_query(case_id=case_id, dsl="", limit=None, match_all=True)
             wide_hits = [h for h in (_wide.get("hits") or []) if isinstance(h, dict)]
         except Exception as exc:  # noqa: BLE001 — builders fall back to their own fetch
             log.debug("wide case scan unavailable: %s", exc)
@@ -1862,7 +1832,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
 
             emit_stage(state, "interpret", "setup", "threat-intel context")
-            ti_ctx = build_case_ti_context(case_id, max_iocs=6, hits=share_hits)
+            ti_ctx = build_case_ti_context(case_id, hits=share_hits)
             write_ti_context(settings.cases_root / case_id, ti_ctx)
             ti_block = str(ti_ctx.get("markdown") or "")
         except Exception as exc:  # noqa: BLE001 — TI is best-effort context
@@ -1878,7 +1848,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             )
 
             emit_stage(state, "interpret", "setup", "entity inventory")
-            inv = build_entity_inventory(case_id, cap=40, hits=share_hits)
+            inv = build_entity_inventory(case_id, hits=share_hits)
             write_entity_inventory(settings.cases_root / case_id, inv)
             inv_md = render_inventory_markdown(inv)
         except Exception as exc:  # noqa: BLE001 — inventory is best-effort

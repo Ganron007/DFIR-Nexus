@@ -518,6 +518,26 @@ def case_pipeline_refusal(
     )
 
 
+def _batch_scan_files(tool: str, scan_dir: Path, filter_pattern: str, timeout: int, runner) -> dict:
+    """Run one catalog tool on every file selected by the caller's directory/pattern."""
+    files = scan_dir.glob(filter_pattern) if filter_pattern else scan_dir.iterdir()
+    results = []
+    for path in files:
+        if path.is_file():
+            safe_path = str(path).replace('"', '\\"')
+            command = f'{tool} -f "{safe_path}"'
+            result = runner(command, "", timeout)
+            results.append({"file": path.name, "success": result.get("success", False)})
+
+    return {
+        "tool": tool,
+        "directory": str(scan_dir),
+        "files_processed": len(results),
+        "successful": sum(1 for result in results if result["success"]),
+        "failed": sum(1 for result in results if not result["success"]),
+    }
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     if not _IS_WINDOWS:
         logger.debug("Windows tools skipped: not on Windows")
@@ -1110,14 +1130,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
     @server.tool()
     def batch_scan(tool: str, directory: str, filter_pattern: str = "",
-                   max_files: int = 50, timeout: int = 600) -> dict:
-        """Run a tool against files in a directory with safety bounds.
+                   timeout: int = 600) -> dict:
+        """Run a tool against every matching file in a directory.
 
         Args:
             tool: Tool name from catalog
             directory: Directory containing evidence files
             filter_pattern: Optional glob pattern (e.g. '*.evtx')
-            max_files: Max files to process (default: 50)
             timeout: Per-file timeout in seconds (default: 600)
         """
         if not _IS_WINDOWS:
@@ -1125,20 +1144,4 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         scan_dir = Path(directory)
         if not scan_dir.is_dir():
             return {"success": False, "error": f"Directory not found: {directory}"}
-
-        files = list(scan_dir.iterdir())[:max_files] if not filter_pattern else list(scan_dir.glob(filter_pattern))[:max_files]
-        results = []
-        for f in files:
-            if f.is_file():
-                safe_path = str(f).replace('"', '\\"')
-                cmd = f"{tool} -f \"{safe_path}\""
-                res = run_windows_command(cmd, "", timeout)
-                results.append({"file": f.name, "success": res.get("success", False)})
-
-        return {
-            "tool": tool,
-            "directory": directory,
-            "files_processed": len(results),
-            "successful": sum(1 for r in results if r["success"]),
-            "failed": sum(1 for r in results if not r["success"]),
-        }
+        return _batch_scan_files(tool, scan_dir, filter_pattern, timeout, run_windows_command)

@@ -428,12 +428,12 @@ def memory_verdict_leads_from(yara_hits: Iterable[dict[str, Any]],
 
 
 def _all_hits(case_id: str, query: dict[str, Any]) -> list[dict[str, Any]]:
-    from nexus.langgraph.es_native import MAX_SIZE, es_search
+    from nexus.langgraph.es_native import PAGE_SIZE, es_search
 
     out: list[dict[str, Any]] = []
     after = None
     while True:
-        result = es_search(case_id, query, size=MAX_SIZE, sort=[{"line": {"order": "asc"}}], search_after=after)
+        result = es_search(case_id, query, size=PAGE_SIZE, sort=[{"line": {"order": "asc"}}], search_after=after)
         if result.get("degraded") or result.get("error"):
             return out
         hits = result.get("hits") or []

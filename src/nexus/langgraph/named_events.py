@@ -15,9 +15,8 @@ and its abbreviation (``hayabusa_fields.yaml``). Nothing is typed here. An event
 Sysmon 10 events") is not asserted, so it is not checked.
 
 A cited call returned the event when one of its rows has the event id and, for a named source, the source's
-provider or channel (a row that names neither cannot contradict the source). A call stores at most
-``EVIDENCE_ROW_CAP`` rows: when it returned more, its query is run again with the event added, and its exact
-total answers. A call that cannot be run again leaves the event unknown, never unrecorded.
+provider or channel (a row that names neither cannot contradict the source). The audit stores every returned
+row, so verification reads the exact cited results without issuing a narrower follow-up query.
 """
 from __future__ import annotations
 

@@ -31,7 +31,6 @@ from nexus.langgraph.path_sanitize import (
 )
 from nexus.langgraph.query_pack import (
     _DATE_RE,
-    _MAX_FILTERED_SCAN_BYTES,
     _SKIP_SUFFIXES,
     EXTRACTION_PATTERNS,
     _count_fact_sites,
@@ -52,28 +51,6 @@ _LARGE_NEEDLES = (
     "rundll32", "mshta", "lsass", "schtasks", "bitsadmin",
     "security.evtx",
 )
-def _env_index_int(name: str, default: int) -> int:
-    """Index-knob int; 0 means UNLIMITED (EH-11: no evidence loss by default).
-
-    Operators can reinstate guards with NEXUS_INDEX_MAX_DOCS /
-    NEXUS_INDEX_SMALL_DOCS / NEXUS_INDEX_PER_FAMILY_CAP /
-    NEXUS_INDEX_PER_FILE_CAP; when set, the caps are reported honestly in
-    ``es_index.json``/``index_state.json`` (``capped``/``caps``).
-    """
-    import os
-
-    try:
-        value = int(os.environ.get(name, "") or default)
-    except ValueError:
-        value = default
-    return max(0, value)
-
-
-_MAX_LARGE = _MAX_FILTERED_SCAN_BYTES
-_MAX_DOCS = _env_index_int("NEXUS_INDEX_MAX_DOCS", 0)
-_MAX_DOCS_SMALL = _env_index_int("NEXUS_INDEX_SMALL_DOCS", 0)
-_MAX_DOCS_PER_FAMILY = _env_index_int("NEXUS_INDEX_PER_FAMILY_CAP", 0)
-_MAX_DOCS_PER_FILE = _env_index_int("NEXUS_INDEX_PER_FILE_CAP", 0)
 # No ignore_above on the wildcard subfields (operator decision 2026-10-11). The old 32,766-byte cap
 # was our own setting, not an Elasticsearch limit: ES 8.17.4 indexes a 300 KB value in a wildcard
 # field, and a substring query finds it (measured with a scratch index). None = no cap.
@@ -386,108 +363,106 @@ def _is_delimited(path: Path) -> bool:
     return name.endswith(_DELIMITED_SUFFIXES)
 
 
-def _csv_record_caps() -> tuple[int, int]:
-    """``(max_lines, max_bytes)`` one CSV record may span (WO-22). 0 = no cap."""
-    def _int(name: str, default: int) -> int:
-        raw = os.environ.get(name, "").strip()
-        if not raw:
-            return default
-        try:
-            return max(0, int(raw))
-        except ValueError:
-            return default
-
-    # Operator decision 2026-10-11: valid evidence is not cut. No valid record reaches this size (a
-    # 4104 script block is ~20 KB). The guard only stops a stray quote from swallowing the rest of a
-    # file into one record held in memory; the physical-line fallback then keeps every line.
-    return (
-        _int("NEXUS_CSV_MAX_RECORD_LINES", 1_000_000),
-        _int("NEXUS_CSV_MAX_RECORD_BYTES", 64 * 1024 * 1024),
-    )
-
-
-class _CsvRecordTooLarge(Exception):
-    """One record exceeded the configured span cap (WO-22)."""
-
-
-def iter_record_rows(fh, delimiter: str = ",", *, max_lines: int | None = None,
-                     max_bytes: int | None = None, on_fallback=None):
+def iter_record_rows(fh, delimiter: str = ",", *, on_fallback=None):
     """Yield ``(start_line, raw_text, cells)`` per CSV/TSV record (WO-17/D63).
 
     ``start_line`` is the record's first physical line - what the doc's and a
     hit's ``line`` carry - and ``raw_text`` preserves the original quoting.
-    Streaming: only the current record's physical lines are held.
+    Streaming: a spooled temporary file buffers the current record and spills
+    to disk without discarding it when the record is larger than memory's
+    preferred working size.
 
-    WO-22 (bounded): a record that spans more than ``max_lines`` physical
-    lines or ``max_bytes``, or a ``csv.Error``, must not swallow the file.
-    Past that point CSV parsing stops for the file and the reader falls back
-    to physical-line rows **from that record's start line to EOF** - the
-    already-buffered lines first, then streaming. Cells are ``None`` on
-    fallback rows (no reliable columns). ``on_fallback(start_line, reason)``
-    is called once.
+    There is no application-defined record-size limit. On malformed CSV, the
+    reader falls back to physical-line rows from the malformed record through
+    EOF so later rows remain searchable. Cells are ``None`` on fallback rows.
+    ``on_fallback(start_line, reason)`` is called once.
     """
     import csv
+    import io
+    import sys
+    import tempfile
 
-    if max_lines is None or max_bytes is None:
-        env_lines, env_bytes = _csv_record_caps()
-        max_lines = env_lines if max_lines is None else max_lines
-        max_bytes = env_bytes if max_bytes is None else max_bytes
-    with contextlib.suppress(OverflowError):  # platform cap
-        csv.field_size_limit(2**31 - 1)
-    kept: list[str] = []
-    kept_bytes = 0
-    pulled = 0
+    with contextlib.suppress(OverflowError):  # the CSV parser's platform integer limit
+        csv.field_size_limit(sys.maxsize)
+    line_no = 0
+    record_start = 1
+    in_quotes = False
+    at_field_start = True
+    with tempfile.SpooledTemporaryFile(
+        max_size=1024 * 1024, mode="w+t", encoding="utf-8", newline="",
+    ) as spool:
 
-    def _lines():
-        nonlocal kept_bytes, pulled
-        for ln in fh:
-            kept.append(ln)
-            kept_bytes += len(ln)
-            pulled += 1
-            if (max_lines and len(kept) > max_lines) or (
-                max_bytes and kept_bytes > max_bytes
-            ):
-                raise _CsvRecordTooLarge()
-            yield ln
-
-    reader = csv.reader(_lines(), delimiter=delimiter)
-    prev = 0
-    while True:
-        try:
-            cells = next(reader)
-        except StopIteration:
-            return
-        except (_CsvRecordTooLarge, csv.Error) as exc:
-            reason = (
-                f"record exceeded {max_lines} lines / {max_bytes} bytes"
-                if isinstance(exc, _CsvRecordTooLarge)
-                else f"csv error: {exc}"
-            )
-            start = prev + 1
+        def _fallback(reason: str, start: int) -> Iterator[tuple[int, str, None]]:
             if on_fallback is not None:
                 on_fallback(start, reason)
-            for off, ln in enumerate(kept):
-                yield start + off, ln, None
-            line_no = start + len(kept)
-            kept.clear()
-            for ln in fh:
-                yield line_no, ln, None
-                line_no += 1
-            return
-        raw = "".join(kept)
-        del kept[:]
-        kept_bytes = 0
-        yield prev + 1, raw, cells
-        prev = pulled
+            spool.seek(0)
+            current_line = start
+            for physical_line in spool:
+                yield current_line, physical_line, None
+                current_line += 1
+            for physical_line in fh:
+                yield current_line, physical_line, None
+                current_line += 1
+
+        for physical_line in fh:
+            line_no += 1
+            spool.write(physical_line)
+            pos = 0
+            while pos < len(physical_line):
+                char = physical_line[pos]
+                if in_quotes:
+                    if char == '"':
+                        if pos + 1 < len(physical_line) and physical_line[pos + 1] == '"':
+                            pos += 2
+                            continue
+                        in_quotes = False
+                        at_field_start = False
+                elif char == delimiter or char in "\r\n":
+                    at_field_start = True
+                elif char == '"' and at_field_start:
+                    in_quotes = True
+                else:
+                    at_field_start = False
+                pos += 1
+            if in_quotes:
+                continue
+
+            spool.seek(0)
+            raw = spool.read()
+            try:
+                cells = next(csv.reader(io.StringIO(raw), delimiter=delimiter, strict=True))
+            except StopIteration:
+                cells = []
+            except csv.Error as exc:
+                yield from _fallback(f"csv error: {exc}", record_start)
+                return
+            yield record_start, raw, cells
+            record_start = line_no + 1
+            at_field_start = True
+            spool.seek(0)
+            spool.truncate(0)
+
+        if line_no >= record_start:
+            if in_quotes:
+                yield from _fallback("unterminated quoted field at end of file", record_start)
+            else:
+                spool.seek(0)
+                raw = spool.read()
+                try:
+                    cells = next(csv.reader(io.StringIO(raw), delimiter=delimiter, strict=True))
+                except StopIteration:
+                    cells = []
+                except csv.Error as exc:
+                    yield from _fallback(f"csv error: {exc}", record_start)
+                else:
+                    yield record_start, raw, cells
 
 
 def _fields_from_values(header: list[str], values: list[str]) -> dict[str, str]:
     """Parsed columns for one row, at FULL value length (WO-CS1b item 1 / D37).
 
-    No per-value truncation here: `normalize()` must read the full parsed row
-    before any storage cap, or a 1,326-char EvtxECmd `Payload` is cut and no
-    EventData is produced. The storage cap is applied in `_add` when it builds
-    `doc["fields"]`, not at parse time.
+    No per-value truncation here: `normalize()` and the index must read the
+    full parsed row, or an EvtxECmd `Payload` may be cut and EventData lost.
     """
     out: dict[str, str] = {}
     for name, value in zip(header, values, strict=False):
@@ -524,9 +499,9 @@ def iter_indexable_rows(
     physical line; JSON families stay physical-line records; everything else
     keeps the line-based path. The header row and blank rows are skipped.
 
-    WO-22: when one record exceeds the caps (or csv errors), the file falls
-    back to physical-line rows and the fallback (file, line, reason) is
-    recorded in ``stats["csv_fallback"]``.
+    WO-22: malformed CSV falls back to physical-line rows and the fallback
+    (file, line, reason) is recorded in ``stats["csv_fallback"]``. Valid
+    records have no application-defined length limit.
     """
     # D118 (2026-10-13): a YARA report is one record per match block, not one per line.
     if _yara_report(path):
@@ -887,15 +862,20 @@ def iter_index_doc_batches(
 ):
     """Yield batches of index documents for EVERY row of EVERY indexable file.
 
-    EH-11: streaming (no full-list materialization), no per-file/family/total
-    caps unless the operator sets them (0 = unlimited), transparent .gz, and
-    no ">80MB matching-lines-only" reduction — every row is indexed.
+    EH-11: streaming (no full-list materialization), no software row/file
+    caps, transparent .gz, and no ">80MB matching-lines-only" reduction —
+    every row is indexed.
     """
     case_dir = Path(case_dir)
     # ``extra_needles`` is accepted for API compatibility; EH-11 indexes all
     # rows, so no matching-only filtering remains.
     _ = extra_needles
-    batch = batch_size or _env_index_int("NEXUS_INDEX_BATCH", 4000) or 4000
+    if batch_size is None:
+        try:
+            batch_size = int(os.environ.get("NEXUS_INDEX_BATCH", "4000"))
+        except ValueError:
+            batch_size = 4000
+    batch = batch_size if batch_size > 0 else 4000
     caps: dict[str, Any] = {
         "docs_capped": False,
         "families_capped": [],
@@ -904,13 +884,11 @@ def iter_index_doc_batches(
         "large_files_skipped": 0,
     }
     seen: set[str] = set()
-    family_counts: dict[str, int] = {}
     # WO-3: per-file accepted/deduped counts, so the reconciler can compare a
     # file's own record count with what the index took from it.
     file_counts: dict[str, dict[str, int]] = {}
     out: list[dict[str, Any]] = []
     total = 0
-    stop = False
     year_hint = _case_year_hint(case_dir)
     # Compute the machine-path roots ONCE per scan (not per field per row).
     # `sanitize_field_map` re-resolves them otherwise — a Windows realpath syscall
@@ -958,7 +936,7 @@ def iter_index_doc_batches(
         if fields:
             # WO-CS1b item 1 (D37): the field map is sanitized at full length; the
             # ECS normalization reads THAT (a 1,326-char EvtxECmd Payload must reach
-            # it whole). The storage cap is applied only to `doc["fields"]` below.
+            # it whole). Every parsed field is stored whole in `doc["fields"]`.
             full_fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
                                              family=fam)
             host, user, event = _host_user_event(full_fields, fam, importer)
@@ -968,7 +946,7 @@ def iter_index_doc_batches(
             if user:
                 doc["user"] = user.lower()
             if event:
-                doc["event_id"] = str(event)[:40]
+                doc["event_id"] = str(event)
             # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
             ecs = normalize(fam, full_fields, None, importer=importer)
             if ecs:
@@ -983,7 +961,7 @@ def iter_index_doc_batches(
         cov = _cov(fam)
         if ts_info:
             doc["ts"] = ts_info["dt"].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-            doc["ts_raw"] = str(ts_info["raw"])[:64]
+            doc["ts_raw"] = str(ts_info["raw"])
             synth = bool(fields) and str(fields.get("ts_synthesized") or "").lower() in {
                 "true", "1", "yes",
             }
@@ -1012,66 +990,38 @@ def iter_index_doc_batches(
         total += 1
         return True
 
+    scan_stats = stats if stats is not None else {}
     file_stats: dict[str, Any] = {}
     for path, root, fam in iter_extraction_files(case_dir, stats=file_stats, run_id=run_id):
         if only_files is not None and _index_rel(path, root) not in only_files:
             continue
-        if _MAX_DOCS_PER_FAMILY and family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
-            if fam not in caps["families_capped"]:
-                caps["families_capped"].append(fam)
-            continue
         header = _index_header(path)
         try:
-            data_rows = 0
             with _open_text_auto(path) as fh:
                 for i, line, row_fields in iter_indexable_rows(
-                    path, fh, header, stats=stats, file_label=_index_rel(path, root)
+                    path, fh, header, stats=scan_stats,
+                    file_label=_index_rel(path, root)
                 ):
-                    data_rows += 1
-                    if _MAX_DOCS and total >= _MAX_DOCS:
-                        caps["docs_capped"] = True
-                        stop = True
-                        break
-                    if _MAX_DOCS_PER_FILE and data_rows > _MAX_DOCS_PER_FILE:
-                        caps["files_capped"] += 1
-                        caps.setdefault("capped_files", []).append(
-                            {"file": _index_rel(path, root), "cap": _MAX_DOCS_PER_FILE,
-                             "rows_kept": data_rows - 1})
-                        break
                     # D116 (2026-10-13): a USN row's parent directory comes from the MFT of the same run.
                     row_fields = resolve_usn_row(path, row_fields)
-                    if _add(path, root, fam, i, line, row_fields):
-                        family_counts[fam] = family_counts.get(fam, 0) + 1
+                    _add(path, root, fam, i, line, row_fields)
                     if len(out) >= batch:
                         yield out
                         out = []
-        except OSError:
+        except OSError as exc:
+            scan_stats.setdefault("files_unreadable", []).append({
+                "file": _index_rel(path, root), "error": str(exc),
+            })
             continue
-        if stop:
-            break
-    # A family past NEXUS_N4_FILES_PER_FAMILY is skipped by the walk. Record it, so the index
-    # state never reads "not capped" while files were left out.
-    if file_stats.get("files_skipped_family_cap"):
-        caps["files_skipped_family_cap"] = file_stats["files_skipped_family_cap"]
-        for fam in file_stats.get("families_capped") or []:
-            if fam not in caps["families_capped"]:
-                caps["families_capped"].append(fam)
     # Imported non-host evidence (network/cloud/TI): clean searchable rows from
     # the case artifact store, family = source. The raw store JSONL is never
     # indexed — this projection is (CSV-scanner parity).
     ingest_store = case_dir / "ingest" / "artifacts.jsonl"
     ingest_wanted = only_files is None or "ingest/artifacts.jsonl" in only_files
-    if ingest_store.is_file() and ingest_wanted and not stop:
+    if ingest_store.is_file() and ingest_wanted:
         from nexus.langgraph.query_pack import iter_ingest_records
 
         for n, fam, text, _ts, record in iter_ingest_records(case_dir):
-            if _MAX_DOCS and total >= _MAX_DOCS:
-                caps["docs_capped"] = True
-                break
-            if _MAX_DOCS_PER_FAMILY and family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
-                if fam not in caps["families_capped"]:
-                    caps["families_capped"].append(fam)
-                continue
             art_fields: dict[str, str] = {}
             for key_name in (
                 "source", "artifact_type", "severity", "timestamp", "host",
@@ -1133,16 +1083,14 @@ def iter_index_doc_batches(
                     if value not in (None, "", []):
                         art_fields[key_name] = str(value)
             family_key = (fam.replace("/", "_").replace("\\", "_") or "ingest")
-            if _add(ingest_store, case_dir, fam, n, text, art_fields or None,
-                    count_key=f"{family_key}/artifacts.jsonl", importer=True):
-                family_counts[fam] = family_counts.get(fam, 0) + 1
+            _add(ingest_store, case_dir, fam, n, text, art_fields or None,
+                 count_key=f"{family_key}/artifacts.jsonl", importer=True)
             if len(out) >= batch:
                 yield out
                 out = []
     caps["ts_coverage"] = ts_cov
     caps["file_counts"] = file_counts
-    if stats is not None:
-        stats.update(caps)
+    scan_stats.update(caps)
     if out:
         yield out
 
@@ -2182,7 +2130,7 @@ def es_aggregate(
     case_dir: Path,
     dsl: str = "",
     field: str = "host",
-    top: int = 20,
+    top: int = 0,
     bucket: str = "",
     match_all: bool = False,
     window: tuple[Any, Any] | None = None,
@@ -2239,84 +2187,98 @@ def es_aggregate(
         else:
             es_query = {"bool": {"must": [es_query], "filter": [window_filter]}}
 
-    body: dict[str, Any] = {
-        "size": 0,
-        "track_total_hits": True,
-        "query": es_query,
-    }
-    size = max(1, min(int(top or 20), 100))
-    if bucket in ("day", "hour"):
-        body["aggs"] = {
-            "v": {"date_histogram": {"field": "ts", "calendar_interval": bucket}}
-        }
-    else:
-        terms: dict[str, Any] = {"field": agg_field, "size": size}
-        if with_spans:
-            # first/last-seen per value — the digest's entity timeline.
-            terms["order"] = {"_count": "desc"}
-        body["aggs"] = {
-            "v": {"terms": terms},
-            "distinct": {
-                "cardinality": {"field": agg_field, "precision_threshold": 40000}
-            },
-        }
-        if with_spans:
-            body["aggs"]["v"]["aggs"] = {
-                "first": {"min": {"field": "ts"}},
-                "last": {"max": {"field": "ts"}},
-            }
-
+    # Composite aggregation pages all distinct values/buckets. `size` is the
+    # Elasticsearch response batch size; `after_key` is followed until every
+    # bucket has been returned, so the batch size never truncates the census.
+    source = (
+        {"time": {"date_histogram": {"field": "ts", "calendar_interval": bucket}}}
+        if bucket in ("day", "hour")
+        else {"value": {"terms": {"field": agg_field}}}
+    )
+    composite: dict[str, Any] = {"size": 1000, "sources": [source]}
+    bucket_rows: list[dict[str, Any]] = []
     try:
         with _client() as client:
-            r = client.post(f"/{index_name(case_id)}/_search", json=body)
-            if r.status_code >= 400:
-                return None
-            data = r.json()
-    except Exception:  # noqa: BLE001 — fall back to the Python path
+            after: dict[str, Any] | None = None
+            while True:
+                composite_body = dict(composite)
+                if after:
+                    composite_body["after"] = after
+                agg: dict[str, Any] = {"composite": composite_body}
+                if with_spans and bucket not in ("day", "hour"):
+                    agg["aggs"] = {
+                        "first": {"min": {"field": "ts"}},
+                        "last": {"max": {"field": "ts"}},
+                    }
+                body = {
+                    "size": 0,
+                    "track_total_hits": True,
+                    "query": es_query,
+                    "aggs": {"v": agg},
+                }
+                r = client.post(f"/{index_name(case_id)}/_search", json=body)
+                if r.status_code >= 400:
+                    return None
+                data = r.json()
+                result = (data.get("aggregations") or {}).get("v") or {}
+                bucket_rows.extend(result.get("buckets") or [])
+                next_after = result.get("after_key")
+                if not next_after:
+                    break
+                if next_after == after:
+                    raise RuntimeError("Elasticsearch composite aggregation cursor did not advance")
+                after = next_after
+    except Exception:  # noqa: BLE001 — fall back to the exhaustive Python path
         return None
 
     total = int(((data.get("hits") or {}).get("total") or {}).get("value") or 0)
-    buckets = ((data.get("aggregations") or {}).get("v") or {}).get("buckets") or []
     if bucket in ("day", "hour"):
         bucket_map: dict[str, int] = {}
-        for b in buckets:
-            raw = str(b.get("key_as_string") or "")
-            # "2026-01-01T10:00" / "2026-01-01" — matches _time_buckets keys.
+        for b in bucket_rows:
+            raw = str((b.get("key") or {}).get("time") or "")
+            if not raw:
+                raw = str(b.get("key_as_string") or "")
+            # Composite date keys are epoch milliseconds; normalize to the
+            # same ISO hour/day keys as the Python path.
+            if raw.isdigit():
+                raw = datetime.fromtimestamp(int(raw) / 1000, tz=UTC).isoformat()
             key = raw[:13] + ":00" if bucket == "hour" and len(raw) >= 13 else raw[:10]
             if key:
                 bucket_map[key] = int(b.get("doc_count") or 0)
         return {
             "field": field,
             "rows_scanned": total,
-            "values_seen": len(buckets),
-            "distinct": len(buckets),
+            "values_seen": len(bucket_rows),
+            "distinct": len(bucket_rows),
             "distinct_approximate": False,
             "top": [],
-            "buckets": bucket_map,
+            "buckets": dict(sorted(bucket_map.items())),
             "backend": "elasticsearch",
         }
     ranked = []
-    for b in buckets:
+    for b in bucket_rows:
         item: dict[str, Any] = {
-            "value": str(b.get("key")), "count": int(b.get("doc_count") or 0)
+            "value": str((b.get("key") or {}).get("value")),
+            "count": int(b.get("doc_count") or 0),
         }
         if with_spans:
             first = (b.get("first") or {}).get("value_as_string") or ""
             last = (b.get("last") or {}).get("value_as_string") or ""
             if first:
-                item["first_seen"] = first[:19]
+                item["first_seen"] = first
             if last:
-                item["last_seen"] = last[:19]
+                item["last_seen"] = last
         ranked.append(item)
-    distinct = int(
-        ((data.get("aggregations") or {}).get("distinct") or {}).get("value") or 0
-    )
+    ranked.sort(key=lambda item: (-item["count"], item["value"]))
+    all_ranked = ranked
+    if top > 0:
+        ranked = ranked[:top]
     return {
         "field": field,
         "rows_scanned": total,
-        "values_seen": sum(b["count"] for b in ranked),
-        "distinct": distinct,
-        "distinct_approximate": True,
+        "values_seen": sum(b["count"] for b in all_ranked),
+        "distinct": len(all_ranked),
+        "distinct_approximate": False,
         "top": ranked,
         "buckets": None,
         "backend": "elasticsearch",
@@ -2368,7 +2330,7 @@ def query_index(
 
     def _should_for(subset: list[str]) -> list[dict[str, Any]]:
         should: list[dict[str, Any]] = []
-        for t in subset[:40]:
+        for t in subset:
             boost = 10.0 if t in strong - _CLOUD_TERMS else 3.0 if t in _CLOUD_TERMS else 1.0
             if t in _WEAK_TERMS:
                 boost = 1.0
@@ -2385,11 +2347,17 @@ def query_index(
             should.append({"match_phrase": {"text": {"query": t, "boost": boost}}})
         return should
 
+    class _SearchFailure(RuntimeError):
+        def __init__(self, status: int, message: str):
+            super().__init__(message)
+            self.status = status
+
     def _search(client, subset: list[str], size: int) -> list[dict[str, Any]]:
         if not subset and query is None and not match_all:
             return []
+        page_size = max(1, min(int(size or 400), 1000))
         body = {
-            "size": size,
+            "size": page_size,
             "query": {
                 "bool": {
                     "should": _should_for(subset) or [{"match_all": {}}],
@@ -2398,13 +2366,27 @@ def query_index(
                 }
             },
         }
-        r = client.post(f"/{name}/_search", json=body)
-        if r.status_code >= 400:
-            raise RuntimeError(
-                f"search failed: {r.status_code} {r.text[:300]} "
-                f"| query={json.dumps(body)[:600]}"
-            )
-        return r.json().get("hits", {}).get("hits", [])
+        rows: list[dict[str, Any]] = []
+        search_after: list[Any] | None = None
+        while True:
+            request = {**body, "sort": ["_doc"], "track_total_hits": False}
+            if search_after:
+                request["search_after"] = search_after
+            r = client.post(f"/{name}/_search", json=request)
+            if r.status_code >= 400:
+                raise _SearchFailure(
+                    r.status_code,
+                    f"search failed: {r.status_code} {r.text[:300]} "
+                    f"| query={json.dumps(request)[:600]}",
+                )
+            page = r.json().get("hits", {}).get("hits", [])
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+            search_after = page[-1].get("sort")
+            if not search_after:
+                raise RuntimeError("full Elasticsearch page omitted its search_after cursor")
+        return rows
 
     with _client() as client:
         head = client.head(f"/{name}")
@@ -2423,17 +2405,35 @@ def query_index(
             except Exception:  # noqa: BLE001 — fall back to text-only search
                 search_fields = False
 
-            def _post_search(body: dict[str, Any]):
-                r = client.post(f"/{name}/_search", json=body)
-                if r.status_code >= 400:
-                    # ES 400s name the parse failure but not the offending
-                    # clause — carry a compact body so the next occurrence is
-                    # diagnosable from the log alone (EH-13 honesty).
-                    raise RuntimeError(
-                        f"search failed: {r.status_code} {r.text[:300]} "
-                        f"| query={json.dumps(body)[:600]}"
-                    )
-                return r
+            def _post_search_all(body: dict[str, Any]) -> list[dict[str, Any]]:
+                """Page through every matching row; page size never limits results."""
+                page_size = max(1, min(int(body.get("size") or 400), 1000))
+                rows: list[dict[str, Any]] = []
+                search_after: list[Any] | None = None
+                while True:
+                    request = {**body, "size": page_size,
+                               "sort": ["_doc"], "track_total_hits": False}
+                    if search_after:
+                        request["search_after"] = search_after
+                    r = client.post(f"/{name}/_search", json=request)
+                    if r.status_code >= 400:
+                        raise _SearchFailure(
+                            r.status_code,
+                            f"search failed: {r.status_code} {r.text[:300]} "
+                            f"| query={json.dumps(request)[:600]}",
+                        )
+                    page = r.json().get("hits", {}).get("hits", [])
+                    rows.extend(page)
+                    if stats is not None:
+                        stats["search_pages"] = int(stats.get("search_pages") or 0) + 1
+                    if len(page) < page_size:
+                        break
+                    search_after = page[-1].get("sort")
+                    if not search_after:
+                        raise RuntimeError(
+                            "full Elasticsearch page omitted its search_after cursor"
+                        )
+                return rows
 
             if query is not None and not (
                 hasattr(query, "is_empty") and query.is_empty()
@@ -2441,7 +2441,7 @@ def query_index(
                 if stats is not None:
                     stats["mode"] = "dsl"
                     stats["terms_queried"] = len(needles)
-                r = _post_search({
+                hits_raw = _post_search_all({
                     "size": 400,
                     "query": _with_filt(
                         ast_to_es(query, search_fields=search_fields,
@@ -2449,22 +2449,17 @@ def query_index(
                         filt,
                     ),
                 })
-                hits_raw = r.json().get("hits", {}).get("hits", [])
                 if stats is not None:
                     stats["hits_fetched"] = len(hits_raw)
-                    stats["hits_capped"] = len(hits_raw) >= 400
             elif not needles:
                 if stats is not None:
                     stats["mode"] = "match_all"
-                r = _post_search({"size": 400,
-                                  "query": _with_filt({"match_all": {}}, filt)})
-                hits_raw = r.json().get("hits", {}).get("hits", [])
+                hits_raw = _post_search_all({"size": 400,
+                                             "query": _with_filt({"match_all": {}}, filt)})
                 if stats is not None:
                     stats["hits_fetched"] = len(hits_raw)
-                    stats["hits_capped"] = len(hits_raw) >= 400
             else:
                 hits_raw = []
-                full_pages = 0
                 queue = [
                     needles[i:i + _MAX_ES_TERMS_PER_QUERY]
                     for i in range(0, len(needles), _MAX_ES_TERMS_PER_QUERY)
@@ -2475,43 +2470,37 @@ def query_index(
                         continue
                     if stats is not None:
                         stats["chunk_queries"] += 1
-                    r = client.post(
-                        f"/{name}/_search",
-                        json={
+                    try:
+                        page_rows = _post_search_all({
                             "size": 400,
                             "query": _with_filt(
                                 ast_to_es(None, terms=chunk,
                                           search_fields=search_fields),
                                 filt,
                             ),
-                        },
-                    )
-                    if r.status_code >= 400 and len(chunk) > 1:
-                        # Clause/rewrite limit hit — split and retry, never drop.
-                        mid = len(chunk) // 2
-                        queue.insert(0, chunk[mid:])
-                        queue.insert(0, chunk[:mid])
-                        if stats is not None:
-                            stats["chunks_split"] += 1
-                        continue
-                    if r.status_code >= 400:
+                        })
+                    except _SearchFailure as exc:
+                        if exc.status >= 400 and len(chunk) > 1:
+                            # Clause/rewrite limit hit — split and retry, never drop.
+                            mid = len(chunk) // 2
+                            queue.insert(0, chunk[mid:])
+                            queue.insert(0, chunk[:mid])
+                            if stats is not None:
+                                stats["chunks_split"] += 1
+                            continue
                         # Even a single term failed — record it honestly.
                         log.warning(
                             "ES term scan failed (%s) for %r: %s",
-                            r.status_code, chunk, r.text[:200],
+                            exc.status, chunk, str(exc)[:200],
                         )
                         if stats is not None:
                             stats["terms_failed"].extend(chunk)
                         continue
-                    page = r.json().get("hits", {}).get("hits", [])
-                    if len(page) >= 400:
-                        full_pages += 1
-                    hits_raw.extend(page)
+                    hits_raw.extend(page_rows)
                     if stats is not None:
                         stats["terms_queried"] += len(chunk)
                 if stats is not None:
                     stats["hits_fetched"] = len(hits_raw)
-                    stats["hits_capped"] = full_pages > 0
         else:
             hits_raw = []
             # One search per strong term so SRUM USB/cloud volume cannot bury sdelete/PST.
@@ -2519,7 +2508,8 @@ def query_index(
                 hits_raw.extend(_search(client, [t], 200))
             for t in cloud:
                 hits_raw.extend(_search(client, [t], 80))
-            hits_raw.extend(_search(client, rest, 400))
+            for i in range(0, len(rest), _MAX_ES_TERMS_PER_QUERY):
+                hits_raw.extend(_search(client, rest[i:i + _MAX_ES_TERMS_PER_QUERY], 400))
             if not hits_raw and (query is not None or match_all):
                 # DSL-only query (fields/regex, no terms) or explicit match-all:
                 # scan the index once.
@@ -2576,7 +2566,6 @@ def query_index(
             )
             if not ok:
                 continue
-            matched = matched[:6]
         else:
             # Match-site awareness (Mode 1 keyword semantics): content +
             # token boundary counts, id/label columns are facts, embedded
@@ -2600,29 +2589,25 @@ def query_index(
             "family": fam,
             "file": key[0],
             "line": key[1],
-            "terms": ",".join(matched[:6]),
+            "terms": ",".join(matched),
             # Structured matched needles — the primary (ES) path used to omit
             # this, so every downstream consumer comma-split it again (EH-8).
-            "terms_list": matched[:6],
+            "terms_list": matched,
             "text": text,
         }
         if classified.get("facts"):
-            hit["fact_terms"] = classified["facts"][:6]
-            hit["fact_sites"] = classified["sites"][:6]
+            hit["fact_terms"] = classified["facts"]
+            hit["fact_sites"] = classified["sites"]
         if classified.get("weak"):
-            hit["weak_terms"] = classified["weak"][:6]
+            hit["weak_terms"] = classified["weak"]
         for key_name in ("host", "user", "event_id", "ts"):
             value = src.get(key_name)
             if value not in (None, ""):
                 hit[key_name] = value
         hits.append(hit)
     if stats is not None:
-        from nexus.langgraph.query_pack import _MAX_HITS_TOTAL as _total_cap
-
-        stats["hits_returned"] = min(len(hits), _total_cap)
-        # merged chunks trimmed by finalize = counts are lower bounds
-        if len(hits) > _total_cap or stats.get("hits_capped"):
-            stats["hits_capped"] = True
+        stats["hits_returned"] = len(hits)
+        stats["hits_capped"] = False
     return finalize_hits(hits, terms, priority_terms)
 
 def _with_filt(query: dict[str, Any], filt: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2704,7 +2689,6 @@ def _shape_es_hit(
         )
         if not ok:
             return None
-        matched = matched[:6]
     else:
         # Same match-site awareness as the CSV path (parity).
         candidates = [
@@ -2725,15 +2709,15 @@ def _shape_es_hit(
         "family": fam,
         "file": key[0],
         "line": key[1],
-        "terms": ",".join(matched[:6]),
-        "terms_list": matched[:6],
+        "terms": ",".join(matched),
+        "terms_list": matched,
         "text": text,
     }
     if classified.get("facts"):
-        hit["fact_terms"] = classified["facts"][:6]
-        hit["fact_sites"] = classified["sites"][:6]
+        hit["fact_terms"] = classified["facts"]
+        hit["fact_sites"] = classified["sites"]
     if classified.get("weak"):
-        hit["weak_terms"] = classified["weak"][:6]
+        hit["weak_terms"] = classified["weak"]
     for key_name in ("host", "user", "event_id", "ts"):
         value = src.get(key_name)
         if value not in (None, ""):

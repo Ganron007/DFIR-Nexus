@@ -120,7 +120,7 @@ def _finding_locs(f: dict[str, Any]) -> set[str]:
 
     return {
         str(r.get("loc") or "")
-        for r in normalize_evidence_rows(f, limit=None)
+        for r in normalize_evidence_rows(f)
         if str(r.get("loc") or "").strip()
     }
 
@@ -857,7 +857,7 @@ def build_dfir_markdown(
         seen: set[str] = set()
         merged: list[dict[str, str]] = []
         for f in cluster:
-            for r in normalize_evidence_rows(f, limit=None):
+            for r in normalize_evidence_rows(f):
                 key = str(r.get("loc") or "") or f"{r.get('time')}|{r.get('detail')}"
                 if key in seen:
                     continue
@@ -1156,7 +1156,7 @@ def build_dfir_markdown(
             render_evidence_table,
         )
 
-        rows = normalize_evidence_rows(f, limit=None)
+        rows = normalize_evidence_rows(f)
         out.append("**Evidence**")
         out.append("")
         if rows:

@@ -18,7 +18,7 @@ def _case_with_rows(tmp_path: Path) -> Path:
     ext = case / "extractions" / "hayabusa"
     ext.mkdir(parents=True)
     rows = [HEADER]
-    # Standout row FIRST (per-file collect caps must not starve it) ...
+    # Standout row FIRST; the exhaustive scan must retain it among every row.
     rows.append(
         "2023-06-12 10:00:00,Suspicious,high,WS01,Sec,4688,"
         "net use \\\\fileserver\\share and usbstor device mounted"
@@ -42,9 +42,8 @@ def test_ubiquity_demotion_marks_and_excludes(tmp_path):
 
     brief = case_briefing(_case_with_rows(tmp_path))
     scan = {s["needle"]: s for s in brief["needle_scan"]}
-    # Hit counts are lower bounds (per-file collect cap); the demotion compares
-    # the recorded count against the reported floor.
-    assert scan["cipher"]["hits"] >= brief["ubiquity_floor"]
+    # Every file row contributes to the exact count and ubiquity calculation.
+    assert scan["cipher"]["hits"] == 120
     assert scan["cipher"]["ubiquitous"] is True
     assert scan.get("net use", {}).get("ubiquitous") is False
 

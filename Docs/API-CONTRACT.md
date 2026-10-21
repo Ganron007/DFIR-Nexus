@@ -790,7 +790,7 @@ needle name, so an identical needle never re-stages under a new hit count.
   "default_needles": "boolean (optional — when true and query is empty, resolve the case investigation vocabulary: full-run needles → briefing scan vocabulary; response echoes default_needles count)",
   "start": "string (optional — start date YYYY-MM-DD)",
   "end": "string (optional — end date YYYY-MM-DD)",
-  "limit": "integer (optional — max hits, clamped 1-400, default 80)",
+  "limit": "integer (optional — response page size; omitted means return every match)",
   "offset": "integer (optional — pagination offset, default 0)"
 }
 ```
@@ -807,7 +807,11 @@ needle name, so an identical needle never re-stages under a new hit count.
   "families": ["string"] (available extraction families),
   "needles": ["string"] (effective query terms),
   "query": "string (effective query description)",
-  "offset": 0
+  "offset": 0,
+  "complete": false,
+  "next_offset": 80,
+  "scan_complete": true,
+  "incomplete_reasons": []
 }
 ```
 
@@ -816,7 +820,12 @@ needle name, so an identical needle never re-stages under a new hit count.
 before execution, so `count` is the true filtered total rather than the
 post-filtered page size; `total_before_family_filter` mirrors `count`. A
 comma-separated multi-family list still post-filters the returned page.
-`count` is bounded by the engine's hit cap (`_MAX_HITS_TOTAL`, 400).
+`count` covers every matching row from the scan. `limit` controls only the
+response page; continue at `next_offset` until `complete` is true. `scan_complete`
+and `count_exact` describe evidence coverage independently of page size. A scan
+reports read/query failures in `incomplete_reasons`; such a count is a lower
+bound and must not support a negative conclusion. N4 does not truncate row text,
+parsed fields, or matching rows by file, family, or total count.
 
 **Errors:**
 - `400` — `limit`/`offset` not integers, or query syntax error.
@@ -1174,7 +1183,7 @@ handler no longer returns zero hits — it resolves the case's investigation
 vocabulary: `needles` from the request when given, else the Mode 1 full-run's
 persisted needle list (`analysis/mode1_full_run.json`), else the briefing
 scan vocabulary (playbook/ATT&CK/Sigma needles for the case's families).
-Terms go straight to `n4_hits` — the DSL's 24-term OR cap is not involved.
+Terms go straight to `n4_hits`; N4 applies no term-count cap.
 The response carries `default_needles: <n>` when the auto-vocabulary was used
 (`0` for explicit/user needles). This is what lets a portal-created case
 with empty intake render a populated timeline.
@@ -1208,7 +1217,7 @@ needles is one event.
 ## 9. Entities
 
 ### POST /portal/api/entities
-**Description:** Extracts entities (IPs, users, processes, paths) from N4 hit row text using regex patterns. Returns counts per entity, most frequent first. Feeds the entity-pivot page. `needles` merges into the query exactly like `/explore/search`; an empty request is a **match-all** over in-window hits (bounded by the standard per-file/global hit caps), so the page populates on arrival.
+**Description:** Extracts entities (IPs, users, processes, paths) from every matching N4 hit row using regex patterns. Returns counts per entity, most frequent first. Feeds the entity-pivot page. `needles` merges into the query exactly like `/explore/search`; an empty request is a **match-all** over in-window hits. N4 applies no per-file or global result cap.
 
 **Request:**
 ```json
@@ -2058,7 +2067,7 @@ event: round        data: {"round": N, "max_rounds": M}                    (guid
 event: tool_call    data: {"round": N, "tool": "es_search", "args": {...}, "why": "..."}
 event: tool_result  data: {"round": N, "tool": "...", "audit_id": "...", "summary": {...}, "error": "..."}
 event: partial      data: {"reason": "rounds|calls|time", "round": N}
-event: hits         data: {"hits": [...capped 12 trimmed hits...], "count": N}
+event: hits         data: {"hits": [...complete hit rows...], "count": N, "complete": true}
 event: done         data: {"reply": "...", "queries_executed": [...], "tool_calls": [...], "total_hits": N, "partial": bool, "hits": [...]}
 event: error        data: {"error": "..."}
 event: ping         data: {}   (keepalive every 30s while working)
@@ -2076,7 +2085,7 @@ event: ping         data: {}   (keepalive every 30s while working)
 ### Explore hit enrichment (WP 4d.1)
 
 `POST /portal/api/explore/search` responses now attach per-hit:
-- `fields` — parsed CSV columns (header → value, quoted-comma safe, capped 24 fields / 160 chars)
+- `fields` — all parsed CSV columns (header → value, quoted-comma safe, no field-count or value-length cap)
 - `host` — best-effort hostname (Computer column or `\\UNC` path)
 
 And accept an optional `"host"` filter (exact, case-insensitive).
@@ -2437,7 +2446,7 @@ salient labels) → Indicators (URLs/domains/tasks/paths extracted from
 evidence content + registry IPs/hosts/hashes) → Detections → MITRE →
 Insider Threat Matrix → Evidence Registry → tool-run inventory. Same-signal
 findings approved twice collapse to one section citing every ID; evidence
-rows signature-collapse (×N) and tables cap at 40 rows.
+identical rows are grouped with an explicit repeat count; all evidence rows are included.
 
 ---
 

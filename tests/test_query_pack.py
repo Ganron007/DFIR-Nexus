@@ -259,19 +259,53 @@ def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     assert "192.168.77.62" in yaml_text
 
 
-def test_bmc_tools_keeps_every_file_by_default(tmp_path: Path):
-    """Operator decision 2026-10-11: valid evidence is not capped. Every file of a family is
-    walked by default; an explicit family cap still applies when it is asked for."""
+def test_bmc_tools_keeps_every_file_even_with_legacy_cap_setting(tmp_path: Path, monkeypatch):
+    """Valid evidence is not capped by a legacy per-family setting."""
     from nexus.langgraph.query_pack import iter_extraction_files
 
     bmc = tmp_path / "extractions" / "bmc-tools"
     bmc.mkdir(parents=True)
     for i in range(200):
-        (bmc / f"tile{i}.txt").write_text("rdp cache tile\n", encoding="utf-8")
+        (bmc / f"tile{i}.txt").touch()
+    monkeypatch.setenv("NEXUS_N4_FILES_PER_FAMILY", "120")
     files = iter_extraction_files(tmp_path)
     assert sum(1 for _p, _r, fam in files if fam == "bmc-tools") == 200
-    capped = iter_extraction_files(tmp_path, max_files_per_family=120)
-    assert sum(1 for _p, _r, fam in capped if fam == "bmc-tools") == 120
+
+
+def test_n4_returns_every_row_from_one_file_and_pages_without_loss(tmp_path: Path):
+    """N4 collection is exhaustive; an API page is explicit and resumable."""
+    from nexus.langgraph.query_pack import n4_hits, run_ad_hoc_query
+
+    case = tmp_path / "CASE-N4-UNCAPPED"
+    hayabusa = case / "extractions" / "hayabusa"
+    hayabusa.mkdir(parents=True)
+    rows = ["Timestamp,Computer,RuleTitle"]
+    rows.extend(
+        f"2026-10-20T10:{i // 60:02d}:{i % 60:02d}Z,WS01,Mimikatz execution {i}"
+        for i in range(349)
+    )
+    (hayabusa / "timeline.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (case / "CASE.yaml").write_text(
+        "intake:\n  query_extra: mimikatz\n", encoding="utf-8"
+    )
+
+    hits, backend = n4_hits(
+        case, ["mimikatz"], (None, None), priority_terms=["mimikatz"],
+        backend="csv", stats={},
+    )
+    assert backend == "csv"
+    assert len(hits) == 349
+    assert hits[-1]["text"].endswith("Mimikatz execution 348")
+
+    first = run_ad_hoc_query(case, backend="csv", limit=100)
+    final = run_ad_hoc_query(case, backend="csv", limit=100, offset=300)
+    assert first["count"] == 349
+    assert len(first["hits"]) == 100
+    assert first["complete"] is False
+    assert first["next_offset"] == 100
+    assert len(final["hits"]) == 49
+    assert final["complete"] is True
+    assert final["next_offset"] is None
 
 
 def test_n4_scans_hayabusa_named_file(tmp_path: Path):

@@ -4,9 +4,9 @@ Auto-generated after N3 indexing (and on demand). The examiner's first view
 of a processed case: what was collected, what the signatures already caught,
 where the signal density is, and what they said they were looking for.
 
-Deterministic by default — no LLM required. One bounded extraction scan
+Deterministic by default — no LLM required. One exhaustive extraction scan
 powers three surfaces: needle hit-counts (playbook auto-scan), alert rows
-(Hayabusa/Zircolite severity), and entity top-N. The optional LLM layer
+(Hayabusa/Zircolite severity), and the entity inventory. The optional LLM layer
 (mode1 directions) consumes this structure, never replaces it.
 """
 
@@ -21,10 +21,6 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# Bounded scan for the briefing. Larger than a needle query (we want breadth)
-# but still capped — a briefing is a map, not the whole dataset.
-_BRIEFING_SCAN_TERMS_CAP = 300
-_ENTITY_TOP_N = 8
 # Host filesystem paths are CONTENT (paths inside the parsed artifacts), not
 # "top entities" and not evidence files — Mode 1 shows a labelled summary of
 # them instead of dumping system paths into the entity list.
@@ -41,7 +37,6 @@ _ALERT_FAMILY_HINTS = (
     # imported network/agent detections (ingest artifact store)
     "suricata", "zeek", "sysdig", "falco", "security_onion",
 )
-_ROW_COUNT_CAP = 5_000_000  # safety valve per file
 
 
 # ---------------------------------------------------------------------------
@@ -51,27 +46,21 @@ _ROW_COUNT_CAP = 5_000_000  # safety valve per file
 def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
     """Per-family file/row counts + hosts seen, from the tools extractions.
 
-    Streams line counts (bounded) — fast on real cases, honest about caps.
+    Streams complete line counts for every indexed extraction file.
     Imported non-host evidence (network/cloud/TI) is counted per source from
     the case artifact store so the briefing shows it as a family.
     """
     from nexus.langgraph.query_pack import iter_extraction_files, iter_ingest_rows
 
     out: dict[str, dict[str, Any]] = {}
-    file_stats: dict[str, Any] = {}
-    for path, _root, fam in iter_extraction_files(
-        case_dir, max_bytes=None, stats=file_stats
-    ):
-        entry = out.setdefault(fam, {"files": 0, "rows": 0, "capped": False})
+    for path, _root, fam in iter_extraction_files(case_dir):
+        entry = out.setdefault(fam, {"files": 0, "rows": 0})
         entry["files"] += 1
         try:
             n = 0
             with path.open("rb") as fh:
                 for _ in fh:
                     n += 1
-                    if n > _ROW_COUNT_CAP:
-                        entry["capped"] = True
-                        break
             # minus header line for CSV-ish outputs
             entry["rows"] += max(0, n - 1)
         except OSError:
@@ -80,18 +69,9 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
     for _n, fam, _text, _ts in iter_ingest_rows(case_dir):
         ingest_sources[fam] = ingest_sources.get(fam, 0) + 1
     for fam, rows in ingest_sources.items():
-        entry = out.setdefault(fam, {"files": 0, "rows": 0, "capped": False})
+        entry = out.setdefault(fam, {"files": 0, "rows": 0})
         entry["files"] += 1
         entry["rows"] += rows
-    # File-level skips (size / per-family caps) under-count every family that
-    # may have had a skipped file — mark them capped instead of exact.
-    if file_stats.get("files_skipped_family_cap") or file_stats.get("files_skipped_size"):
-        for fam_capped in file_stats.get("families_capped") or []:
-            if fam_capped in out:
-                out[fam_capped]["capped"] = True
-        if file_stats.get("files_skipped_size"):
-            for entry in out.values():
-                entry["capped"] = True
     return out
 
 
@@ -154,9 +134,9 @@ def _scan_needles(
 ) -> dict[str, str]:
     """needle -> source label, for the families present in the case.
 
-    ``dropped`` (out-param) receives needles discarded by the scan cap so the
-    briefing can report them as NOT scanned instead of silently shortening the
-    list (a dropped needle must never read as checked-absent).
+    The returned vocabulary contains every scannable term from each source.
+    ``dropped`` is retained for call compatibility and remains empty because
+    the scanner no longer discards terms by count.
     """
     from nexus.knowledge.attack_needles import attack_needles_for
     from nexus.knowledge.sigma_needles import sigma_needles_for
@@ -171,18 +151,18 @@ def _scan_needles(
         needles.setdefault(t.lower(), "playbook-strong")
     for t in playbook_terms_for_families(fams):
         needles.setdefault(t.lower(), "playbook")
-    for t in attack_needles_for(fams, limit=8, cap=60):
+    for t in attack_needles_for(fams, limit=None, cap=None):
         needles.setdefault(t.lower(), "attack")
-    for t in sigma_needles_for(fams, limit=8, cap=60):
+    for t in sigma_needles_for(fams, limit=None, cap=None):
         needles.setdefault(t.lower(), "sigma")
 
     # Insider Threat Matrix hard artifacts (section-grounded packs).
     try:
         from nexus.knowledge.itm_needles import itm_needles_for, itm_strong_for
 
-        for t in itm_strong_for(fams):
+        for t in itm_strong_for(fams, limit=None, cap=None):
             needles.setdefault(t.lower(), "itm-strong")
-        for t in itm_needles_for(fams):
+        for t in itm_needles_for(fams, limit=None, cap=None):
             needles.setdefault(t.lower(), "itm")
     except Exception:  # noqa: BLE001 — optional needles
         pass
@@ -194,9 +174,9 @@ def _scan_needles(
             external_strong_for,
         )
 
-        for t in external_strong_for(fams):
+        for t in external_strong_for(fams, limit=None, cap=None):
             needles.setdefault(t.lower(), "external-strong")
-        for t in external_needles_for(fams):
+        for t in external_needles_for(fams, limit=None, cap=None):
             needles.setdefault(t.lower(), "external")
     except Exception:  # noqa: BLE001 — optional needles
         pass
@@ -232,10 +212,7 @@ def _scan_needles(
         if v == "intake" and not is_needle_like(term):
             continue
         clean[k] = v
-    capped = dict(list(clean.items())[:_BRIEFING_SCAN_TERMS_CAP])
-    if dropped is not None:
-        dropped.extend(k for k in clean if k not in capped)
-    return capped
+    return clean
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +257,7 @@ def _exact_needle_counts(case_dir: Path, needles: list[str], scan_stats: dict[st
         results = dict(pool.map(one, needles))
     failed = sorted(t for t, n in results.items() if n is None)
     if failed:
-        scan_stats["count_failed"] = failed[:200]
+        scan_stats["count_failed"] = failed
     return {t: n for t, n in results.items() if n is not None}
 
 
@@ -498,7 +475,7 @@ def _index_census(case_dir: Path) -> dict[str, Any]:
         census: dict[str, Any] = {"hosts": [], "entities": {}, "time_range": {}}
         for field, etype in (("host", "hosts"), ("user", "users")):
             result = es_aggregate(
-                case_dir, "", field=field, top=25, match_all=True, with_spans=True,
+                case_dir, "", field=field, top=0, match_all=True, with_spans=True,
             )
             spans = (result or {}).get("top") or []
             if not spans:
@@ -510,7 +487,7 @@ def _index_census(case_dir: Path) -> dict[str, Any]:
                     "families": [],
                 }
                 for s in spans if s.get("value")
-            ][:_ENTITY_TOP_N]
+            ]
             if field == "host":
                 census["hosts"] = [
                     str(s.get("value")) for s in spans if s.get("value")
@@ -534,7 +511,7 @@ def _entity_source_file(ent: dict[str, Any]) -> str:
     return ""
 
 
-def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
+def case_briefing(case_dir: Path) -> dict[str, Any]:
     """Deterministic case briefing.
 
     Returns:
@@ -544,7 +521,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         time_range  — {start, end} best-effort from hit timestamps
         alerts      — high/critical severity rows (hayabusa/zircolite/…)
         needle_scan — [{needle, hits, source}] sorted by hit count desc
-        entities    — top-N per entity type with family coverage
+        entities    — every extracted entity per type with family coverage
         intake      — question / subjects / hypothesis / suspicion echo
     """
     from nexus.langgraph.entities import extract_entities
@@ -554,8 +531,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     inventory = _family_inventory(case_dir)
     families = sorted(inventory)
 
-    dropped_needles: list[str] = []
-    needle_map = _scan_needles(case_dir, families, dropped_needles)
+    needle_map = _scan_needles(case_dir, families)
     terms = list(needle_map)
     hits: list[dict[str, Any]] = []
     backend = ""
@@ -582,8 +558,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             with contextlib.suppress(Exception):
                 fact_terms.extend(playbook_event_ids_for_families(families))
             for packs in (
-                attack_packs_for(families, set(), limit=8),
-                sigma_packs_for(families, limit=8),
+                attack_packs_for(families, set(), limit=None),
+                sigma_packs_for(families, limit=None),
             ):
                 for pack in packs:
                     _, context = split_terms(pack.get("needles") or [])
@@ -611,29 +587,20 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
                         hits.append(hit)
             except Exception as exc:  # noqa: BLE001
                 log.debug("event-id probe failed: %s", exc)
+                scan_stats["event_id_probe_failed"] = True
     # Per-needle counts below are computed inside this window — when the scan
     # is truncated (result cap, per-file cap, skipped files, failed terms),
     # "rundll32 (21)" means "at least 21" and the UI marks those chips honestly.
-    cap_reasons: list[str] = []
-    if scan_stats.get("hits_capped"):
-        cap_reasons.append("result cap")
-    if scan_stats.get("files_capped"):
-        cap_reasons.append(f"{scan_stats['files_capped']} capped file(s)")
-    if scan_stats.get("files_skipped_size"):
-        cap_reasons.append(f"{scan_stats['files_skipped_size']} oversized file(s)")
-    if scan_stats.get("files_skipped_family_cap"):
-        cap_reasons.append(
-            f"{scan_stats['files_skipped_family_cap']} file(s) over the family cap"
-        )
-    if scan_stats.get("terms_failed"):
-        cap_reasons.append(f"{len(scan_stats['terms_failed'])} unqueried needle(s)")
-    scan_truncated = len(hits) > limit or bool(cap_reasons)
-    if dropped_needles:
-        scan_stats["needles_dropped_cap"] = dropped_needles[:200]
-        cap_reasons.append(f"{len(dropped_needles)} needle(s) over the scan cap")
-    scan_stats["truncated"] = scan_truncated or bool(dropped_needles)
-    scan_stats["truncated_reasons"] = cap_reasons
-    hits = attach_hit_fields(case_dir, hits)[:limit]
+    from nexus.langgraph.query_pack import _incomplete_reasons
+
+    incomplete_reasons = _incomplete_reasons(scan_stats)
+    if scan_stats.get("event_id_probe_failed"):
+        incomplete_reasons.append("event-ID fact probe failed")
+    scan_stats["incomplete_reasons"] = incomplete_reasons
+    scan_stats["truncated"] = bool(incomplete_reasons)
+    scan_stats["truncated_reasons"] = incomplete_reasons
+    scan_truncated = bool(incomplete_reasons)
+    hits = attach_hit_fields(case_dir, hits)
 
     # WO-1C item 7 (KR4): the briefing needle scan is an execution record. It
     # queried the index for every needle across every indexed family, so a run
@@ -662,15 +629,15 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             t = str(t).strip().lower()
             if t in counts:
                 counts[t] += 1
-    # IC-13: the counts above are taken inside the scan's capped window. Shown as hit counts, they read
-    # `lsass` 0 and `shell` 89 on CASE-C5B04D31, whose index holds 18,977 and 249,419 such rows; Mode 1 read
-    # the signal map in every call. On the index each needle is counted exactly instead.
-    exact = _exact_needle_counts(case_dir, list(counts), scan_stats)
-    if exact is not None:
-        counts = exact
-    scan_stats["counts_exact"] = exact is not None
+    # The scan retains every matching row. Where Elasticsearch is available,
+    # exact per-term counts are independently verified against the index.
+    index_counts = _exact_needle_counts(case_dir, list(counts), scan_stats)
+    if index_counts is not None:
+        counts = index_counts
+    counts_exact = index_counts is not None or not incomplete_reasons
+    scan_stats["counts_exact"] = counts_exact
     needle_scan = [
-        {"needle": n, "hits": c, "source": needle_map[n], "exact": exact is not None}
+        {"needle": n, "hits": c, "source": needle_map[n], "exact": counts_exact}
         for n, c in counts.items()
         if c > 0
     ]
@@ -700,7 +667,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     try:
         from nexus.knowledge.itm_needles import itm_packs_for
 
-        for pack in itm_packs_for(set(families), limit=10):
+        for pack in itm_packs_for(set(families), limit=None):
             pack_terms = [
                 str(t).strip().lower() for t in (pack.get("needles") or [])
             ]
@@ -816,7 +783,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         log.debug("alert interpretation failed: %s", exc)
 
-    # --- entity top-N (content host paths are summarized, not listed) ---
+    # --- complete entity inventory (content host paths are summarized) ---
     raw_entities = extract_entities(hits)
     entities: dict[str, list[dict[str, Any]]] = {}
     path_entities: list[dict[str, Any]] = []
@@ -835,7 +802,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
                 "source_file": _entity_source_file(e),
                 "source_family": (e.get("families") or [""])[0],
             }
-            for e in ranked[:_ENTITY_TOP_N]
+            for e in ranked
         ]
     paths_summary: dict[str, Any] = {"distinct": 0, "families": [], "examples": []}
     if path_entities:
@@ -888,7 +855,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     walkthrough = _guided_first_pass(
         alerts=alerts,
         entities=entities,
-        needle_scan=needle_scan[:80],
+        needle_scan=needle_scan,
         hosts=hosts,
         families=families,
         case_dir=case_dir,
@@ -946,10 +913,10 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "coverage": _coverage(case_dir),
         "hosts": hosts,
         "time_range": time_range,
-        "alerts": alerts[:60],
+        "alerts": alerts,
         "alert_count": len(alerts),
-        "needle_scan": needle_scan[:80],
-        "needle_facts": needle_facts[:40],
+        "needle_scan": needle_scan,
+        "needle_facts": needle_facts,
         "itm_coverage": itm_coverage,
         "ubiquity_floor": ubiquity_floor,
         "ubiquity_pct": ubiquity_pct,
@@ -1042,13 +1009,8 @@ def _write_briefing_artifacts(
         failed_terms = {
             str(t).lower() for t in (brief.get("scan_stats") or {}).get("terms_failed") or []
         }
-        dropped_terms = {
-            str(t).lower()
-            for t in (brief.get("scan_stats") or {}).get("needles_dropped_cap") or []
-        }
-        # IC-13: `exact` says whether a count is the index's own (yes) or taken inside the scan's capped
-        # window (no: "at least", and a 0 there is not absence). A needle whose exact count failed is
-        # written as not scanned rather than with a sampled number.
+        # The full scan retains every matching row. A term whose query failed
+        # is written as not scanned rather than as a zero-hit absence.
         stats = brief.get("scan_stats") or {}
         exact = "yes" if stats.get("counts_exact") else "no"
         count_failed = [str(t) for t in stats.get("count_failed") or []]
@@ -1058,9 +1020,9 @@ def _write_briefing_artifacts(
             w.writerow(["needle", "hits", "source", "scanned", "exact"])
             for needle, count in sorted(needle_counts.items(), key=lambda kv: -kv[1]):
                 low = str(needle).lower()
-                scanned = "no" if (low in failed_terms or low in dropped_terms) else "yes"
+                scanned = "no" if low in failed_terms else "yes"
                 w.writerow([needle, count, needle_map.get(needle, ""), scanned, exact])
-            for needle in [*(stats.get("needles_dropped_cap") or []), *count_failed]:
+            for needle in count_failed:
                 w.writerow([needle, 0, needle_map.get(needle, "playbook"), "no", exact])
 
         # Match-site facts (EventId/RecordNumber/label cells): recorded apart
@@ -1100,8 +1062,7 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     lines.append(f"Evidence: {brief.get('total_files', 0)} files, "
                  f"{brief.get('total_rows', 0)} rows across {len(inv)} families")
     for fam, e in sorted(inv.items()):
-        cap = "+" if e.get("capped") else ""
-        lines.append(f"- `{fam}`: {e['files']} files, {e['rows']}{cap} rows")
+        lines.append(f"- `{fam}`: {e['files']} files, {e['rows']} rows")
     led = brief.get("ledger") or {}
     lines.append(f"\nParser lane: {led.get('ok', 0)} OK / {led.get('skip', 0)} SKIP / "
                  f"{led.get('fail', 0)} FAIL")
@@ -1149,7 +1110,7 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     alerts = brief.get("alerts") or []
     if alerts:
         lines.append(f"\n## Alerts ({len(alerts)})")
-        for a in alerts[:30]:
+        for a in alerts:
             lines.append(f"- [{a['level'].upper()}] {a['title']} — {a['host']} {a['time']}")
             learn = (a.get("interpret") or {}).get("learn") or {}
             if learn.get("headline"):
@@ -1160,7 +1121,7 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     if scan:
         signal_rows = [s for s in scan if not s.get("ubiquitous")]
         lines.append(f"\n## Signal map ({len(signal_rows)} needles with signal hits)")
-        for s in signal_rows[:40]:
+        for s in signal_rows:
             lines.append(f"- `{s['needle']}` — {s['hits']} hits ({s['source']})")
     facts = brief.get("needle_facts") or []
     if facts:
@@ -1170,7 +1131,7 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
             "Provider, Level, ...). They show the value exists in the evidence "
             "- useful as pivots, never as suspicious signal or findings."
         )
-        for f in facts[:20]:
+        for f in facts:
             field = f" in `{f['field']}`" if f.get("field") else ""
             lines.append(
                 f"- `{f['needle']}` - {f['hits']} row(s){field} "
@@ -1186,14 +1147,14 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
             "These match a large share of the case; they are ranked last and "
             "never staged as findings."
         )
-        for s in background[:20]:
+        for s in background:
             lines.append(f"- `{s['needle']}` - {s['hits']} hits ({s['source']})")
     itm_cov = brief.get("itm_coverage") or []
     if itm_cov:
         lines.append(
             f"\n## Insider Threat Matrix coverage ({len(itm_cov)} relevant pack(s))"
         )
-        for row in itm_cov[:12]:
+        for row in itm_cov:
             strong = (
                 f", {row['strong_hits']} strong" if row.get("strong_hits") else ""
             )
@@ -1254,7 +1215,7 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
             vals = ", ".join(
                 e["value"]
                 + (f" ({e['source_file']})" if e.get("source_file") else "")
-                for e in elist[:_ENTITY_TOP_N]
+                for e in elist
             )
             lines.append(f"- **{etype}**: {vals}")
     paths = brief.get("paths_summary") or {}

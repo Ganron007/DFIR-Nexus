@@ -63,7 +63,7 @@ def test_parse_reads_what_tshark_ek_really_writes(tmp_path, monkeypatch):
 
     fixture = Path(__file__).parent / "fixtures" / "tshark_ek_public.jsonl"
 
-    def real_ek(src_path, out_path, *, display_filter="", max_packets=0, timeout=None):
+    def real_ek(src_path, out_path, *, display_filter="", timeout=None):
         shutil.copyfile(fixture, out_path)
 
     monkeypatch.setattr(pcap_mod, "convert_pcap_to_json", real_ek)
@@ -86,7 +86,7 @@ def test_parse_converts_and_maps_packets(tmp_path, monkeypatch):
 
     src = _pcap(tmp_path)
 
-    def fake_convert(src_path, out_path, *, display_filter="", max_packets=0, timeout=None):
+    def fake_convert(src_path, out_path, *, display_filter="", timeout=None):
         _tshark_json(Path(out_path))
 
     monkeypatch.setattr(pcap_mod, "convert_pcap_to_json", fake_convert)
@@ -116,7 +116,7 @@ def test_registry_import_path_picks_pcap_importer(tmp_path, monkeypatch):
     from nexus.ingest.registry import get_registry
     from nexus.ingest.schemas import ArtifactSource
 
-    def fake_convert(src_path, out_path, *, display_filter="", max_packets=0, timeout=None):
+    def fake_convert(src_path, out_path, *, display_filter="", timeout=None):
         _tshark_json(Path(out_path))
 
     monkeypatch.setattr(pcap_mod, "convert_pcap_to_json", fake_convert)

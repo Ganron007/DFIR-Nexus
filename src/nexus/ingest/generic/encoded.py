@@ -14,20 +14,22 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-import io
 import re
+import tempfile
 import zipfile
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
 
 from nexus.ingest.base import Importer
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 
-_MAX_BYTES = 64 << 20
 _MIN_CHARS = 64
-_BASE64 = re.compile(rb"[A-Za-z0-9+/]+={0,2}")
+_BASE64_CHARS = re.compile(rb"[A-Za-z0-9+/=]*")
 _WHITESPACE = re.compile(rb"\s+")
+_STREAM_CHUNK_BYTES = 1024 * 1024
+_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
 # File signatures (the first bytes of the decoded file) and the type each names.
 _SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"PK\x03\x04", "ZIP archive"), (b"PK\x05\x06", "ZIP archive (empty)"), (b"MZ", "Windows executable (PE)"),
@@ -37,26 +39,92 @@ _SIGNATURES: tuple[tuple[bytes, str], ...] = (
 )
 
 
-def _decoded(path: Path) -> tuple[bytes, str] | None:
-    """The decoded bytes and their type, when the whole file is base64 of a file with a known signature."""
+def _decoded(path: Path) -> tuple[BinaryIO, str, int, str, str] | None:
+    """Stream a base64 file into a spillable temp file and identify its signature.
+
+    The decoder validates the complete input and hashes the full decoded object.
+    Its spool threshold controls memory use only: larger evidence spills to disk,
+    never gets rejected or truncated because of an application size limit.
+    """
+    encoded = tempfile.SpooledTemporaryFile(  # noqa: SIM115
+        max_size=_SPOOL_MEMORY_BYTES, mode="w+b"
+    )
+    decoded: BinaryIO | None = None
     try:
-        if not path.is_file() or path.stat().st_size > _MAX_BYTES:
+        if not path.is_file():
+            encoded.close()
             return None
         with path.open("rb") as fh:
-            head = fh.read(4096)
-            if not _BASE64.fullmatch(_WHITESPACE.sub(b"", head).rstrip(b"=") or b"-"):
+            pending = b""
+            data_chars = 0
+            padding_chars = 0
+            padding_started = False
+            for chunk in iter(lambda: fh.read(_STREAM_CHUNK_BYTES), b""):
+                clean = _WHITESPACE.sub(b"", chunk)
+                if not clean:
+                    continue
+                if not _BASE64_CHARS.fullmatch(clean):
+                    encoded.close()
+                    return None
+                if padding_started:
+                    if clean.strip(b"="):
+                        encoded.close()
+                        return None
+                    padding_chars += len(clean)
+                else:
+                    pad_at = clean.find(b"=")
+                    if pad_at >= 0:
+                        if clean[pad_at:].strip(b"="):
+                            encoded.close()
+                            return None
+                        padding_started = True
+                        data_chars += pad_at
+                        padding_chars += len(clean) - pad_at
+                    else:
+                        data_chars += len(clean)
+                if padding_chars > 2:
+                    encoded.close()
+                    return None
+                pending += clean
+                while len(pending) >= 76:
+                    encoded.write(pending[:76] + b"\n")
+                    pending = pending[76:]
+            total_chars = data_chars + padding_chars
+            valid_padding = (
+                (padding_chars == 0 and data_chars % 4 == 0)
+                or (padding_chars == 1 and data_chars % 4 == 3)
+                or (padding_chars == 2 and data_chars % 4 == 2)
+            )
+            if total_chars < _MIN_CHARS or total_chars % 4 or not valid_padding:
+                encoded.close()
                 return None
-            text = _WHITESPACE.sub(b"", head + fh.read())
-    except OSError:
+            if pending:
+                encoded.write(pending + b"\n")
+        encoded.seek(0)
+        decoded = tempfile.SpooledTemporaryFile(max_size=_SPOOL_MEMORY_BYTES, mode="w+b")  # noqa: SIM115
+        base64.decode(encoded, decoded)
+        encoded.close()
+        decoded.seek(0)
+        signature = decoded.read(16)
+        kind = next((name for magic, name in _SIGNATURES if signature.startswith(magic)), "")
+        if not kind:
+            decoded.close()
+            return None
+        sha256 = hashlib.sha256()
+        md5 = hashlib.md5()
+        size = 0
+        decoded.seek(0)
+        for block in iter(lambda: decoded.read(_STREAM_CHUNK_BYTES), b""):
+            size += len(block)
+            sha256.update(block)
+            md5.update(block)
+        decoded.seek(0)
+        return decoded, kind, size, sha256.hexdigest(), md5.hexdigest()
+    except (OSError, binascii.Error, ValueError):
+        encoded.close()
+        if decoded is not None:
+            decoded.close()
         return None
-    if len(text) < _MIN_CHARS or len(text) % 4 or not _BASE64.fullmatch(text):
-        return None
-    try:
-        data = base64.b64decode(text, validate=True)
-    except (binascii.Error, ValueError):
-        return None
-    kind = next((name for magic, name in _SIGNATURES if data.startswith(magic)), "")
-    return (data, kind) if kind else None
 
 
 class Base64FileImporter(Importer):
@@ -68,21 +136,29 @@ class Base64FileImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        return _decoded(Path(path)) is not None
+        result = _decoded(Path(path))
+        if result is None:
+            return False
+        result[0].close()
+        return True
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         got = _decoded(Path(path))
         if got is None:
             return
-        data, kind = got
-        identity = {"encoding": "base64", "decoded_type": kind, "decoded_size": len(data),
-                    "decoded_sha256": hashlib.sha256(data).hexdigest(), "decoded_md5": hashlib.md5(data).hexdigest()}
+        stream, kind, size, sha256, md5 = got
+        identity = {"encoding": "base64", "decoded_type": kind, "decoded_size": size,
+                    "decoded_sha256": sha256, "decoded_md5": md5}
         members: list[zipfile.ZipInfo] = []
-        if kind.startswith("ZIP"):
-            try:
-                members = zipfile.ZipFile(io.BytesIO(data)).infolist()
-            except zipfile.BadZipFile:
-                members = []
+        try:
+            if kind.startswith("ZIP"):
+                try:
+                    with zipfile.ZipFile(stream) as archive:
+                        members = archive.infolist()
+                except zipfile.BadZipFile:
+                    members = []
+        finally:
+            stream.close()
         names = ", ".join(m.filename for m in members[:10])
         yield Artifact(
             id=Artifact.new_id(),
@@ -92,7 +168,7 @@ class Base64FileImporter(Importer):
             ts_synthesized=True,
             severity=Severity.INFORMATIONAL,
             file_path=str(path),
-            description=(f"{Path(path).name}: base64 of a {kind}, {len(data)} bytes, SHA-256 {identity['decoded_sha256']}"
+            description=(f"{Path(path).name}: base64 of a {kind}, {size} bytes, SHA-256 {identity['decoded_sha256']}"
                          + (f", holding {len(members)} file(s): {names}" if members else "")),
             raw={**identity, "members": [m.filename for m in members]},
             iocs=[identity["decoded_sha256"]],

@@ -37,9 +37,6 @@ from nexus.llm.egress import egress_bound
 log = logging.getLogger(__name__)
 
 _MAX_PLAN_ITEMS = 6
-_MAX_RESULT_ROWS = 8       # rows shown per executed item in the LLM context
-_MAX_ROW_CHARS = 300
-_MAX_PERSIST_ROWS = 50
 _DEFAULT_ROUNDS = 3
 # WP 10.53: extra read-only tools the interpret loop may call directly —
 # the same audited MCP surface the examiner uses (run record + RAG).
@@ -456,13 +453,19 @@ def _render_results(entries: list[dict[str, Any]]) -> str:
             )
             continue
         hits = entry.get("hits") or []
-        lines.append(f"  {entry.get('count', len(hits))} matched row(s); showing {min(len(hits), _MAX_RESULT_ROWS)}")
-        for h in hits[:_MAX_RESULT_ROWS]:
-            fam = h.get("family") or ""
-            ts = h.get("ts") or ""
-            host = h.get("host") or ""
-            text = re.sub(r"\s+", " ", str(h.get("text") or ""))[:_MAX_ROW_CHARS]
-            lines.append(f"  [{fam}] {ts} {host} :: {text}")
+        lines.append(
+            f"  {entry.get('count', len(hits))} matched row(s); "
+            f"this page returned {len(hits)} row(s)"
+        )
+        if entry.get("has_more"):
+            lines.append(
+                "  more rows remain; continue with "
+                f"search_after={entry.get('next_search_after')!r}"
+            )
+        lines.extend(
+            "  " + json.dumps(hit, ensure_ascii=False, sort_keys=True, default=str)
+            for hit in hits
+        )
     return "\n".join(lines) if lines else "(no results)"
 
 
@@ -788,10 +791,13 @@ async def run_interpret_loop(
             es = item.get("es") or {}
             query = es.get("query") if isinstance(es.get("query"), dict) else es
             payload: dict[str, Any] = {
-                "case_id": case_id, "query": query or {"match_all": {}}, "size": 50,
+                "case_id": case_id, "query": query or {"match_all": {}},
+                "size": es.get("size") or 50,
             }
             if isinstance(es.get("sort"), list):
                 payload["sort"] = es["sort"]
+            if isinstance(es.get("search_after"), list):
+                payload["search_after"] = es["search_after"]
             return "es_search", payload
         if kind == "es_aggregate":
             payload = {"case_id": case_id, "aggs": item.get("aggs") or {}}
@@ -816,9 +822,7 @@ async def run_interpret_loop(
                 "case_id": case_id, "dsl": item.get("dsl") or "",
                 "field": item.get("field") or "host", "top": 20,
             }
-        return "n4_query", {
-            "case_id": case_id, "dsl": item.get("dsl") or "", "limit": 35,
-        }
+        return "n4_query", {"case_id": case_id, "dsl": item.get("dsl") or ""}
 
     # ── Rounds 1..N — Verify ────────────────────────────────────────────
     current_items = plan["items"]
@@ -851,7 +855,9 @@ async def run_interpret_loop(
                 "top": result.get("top") or result.get("ranked") or [],
                 "aggregations": result.get("aggregations") or {},
                 "next_after_key": result.get("next_after_key"),
-                "hits": (result.get("hits") or [])[:_MAX_PERSIST_ROWS],
+                "has_more": result.get("has_more"),
+                "next_search_after": result.get("next_search_after"),
+                "hits": result.get("hits") or [],
                 "result_keys": sorted(result.keys())[:24],
             }
             entries.append(entry)
@@ -881,7 +887,10 @@ async def run_interpret_loop(
             '{"tool":"run_record|forensic_rag_search","args":{},"why":"..."}]}\n'
             "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
-            "If everything is settled, next = []. No prose outside the JSON."
+            "If a search result says `has_more: true`, preserve its query and "
+            "continue with the supplied `search_after` cursor before treating "
+            "that search as complete. If everything is settled, next = []. "
+            "No prose outside the JSON."
             + query_guidance
         )
         hyps_block = "\n".join(

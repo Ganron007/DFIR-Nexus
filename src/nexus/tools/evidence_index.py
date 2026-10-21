@@ -1,7 +1,7 @@
 """MCP evidence/index tools — WP 9.10 (Mode 2/3 backbone, evidence plane).
 
 The LLM (and any MCP client) reaches a case's evidence ONLY through these
-tools: per-case N4 queries over the ES index (or the CSV pack), bounded
+tools: per-case N4 queries over the ES index (or the CSV pack), exhaustive
 aggregations over the result set, and the index/vocabulary description.
 
 **Case gating** (operator directive 2026-09-14, revised by WO-R2F item 1 / D41):
@@ -33,12 +33,6 @@ from nexus.audit import AuditWriter
 from nexus.discipline import validate_case_id
 
 logger = logging.getLogger(__name__)
-
-_MAX_TEXT = 600
-_MAX_FIELDS = 24
-_MAX_FIELD_VALUE = 300
-_MAX_AGG_HITS = 2000
-_MAX_TOP = 25
 
 _TS_KEYS = ("TimeCreated", "Timestamp", "EventTime", "LastRun", "LastVisitTime", "ts")
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ](\d{2})?")
@@ -116,25 +110,21 @@ def _resolve_active_case(case_id: str, case_dir: Path | str | None = None) -> tu
 
 def _trim_hit(hit: dict[str, Any]) -> dict[str, Any]:
     fields = hit.get("fields")
-    fields_out: dict[str, str] = {}
-    if isinstance(fields, dict):
-        for k in list(fields)[:_MAX_FIELDS]:
-            fields_out[str(k)] = str(fields.get(k) or "")[:_MAX_FIELD_VALUE]
     out: dict[str, Any] = {
         "family": str(hit.get("family") or ""),
         "file": str(hit.get("file") or ""),
         "line": str(hit.get("line") or ""),
         "host": str(hit.get("host") or ""),
-        "terms": str(hit.get("terms") or "")[:200],
-        "text": str(hit.get("text") or "")[:_MAX_TEXT],
-        "fields": fields_out,
+        "terms": str(hit.get("terms") or ""),
+        "text": str(hit.get("text") or ""),
+        "fields": fields if isinstance(fields, dict) else {},
     }
     # Structured envelope fields must survive for MCP consumers (timeline
     # rendering, field filters like field="ts"/"user"/"event_id").
     for key in ("user", "event_id", "ts"):
         value = hit.get(key)
         if value not in (None, ""):
-            out[key] = str(value)[:200]
+            out[key] = value
     return out
 
 
@@ -151,7 +141,7 @@ def _field_values(hits: list[dict[str, Any]], field: str) -> list[str]:
                 if str(k).lower() == low:
                     val = str(v or "").strip()
                     if val:
-                        out.append(val[:_MAX_FIELD_VALUE])
+                        out.append(val)
                     matched = True
                     break
         if not matched and low == "host" and h.get("host"):
@@ -160,7 +150,7 @@ def _field_values(hits: list[dict[str, Any]], field: str) -> list[str]:
 
 
 def _time_buckets(hits: list[dict[str, Any]], granularity: str) -> dict[str, int]:
-    """Day/hour buckets from the common timestamp fields (bounded, honest)."""
+    """Return every day/hour bucket from the common timestamp fields."""
     buckets: dict[str, int] = {}
     for h in hits:
         fields = h.get("fields") or {}
@@ -180,10 +170,11 @@ def _time_buckets(hits: list[dict[str, Any]], granularity: str) -> dict[str, int
         if granularity == "hour" and m.group(1):
             key = f"{day}T{m.group(1)}:00"
         buckets[key] = buckets.get(key, 0) + 1
-    return dict(sorted(buckets.items())[:_MAX_TOP])
+    return dict(sorted(buckets.items()))
 
 
-def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
+def do_n4_query(case_id: str = "", dsl: str = "", limit: int | None = None,
+                offset: int = 0,
                 match_all: bool = False,
                 audit: AuditWriter | None = None) -> dict:
     """Core n4_query — the MCP tool and the Mode 2/3 binding layer share this."""
@@ -194,27 +185,34 @@ def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
     from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
-    result = _n4_query(case_dir, dsl, limit=max(1, min(int(limit), 400)),
+    result = _n4_query(case_dir, dsl, limit=limit, offset=offset,
                        match_all=match_all)
     if result.get("error"):
         return {**result, "case_id": Path(case_dir).name}
     hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
     with contextlib.suppress(Exception):
         hits = attach_hit_fields(case_dir, hits)  # fields are best-effort enrichment
-    trimmed = [_trim_hit(h) for h in hits[: max(1, min(int(limit), 400))]]
+    trimmed = [_trim_hit(h) for h in hits]
     aid = audit.log(
         tool="n4_query",
-        params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "limit": limit,
+        params={"case_id": Path(case_dir).name, "dsl": dsl, "limit": limit,
+                "offset": offset,
                 "match_all": match_all},
-        result_summary={"count": result.get("count"), "backend": result.get("backend")},
+        result_summary={"count": result.get("count"), "backend": result.get("backend"),
+                        "returned": len(trimmed), "complete": result.get("complete")},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
     return {
         "case_id": Path(case_dir).name,
         "query": dsl,
         "count": result.get("count"),
+        "count_exact": result.get("count_exact", False),
         "count_lower_bound": result.get("count_lower_bound", False),
-        "capped_reasons": result.get("capped_reasons") or [],
+        "scan_complete": result.get("scan_complete", False),
+        "incomplete_reasons": result.get("incomplete_reasons") or [],
+        "offset": result.get("offset", offset),
+        "complete": result.get("complete", False),
+        "next_offset": result.get("next_offset"),
         "stats": result.get("stats") or {},
         "backend": result.get("backend"),
         "hits": trimmed,
@@ -248,7 +246,7 @@ def do_n4_sample(case_id: str = "", family: str = "", field: str = "",
     aid = audit.log(
         tool="n4_sample",
         params={"case_id": Path(case_dir).name, "family": family, "field": field,
-                "value": value[:120], "n": n},
+                "value": value, "n": n},
         result_summary={"matched": result.get("matched"),
                         "sampled": result.get("sampled")},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
@@ -268,7 +266,7 @@ def do_n4_sample(case_id: str = "", family: str = "", field: str = "",
 
 
 def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
-                    top: int = 20, bucket: str = "", match_all: bool = False,
+                    top: int = 0, bucket: str = "", match_all: bool = False,
                     audit: AuditWriter | None = None) -> dict:
     """Aggregate the active case's evidence rows (context — never evidence)."""
     started = time.monotonic()
@@ -289,7 +287,7 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
     if native is not None:
         aid = audit.log(
             tool="n4_aggregate",
-            params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
+            params={"case_id": Path(case_dir).name, "dsl": dsl, "field": field,
                     "bucket": bucket, "match_all": match_all},
             result_summary={"distinct": native.get("distinct"),
                             "rows": native.get("rows_scanned"), "native": True},
@@ -301,13 +299,10 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
             "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
             **native,
         }
-    from nexus.langgraph.query_pack import (
-        _MAX_HITS_PER_FILE,
-        attach_hit_fields,
-    )
+    from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
-    result = _n4_query(case_dir, dsl, limit=_MAX_AGG_HITS, match_all=match_all)
+    result = _n4_query(case_dir, dsl, limit=None, match_all=match_all)
     if result.get("error"):
         return {**result, "case_id": Path(case_dir).name}
     hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
@@ -317,17 +312,17 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
     counts: dict[str, int] = {}
     for v in values:
         counts[v] = counts.get(v, 0) + 1
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[: max(1, min(int(top), 100))]
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    if top > 0:
+        ranked = ranked[:top]
     buckets = _time_buckets(hits, bucket) if bucket in ("day", "hour") else None
-    # The deterministic scan is bounded (per-file and total hit caps) — never
-    # present a capped count as exact.
-    scanned = int(result.get("count") or len(hits))
-    capped = scanned > len(hits) or len(hits) >= _MAX_HITS_PER_FILE
+    scan_complete = bool(result.get("scan_complete", False))
     aid = audit.log(
         tool="n4_aggregate",
-        params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
+        params={"case_id": Path(case_dir).name, "dsl": dsl, "field": field,
                 "bucket": bucket, "match_all": match_all},
-        result_summary={"distinct": len(counts), "rows": len(hits), "capped": capped},
+        result_summary={"distinct": len(counts), "rows": len(hits),
+                        "scan_complete": scan_complete},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
     return {
@@ -336,23 +331,35 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
         "rows_scanned": len(hits),
         "values_seen": len(values),
         "distinct": len(counts),
-        "distinct_approximate": capped,
+        "distinct_approximate": not scan_complete,
         "top": [{"value": v, "count": c} for v, c in ranked],
         "buckets": buckets,
         "backend": result.get("backend"),
+        "scan_complete": scan_complete,
+        "incomplete_reasons": result.get("incomplete_reasons") or [],
         "note": "aggregations are investigation context — never evidence (FD-001)",
         "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
     }
 
 
-def _observed_family_fields(case_dir: Path, cap: int = 300) -> dict[str, list[str]]:
-    """Bounded live census: parsed columns actually present, grouped by family."""
+def _observed_family_fields(
+    case_dir: Path, coverage: dict[str, Any] | None = None,
+) -> dict[str, list[str]]:
+    """Exhaustive live census of parsed columns actually present by family."""
     from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
     observed: dict[str, dict[str, None]] = {}
-    with contextlib.suppress(Exception):
-        result = _n4_query(case_dir, "", limit=cap, match_all=True)
+    try:
+        result = _n4_query(case_dir, "", limit=None, match_all=True)
+        if result.get("error"):
+            raise RuntimeError(str(result["error"]))
+        if coverage is not None:
+            coverage.update({
+                "complete": bool(result.get("scan_complete", False)),
+                "rows_scanned": int(result.get("count") or 0),
+                "incomplete_reasons": result.get("incomplete_reasons") or [],
+            })
         hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
         with contextlib.suppress(Exception):
             hits = attach_hit_fields(case_dir, hits)
@@ -362,9 +369,12 @@ def _observed_family_fields(case_dir: Path, cap: int = 300) -> dict[str, list[st
             if not isinstance(fields, dict):
                 continue
             slot = observed.setdefault(fam, {})
-            for k in list(fields)[:_MAX_FIELDS]:
+            for k in fields:
                 slot.setdefault(str(k), None)
-    return {fam: sorted(cols)[:_MAX_FIELDS] for fam, cols in observed.items() if cols}
+    except Exception as exc:  # noqa: BLE001 — report incomplete field census
+        if coverage is not None:
+            coverage.update({"complete": False, "error": f"{type(exc).__name__}: {exc}"})
+    return {fam: sorted(cols) for fam, cols in observed.items() if cols}
 
 
 _mappings_cache: dict[str, tuple[float, dict]] = {}
@@ -416,12 +426,13 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
     from nexus.knowledge.loader import get_field_profiles
 
     profiles = {str(p.get("family") or "").lower():
-                [str(f) for f in (p.get("fields") or [])][: _MAX_FIELDS]
+                [str(f) for f in (p.get("fields") or [])]
                 for p in (get_field_profiles().get("profiles") or [])
                 if isinstance(p, dict)}
-    live = _observed_family_fields(case_dir)
+    field_census: dict[str, Any] = {}
+    live = _observed_family_fields(case_dir, field_census)
     family_fields = {
-        fam: sorted(set(profiles.get(fam) or []) | set(live.get(fam) or []))[:_MAX_FIELDS]
+        fam: sorted(set(profiles.get(fam) or []) | set(live.get(fam) or []))
         for fam in sorted(inventory)
     }
     aid = audit.log(
@@ -437,6 +448,7 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
         "families": sorted(inventory),
         "family_rows": {k: v.get("rows", 0) for k, v in sorted(inventory.items())},
         "family_fields": family_fields,
+        "field_census": field_census,
         "dsl_fields": [
             "family", "file", "host", "user", "event_id", "line", "ts",
             "+ every parsed column (types: keyword/text/long/date)",
@@ -554,14 +566,14 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
     def _command_of(row: dict[str, Any]) -> str:
         argv = row.get("argv")
         if isinstance(argv, list):
-            return " ".join(str(a) for a in argv)[:300]
-        return str(row.get("command") or "")[:300]
+            return " ".join(str(a) for a in argv)
+        return str(row.get("command") or "")
 
     def _output_of(row: dict[str, Any]) -> str:
         value = row.get("output_saved_to") or row.get("output") or row.get("output_file")
         if isinstance(value, dict):
             value = value.get("path") or value.get("file") or ""
-        return str(value or "")[:300]
+        return str(value or "")
 
     # A ledger id that the case's log gives to another call cannot be cited (D178): Mode 2
     # workers cited such ids from this list instead of their own queries (2026-10-14), and
@@ -579,14 +591,12 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
         status = str(row.get("status") or "").upper()
         if status in counts:
             counts[status] += 1
-        if len(entries) >= 300:
-            continue
-        audit_id = str(row.get("audit_id") or "")[:80]
+        audit_id = str(row.get("audit_id") or "")
         entry = {
-            "tool": str(row.get("tool") or "")[:80],
+            "tool": str(row.get("tool") or ""),
             "status": status,
-            "reason": str(row.get("reason") or "")[:200],
-            "purpose": str(row.get("purpose") or "")[:200],
+            "reason": str(row.get("reason") or ""),
+            "purpose": str(row.get("purpose") or ""),
             "command": _command_of(row),
             "output": _output_of(row),
             "duration_s": row.get("duration_s"),
@@ -622,7 +632,8 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
 
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
-    def n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
+    def n4_query(case_id: str = "", dsl: str = "", limit: int | None = None,
+                 offset: int = 0,
                  match_all: bool = False) -> dict:
         """Run an N4 DSL query against the ACTIVE case's evidence index.
 
@@ -632,10 +643,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         are rejected with suggestions. AND/OR/NOT, quoted phrases and regex:
         are supported. Call index_mappings/family_fields for the case columns.
         Set `match_all=true` with an empty dsl to scan every indexed row.
-        Evidence plane: ES when configured, deterministic CSV pack otherwise.
+        By default returns every matching row. Set `limit` to request one
+        response page and continue at `next_offset` until `complete=true`.
+        No row or field text is truncated. Evidence plane: ES when configured,
+        deterministic CSV pack otherwise.
         Findings need these rows' audit_ids (FD-001).
         """
-        return do_n4_query(case_id=case_id, dsl=dsl, limit=limit,
+        return do_n4_query(case_id=case_id, dsl=dsl, limit=limit, offset=offset,
                            match_all=match_all, audit=audit)
 
     @server.tool()
@@ -657,16 +671,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         case_id: str = "",
         dsl: str = "",
         field: str = "host",
-        top: int = 20,
+        top: int = 0,
         bucket: str = "",
         match_all: bool = False,
     ) -> dict:
         """Aggregate the active case's evidence rows (context — never evidence).
 
-        Counts distinct values of `field` (a parsed column, or `host`) across
+        Counts every distinct value of `field` (a parsed column, or `host`) across
         the query's result set; optional `bucket` = "day"|"hour" groups by
         timestamp. Set `match_all=true` with an empty dsl to aggregate across
-        every indexed row. Grounded: counts come from the same N4 result
+        every indexed row. `top=0` returns every distinct value; a positive
+        `top` is an examiner-requested top-N view. Grounded: counts come from the N4 result
         stream the examiner sees (ES backend or CSV pack).
         """
         return do_n4_aggregate(case_id=case_id, dsl=dsl, field=field, top=top,

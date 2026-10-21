@@ -21,48 +21,9 @@ from nexus.langgraph.path_sanitize import (
 )
 from nexus.langgraph.tool_output_policy import TOOL_OWN_LOGS, is_tool_own_log_name
 
-_MAX_MD = 60000
-# Full-row index/scan of small CSVs. Hayabusa/USN live above this;
-# N4 still needle-scans them up to _MAX_FILTERED_SCAN_BYTES.
-def _env_mb(name: str, default_mb: int) -> int:
-    """MB-valued env knob; 0 means UNLIMITED (EH-11: no silent evidence loss)."""
-    import os
-
-    try:
-        value = int(os.environ.get(name, "") or default_mb)
-    except ValueError:
-        value = default_mb
-    return max(0, value) * 1024 * 1024
-
-def _env_int(name: str, default: int) -> int:
-    """Count-valued env knob (result caps). EH-12: retunable, defaults kept."""
-    import os
-
-    try:
-        value = int(os.environ.get(name, "") or default)
-    except ValueError:
-        value = default
-    return max(0, value)
-
 log = logging.getLogger(__name__)
-
-# EH-12: every result cap is now operator-tunable; 0 = unlimited. The
-# defaults stay modest for interactive search — report/export paths
-# use the exhaustive `iter_all_hits`, never these caps, so no evidence
-# is sidelined. Caps that do trigger are reported by _cap_reasons.
-_MAX_HITS_PER_FILE = _env_int("NEXUS_N4_HITS_PER_FILE", 40)
-_MAX_HITS_TOTAL = _env_int("NEXUS_N4_MAX_HITS", 400)
-
-
-
-# 0 = index/scan everything. Operators who need a guard set NEXUS_SCAN_MAX_FILE_MB
-# / NEXUS_N4_MAX_FILE_MB; the old 80MB/400MB skips silently dropped evidence.
-_MAX_FULL_SCAN_BYTES = _env_mb("NEXUS_SCAN_MAX_FILE_MB", 0)
-_MAX_FILTERED_SCAN_BYTES = _env_mb("NEXUS_N4_MAX_FILE_MB", 0)
-# 0 = every file of a family. The old default (120) silently left the rest of a family out
-# of the index (CASE-C5B04D31: 394 PowerShell-transcript and WER files). Valid evidence is not
-# capped (operator decision 2026-10-11); an examiner may still cap a run with the env var.
-_MAX_FILES_PER_FAMILY = _env_int("NEXUS_N4_FILES_PER_FAMILY", 0)
+# N4 scans and aggregates are exhaustive. API pagination limits only one
+# response page; it never limits matching, ranking, counting, or file discovery.
 #: The files the index and the N4 scanner read from an extractions root. Every format a lane
 #: job writes must be listed here, or the index never sees it (`.tsv` was missing).
 EXTRACTION_PATTERNS = (
@@ -141,7 +102,6 @@ _SKIP_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 # counters and Zeek's packet filter and loaded scripts are dated by when the tool ran, so samples S03 and S04 read as
 # active on the day of their lane run.
 _TOOL_OWN_LOGS = TOOL_OWN_LOGS
-_MAX_COLLECT_PER_FILE = _env_int("NEXUS_N4_COLLECT_PER_FILE", 200)
 _USB_TERMS = frozenset({"usbstor", "mountpoints2"})
 _CLOUD_TERMS = frozenset({"googledrive", "drivefs", "my drive"})
 # High-volume in host CSVs; keep some hits but never ahead of wipe/PST/C2 terms.
@@ -655,7 +615,7 @@ def _count_fact_sites(
 ) -> None:
     """Accumulate match-site facts (id/label columns) for the brief.
 
-    Counted during the scan, not from the capped hit list: fact-only rows rank
+    Counted during the scan, not from a sampled hit list: fact-only rows rank
     last and would otherwise be crowded out by signal rows when many needles
     are scanned together.
     """
@@ -694,21 +654,16 @@ def _hits_from_file(
     case_dir: Path | None = None,
     stats: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Keep strong-term rows even when noisier matches appear first in the file.
-
-    Returns ``(hits, capped)`` — ``capped`` is True when this file had more
-    matching rows than the collect/per-file caps allowed through, so callers
-    can mark its counts as lower bounds instead of exact.
-    """
+    """Return every matching row, ranking strong matches before weaker ones."""
     raw: list[tuple[int, int, list[str], str]] = []
-    strong_n = 0
-    weak_n = 0
-    skipped_cap = 0
     header = _header_for_file(root, str(path.relative_to(root)).replace("\\", "/"))
     from nexus.langgraph.case_index import iter_indexable_rows
 
     with _open_text(path) as fh:
-        for i, line, raw_fields in iter_indexable_rows(path, fh, header):
+        for i, line, raw_fields in iter_indexable_rows(
+            path, fh, header, stats=stats,
+            file_label=str(path.relative_to(root)).replace("\\", "/"),
+        ):
             # Source/provenance columns carry the machine path the parser read:
             # replace them outright, then normalize remaining machine prefixes.
             line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
@@ -729,7 +684,6 @@ def _hits_from_file(
                 )
                 if not ok:
                     continue
-                matched = matched[:6]
             else:
                 # Match-site awareness: what the keyword landed on decides
                 # whether it counts (content + token boundary), is a field
@@ -745,37 +699,27 @@ def _hits_from_file(
             if not _row_in_window(line, start, end):
                 continue
             pri = _hit_rank(matched, strong)
-            if pri == 0:
-                if strong_n >= _MAX_COLLECT_PER_FILE:
-                    skipped_cap += 1
-                    continue
-                strong_n += 1
-            else:
-                if weak_n >= _MAX_COLLECT_PER_FILE:
-                    skipped_cap += 1
-                    continue
-                weak_n += 1
             raw.append((pri, i, matched, line.strip(), classified))
     raw.sort(key=lambda row: (row[0], row[1]))
-    kept = raw[:_MAX_HITS_PER_FILE]
-    capped = skipped_cap > 0 or len(raw) > _MAX_HITS_PER_FILE
     hits: list[dict[str, Any]] = []
-    for _pri, i, matched, text, classified in kept:
+    for _pri, i, matched, text, classified in raw:
         hit: dict[str, Any] = {
             "family": fam,
             "file": str(path.relative_to(root)).replace("\\", "/"),
             "line": str(i),
-            "terms": ",".join(matched[:6]),
-            "terms_list": matched[:6],
+            "terms": ",".join(matched),
+            "terms_list": matched,
             "text": text,
         }
         if classified.get("facts"):
-            hit["fact_terms"] = classified["facts"][:6]
-            hit["fact_sites"] = classified["sites"][:6]
+            hit["fact_terms"] = classified["facts"]
+            hit["fact_sites"] = classified["sites"]
         if classified.get("weak"):
-            hit["weak_terms"] = classified["weak"][:6]
+            hit["weak_terms"] = classified["weak"]
         hits.append(hit)
-    return hits, capped
+    if stats is not None:
+        stats["rows_matched"] = int(stats.get("rows_matched") or 0) + len(hits)
+    return hits, False
 
 
 def render_ingest_row(d: dict[str, Any]) -> str:
@@ -856,7 +800,6 @@ def iter_ingest_rows(case_dir: Path):
 def _hits_from_ingest(
     case_dir: Path,
     needles: list[str],
-    strong: set[str],
     start: datetime | None,
     end: datetime | None,
     query: Any | None = None,
@@ -865,13 +808,9 @@ def _hits_from_ingest(
 ) -> list[dict[str, str]]:
     """Same matching semantics as ``_hits_from_file`` over the artifact store.
 
-    Carries ``terms_list`` (EH-8) and records the collect cap so a 20k-row
-    network log cannot lower-bound every count silently.
+    Carries ``terms_list`` (EH-8) and keeps every matching imported row.
     """
     hits: list[dict[str, Any]] = []
-    strong_n = 0
-    weak_n = 0
-    skipped_cap = 0
     for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
         text = sanitize_row_text(text, record, case_dir, family=fam)
         low = text.lower()
@@ -895,7 +834,6 @@ def _hits_from_ingest(
             )
             if not ok:
                 continue
-            matched = matched[:6]
         else:
             candidates = [t for t in needles if needle_in_text(low, t)]
             if candidates:
@@ -918,33 +856,22 @@ def _hits_from_ingest(
                 matched = ["*"]
         if not _row_in_window(text, start, end):
             continue
-        pri = _hit_rank(matched, strong)
-        if pri == 0:
-            if strong_n >= _MAX_COLLECT_PER_FILE:
-                skipped_cap += 1
-                continue
-            strong_n += 1
-        else:
-            if weak_n >= _MAX_COLLECT_PER_FILE:
-                skipped_cap += 1
-                continue
-            weak_n += 1
         hit: dict[str, Any] = {
             "family": fam,
             "file": "ingest/artifacts.jsonl",
             "line": str(line_no),
-            "terms": ",".join(matched[:6]),
-            "terms_list": matched[:6],
+            "terms": ",".join(matched),
+            "terms_list": matched,
             "text": text,
         }
         if classified.get("facts"):
-            hit["fact_terms"] = classified["facts"][:6]
-            hit["fact_sites"] = classified["sites"][:6]
+            hit["fact_terms"] = classified["facts"]
+            hit["fact_sites"] = classified["sites"]
         if classified.get("weak"):
-            hit["weak_terms"] = classified["weak"][:6]
+            hit["weak_terms"] = classified["weak"]
         hits.append(hit)
     if stats is not None:
-        stats["ingest_capped"] = bool(skipped_cap)
+        stats["ingest_rows_matched"] = len(hits)
     return hits
 
 
@@ -970,8 +897,6 @@ def is_staging_copy(path: Path, root: Path) -> bool:
 def iter_extraction_files(
     case_dir: Path,
     *,
-    max_bytes: int | None = None,
-    max_files_per_family: int | None = None,
     stats: dict[str, Any] | None = None,
     run_id: str = "",
 ) -> list[tuple[Path, Path, str]]:
@@ -979,24 +904,14 @@ def iter_extraction_files(
 
     ``run_id`` names the tools run to list; empty means the committed run.
 
-    ``stats`` (optional out-param) records coverage honesty: how many files
-    were eligible, scanned, or skipped because of the size / per-family caps —
-    a skipped file must never later read as "no hits".
+    ``stats`` (optional out-param) records the eligible and scanned file counts.
+    N4 never skips a file due to its size or family.
     """
     case_dir = Path(case_dir)
-    # 0/None = UNLIMITED (EH-11): the old default silently skipped evidence.
-    cap = _MAX_FULL_SCAN_BYTES if max_bytes is None else max_bytes
-    if cap is not None and cap <= 0:
-        cap = 0
-    file_cap = _MAX_FILES_PER_FAMILY if max_files_per_family is None else max_files_per_family
     out: list[tuple[Path, Path, str]] = []
-    fam_files: dict[str, int] = {}
     if stats is not None:
         stats.setdefault("files_total", 0)
         stats.setdefault("files_scanned", 0)
-        stats.setdefault("files_skipped_size", 0)
-        stats.setdefault("files_skipped_family_cap", 0)
-        stats.setdefault("families_capped", [])
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
     extractions = resolve_tools_extractions(case_dir, run_id)
@@ -1028,24 +943,7 @@ def iter_extraction_files(
                 continue
             if stats is not None:
                 stats["files_total"] += 1
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-            if cap and size > cap:
-                if stats is not None:
-                    stats["files_skipped_size"] += 1
-                continue
             fam = _family(path, root)
-            n = fam_files.get(fam, 0)
-            if file_cap and n >= file_cap:
-                if stats is not None:
-                    stats["files_skipped_family_cap"] += 1
-                    capped = stats["families_capped"]
-                    if fam not in capped:
-                        capped.append(fam)
-                continue
-            fam_files[fam] = n + 1
             out.append((path, root, fam))
             if stats is not None:
                 stats["files_scanned"] += 1
@@ -1053,13 +951,7 @@ def iter_extraction_files(
 
 
 def _severity_rank(hit: dict[str, Any]) -> int:
-    """0 for a crit/high detection row, 1 otherwise (WO-R1F item 7d).
-
-    The 400-hit cap was flagged TRUNCATED on SC1 and a crit detection sat below
-    the cut. A rule-engine row that fired at crit/high is the strongest signal
-    the case has, so it ranks above every generic needle row and is never the
-    thing that gets cut.
-    """
+    """0 for a crit/high detection row, 1 otherwise (WO-R1F item 7d)."""
     level = str(
         hit.get("level")
         or (hit.get("fields") or {}).get("Level")
@@ -1080,11 +972,7 @@ def finalize_hits(
     terms: list[str],
     priority_terms: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Same ranking/cap used by the CSV pack and the Elasticsearch backend.
-
-    Severity ranks BEFORE the keyword rank, so a crit/high detection survives the
-    cap (item 7d); the keyword rank then orders what remains.
-    """
+    """Rank every matching row; severity ranks before keyword strength."""
     strong = _strong_set(priority_terms if priority_terms is not None else terms)
 
     def _rank(h: dict[str, Any]) -> int:
@@ -1100,22 +988,7 @@ def finalize_hits(
         h.get("file") or "",
         int(h.get("line") or 0),
     ))
-    kept = ranked[:_MAX_HITS_TOTAL]
-    # Record what the cap cut, and whether anything crit/high was among it, so the
-    # pack can say WHICH strongest rows were dropped instead of a bare
-    # "TRUNCATED" (item 7d). Attached to the first row so it travels with the
-    # list through both backends without changing the return type.
-    if len(ranked) > _MAX_HITS_TOTAL:
-        dropped = ranked[_MAX_HITS_TOTAL:]
-        dropped_severe = [
-            f"{h.get('family')}:{h.get('file')}:{h.get('line')}"
-            for h in dropped if _severity_rank(h) == 0
-        ][:10]
-        if kept:
-            kept[0] = dict(kept[0])
-            kept[0]["_cap_dropped_total"] = len(dropped)
-            kept[0]["_cap_dropped_severe"] = dropped_severe
-    return kept
+    return ranked
 
 
 def _case_index_is_empty(case_dir: Path) -> bool:
@@ -1262,8 +1135,6 @@ _HOST_RE = re.compile(
     re.I,
 )
 _UNC_RE = re.compile(r"\\\\([A-Za-z0-9][A-Za-z0-9.-]{1,30})\\")
-_MAX_FIELDS = 24
-_MAX_FIELD_VALUE = 160
 _header_cache: dict[str, list[str]] = {}
 # line_no -> parsed record per ingest store, keyed by path+mtime. The hit
 # enricher used to re-open and linearly scan artifacts.jsonl for EVERY hit
@@ -1413,11 +1284,11 @@ def attach_hit_fields(
                 ):
                     value = record.get(key)
                     if value not in (None, "", []):
-                        fields[key] = str(value)[:_MAX_FIELD_VALUE]
+                        fields[key] = str(value)
                 for list_key in ("technique_ids", "iocs"):
                     values = record.get(list_key)
                     if values:
-                        fields[list_key] = ",".join(str(v) for v in values)[:_MAX_FIELD_VALUE]
+                        fields[list_key] = ",".join(str(v) for v in values)
         elif p is not None:
             # Header cache is keyed by the resolved path + mtime — a relative
             # name alone lets one case's header leak into another.
@@ -1436,8 +1307,8 @@ def attach_hit_fields(
                     _header_cache[cache_key] = []
             header = _header_cache[cache_key]
             values = _split_csv_row(h.get("text", ""))
-            for name, val in list(zip(header, values, strict=False))[:_MAX_FIELDS]:
-                v = str(val).strip()[:_MAX_FIELD_VALUE]
+            for name, val in zip(header, values, strict=False):
+                v = str(val).strip()
                 if v:
                     fields[name] = v
         host = next(
@@ -1464,21 +1335,15 @@ def attach_hit_fields(
     return out
 
 
-def _cap_reasons(stats: dict[str, Any]) -> list[str]:
-    """Human-readable lower-bound reasons from a coverage stats dict."""
+def _incomplete_reasons(stats: dict[str, Any]) -> list[str]:
+    """Explain scan errors that prevent an exact negative conclusion."""
     reasons: list[str] = []
-    if stats.get("hits_capped"):
-        reasons.append("result cap")
-    if stats.get("files_capped"):
-        reasons.append(f"{stats['files_capped']} capped file(s)")
-    if stats.get("ingest_capped"):
-        reasons.append("imported-evidence collect cap")
-    if stats.get("files_skipped_size"):
-        reasons.append(f"{stats['files_skipped_size']} oversized file(s)")
-    if stats.get("files_skipped_family_cap"):
-        reasons.append(f"{stats['files_skipped_family_cap']} file(s) over the family cap")
+    if stats.get("files_unreadable"):
+        reasons.append(f"{stats['files_unreadable']} extraction file(s) could not be read")
+    if stats.get("csv_fallback"):
+        reasons.append(f"{len(stats['csv_fallback'])} delimited file(s) used physical-line recovery")
     if stats.get("terms_failed"):
-        reasons.append(f"{len(stats['terms_failed'])} unqueried needle(s)")
+        reasons.append(f"{len(stats['terms_failed'])} Elasticsearch query clause(s) failed")
     return reasons
 
 
@@ -1486,7 +1351,7 @@ def n4_query(
     case_dir: Path,
     query_text: str,
     window: tuple[datetime | None, datetime | None] | None = None,
-    limit: int = 80,
+    limit: int | None = None,
     offset: int = 0,
     backend: str | None = None,
     match_all: bool = False,
@@ -1537,34 +1402,26 @@ def n4_query(
     except QuerySyntaxError as exc:
         return {"error": str(exc), "query": parsed.describe()}
     total = len(all_hits)
-    page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
-    cap_reasons = _cap_reasons(stats)
-    exact_info: dict[str, Any] | None = None
-    if cap_reasons:
-        # EH-12: the rendered page may be capped, but the total shown to the
-        # examiner must be exact — one cheap `_count` / one CSV pass.
-        with contextlib.suppress(Exception):
-            info = count_hits(
-                case_dir, terms, window,
-                priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
-                query=parsed if not parsed.is_empty() else None,
-                match_all=do_match_all,
-                backend=backend,
-                catalog=_catalog,
-            )
-            if info.get("exact"):
-                exact_info = info
+    start_at = max(0, int(offset))
+    page = all_hits[start_at:] if limit is None else all_hits[
+        start_at:start_at + max(1, int(limit))
+    ]
+    incomplete_reasons = _incomplete_reasons(stats)
+    scan_complete = not incomplete_reasons
     return {
         "query": parsed.describe(),
         "backend": backend_used,
-        "count": int(exact_info["count"]) if exact_info else total,
-        "count_exact": bool(exact_info),
-        "count_lower_bound": bool(cap_reasons) and exact_info is None,
-        "offset": max(0, offset),
+        "count": total,
+        "count_exact": scan_complete,
+        "count_lower_bound": not scan_complete,
+        "offset": start_at,
+        "complete": start_at + len(page) >= total,
+        "scan_complete": scan_complete,
+        "next_offset": start_at + len(page) if start_at + len(page) < total else None,
         "hits": page,
         "empty": not all_hits,
         "stats": stats,
-        "capped_reasons": cap_reasons,
+        "incomplete_reasons": incomplete_reasons,
     }
 
 
@@ -1585,7 +1442,7 @@ def n4_sample(
     still cite the audit trail.
     """
     case_dir = Path(case_dir)
-    count = max(1, min(int(n or 12), 60))
+    count = max(1, int(n or 12))
     intake = load_case_intake(case_dir)
     if window is None:
         window = parse_intake_window(intake)
@@ -1660,7 +1517,7 @@ def n4_aggregate(
     group_by: str = "family",
     window: tuple[datetime | None, datetime | None] | None = None,
 ) -> dict[str, Any]:
-    """Count hits grouped by family / hour / day (caps: _MAX_HITS_TOTAL)."""
+    """Count every matching hit grouped by family, hour, day, file, or host."""
 
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
@@ -1766,43 +1623,36 @@ def scan_extractions(
     start, end = window
     hits: list[dict[str, str]] = []
     if not needles and query is None and not match_all:
+        if stats is not None:
+            stats.update({"files_total": 0, "files_scanned": 0,
+                          "hits_collected": 0, "hits_returned": 0})
         return hits
 
-    files_capped = 0
+    scan_stats = stats if stats is not None else {}
     for path, root, fam in iter_extraction_files(
-        case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES, stats=stats,
-        run_id=run_id,
+        case_dir, stats=scan_stats, run_id=run_id,
     ):
         try:
-            file_hits, capped = _hits_from_file(
+            file_hits, _ = _hits_from_file(
                 path, root, fam, needles, strong, start, end,
-                query=query, match_all=match_all, case_dir=case_dir,
-                stats=stats,
+                query=query, match_all=match_all, case_dir=case_dir, stats=scan_stats,
             )
         except OSError:
-            if stats is not None:
-                stats["files_unreadable"] = int(stats.get("files_unreadable", 0)) + 1
+            scan_stats["files_unreadable"] = int(scan_stats.get("files_unreadable", 0)) + 1
             continue
-        if capped:
-            files_capped += 1
         hits.extend(file_hits)
     # Imported non-host evidence (network/cloud/TI) lives in the case artifact
     # store — same searchable projection as the ES backend (parity).
     hits.extend(
         _hits_from_ingest(
-            case_dir, needles, strong, start, end,
-            query=query, match_all=match_all, stats=stats,
+            case_dir, needles, start, end,
+            query=query, match_all=match_all, stats=scan_stats,
         )
     )
-    if stats is not None:
-        stats["files_capped"] = files_capped
-        stats["hits_collected"] = len(hits)
     final = finalize_hits(hits, terms, priority_terms)
-    if stats is not None:
-        stats["hits_returned"] = len(final)
-        stats["hits_capped"] = bool(
-            len(final) >= _MAX_HITS_TOTAL and len(hits) > _MAX_HITS_TOTAL
-        )
+    scan_stats["hits_collected"] = len(hits)
+    scan_stats["hits_returned"] = len(final)
+    scan_stats["hits_capped"] = False
     return final
 
 
@@ -1874,7 +1724,6 @@ def _iter_matching_rows(
                 )
                 if not ok:
                     continue
-                matched = matched[:6]
             else:
                 matched = [t for t in needles if needle_in_text(low, t)]
                 if not matched:
@@ -1899,7 +1748,7 @@ def iter_extraction_hits(
     case_dir = Path(case_dir)
     file_stats: dict[str, Any] = {}
     for path, root, fam in iter_extraction_files(
-        case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES, stats=file_stats,
+        case_dir, stats=file_stats,
     ):
         try:
             rel = str(path.relative_to(root)).replace("\\", "/")
@@ -1918,8 +1767,8 @@ def iter_extraction_hits(
                     "family": fam,
                     "file": rel,
                     "line": str(i),
-                    "terms": ",".join(matched[:6]),
-                    "terms_list": matched[:6],
+                    "terms": ",".join(matched),
+                    "terms_list": matched,
                     "text": text,
                 }
         except OSError:
@@ -1960,7 +1809,6 @@ def iter_ingest_hits(
             )
             if not ok:
                 continue
-            matched = matched[:6]
         else:
             matched = [t for t in needles if needle_in_text(low, t)]
             if not matched:
@@ -1973,8 +1821,8 @@ def iter_ingest_hits(
             "family": fam,
             "file": "ingest/artifacts.jsonl",
             "line": str(line_no),
-            "terms": ",".join(matched[:6]),
-            "terms_list": matched[:6],
+            "terms": ",".join(matched),
+            "terms_list": matched,
             "text": text,
         }
     if stats is not None:
@@ -2121,13 +1969,11 @@ def build_query_pack_markdown(
         (
             f"- needle packs auto-chosen from the case's families "
             f"({len(derived_from_families)} terms): "
-            f"{', '.join(derived_from_families[:20])}"
-            + (" …" if len(derived_from_families) > 20 else "")
+            f"{', '.join(derived_from_families)}"
             if derived_from_families
             else "- needle packs: from the playbooks above"
         ),
-        f"- terms ({len(terms)}): {', '.join(terms[:40])}"
-        + (" …" if len(terms) > 40 else ""),
+        f"- terms ({len(terms)}): {', '.join(terms)}",
         f"- backend: `{backend}` (elasticsearch when NEXUS_ES_URL is up and this case is indexed; else CSV pack)",
         "",
         f"## Ledger OK rows: {len(ok_ledger)} / {len(ledger or [])}\n",
@@ -2136,36 +1982,20 @@ def build_query_pack_markdown(
     parts.extend(["## N2 extras", ""])
     parts.extend(extras_gap_notes(case_dir, intake))
     parts.append("")
-    cap_reasons = _cap_reasons(pack_stats)
+    incomplete_reasons = _incomplete_reasons(pack_stats)
     parts.append(
         "Scan coverage: "
         f"{pack_stats.get('terms_queried', len(terms))}/{pack_stats.get('terms_requested', len(terms))} terms; "
         f"files {pack_stats.get('files_scanned', 0)}/{pack_stats.get('files_total', 0)}; "
         f"backend `{backend}`\n"
     )
-    if cap_reasons:
+    if incomplete_reasons:
         parts.append(
-            "\n> WARNING: hit counts below are LOWER BOUNDS — "
-            + "; ".join(cap_reasons)
-            + ". Do not treat them as exact.\n"
+            "\n> WARNING: scan coverage is incomplete — "
+            + "; ".join(incomplete_reasons)
+            + ". Do not treat a negative result as exhaustive.\n"
         )
-    parts.append(f"## Hits ({len(hits)}, cap {_MAX_HITS_TOTAL})\n")
-    # WO-R1F item 7d: when the cap cut rows, say WHICH strongest rows were
-    # dropped. A bare "TRUNCATED" left the reader unable to tell whether a crit
-    # detection had been thrown away (it had, on SC1).
-    if hits and hits[0].get("_cap_dropped_total"):
-        severe = hits[0].get("_cap_dropped_severe") or []
-        parts.append(
-            f"> CAP: {hits[0]['_cap_dropped_total']} row(s) below the cut. "
-            + (
-                f"**{len(severe)} crit/high row(s) were among them: "
-                + ", ".join(severe)
-                + ".**"
-                if severe
-                else "None of them was crit/high — the strongest signals are here."
-            )
-            + "\n"
-        )
+    parts.append(f"## Hits ({len(hits)})\n")
     if not hits:
         parts.append(
             "_No rows matched query terms. Do not invent findings. "
@@ -2181,10 +2011,7 @@ def build_query_pack_markdown(
             parts.append(f"- `{loc}` terms=`{h['terms']}`\n  `{h['text']}`")
         parts.append("")
 
-    md = "\n".join(parts)
-    if len(md) > _MAX_MD:
-        md = md[:_MAX_MD] + "\n\n_(query pack truncated)_\n"
-    return md
+    return "\n".join(parts)
 
 
 def write_query_pack(
@@ -2215,7 +2042,8 @@ def run_ad_hoc_query(
     extra_needles: list[str] | None = None,
     persist: bool = False,
     backend: str | None = None,
-    limit: int = 50,
+    limit: int | None = None,
+    offset: int = 0,
     query_override: str = "",
 ) -> dict[str, Any]:
     """Examiner/agent N4 search over processed outputs (never invents rows).
@@ -2248,12 +2076,18 @@ def run_ad_hoc_query(
                 query=parsed,
                 backend=backend,
             )
-            cap = max(1, min(int(limit or 50), _MAX_HITS_TOTAL))
+            start_at = max(0, int(offset))
+            page = hits[start_at:] if limit is None else hits[
+                start_at:start_at + max(1, int(limit or 50))
+            ]
             return {
                 "backend": used,
                 "terms": parsed.all_needles(),
                 "count": len(hits),
-                "hits": hits[:cap],
+                "hits": page,
+                "offset": start_at,
+                "complete": start_at + len(page) >= len(hits),
+                "next_offset": start_at + len(page) if start_at + len(page) < len(hits) else None,
                 "persisted": False,
                 "empty": not hits,
                 "query": query_override,
@@ -2277,12 +2111,18 @@ def run_ad_hoc_query(
     hits, used = n4_hits(case_dir, terms, window, priority_terms=pb_terms, backend=backend)
     if persist:
         write_query_pack(case_dir, intake=intake)
-    cap = max(1, min(int(limit or 50), _MAX_HITS_TOTAL))
+    start_at = max(0, int(offset))
+    page = hits[start_at:] if limit is None else hits[
+        start_at:start_at + max(1, int(limit or 50))
+    ]
     return {
         "backend": used,
         "terms": terms,
         "count": len(hits),
-        "hits": hits[:cap],
+        "hits": page,
+        "offset": start_at,
+        "complete": start_at + len(page) >= len(hits),
+        "next_offset": start_at + len(page) if start_at + len(page) < len(hits) else None,
         "persisted": persist,
         "empty": not hits,
     }

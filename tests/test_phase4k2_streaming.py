@@ -56,29 +56,26 @@ def test_index_reads_gzip_outputs(tmp_path):
     )
 
 
-def test_index_and_scan_defaults_unlimited(monkeypatch):
-    import nexus.langgraph.case_index as ci
-    import nexus.langgraph.query_pack as qp
+def test_legacy_index_and_scan_caps_do_not_drop_rows(tmp_path, monkeypatch):
+    from nexus.langgraph.case_index import iter_index_docs
 
-    monkeypatch.delenv("NEXUS_INDEX_MAX_DOCS", raising=False)
-    monkeypatch.delenv("NEXUS_SCAN_MAX_FILE_MB", raising=False)
-    monkeypatch.delenv("NEXUS_N4_MAX_FILE_MB", raising=False)
-    assert ci._env_index_int("NEXUS_INDEX_MAX_DOCS", 0) == 0
-    assert qp._env_mb("NEXUS_SCAN_MAX_FILE_MB", 0) == 0
-    assert qp._env_mb("NEXUS_N4_MAX_FILE_MB", 0) == 0
+    monkeypatch.setenv("NEXUS_INDEX_MAX_DOCS", "1")
+    monkeypatch.setenv("NEXUS_INDEX_PER_FILE_CAP", "1")
+    monkeypatch.setenv("NEXUS_N4_MAX_FILE_MB", "1")
+    case = _case(tmp_path, rows=6)
+    docs = iter_index_docs(case)
+    assert sum("sdelete" in doc["text"].lower() for doc in docs) == 6
 
 
 # ── EH-12: exhaustive enumeration + exact counts ───────────────────────
 
-def test_iter_all_hits_is_uncapped_and_exact(tmp_path, monkeypatch):
+def test_n4_hits_and_iter_all_hits_are_exhaustive(tmp_path):
     import nexus.langgraph.query_pack as qp
 
     case = _case(tmp_path, rows=6)
-    monkeypatch.setattr(qp, "_MAX_HITS_TOTAL", 2)
-    monkeypatch.setattr(qp, "_MAX_HITS_PER_FILE", 2)
 
-    capped, _ = qp.n4_hits(case, ["sdelete"], (None, None), backend="csv")
-    assert len(capped) == 2
+    all_hits, _ = qp.n4_hits(case, ["sdelete"], (None, None), backend="csv")
+    assert len(all_hits) == 6
 
     everything = list(qp.iter_all_hits(case, ["sdelete"], (None, None), backend="csv"))
     assert len(everything) == 6, "exhaustive path must not apply result caps"
@@ -89,18 +86,23 @@ def test_iter_all_hits_is_uncapped_and_exact(tmp_path, monkeypatch):
     assert count["backend"] == "csv"
 
 
-def test_n4_query_reports_exact_total_when_capped(tmp_path, monkeypatch):
+def test_n4_query_pages_without_dropping_rows(tmp_path):
     import nexus.langgraph.query_pack as qp
 
     case = _case(tmp_path, rows=5)
-    monkeypatch.setattr(qp, "_MAX_HITS_TOTAL", 1)
-    monkeypatch.setattr(qp, "_MAX_HITS_PER_FILE", 1)
 
-    result = qp.n4_query(case, "sdelete", window=(None, None), backend="csv")
-    assert result["count"] == 5, "capped page must still report the exact total"
-    assert result["count_exact"] is True
-    assert result["count_lower_bound"] is False
-    assert len(result["hits"]) == 1
+    first = qp.n4_query(case, "sdelete", window=(None, None), backend="csv", limit=2)
+    assert first["count"] == 5
+    assert first["count_exact"] is True
+    assert first["count_lower_bound"] is False
+    assert first["complete"] is False
+    assert first["next_offset"] == 2
+    second = qp.n4_query(
+        case, "sdelete", window=(None, None), backend="csv", limit=10, offset=2
+    )
+    assert len(first["hits"]) + len(second["hits"]) == 5
+    assert second["complete"] is True
+    assert second["scan_complete"] is True
 
 
 # ── EH-13: backend fallback is recorded, never silent ──────────────────

@@ -519,6 +519,27 @@ def test_result_summary_carries_rag_content():
     assert "reg save" in summary["results"][0]["text"]
 
 
+def test_es_result_summary_keeps_every_complete_row_and_page_size_is_uncapped():
+    from nexus.langgraph.context_loop import _result_summary, _validate_args
+
+    long_value = "full-evidence-value-" * 100
+    hits = [
+        {"family": "evtxecmd", "line": i, "text": long_value, "fields": {f"field-{j}": long_value for j in range(12)}}
+        for i in range(31)
+    ]
+    summary = _result_summary("es_search", {"total": 31, "returned": 31, "hits": hits})
+    assert len(summary["hits"]) == 31
+    assert summary["hits"][-1]["text"] == long_value
+    assert summary["hits"][-1]["fields"]["field-11"] == long_value
+
+    args, error = _validate_args("es_search", {"query": {"match_all": {}}, "size": 5000})
+    assert not error and args["size"] == 5000
+    args, error = _validate_args("es_search", {"query": {"match_all": {}}, "size": 0})
+    assert error and args == {}
+    args, error = _validate_args("sample_rows", {"family": "evtxecmd", "field": "host", "value": "WS01", "n": 1000})
+    assert not error and args["n"] == 1000
+
+
 def test_force_answer_rejects_empty_json():
     from nexus.langgraph.context_loop import _force_answer
 
@@ -569,7 +590,7 @@ def test_run_record_uses_real_ledger_field_names(tmp_path, monkeypatch):
     assert result["counts"] == {"OK": 1, "SKIP": 0, "FAIL": 0}
 
 
-def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
+def test_run_record_returns_every_entry_and_counts_all_rows(tmp_path, monkeypatch):
     from nexus.tools import evidence_index
 
     case = tmp_path / "CASE-LEDGER-BIG"
@@ -583,7 +604,8 @@ def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
     result = evidence_index.do_run_record(case_id="CASE-LEDGER-BIG")
     assert result["counts"]["OK"] == 305
     assert result["counts"]["FAIL"] == 1
-    assert len(result["entries"]) == 300
+    assert len(result["entries"]) == 306
+    assert result["entries"][-1]["tool"] == "late-fail"
 
 
 def test_mode1_chat_stream_emits_tool_events_and_history(tmp_path):

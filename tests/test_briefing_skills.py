@@ -471,9 +471,8 @@ def test_briefing_records_scan_stats(tmp_path, monkeypatch):
     assert brief["scan_stats"]["terms_failed"] == []
     assert brief["scan_truncated"] is False
 
-def test_briefing_scan_truncated_is_real(tmp_path, monkeypatch):
-    """The scan_truncated flag must react to real caps (result/file/family),
-    not the dead `len(hits) > 1200` comparison."""
+def test_briefing_scan_incomplete_reports_failed_queries(tmp_path, monkeypatch):
+    """A failed query is reported as incomplete; artificial result caps are gone."""
     from nexus.langgraph import briefing as bmod
 
     case = _mkcase(tmp_path)
@@ -483,10 +482,8 @@ def test_briefing_scan_truncated_is_real(tmp_path, monkeypatch):
         if stats is not None:
             stats.update({
                 "mode": "terms", "terms_requested": len(terms),
-                "terms_queried": len(terms), "terms_failed": [],
+                "terms_queried": len(terms) - 1, "terms_failed": ["one-failed-term"],
                 "chunk_queries": 5, "chunks_split": 0,
-                "hits_capped": True, "files_capped": 1,
-                "files_total": 3, "files_scanned": 3,
             })
         return [], "elasticsearch"
 
@@ -497,6 +494,38 @@ def test_briefing_scan_truncated_is_real(tmp_path, monkeypatch):
     assert brief["scan_stats"]["truncated_reasons"]
     md = bmod.briefing_to_markdown(brief)
     assert "LOWER BOUNDS" in md
+
+
+def test_briefing_scans_every_curated_needle(tmp_path, monkeypatch):
+    """Needle vocabulary is not cut at the former 300-term ceiling."""
+    from nexus.knowledge import (
+        attack_needles,
+        external_needles,
+        itm_needles,
+        needle_terms,
+        sigma_needles,
+    )
+    from nexus.langgraph import briefing as bmod
+    from nexus.langgraph import query_pack
+
+    terms = [f"artifact-command-{i:03d}" for i in range(350)]
+    monkeypatch.setattr(attack_needles, "attack_needles_for", lambda *_a, **_k: terms)
+    monkeypatch.setattr(sigma_needles, "sigma_needles_for", lambda *_a, **_k: [])
+    monkeypatch.setattr(itm_needles, "itm_needles_for", lambda *_a, **_k: [])
+    monkeypatch.setattr(itm_needles, "itm_strong_for", lambda *_a, **_k: [])
+    monkeypatch.setattr(external_needles, "external_needles_for", lambda *_a, **_k: [])
+    monkeypatch.setattr(external_needles, "external_strong_for", lambda *_a, **_k: [])
+    monkeypatch.setattr(query_pack, "playbook_strong_terms_for_families", lambda *_a: [])
+    monkeypatch.setattr(query_pack, "playbook_terms_for_families", lambda *_a: [])
+    monkeypatch.setattr(query_pack, "collect_query_terms", lambda *_a: [])
+    monkeypatch.setattr(needle_terms, "is_scannable_term", lambda _term: True)
+    monkeypatch.setattr(query_pack, "is_needle_like", lambda _term: True)
+
+    dropped: list[str] = []
+    actual = bmod._scan_needles(tmp_path, ["hayabusa"], dropped)
+
+    assert len(actual) == len(terms)
+    assert dropped == []
 
 def test_top_entities_exclude_host_content_paths(tmp_path):
     """windows_path/posix_path are paths INSIDE artifacts (host filesystem

@@ -1,13 +1,7 @@
-"""Phase 4k EH-1 — retrieval honesty: caps and skipped files are reported.
-
-The rule under test: a truncated or skipped retrieval may lower-bound the
-counts, but it must never read as "checked, absent" without a flag.
-"""
+"""N4 retrieval is exhaustive; only explicit response pagination limits a page."""
 from __future__ import annotations
 
 from nexus.langgraph.query_pack import (
-    _MAX_HITS_PER_FILE,
-    _MAX_HITS_TOTAL,
     iter_extraction_files,
     scan_extractions,
 )
@@ -20,48 +14,46 @@ def _mkcase(tmp_path, name="CASE-HONEST"):
     return case, ext
 
 
-def test_iter_extraction_files_reports_family_cap(tmp_path):
+def test_iter_extraction_files_returns_every_file(tmp_path):
     case, ext = _mkcase(tmp_path)
     for i in range(3):
         (ext / f"hayabusa_{i}.csv").write_text(
             "TimeCreated,Computer\n2024-01-01,WS01\n", encoding="utf-8"
         )
     stats: dict = {}
-    files = iter_extraction_files(case, max_files_per_family=2, stats=stats)
-    assert len(files) == 2
+    files = iter_extraction_files(case, stats=stats)
+    assert len(files) == 3
     assert stats["files_total"] == 3
-    assert stats["files_scanned"] == 2
-    assert stats["files_skipped_family_cap"] == 1
-    assert stats["families_capped"] == ["hayabusa"]
+    assert stats["files_scanned"] == 3
 
 
-def test_iter_extraction_files_reports_size_skip(tmp_path):
+def test_iter_extraction_files_reads_large_file(tmp_path):
     case, ext = _mkcase(tmp_path)
     (ext / "big_hayabusa.csv").write_text("x" * 5000, encoding="utf-8")
     stats: dict = {}
-    files = iter_extraction_files(case, max_bytes=1000, stats=stats)
-    assert files == []
+    files = iter_extraction_files(case, stats=stats)
+    assert len(files) == 1
     assert stats["files_total"] == 1
-    assert stats["files_skipped_size"] == 1
+    assert stats["files_scanned"] == 1
 
 
-def test_scan_extractions_flags_per_file_cap(tmp_path):
+def test_scan_extractions_returns_every_row_in_one_file(tmp_path):
     case, ext = _mkcase(tmp_path)
-    rows = "\n".join(f"2024-01-01,WS01,sdelete row {i}" for i in range(60))
+    rows = "\n".join(f"2024-01-01,WS01,sdelete row {i}" for i in range(450))
     (ext / "hayabusa_big.csv").write_text(
         "TimeCreated,Computer,Detail\n" + rows + "\n", encoding="utf-8"
     )
     stats: dict = {}
     hits = scan_extractions(case, ["sdelete"], (None, None), stats=stats)
-    assert len(hits) == _MAX_HITS_PER_FILE
-    assert stats["files_capped"] == 1
+    assert len(hits) == 450
     assert stats["files_scanned"] == 1
-    assert stats["families_capped"] == []
+    assert stats["hits_collected"] == 450
+    assert stats["hits_returned"] == 450
     # structured matched terms survive (comma-safe display string aside)
     assert hits[0]["terms_list"] == ["sdelete"]
 
 
-def test_scan_extractions_flags_total_cap(tmp_path):
+def test_scan_extractions_returns_every_row_across_files(tmp_path):
     case, ext = _mkcase(tmp_path)
     for f in range(11):
         rows = "\n".join(f"2024-01-01,WS01,needle row {i}" for i in range(60))
@@ -70,9 +62,10 @@ def test_scan_extractions_flags_total_cap(tmp_path):
         )
     stats: dict = {}
     hits = scan_extractions(case, ["needle"], (None, None), stats=stats)
-    assert len(hits) == _MAX_HITS_TOTAL
-    assert stats["hits_collected"] > _MAX_HITS_TOTAL
-    assert stats["hits_capped"] is True
+    assert len(hits) == 660
+    assert stats["hits_collected"] == 660
+    assert stats["hits_returned"] == 660
+    assert stats["hits_capped"] is False
     assert stats["files_scanned"] == 11
 
 
@@ -91,8 +84,8 @@ def test_scan_extractions_comma_needle_survives_round_trip(tmp_path):
     assert hits[0]["terms"] == "sc.exe, net.exe"
 
 
-def test_es_scan_reports_fetch_cap(monkeypatch, tmp_path):
-    """A chunk that fills its 400-doc page means counts are lower bounds."""
+def test_es_scan_pages_until_every_row_is_returned(monkeypatch, tmp_path):
+    """A full ES response batch has a continuation cursor, not a result cap."""
     import json as _json
 
     from nexus.langgraph import case_index
@@ -117,11 +110,13 @@ def test_es_scan_reports_fetch_cap(monkeypatch, tmp_path):
             return _Resp(200, {})
 
         def post(self, path, json=None, content=None, headers=None, params=None):
-            # every query answers with a FULL 400-doc page of matching rows
+            after = (json or {}).get("search_after")
+            start = int(after[0]) + 1 if after else 0
+            end = min(start + 400, 450)
             hits = [
                 {"_source": {"text": f"rdp row {i}", "family": "hayabusa",
-                             "file": f"f{i}.csv", "line": 1}}
-                for i in range(400)
+                             "file": f"f{i}.csv", "line": 1}, "sort": [i]}
+                for i in range(start, end)
             ]
             return _Resp(200, {"hits": {"hits": hits}})
 
@@ -133,9 +128,10 @@ def test_es_scan_reports_fetch_cap(monkeypatch, tmp_path):
     hits = case_index.query_index(
         tmp_path / "CASE-ESCAP", ["rdp", "mstsc"], (None, None), stats=stats
     )
-    assert stats["hits_fetched"] == 400
-    assert stats["hits_capped"] is True
-    assert len(hits) == 400
+    assert stats["hits_fetched"] == 450
+    assert stats["hits_capped"] is False
+    assert stats["search_pages"] == 2
+    assert len(hits) == 450
 
 def test_attach_hit_fields_ingest_uses_cached_line_index(tmp_path):
     """EH-10: N ingest hits must not re-scan artifacts.jsonl N times."""

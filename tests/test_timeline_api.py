@@ -299,6 +299,23 @@ def test_context_is_a_window_around_the_anchor_across_families(es):
     assert out["capped"] is False
 
 
+def test_context_reads_all_pages_and_does_not_clamp_the_requested_window(es):
+    rows = [_event("anchor", "2026-09-29T13:00:00Z")]
+    rows.extend(
+        _event(f"near-{i:04d}", "2026-09-29T13:00:00Z")
+        for i in range(1000)
+    )
+    fake = es(FakeES(rows))
+    out = TimelineStore("CASE-A").context("anchor", seconds=200_000)
+
+    assert out["seconds"] == 200_000
+    assert len(out["rows"]) == 1001
+    assert out["total"] == 1001
+    assert out["capped"] is False
+    assert out["truncated"] is False
+    assert len(fake.requests) == 3  # anchor lookup plus both search_after pages
+
+
 def test_context_for_an_unknown_event_is_empty_not_an_error(es):
     es(FakeES([_event("other", "2026-09-29T13:00:00Z")]))
     out = TimelineStore("CASE-A").context("nope")
@@ -422,6 +439,28 @@ def test_export_streams_the_same_rows_as_csv(es, client):
     assert lines[0].startswith("event_id,ts,ts_desc")
     assert len(lines) == 3, "header + both events"
     assert "e1" in lines[1] and "e2" in lines[2]
+
+
+def test_export_streams_past_the_old_hundred_thousand_row_limit(monkeypatch):
+    store = TimelineStore("CASE-A")
+    total = 100_001
+
+    def paged(*, cursor=None, size, filters=None, **_kwargs):
+        start = int(cursor or 0)
+        stop = min(start + size, total)
+        rows = [
+            _event(f"event-{i:06d}", "2026-09-29T13:00:00Z")
+            for i in range(start, stop)
+        ]
+        return {
+            "rows": rows,
+            "next_cursor": str(stop) if stop < total else None,
+        }
+
+    monkeypatch.setattr(store, "paged", paged)
+    newline_count = sum(chunk.count("\n") for chunk in store.export())
+
+    assert newline_count == total + 1  # every event plus the CSV header
 
 
 # --------------------------------------------------------------------------

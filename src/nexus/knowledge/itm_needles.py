@@ -15,7 +15,7 @@ from typing import Any
 from nexus.knowledge.loader import get_itm_needles
 
 
-def _dedupe(items: list[str], cap: int) -> list[str]:
+def _dedupe(items: list[str], cap: int | None) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for item in items:
@@ -23,12 +23,12 @@ def _dedupe(items: list[str], cap: int) -> list[str]:
         if key and key not in seen:
             seen.add(key)
             out.append(str(item).strip())
-    return out[:cap]
+    return out if cap is None else out[:cap]
 
 
 def itm_packs_for(
     families: set[str] | list[str] | None = None,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Needle packs whose families intersect the case's evidence families."""
     fams = {str(f).lower() for f in (families or []) if str(f).strip()}
@@ -38,13 +38,13 @@ def itm_packs_for(
         pack for pack in (get_itm_needles().get("packs") or [])
         if fams & {str(f).lower() for f in (pack.get("families") or [])}
     ]
-    return selected[: max(1, limit)]
+    return selected if limit is None else selected[: max(1, limit)]
 
 
 def itm_needles_for(
     families: set[str] | list[str] | None = None,
-    limit: int = 8,
-    cap: int = 40,
+    limit: int | None = None,
+    cap: int | None = None,
 ) -> list[str]:
     needles: list[str] = []
     for pack in itm_packs_for(families, limit):
@@ -56,8 +56,8 @@ def itm_needles_for(
 
 def itm_strong_for(
     families: set[str] | list[str] | None = None,
-    limit: int = 8,
-    cap: int = 20,
+    limit: int | None = None,
+    cap: int | None = None,
 ) -> list[str]:
     needles: list[str] = []
     for pack in itm_packs_for(families, limit):

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-# ── ES path: terms_list + merged-cap honesty ───────────────────────────
+# ── ES path: every chunk and row survives ──────────────────────────────
 
 class _Resp:
     def __init__(self, code: int, payload: dict):
@@ -17,7 +17,7 @@ class _Resp:
 
 
 class _FakeSearch:
-    """Returns 150 unique hits for every chunk query (merges to 450 → cap)."""
+    """Returns 150 unique hits for every query chunk."""
 
     def __init__(self, per_query: int = 150):
         self.per_query = per_query
@@ -43,7 +43,7 @@ class _FakeSearch:
         return _Resp(200, {"hits": {"hits": hits}})
 
 
-def test_es_hits_carry_terms_list_and_merged_cap(monkeypatch, tmp_path):
+def test_es_hits_carry_terms_list_without_merged_cap(monkeypatch, tmp_path):
     from nexus.langgraph import case_index
 
     fake = _FakeSearch(per_query=150)
@@ -51,21 +51,51 @@ def test_es_hits_carry_terms_list_and_merged_cap(monkeypatch, tmp_path):
     monkeypatch.setattr(case_index, "_schema_version_cached", lambda _c: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "fields_property_names", lambda _c: [])
     stats: dict = {}
-    # 121 terms → 4 ES chunks × 150 = 600 merged → trimmed to the 400 total cap
+    # 121 terms → every ES chunk is queried (40 terms per architecture-safe batch).
     terms = ["rdp"] + [f"t{i:03d}" for i in range(120)]
     hits = case_index.query_index(
         tmp_path / "CASE-ES", terms, (None, None), stats=stats
     )
     assert hits and hits[0].get("terms_list"), "ES hits must carry terms_list"
-    # 3 chunks x 150 = 450 merged, finalize trims to 400 → lower bound
     assert stats["hits_fetched"] == 600
-    assert stats["hits_capped"] is True
-    assert stats["hits_returned"] == 400
+    assert stats["hits_capped"] is False
+    assert stats["hits_returned"] == 600
 
 
-# ── ingest scan: terms_list + collect cap flag ─────────────────────────
+def test_es_hit_preserves_every_matched_and_classified_term(monkeypatch):
+    from nexus.langgraph import case_index, query_dsl
 
-def test_ingest_scan_terms_list_and_cap(tmp_path, monkeypatch):
+    terms = [f"indicator-{n}" for n in range(1, 10)]
+    sites = [{"term": term, "field": "Payload"} for term in terms]
+    monkeypatch.setattr(
+        case_index, "classify_matched_terms",
+        lambda *_args, **_kwargs: {
+            "signal": terms, "facts": terms, "weak": terms, "sites": sites,
+        },
+    )
+    hit = case_index._shape_es_hit(
+        {"_source": {"text": " ".join(terms), "family": "hayabusa",
+                     "file": "events.csv", "line": 1}},
+        None, None, terms, set(), None, False, False, set(),
+    )
+
+    assert hit["terms_list"] == terms
+    assert hit["fact_terms"] == terms
+    assert hit["fact_sites"] == sites
+    assert hit["weak_terms"] == terms
+
+    monkeypatch.setattr(query_dsl, "row_matches", lambda *_a, **_kw: (True, terms))
+    query_hit = case_index._shape_es_hit(
+        {"_source": {"text": "query hit", "family": "hayabusa",
+                     "file": "events.csv", "line": 2}},
+        None, None, [], set(), object(), False, False, set(),
+    )
+    assert query_hit["terms_list"] == terms
+
+
+# ── ingest scan: every imported row survives ───────────────────────────
+
+def test_ingest_scan_terms_list_without_cap(tmp_path, monkeypatch):
     from nexus.langgraph import query_pack
 
     case = tmp_path / "CASE-ING"
@@ -80,13 +110,13 @@ def test_ingest_scan_terms_list_and_cap(tmp_path, monkeypatch):
     stats: dict = {}
     hits = query_pack.scan_extractions(case, ["rdp"], (None, None), stats=stats)
     assert hits and hits[0]["terms_list"] == ["rdp"]
-    assert stats.get("ingest_capped") is True  # 260 matched, collect cap 200
-    assert len([h for h in hits if h["file"] == "ingest/artifacts.jsonl"]) == 200
+    assert stats.get("ingest_capped", False) is False
+    assert len([h for h in hits if h["file"] == "ingest/artifacts.jsonl"]) == 260
 
 
 # ── n4_query surfaces coverage ─────────────────────────────────────────
 
-def test_n4_query_reports_lower_bound(tmp_path):
+def test_n4_query_returns_all_hits_or_explicit_page(tmp_path):
     from nexus.langgraph.query_pack import n4_query
 
     case = tmp_path / "CASE-Q"
@@ -97,16 +127,20 @@ def test_n4_query_reports_lower_bound(tmp_path):
         "TimeCreated,Computer,Detail\n" + rows + "\n", encoding="utf-8"
     )
     (case / "CASE.yaml").write_text("intake:\n  query_extra: rdp\n", encoding="utf-8")
-    result = n4_query(case, "rdp", limit=400, backend="csv")
-    # one file × 450 matching rows → per-file cap keeps 40 rendered rows, but
-    # EH-12 makes the TOTAL exact (a second streaming pass) instead of a
-    # silent lower bound; the cap reasons still explain the capped page.
-    assert len(result["hits"]) == 40
+    result = n4_query(case, "rdp", limit=None, backend="csv")
+    assert len(result["hits"]) == 450
     assert result["count"] == 450
     assert result["count_exact"] is True
     assert result["count_lower_bound"] is False
-    assert result["capped_reasons"]
-    assert result["stats"]["files_capped"] == 1
+    assert result["complete"] is True
+    assert result["next_offset"] is None
+    assert result["incomplete_reasons"] == []
+
+    first = n4_query(case, "rdp", limit=400, backend="csv")
+    assert len(first["hits"]) == 400
+    assert first["count_exact"] is True
+    assert first["complete"] is False
+    assert first["next_offset"] == 400
 
 
 # ── timeline keeps the ts flags through the merge ──────────────────────
@@ -187,7 +221,7 @@ def test_ingest_into_case_writes_audit(tmp_path, monkeypatch):
         parsed_lines = 0
 
     class _FakeRegistry:
-        def import_path(self, path, source=None, limit=0, on_batch=None):
+        def import_path(self, path, source=None, on_batch=None):
             return _Result()
 
     monkeypatch.setattr(registry_mod, "get_registry", lambda: _FakeRegistry())

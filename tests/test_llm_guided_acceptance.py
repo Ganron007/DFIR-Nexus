@@ -52,6 +52,7 @@ def _mkcase() -> Path:
     cid = r["case_id"]
     tools["case_activate"].fn(cid)
     case_dir = Path(r["case_dir"])
+    Path(os.environ["NEXUS_ACTIVE_CASE_FILE"]).write_text(str(case_dir), encoding="utf-8")
     ext = case_dir / "extractions" / "hayabusa"
     ext.mkdir(parents=True, exist_ok=True)
     (ext / "timeline.csv").write_text(
@@ -181,12 +182,15 @@ def staged_finding_visible(case_dir: Path, fid: str | None = None) -> bool:
     return bool(findings) and all(f.get("status") != "APPROVED" for f in findings)
 
 
-def test_mode1_loop_never_writes_findings():
+def test_mode1_loop_never_writes_findings(monkeypatch):
     """Hard invariant: the Mode 2 loop returns iterations — findings.json is
     untouched until promote/save runs outside the loop."""
+    from nexus.modes import llm_desk
     from nexus.modes.llm_guided import run_iterative_loop
 
     case_dir = _mkcase()
+    monkeypatch.setenv("NEXUS_CONTEXT_LOOP", "0")
+    monkeypatch.setattr(llm_desk, "nl_to_needles", lambda *_a, **_k: {"needles": ["sdelete"]})
     fake = _FakeModel([{  # type: ignore[list-item]
         "needles": ["sdelete"],
         "queries": [{"dsl": "family:hayabusa AND sdelete", "why": "q"}],
@@ -194,13 +198,43 @@ def test_mode1_loop_never_writes_findings():
     }])
     result = run_iterative_loop(case_dir, "sdelete destructive activity?",
                                 model=fake, max_iterations=1, limit=20)
-    assert result["iterations"]
+    assert result["iterations"], result
     findings_file = case_dir / "findings.json"
     if findings_file.exists():
         import json as _json
 
         findings = _json.loads(findings_file.read_text(encoding="utf-8") or "[]")
         assert not findings, "the loop must never write findings"
+
+
+def test_mode1_reports_unfinished_search_pages_to_the_model_and_caller(monkeypatch):
+    from nexus.langgraph import backbone
+    from nexus.modes import llm_desk
+    from nexus.modes.llm_guided import run_iterative_loop
+
+    case_dir = _mkcase()
+    monkeypatch.setenv("NEXUS_CONTEXT_LOOP", "0")
+    monkeypatch.setattr(llm_desk, "nl_to_needles", lambda *_a, **_k: {"needles": ["seed"]})
+
+    def _search_page(name, audit=None, **_kwargs):
+        assert name == "es_search"
+        return {
+            "total": 2,
+            "returned": 1,
+            "has_more": True,
+            "next_search_after": ["cursor-1"],
+            "hits": [{"family": "hayabusa", "file": "timeline.csv", "line": 1, "text": "seed"}],
+            "provenance": {"audit_id": "audit-page-1"},
+        }
+
+    monkeypatch.setattr(backbone, "backbone_call", _search_page)
+    model = _FakeModel([{"queries": [], "rationale": "No further query."}])
+    result = run_iterative_loop(case_dir, "seed", model=model, max_iterations=1, limit=1)
+
+    assert result["coverage_complete"] is False
+    assert result["pending_search_pages"][0]["search_after"] == ["cursor-1"]
+    assert result["iterations"][0]["has_more"] is True
+    assert '"cursor-1"' in model.prompts[0][1]["content"]
 
 @pytest.fixture(autouse=True)
 def _csv_backbone_stub(monkeypatch):

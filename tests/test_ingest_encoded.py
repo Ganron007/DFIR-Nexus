@@ -8,7 +8,9 @@ not a file type the importer names, so it must not be taken for an attachment.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -43,3 +45,26 @@ def test_base64_of_a_file_with_no_known_signature_is_not_taken(tmp_path):
     encoded.write_bytes(base64.b64encode(hive))
     assert not Base64FileImporter.can_handle(encoded)
     assert detect_format(encoded) != ArtifactSource.ENCODED_FILE
+
+
+def test_embedded_real_sample_payload_streams_through_spooled_storage(tmp_path, monkeypatch):
+    """The decoder handles chunk boundaries and disk spill on a verbatim sample payload."""
+    import nexus.ingest.generic.encoded as encoded_module
+
+    source = REPO / "tests" / "fixtures" / "cs1b_evtx_real_rows.csv"
+    text = source.read_text(encoding="utf-8")
+    match = re.search(r"FromBase64String\('([A-Za-z0-9+/=]+)'\)", text)
+    assert match, "the real EVTX sample should retain its embedded base64 script payload"
+
+    monkeypatch.setattr(encoded_module, "_STREAM_CHUNK_BYTES", 13)
+    monkeypatch.setattr(encoded_module, "_SPOOL_MEMORY_BYTES", 16)
+    encoded = tmp_path / "embedded-payload.txt"
+    encoded.write_text(match.group(1), encoding="ascii")
+
+    artifacts = list(Base64FileImporter().parse(encoded))
+    assert len(artifacts) == 1
+    raw = artifacts[0].raw
+    decoded = base64.b64decode(match.group(1), validate=True)
+    assert raw["decoded_type"] == "gzip data"
+    assert raw["decoded_size"] == len(decoded)
+    assert raw["decoded_sha256"] == hashlib.sha256(decoded).hexdigest()

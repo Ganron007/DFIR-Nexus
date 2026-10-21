@@ -7,7 +7,6 @@ helpers (timestamp parsing, MITRE extraction, severity normalization).
 
 from __future__ import annotations
 
-import itertools
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -94,14 +93,13 @@ class Importer(ABC):
         raise NotImplementedError
         yield  # pragma: no cover  (makes this a generator for type-checkers)
 
-    def ingest(self, path: Path, limit: int = 0, on_batch=None, batch_size: int = 5000) -> ImportResult:
+    def ingest(self, path: Path, on_batch=None, batch_size: int = 5000) -> ImportResult:
         """Top-level import: parse all input, return ImportResult.
 
-        ``limit`` (0 = unlimited) caps artifacts WHILE parsing — a multi-GB
-        capture must not be materialized entirely before the cap is applied.
         ``on_batch`` (D263): artifacts are handed to it ``batch_size`` at a time as they are parsed and are
         not kept on the result, so a file of any size is read whole without being held in memory;
-        ``result.parsed_lines`` counts them.
+        ``result.parsed_lines`` counts them. ``batch_size`` controls transfer granularity only; every
+        parsed artifact is delivered.
         """
         result = ImportResult(source=self.source_class())
         path = Path(path)
@@ -115,13 +113,8 @@ class Importer(ABC):
         pending: list[Artifact] = []
 
         for file in files:
-            if limit and result.parsed_lines >= limit:
-                break
             try:
                 stream = self.parse(file)
-                if limit:
-                    remaining = max(0, limit - result.parsed_lines)
-                    stream = itertools.islice(stream, remaining)
                 for artifact in stream:
                     result.parsed_lines += 1
                     if on_batch is None:

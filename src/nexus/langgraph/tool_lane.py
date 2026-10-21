@@ -700,26 +700,6 @@ def schedule_evtx_parsers(
         )
 
 
-#: Per-folder dispatch bound for ``_plan_single_artifact`` (WO-13): a folder of
-#: one artifact format is planned file-by-file. 0 = unlimited, and that is the
-#: default - lane concurrency already bounds load, and the old implicit 200 cap
-#: meant a real ``Recent\`` LNK or jump-list folder could exceed it silently.
-#: When an examiner sets ``NEXUS_FOLDER_DISPATCH_MAX`` and the folder exceeds
-#: it, the overflow is a FAIL row (critical) so the evidence gate blocks; the
-#: old SKIP left evidence unprocessed with a clear gate, against the hard rule.
-_FOLDER_DISPATCH_DEFAULT = 0
-
-
-def _folder_dispatch_max() -> int:
-    raw = os.environ.get("NEXUS_FOLDER_DISPATCH_MAX", "").strip()
-    if not raw:
-        return _FOLDER_DISPATCH_DEFAULT
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return _FOLDER_DISPATCH_DEFAULT
-
-
 def _plan_single_artifact(
     evidence: Path, extractions: Path, *, out_name: str | None = None
 ) -> list[ToolJob]:
@@ -802,17 +782,10 @@ def _plan_single_artifact(
         # (bmc-tools -s <dir>) is then scheduled once, not once per cache file.
         # SKIP rows are never deduped: each names its own file.
         files: list[Path] = []
-        capped = False
-        cap = _folder_dispatch_max()
         for p in evidence.rglob("*"):
             if not p.is_file() or p.name.startswith("."):
                 continue
             files.append(p)
-            if cap and len(files) > cap:
-                capped = True
-                break
-        if capped:
-            files = files[:cap]
         if files:
             stems: dict[str, int] = {}
             for p in files:
@@ -832,21 +805,6 @@ def _plan_single_artifact(
                             continue
                         seen.add(key)
                     dispatched.append(job)
-            if capped:
-                # WO-13: with a cap set, the overflow is a FAIL (critical) so the
-                # evidence gate blocks. A SKIP here left unprocessed evidence
-                # behind a clear gate, against the operator hard rule.
-                dispatched.append(ToolJob(
-                    host="windows", tool="(discovery)", argv=[], status="FAIL",
-                    purpose="folder dispatch overflow",
-                    critical=True,
-                    reason=(
-                        f"more than the configured {cap} file(s) in this folder "
-                        "were not scheduled - raise NEXUS_FOLDER_DISPATCH_MAX or "
-                        "register that part separately; evidence must not be "
-                        "skipped unnoticed"
-                    ),
-                ))
             if dispatched:
                 return dispatched
         return jobs
@@ -2172,7 +2130,7 @@ def plan_windows_triage(
         if rr_hives:
             d = extractions / "regripper"
             d.mkdir(parents=True, exist_ok=True)
-            for hive_name, hive in rr_hives[:8]:
+            for hive_name, hive in rr_hives:
                 prof = profiles.get(hive_name.split("-")[0], "all")
                 add(
                     "regripper",
@@ -2290,9 +2248,11 @@ def _plan_n2_extras(
                 continue
             dest = extractions / "drivefs" / user.name
             dest.mkdir(parents=True, exist_ok=True)
-            for logf in list(gdfs.rglob("*.log"))[:20] + list(gdfs.rglob("*.txt"))[:20]:
-                if logf.is_file() and logf.stat().st_size < 20 * 1024 * 1024:
-                    _copy_text(dest, logf.name, logf)
+            for logf in gdfs.rglob("*"):
+                if logf.is_file() and logf.suffix.lower() in {".log", ".txt"}:
+                    # Keep the source-relative path so same-named files in different
+                    # DriveFS subfolders cannot overwrite or suppress one another.
+                    _copy_text(dest, str(logf.relative_to(gdfs)), logf)
                     n += 1
         if not n:
             skip("drivefs", "no Google DriveFS logs under user profiles")
@@ -2323,9 +2283,7 @@ def _usb_serials_from_setupapi(path: Path) -> list[str]:
     for line in text.splitlines():
         low = line.lower()
         if "usbstor" in low or "serial number" in low or "usb\\vid_" in low:
-            found.append(line.strip()[:240])
-            if len(found) >= 80:
-                break
+            found.append(line.strip())
     return found
 
 
@@ -2603,7 +2561,7 @@ def _plan_gap_parsers(
     if i30_files and not quick:
         out = extractions / "mftecmd-i30"
         out.mkdir(parents=True, exist_ok=True)
-        for i30 in i30_files[:3]:
+        for i30 in i30_files:
             add(
                 "mftecmd",
                 ["mftecmd", "-f", str(i30), "--csv", str(out), "--csvf", f"{i30.name}.csv"],
@@ -2732,7 +2690,7 @@ def _plan_gap_parsers(
         if s not in seen:
             seen.add(s)
             uniq.append(s)
-    samples = uniq[:10]
+    samples = uniq
     yara_rules = os.environ.get("NEXUS_YARA_RULES", "").strip()
     if samples:
         present = [Path(s) for s in samples if Path(s).is_file()]
@@ -3123,7 +3081,7 @@ async def _align_remote_active_case(activate_tool, case_id: str) -> str:
 
 
 def persist_truncation_reason(result: dict[str, Any]) -> str:
-    """Why a capture that hit the byte cap is not OK, or "" when it is whole.
+    """Why a capture reported incomplete is not OK, or "" when it is whole.
 
     A tool whose output was cut mid-stream produced an incomplete artifact; the
     lane must not record that as processed, or the evidence gate clears on a
@@ -3131,8 +3089,8 @@ def persist_truncation_reason(result: dict[str, Any]) -> str:
     """
     if result.get("persist_truncated"):
         return (
-            "captured output hit the byte cap, so the saved output is "
-            "incomplete — treat this evidence as unparsed, not clean"
+            "captured output is incomplete — treat this evidence as "
+            "unparsed, not clean"
         )
     return ""
 
@@ -4382,7 +4340,7 @@ async def run_tool_lane(
                 job.output_files = [*job.output_files, promoted]
         persist_reason = persist_truncation_reason(result)
         if persist_reason:
-            # The capture hit the byte cap, so what was saved is incomplete.
+            # The executor or transport reported an incomplete capture.
             # Marking it OK would let a half-parsed artifact pass the evidence
             # gate and index as if it were whole (WO-V5).
             job.reason = persist_reason

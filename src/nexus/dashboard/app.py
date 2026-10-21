@@ -1210,7 +1210,8 @@ async def api_query_rerun(request):
     persist = bool(body.get("persist")) if needles else False
     if needles:
         result = run_ad_hoc_query(
-            case_dir, extra_needles=needles, persist=persist, limit=int(body.get("limit") or 80)
+            case_dir, extra_needles=needles, persist=persist,
+            limit=int(body["limit"]) if body.get("limit") is not None else None,
         )
         return JSONResponse({"ok": True, **result})
     path = write_query_pack(case_dir)
@@ -1990,7 +1991,7 @@ async def api_ask(request):
         extra_needles=needles,
         query_override=query_text,
         persist=True,
-        limit=int(body.get("limit") or 80),
+        limit=int(body["limit"]) if body.get("limit") is not None else None,
     )
     return JSONResponse({
         "needles": needles,
@@ -2198,7 +2199,7 @@ def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
     return dict(sorted(buckets.items()))
 
 
-def _case_default_needles(case_dir, cap: int = 120) -> list[str]:
+def _case_default_needles(case_dir) -> list[str]:
     """The 'no query given' vocabulary: what the investigation flagged.
 
     Order: needles the Mode 1 full-run actually scanned (persisted in the
@@ -2211,11 +2212,11 @@ def _case_default_needles(case_dir, cap: int = 120) -> list[str]:
     except Exception:  # noqa: BLE001
         rec = None
     if rec and rec.get("needles"):
-        return [str(n) for n in rec["needles"] if str(n).strip()][:cap]
+        return [str(n) for n in rec["needles"] if str(n).strip()]
     try:
         from nexus.langgraph.briefing import _family_inventory, _scan_needles
 
-        return list(_scan_needles(case_dir, sorted(_family_inventory(case_dir))))[:cap]
+        return list(_scan_needles(case_dir, sorted(_family_inventory(case_dir))))
     except Exception:  # noqa: BLE001
         return []
 
@@ -2319,7 +2320,7 @@ async def api_explore_search(request):
 
     body = await request.json()
     try:
-        limit = max(1, min(int(body.get('limit') or 80), 400))
+        limit = max(1, int(body.get('limit') or 80))
         offset = max(0, int(body.get('offset') or 0))
     except (TypeError, ValueError):
         return JSONResponse({'error': 'limit/offset must be integers'}, status_code=400)
@@ -2329,25 +2330,32 @@ async def api_explore_search(request):
     defaulted = 0
     if not query_text and body.get('default_needles'):
         # Timeline events panel opt-in: no query = "rows the investigation
-        # flagged". Term lists go straight to n4_hits — the DSL's 24-term
-        # OR cap is for examiner queries, not internal vocabulary.
+        # flagged". Term lists go straight to n4_hits so every case needle
+        # participates in the exhaustive scan.
         vocab = _case_default_needles(case_dir)
         if vocab:
-            from nexus.langgraph.query_pack import n4_hits
+            from nexus.langgraph.query_pack import _incomplete_reasons, n4_hits
 
+            scan_stats: dict[str, Any] = {}
             all_hits, backend_used = n4_hits(
-                case_dir, vocab, window, priority_terms=vocab)
+                case_dir, vocab, window, priority_terms=vocab, stats=scan_stats)
+            incomplete_reasons = _incomplete_reasons(scan_stats)
+            scan_complete = not incomplete_reasons
             result = {
                 'count': len(all_hits),
-                'hits': all_hits[offset:offset + 400],
+                'hits': all_hits[offset:offset + limit],
                 'backend': backend_used,
                 'query': f'{len(vocab)} case needles (auto)',
+                'count_exact': scan_complete,
+                'count_lower_bound': not scan_complete,
+                'scan_complete': scan_complete,
+                'incomplete_reasons': incomplete_reasons,
             }
             defaulted = len(vocab)
         else:
             result = {'count': 0, 'hits': [], 'backend': '', 'query': ''}
     else:
-        result = n4_query(case_dir, query_text, window=window, limit=400, offset=offset)
+        result = n4_query(case_dir, query_text, window=window, limit=limit, offset=offset)
     if result.get('error'):
         return JSONResponse({'error': result['error']}, status_code=400)
     hits = list(result.get('hits') or [])
@@ -2359,6 +2367,7 @@ async def api_explore_search(request):
         # lower bound, and the UI must say so (review fix).
         total = len(hits)
         result["count_lower_bound"] = True
+        result["count_exact"] = False
 
     # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI.
     # The host re-check runs AFTER attach (raw hits may not carry `host`).
@@ -2366,17 +2375,20 @@ async def api_explore_search(request):
     hits = _post_filter_hits(hits, [], host_filter)
 
     return JSONResponse({
-        'hits': hits[:limit],
+        'hits': hits,
         'count': total,
         'count_exact': bool(result.get('count_exact')),
         'count_lower_bound': bool(result.get('count_lower_bound')),
-        'capped_reasons': list(result.get('capped_reasons') or []),
+        'incomplete_reasons': list(result.get('incomplete_reasons') or []),
         'total_before_family_filter': total,
         'backend': result.get('backend', ''),
         'families': _available_families(case_dir),
         'needles': collect_query_terms(load_case_intake(case_dir)),
         'query': result.get('query', ''),
         'offset': offset,
+        'complete': offset + len(hits) >= total,
+        'next_offset': offset + len(hits) if offset + len(hits) < total else None,
+        'scan_complete': bool(result.get('scan_complete', True)),
         'default_needles': defaulted,
     })
 
@@ -2471,8 +2483,8 @@ async def api_workbench_add_many(request):
     """POST /portal/api/workbench/add_many — bookmark every hit matching the
     current Explore query. Body takes the same fields as /explore/search
     {needles?, query?, family?, host?, start?, end?, note?} so "bookmark all"
-    means the FULL result set, not just the rendered page. Re-runs the N4
-    query server-side; bounded at 5000 rows with an honest truncated flag.
+    means the FULL result set, not just the rendered page. Re-runs the exhaustive
+    N4 query server-side; only a failed scan can leave the result incomplete.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -2485,10 +2497,9 @@ async def api_workbench_add_many(request):
     from nexus.langgraph.query_pack import attach_hit_fields, n4_query
 
     body = await request.json()
-    cap = 5000
     query_text, window, family_filter, host_filter = _explore_query_from_body(case_dir, body)
 
-    result = n4_query(case_dir, query_text, window=window, limit=cap, offset=0)
+    result = n4_query(case_dir, query_text, window=window, limit=None, offset=0)
     if result.get('error'):
         return JSONResponse({'error': result['error']}, status_code=400)
     hits = _post_filter_hits(list(result.get('hits') or []), family_filter, "")
@@ -2507,7 +2518,8 @@ async def api_workbench_add_many(request):
 
     r = add_bookmarks(case_dir, hits, note=str(body.get("note") or ""))
     r["matched"] = matched
-    r["truncated"] = matched > len(hits)
+    r["truncated"] = not bool(result.get("scan_complete", True))
+    r["incomplete_reasons"] = list(result.get("incomplete_reasons") or [])
     return JSONResponse(r)
 
 
@@ -2679,7 +2691,7 @@ def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
 
 
 def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
-                           max_needles: int, only: set[str],
+                           only: set[str],
                            reprocess: bool = False) -> None:
     """Background Mode 1 full-run worker.
 
@@ -2765,16 +2777,15 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                         "matches a large share of the case; background, not staged)"
                     ),
                 }
-                for s in ubiquitous[:50]
+                for s in ubiquitous
             )
             scan = [s for s in scan if not s.get("ubiquitous")]
-        needles_hit_total = len(scan)  # before the max_needles cap — report honestly
-        scan = scan[:max_needles]
+        needles_hit_total = len(scan)
         record["needles"] = [str(s.get("needle") or "") for s in scan]
         record["needles_total"] = len(scan)
         record["needles_scanned"] = int(brief.get("scanned_needles") or 0)
         record["needles_hit_total"] = needles_hit_total
-        record["needles_capped"] = needles_hit_total - len(scan)
+        record["needles_capped"] = 0  # legacy response field; no needle-count cap remains
         record["scan_truncated"] = bool(brief.get("scan_truncated"))
         _persist()
         if not scan:
@@ -2844,8 +2855,13 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         scan_aid_by_needle: dict[str, str] = {}
         scan_audit_ids: list[str] = []
         scan_batches = 0
-        scan_capped = False
+        scan_incomplete = bool(brief.get("scan_truncated"))
+        incomplete_reasons = set(
+            (brief.get("scan_stats") or {}).get("incomplete_reasons") or []
+        )
         scan_coverage = {"terms_requested": 0, "terms_queried": 0, "terms_failed": 0}
+        from nexus.langgraph.query_pack import _incomplete_reasons
+
         for start_at in range(0, len(needles_ordered), 25):
             chunk = needles_ordered[start_at:start_at + 25]
             chunk_stats: dict = {}
@@ -2865,11 +2881,10 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 for needle in chunk:
                     scan_aid_by_needle[str(needle).strip().lower()] = chunk_aid
             scan_batches += 1
-            if (chunk_stats.get("hits_capped") or chunk_stats.get("files_capped")
-                    or chunk_stats.get("files_skipped_family_cap")
-                    or chunk_stats.get("files_skipped_size")
-                    or chunk_stats.get("terms_failed")):
-                scan_capped = True
+            chunk_reasons = _incomplete_reasons(chunk_stats)
+            if chunk_reasons:
+                scan_incomplete = True
+                incomplete_reasons.update(chunk_reasons)
             scan_coverage["terms_requested"] += int(chunk_stats.get("terms_requested") or 0)
             scan_coverage["terms_queried"] += int(chunk_stats.get("terms_queried") or 0)
             scan_coverage["terms_failed"] += len(chunk_stats.get("terms_failed") or [])
@@ -2883,8 +2898,9 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                         hits_by_needle.setdefault(key, []).append(h)
         record["scan_batches"] = scan_batches
         record["scan_coverage"] = scan_coverage
-        record["scan_audit_ids"] = scan_audit_ids[:20]
-        record["scan_truncated"] = bool(record.get("scan_truncated")) or scan_capped
+        record["scan_audit_ids"] = scan_audit_ids
+        record["scan_incomplete_reasons"] = sorted(incomplete_reasons)
+        record["scan_truncated"] = bool(record.get("scan_truncated")) or scan_incomplete
         _persist()
 
         all_hits: list[dict] = []
@@ -2909,11 +2925,11 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             record["bookmarks_added"] += int(add_bookmarks(case_dir, hits).get("added") or 0)
 
             # One DRAFT per needle (candidate signal, not a verdict).
-            # len(hits) is a lower bound: the 500-row page may not hold every
-            # needle-matched row, and intake terms inflate result["count"].
+            # N4 returns every matching row. Intake terms may also match a row,
+            # so the hit list is not a count of unique behaviors.
             record["stage"] = "staging draft"
             families = sorted({str(h.get("family") or "?") for h in hits})
-            more = "+" if scan_capped else ""
+            more = "+" if scan_incomplete else ""
             # The title is what an examiner reads first, so it states what the
             # rows say rather than repeating the needle that matched them. A
             # title of "Signal: sdelete - 1 hit(s) across evtxecmd" is an
@@ -3135,7 +3151,7 @@ async def api_mode1_full_run(request):
     navigation/reload. One run per case at a time — a second POST while a
     run is live returns 409 with the existing record.
 
-    Body: {max_needles?: 40, needle_filter?: "a,b" (subset),
+    Body: {needle_filter?: "a,b" (explicit subset),
            reprocess?: bool — supersede existing DRAFTs for hit needles and
            re-stage them fresh. APPROVED findings are never overwritten or
            rejected (signed examiner decisions); reprocess stages a fresh
@@ -3167,10 +3183,6 @@ async def api_mode1_full_run(request):
     with contextlib.suppress(Exception):
         body = await request.json()
 
-    try:
-        max_needles = max(1, min(int(body.get("max_needles") or 40), 120))
-    except (TypeError, ValueError):
-        return JSONResponse({"error": "max_needles must be an integer"}, status_code=400)
     reprocess = bool(body.get("reprocess"))
     only = {n.strip().lower() for n in str(body.get("needle_filter") or "").split(",") if n.strip()}
 
@@ -3220,7 +3232,7 @@ async def api_mode1_full_run(request):
             "needles_total": 0,
             "needles_scanned": 0,
             "needles_hit_total": 0,
-            "needles_capped": 0,
+        "needles_capped": 0,
             "scan_truncated": False,
             "reprocess": reprocess,
             "bookmarks_added": 0,
@@ -3235,7 +3247,7 @@ async def api_mode1_full_run(request):
 
         worker = threading.Thread(
             target=_mode1_full_run_worker,
-            args=(case_dir, record_path, record, max_needles, only, reprocess),
+            args=(case_dir, record_path, record, only, reprocess),
             name=f"mode1-full-run-{case_dir.name}",
             daemon=True,
         )
@@ -3448,7 +3460,7 @@ async def api_chat_post(request):
         return JSONResponse({"reply": reply, "needles": [], "count": 0})
 
     window = parse_intake_window(load_case_intake(case_dir))
-    result = n4_query(case_dir, query_text, window=window, limit=80)
+    result = n4_query(case_dir, query_text, window=window, limit=None)
     if result.get("error"):
         append_chat(case_dir, "llm", "error", result["error"])
         return JSONResponse({"reply": f"Query error: {result['error']}"}, status_code=400)
@@ -3472,6 +3484,9 @@ async def api_chat_post(request):
         "window": window_str,
         "hits": result.get("hits", []),
         "count": result.get("count", 0),
+        "offset": result.get("offset", 0),
+        "complete": result.get("complete", False),
+        "next_offset": result.get("next_offset"),
         "backend": result.get("backend", ""),
     })
 
@@ -3489,23 +3504,9 @@ async def api_chat_clear(request):
     return JSONResponse(clear_chat(case_dir))
 
 
-_CHAT_STREAM_MAX_HITS = 12
-
-
 def _hits_for_transcript(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Cap + trim hits persisted into the chat transcript (WP 4d.3)."""
-    out = []
-    for h in hits[:_CHAT_STREAM_MAX_HITS]:
-        out.append({
-            "family": str(h.get("family", ""))[:60],
-            "file": str(h.get("file", ""))[:200],
-            "line": str(h.get("line", ""))[:12],
-            "terms": str(h.get("terms", ""))[:120],
-            "text": str(h.get("text", ""))[:240],
-            "fields": {str(k)[:60]: str(v)[:160] for k, v in list((h.get("fields") or {}).items())[:12]},
-            "host": str(h.get("host", ""))[:60],
-        })
-    return out
+    """Preserve every complete evidence row in the streamed chat result."""
+    return [dict(hit) for hit in hits]
 
 
 def _slim_tool_calls(calls: list[dict[str, Any]], limit: int = 12) -> list[dict[str, Any]]:
@@ -3740,7 +3741,7 @@ async def api_chat_stream(request):
             return "needles_empty", {}
         window = parse_intake_window(load_case_intake(case_dir))
         q.put(("status", {"stage": "querying", "needles": needles, "query": query_text}))
-        result = n4_query(case_dir, query_text, window=window, limit=80)
+        result = n4_query(case_dir, query_text, window=window, limit=None)
         if result.get("error"):
             q.put(("error", {"error": result["error"]}))
             return "error", {}
@@ -3752,7 +3753,13 @@ async def api_chat_stream(request):
             + (f" | {result.get('query')}" if result.get("query") else "")
             + (f" | why: {rationale}" if rationale else "")
         )
-        q.put(("hits", {"hits": _hits_for_transcript(hits), "count": result.get("count", 0)}))
+        q.put(("hits", {
+            "hits": _hits_for_transcript(hits),
+            "count": result.get("count", 0),
+            "offset": result.get("offset", 0),
+            "complete": result.get("complete", False),
+            "next_offset": result.get("next_offset"),
+        }))
         return "query_run", {
             "reply": reply,
             "needles": needles,
@@ -3876,7 +3883,7 @@ async def api_chat_stream(request):
                     q.put((None, None))
                 else:
                     hits = result.get("hits", [])
-                    q.put(("hits", {"hits": _hits_for_transcript(hits[:_CHAT_STREAM_MAX_HITS])}))
+                    q.put(("hits", {"hits": _hits_for_transcript(hits)}))
                     _finalize("steer_answer", result)
         except Exception as exc:
             q.put(("error", {"error": str(exc)}))
@@ -3916,7 +3923,7 @@ async def api_timeline_lanes(request):
     count = 0
     defaulted = 0
     if query_text.strip():
-        result = n4_query(case_dir, query_text, limit=400)
+        result = n4_query(case_dir, query_text, limit=None)
         if result.get("error"):
             return JSONResponse({"error": result["error"]}, status_code=400)
         hits = list(result.get("hits") or [])
@@ -3924,8 +3931,8 @@ async def api_timeline_lanes(request):
     else:
         # Empty query = "everything the investigation flagged" — full-run
         # needles, else the case's scan vocabulary. Term lists go straight
-        # to n4_hits — the DSL's 24-term OR cap is for examiner queries,
-        # not internal vocabulary. Without this a portal case with empty
+        # to n4_hits so all case vocabulary participates in the scan.
+        # Without this a portal case with empty
         # intake renders a blank timeline.
         from nexus.langgraph.query_pack import _parse_needles
 
@@ -3941,7 +3948,7 @@ async def api_timeline_lanes(request):
             window = parse_intake_window(load_case_intake(case_dir))
             all_hits, _be = n4_hits(case_dir, vocab, window)
             count = len(all_hits)
-            hits = all_hits[:400]
+            hits = all_hits
             defaulted = 0 if user_vocab else len(vocab)
     from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.modes.llm_desk import _SEV_ORDER, _severity_from_hits
@@ -4028,7 +4035,7 @@ async def api_entities(request):
     elif needles:
         query_text = " OR ".join(needles)
 
-    result = n4_query(case_dir, query_text, limit=400, match_all=True)
+    result = n4_query(case_dir, query_text, limit=None, match_all=True)
     if result.get("error"):
         return JSONResponse({"error": result["error"]}, status_code=400)
     texts = [h.get("text", "") for h in result.get("hits", [])]
@@ -4334,7 +4341,7 @@ async def api_mode1_iterate(request):
     except (TypeError, ValueError):
         return JSONResponse({"error": "max_iterations must be an integer"}, status_code=400)
     try:
-        limit = max(1, min(int(body.get("limit") or 80), 400))
+        limit = max(1, int(body.get("limit") or 80))
     except (TypeError, ValueError):
         return JSONResponse({"error": "limit must be an integer"}, status_code=400)
 
@@ -4449,7 +4456,7 @@ async def api_mode1_propose_draft(request):
     def _draft() -> dict:
         hits = body.get("hits")
         if not hits and body.get("query") is not None:
-            hits = n4_query(case_dir, str(body.get("query")), limit=12).get("hits", [])
+            hits = n4_query(case_dir, str(body.get("query")), limit=None).get("hits", [])
         if not hits:
             return {"error": "No hits to draft from", "http": 400}
         try:

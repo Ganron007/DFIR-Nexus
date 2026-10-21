@@ -1,7 +1,8 @@
 """The importer pass (I1) on the sample sets (2026-10-18): every row stored, workbooks read, the gate told,
 yearless times dated by the case's own evidence.
 
-* D263: rows past 20,000 per file were dropped (NEXUS_INGEST_MAX_ARTIFACTS defaulted to 20,000).
+* D263: rows past 20,000 per file were dropped (NEXUS_INGEST_MAX_ARTIFACTS defaulted to 20,000);
+  the importer now streams every artifact and has no cap parameter.
 * S02's SRUM-DUMP workbook was read by no importer; its duration columns are named like times.
 * S03 (a capture and three logs, no Windows image) was gated "blocked" with nothing unprocessed: the gate was written
   before the importer pass, which it never counted.
@@ -72,15 +73,14 @@ def _stored(case_dir: Path) -> list[dict]:
 
 
 def test_every_row_of_a_file_is_stored_streamed_in_batches(case, tmp_path, monkeypatch):
-    monkeypatch.delenv("NEXUS_INGEST_MAX_ARTIFACTS", raising=False)
     batches: list[int] = []
     real = ingest_base.Importer.ingest
 
-    def small_batches(self, path, limit=0, on_batch=None, batch_size=5000):
+    def small_batches(self, path, on_batch=None, batch_size=5000):
         def counted(batch):
             batches.append(len(batch))
             on_batch(batch)
-        return real(self, path, limit=limit, on_batch=counted if on_batch else None, batch_size=2)
+        return real(self, path, on_batch=counted if on_batch else None, batch_size=2)
 
     monkeypatch.setattr(ingest_base.Importer, "ingest", small_batches)
     info = ingest_into_case(_write(tmp_path / "ev", "bind.log", BIND), case)
@@ -89,10 +89,11 @@ def test_every_row_of_a_file_is_stored_streamed_in_batches(case, tmp_path, monke
     assert len(_stored(case)) == 3
 
 
-def test_an_examiner_cap_still_caps_and_says_so(case, tmp_path, monkeypatch):
+def test_legacy_ingest_cap_environment_variable_cannot_drop_rows(case, tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_INGEST_MAX_ARTIFACTS", "2")
     info = ingest_into_case(_write(tmp_path / "ev", "bind.log", BIND), case)
-    assert info["artifacts"] == 2 and info["artifacts_capped"]
+    assert info["artifacts"] == 3 and info["artifacts_capped"] is False
+    assert len(_stored(case)) == 3
 
 
 def test_a_workbook_is_read_sheet_by_sheet_with_its_date_cell_as_the_time(case, tmp_path):

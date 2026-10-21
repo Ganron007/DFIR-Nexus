@@ -143,7 +143,7 @@ def _entity_spans(case_dir: Path) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for field in ("host", "user"):
             result = es_aggregate(
-                case_dir, "", field=field, top=25, match_all=True, with_spans=True,
+                case_dir, "", field=field, top=0, match_all=True, with_spans=True,
             )
             if result:
                 out[field] = result.get("top") or []

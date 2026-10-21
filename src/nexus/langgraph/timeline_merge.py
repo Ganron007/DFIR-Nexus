@@ -67,14 +67,14 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             host = hm.group(1)
         fam = h.get("family") or "n4"
         terms = h.get("terms") or ""
-        rows = evidence_rows_from_n4_hits([h], limit=1)
+        rows = evidence_rows_from_n4_hits([h])
         art = (rows[0].get("artifact") if rows else "") or ""
         if art and art not in {"—", terms}:
             desc = f"{fam} [{terms}]: {art}"
         elif rows and rows[0].get("detail"):
-            desc = f"{fam} [{terms}]: {str(rows[0].get('detail'))[:120]}"
+            desc = f"{fam} [{terms}]: {rows[0].get('detail')}"
         else:
-            desc = f"{fam} [{terms}]: {text[:120]}"
+            desc = f"{fam} [{terms}]: {text}"
         sev = ""
         try:
             from nexus.modes.llm_desk import _severity_from_hits
@@ -85,7 +85,7 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
         events.append({
             "timestamp": ts or "",
             "host": host,
-            "description": desc[:240],
+            "description": desc,
             "source": source,
             "family": fam,
             "file": h.get("file") or "",
@@ -94,7 +94,7 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             # Structured matched needles: a term containing a comma cannot be
             # split into phantom terms by the event merge (EH-8).
             "terms_list": list(h.get("terms_list") or []),
-            "artifact": art[:160] if art else "",
+            "artifact": art,
             "severity": sev,
             # EH-7 flags come from the enriched fields/text of the hit.
             "ts_synthesized": _hit_flag(h, "ts_synthesized", text),
@@ -129,13 +129,13 @@ def artifacts_to_events(
         events.append({
             "timestamp": ts,
             "host": a.host or "",
-            "description": str(desc)[:240],
+            "description": str(desc),
             "source": f"{source}:{a.source.value}",
             "family": a.artifact_type.value,
             "file": loc_file,
             "line": str(loc_line) if loc_line != "" else "",
-            "terms": ", ".join(a.technique_ids[:4]),
-            "terms_list": list(a.technique_ids[:4]),
+            "terms": ", ".join(a.technique_ids),
+            "terms_list": list(a.technique_ids),
             "source_ip": a.source_ip or "",
             "dest_ip": a.dest_ip or "",
             # EH-7: provenance — this timestamp is the INGEST time, not the
@@ -163,7 +163,7 @@ def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 else (
                     "content",
                     str(ev.get("timestamp") or ""),
-                    str(ev.get("description") or "")[:120],
+                    str(ev.get("description") or ""),
                     str(ev.get("source") or ""),
                     str(ev.get("file") or ""),
                 )
@@ -255,7 +255,7 @@ def _artifact_key(d: dict) -> tuple:
         d.get("user"),
         d.get("file_path"),
         d.get("process_name"),
-        str(d.get("description") or d.get("details") or "")[:160],
+        str(d.get("description") or d.get("details") or ""),
         raw_hash,
     )
     return parts
@@ -444,22 +444,6 @@ def gunzipped_working_copy(path: Path, case_dir: Path) -> Path | None:
     return dest
 
 
-def _ingest_limit() -> int:
-    """Bound on artifacts stored per ingested file: 0, every row, unless the examiner sets one.
-
-    ``NEXUS_INGEST_MAX_ARTIFACTS`` defaulted to 20,000 (D263): a file's rows past it were dropped and only the
-    step log said "(capped)", against the index's rule of no cap on valid evidence. Rows are now streamed to the
-    store in batches, so a file is read whole without being held in memory.
-    """
-    import os
-
-    try:
-        raw = int(os.environ.get("NEXUS_INGEST_MAX_ARTIFACTS", "0"))
-    except ValueError:
-        raw = 0
-    return max(raw, 0)
-
-
 @lock_case_writes(case_arg=1)
 def _placed_tool_csv(path: Path, case_dir: Path) -> tuple[str, Path, int] | None:
     """A tool's CSV the examiner already ran, placed for the index as that tool's output (D283, 2026-10-18).
@@ -485,7 +469,6 @@ def _placed_tool_csv(path: Path, case_dir: Path) -> tuple[str, Path, int] | None
 def ingest_into_case(
     path: Path,
     case_dir: Path,
-    limit: int = 0,
     source: str | None = None,
     audit: bool = True,
 ) -> dict[str, Any]:
@@ -534,7 +517,6 @@ def ingest_into_case(
             "artifacts": 0,
             "path": str(original),
         }
-    cap = limit if limit > 0 else _ingest_limit()
     stored = 0
 
     def _store(batch: list[Any]) -> None:
@@ -542,8 +524,7 @@ def ingest_into_case(
         append_ingest_artifacts(case_dir, batch)
         stored += len(batch)
 
-    result = get_registry().import_path(path, source=resolved, limit=cap, on_batch=_store)
-    capped = bool(cap) and result.parsed_lines >= cap
+    result = get_registry().import_path(path, source=resolved, on_batch=_store)
     if audit:
         with contextlib.suppress(Exception):
             from nexus.audit import AuditWriter
@@ -566,8 +547,8 @@ def ingest_into_case(
         "source": result.source.value,
         "artifacts": result.parsed_lines,
         "artifacts_total": result.parsed_lines,
-        "artifacts_capped": capped,
-        "errors": result.errors[:5],
+        "artifacts_capped": False,
+        "errors": result.errors,
         "path": str(original),
     }
 
@@ -634,7 +615,7 @@ def _finding_evidence_events(case_dir: Path) -> list[dict[str, Any]]:
             continue
         fid = str(f.get("id") or "")
         fsev = str(f.get("severity") or "")
-        for row in (f.get("evidence") or [])[:20]:
+        for row in (f.get("evidence") or []):
             if not isinstance(row, dict):
                 continue
             loc = str(row.get("loc") or "")
@@ -645,7 +626,7 @@ def _finding_evidence_events(case_dir: Path) -> list[dict[str, Any]]:
             events.append({
                 "timestamp": row_time(row),
                 "host": str(f.get("host") or ""),
-                "description": str(row.get("detail") or f.get("title") or "")[:240],
+                "description": str(row.get("detail") or f.get("title") or ""),
                 "status": str(f.get("status") or "DRAFT"),
                 "source": f"finding:{fid}" if fid else "finding",
                 "family": fam,
@@ -746,17 +727,8 @@ def rebuild_case_timeline(
         "Host N4 hits merged with I1 importer events. Empty timestamp = keyword hit without a date.\n",
         f"Events: {len(scoped)}\n",
     ]
-    for ev in scoped[:200]:
+    for ev in scoped:
         ts = ev.get("timestamp") or "(no ts)"
         lines.append(f"- `{ts}` [{ev.get('source')}] {ev.get('description')}")
-    extra_i1 = [
-        e for e in scoped[200:]
-        if str(e.get("source") or "").lower().startswith("i1")
-    ]
-    if extra_i1:
-        lines.append("\n## Import/ingest (I1)\n")
-        for ev in extra_i1[:40]:
-            ts = ev.get("timestamp") or "(no ts)"
-            lines.append(f"- `{ts}` [{ev.get('source')}] {ev.get('description')}")
     (analysis / "chronology.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return scoped

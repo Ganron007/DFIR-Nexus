@@ -29,13 +29,9 @@ log = logging.getLogger(__name__)
 
 _MAX_ITERATIONS = 5
 _MAX_NEEDLES_PER_PROPOSAL = 6
-_MAX_HITS_SUMMARY = 12
-_MAX_HIT_TEXT = 160
 
 _DSL_FALLBACK_NOTE = "query failed N4 parse — bare terms used"
-# WP 2.6: enriched context uses a larger text cap for top hits per family
-_MAX_HIT_TEXT_ENRICHED = 500
-_MAX_TOP_HITS_PER_FAMILY = 3
+# WP 2.6: methodology context retrieval remains bounded by its source tool.
 _MAX_RAG_DOCS_PER_FAMILY = 3
 _MAX_RAG_TEXT_PER_DOC = 400
 
@@ -48,18 +44,16 @@ _PROPOSE_SYSTEM = (
     "Rules: needles are concrete (artifact names, event IDs, file names, "
     "registry keys, hostnames); never invent facts; 2-6 needles; do not "
     "repeat needles already searched; use RAG methodology and playbook "
-    "caveats to guide your proposals."
+    "caveats to guide your proposals. If an incomplete search page is provided, "
+    "continue its query with the supplied search_after cursor before treating it as complete."
 )
 
 
 def _hit_summary(hits: list[dict[str, Any]]) -> str:
-    rows = []
-    for h in hits[:_MAX_HITS_SUMMARY]:
-        rows.append(
-            f"[{h.get('family', '')}] {h.get('file', '')}:{h.get('line', '')} "
-            f":: {str(h.get('text', ''))[:_MAX_HIT_TEXT]}"
-        )
-    return "\n".join(rows) if rows else "(no hits)"
+    return "\n".join(
+        json.dumps(hit, ensure_ascii=False, sort_keys=True, default=str)
+        for hit in hits
+    ) or "(no hits)"
 
 
 def _aggregation_summary(hits: list[dict[str, Any]]) -> str:
@@ -81,19 +75,18 @@ def _aggregation_summary(hits: list[dict[str, Any]]) -> str:
 
 
 def _top_hits_per_family(hits: list[dict[str, Any]]) -> str:
-    """WP 2.6: top N hits per family with enriched text (500 chars)."""
+    """Return every row by family; prompt_budget handles model-window limits."""
     by_family: dict[str, list[dict[str, Any]]] = {}
     for h in hits:
         fam = h.get("family", "?")
         by_family.setdefault(fam, []).append(h)
     lines = []
     for fam in sorted(by_family):
-        lines.append(f"\n--- {fam} (top {_MAX_TOP_HITS_PER_FAMILY}) ---")
-        for h in by_family[fam][:_MAX_TOP_HITS_PER_FAMILY]:
-            lines.append(
-                f"  {h.get('file', '')}:{h.get('line', '')} "
-                f":: {str(h.get('text', ''))[:_MAX_HIT_TEXT_ENRICHED]}"
-            )
+        lines.append(f"\n--- {fam} ({len(by_family[fam])} returned row(s)) ---")
+        lines.extend(
+            "  " + json.dumps(hit, ensure_ascii=False, sort_keys=True, default=str)
+            for hit in by_family[fam]
+        )
     return "\n".join(lines) if lines else "(no hits)"
 
 
@@ -246,6 +239,7 @@ def propose_next_needles(
     already_run: list[str],
     model: Any = None,
     briefing: dict[str, Any] | None = None,
+    search_pages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """LLM proposes the next needles from current hits. Heuristic fallback.
 
@@ -259,14 +253,16 @@ def propose_next_needles(
     if model is not None:
         try:
             loop_proposal = _propose_with_loop(
-                case_dir, hits, already_run, model, briefing=briefing)
+                case_dir, hits, already_run, model, briefing=briefing,
+                search_pages=search_pages)
             if loop_proposal:
                 return loop_proposal
         except Exception as exc:  # noqa: BLE001
             log.warning("Mode 1 context-loop proposal failed (%s)", exc)
         try:
             return _propose_with_model(
-                case_dir, hits, already_run, model, briefing=briefing)
+                case_dir, hits, already_run, model, briefing=briefing,
+                search_pages=search_pages)
         except Exception as exc:  # noqa: BLE001
             log.warning("Mode 1 LLM proposal failed (%s), using heuristic", exc)
     return _propose_heuristic(hits, already_run)
@@ -301,6 +297,7 @@ def _briefing_context(briefing: dict[str, Any] | None) -> str:
 def _propose_with_loop(
     case_dir: Path, hits: list[dict], already_run: list[str], model: Any,
     briefing: dict[str, Any] | None = None,
+    search_pages: list[dict[str, Any]] | None = None,
 ) -> dict | None:
     """WP 10.53: model-driven proposal via the shared bounded tool loop.
 
@@ -327,6 +324,8 @@ def _propose_with_loop(
         f"Case question: {intake.get('question') or '(none)'}\n"
         f"Families with hits: {', '.join(families) or '(none)'}\n"
         f"Already searched: {already}\n\n"
+        f"Incomplete search pages that must be continued before complete coverage claims: "
+        f"{json.dumps(search_pages or [], ensure_ascii=False, sort_keys=True, default=str)}\n\n"
         "Use the read-only tools to inspect the schema, the run record, rows "
         "or methodology you actually need, then propose 2-6 NEW Elasticsearch "
         'queries or aggregations. Return ONLY a JSON object: {"queries":'
@@ -376,6 +375,7 @@ def _propose_with_loop(
 def _propose_with_model(
     case_dir: Path, hits: list[dict], already_run: list[str], model: Any,
     briefing: dict[str, Any] | None = None,
+    search_pages: list[dict[str, Any]] | None = None,
 ) -> dict:
     from nexus.langgraph.query_pack import load_case_intake
 
@@ -454,6 +454,8 @@ def _propose_with_model(
         f"Case question: {intake.get('question', '(none)')}\n"
         f"Artifact families with hits: {', '.join(families) or '(none)'}\n"
         f"Already searched: {', '.join(already_run) or '(none)'}\n\n"
+        f"Incomplete search pages that must be continued before complete coverage claims:\n"
+        f"{json.dumps(search_pages or [], ensure_ascii=False, sort_keys=True, default=str)}\n\n"
         f"Case signal map (needles that already hit in processed evidence):\n"
         f"{briefing_ctx or '(no briefing)'}\n\n"
         f"Aggregation summary:\n{agg_summary}\n\n"
@@ -480,9 +482,19 @@ def _propose_with_model(
         '{"queries": [{"es": {"query": {...}}, "why": "..."}], '
         '"aggregations": [...], "rationale": "..."} (aggregations optional)."'
     )
+    from nexus.langgraph.prompt_budget import case_window, log_usage, pack_sections, persist_context
+
+    packed_user, budget_report = pack_sections(
+        [(0, "mode1_proposal", user)], window=case_window(case_dir)
+    )
+    persist_context(
+        case_dir, "mode1-proposal", packed_user, budget_report,
+        meta={"case_id": case_dir.name, "evidence_rows_returned": len(hits)},
+    )
+    log_usage("mode1-proposal", budget_report)
     response = model.invoke([
         {"role": "system", "content": _PROPOSE_SYSTEM},
-        {"role": "user", "content": user},
+        {"role": "user", "content": packed_user},
     ])
     text = getattr(response, "content", str(response))
     start, end = text.find("{"), text.rfind("}")
@@ -537,6 +549,12 @@ def _proposal_from_parsed(parsed: dict[str, Any], *, source: str = "llm") -> dic
             "query": query,
             "fallback": fallback,
             "why": str(q.get("why") or "")[:200],
+            "size": es.get("size"),
+            "sort": es.get("sort") if isinstance(es.get("sort"), list) else None,
+            "search_after": (
+                es.get("search_after")
+                if isinstance(es.get("search_after"), list) else None
+            ),
         })
     # WP 4j.12: the LLM may request aggregations as tool calls alongside
     # queries — validated here, executed through the audited backbone by the
@@ -660,13 +678,13 @@ def _propose_heuristic(hits: list[dict], already_run: list[str]) -> dict:
 
     candidates: list[str] = []
     seen = {t.lower() for t in already_run}
-    for h in hits[:_MAX_HITS_SUMMARY]:
+    for h in hits:
         for t in str(h.get("terms") or "").split(","):
             t = t.strip().lower()
             if t and t not in seen and not t.isdigit():
                 candidates.append(t)
                 seen.add(t)
-    entities = extract_entities([str(h.get("text", "")) for h in hits[:_MAX_HITS_SUMMARY]])
+    entities = extract_entities([str(h.get("text", "")) for h in hits])
     for exe in list(entities.get("processes", {}))[:3]:
         if exe.lower() not in seen:
             candidates.append(exe)
@@ -714,7 +732,7 @@ def run_iterative_loop(
     case_dir = Path(case_dir)
     # One cap, enforced here regardless of the caller (API/CLI/agent).
     max_iterations = max(1, min(int(max_iterations or 2), 4))
-    limit = max(1, min(int(limit or 80), 400))
+    limit = max(1, int(limit or 80))
     iterations: list[dict[str, Any]] = []
     all_needles_run: list[str] = []
 
@@ -740,17 +758,44 @@ def run_iterative_loop(
     # verbatim; degrade to bare terms when the wall rejected it.
     dsl0 = str(parsed0.get("dsl_query") or "").strip()
     q0 = dsl0 or " ".join(needles0)
+    seed_query = _es_query_from_expr(q0)
     r0 = backbone_call(
         "es_search", audit=loop_audit, case_id=case_id, case_dir=case_dir,
-        query=_es_query_from_expr(q0), size=limit,
+        query=seed_query, size=limit,
     )
     if r0.get("error"):
         return {"error": r0["error"], "iterations": []}
+
+    pending_search_pages: list[dict[str, Any]] = []
+
+    def _record_search_page(
+        page_query: dict[str, Any], page_result: dict[str, Any],
+        page_sort: list[Any] | None = None,
+    ) -> None:
+        page_key = json.dumps(
+            {"query": page_query, "sort": page_sort},
+            ensure_ascii=False, sort_keys=True, default=str,
+        )
+        pending_search_pages[:] = [
+            page for page in pending_search_pages if page.get("page_key") != page_key
+        ]
+        if page_result.get("has_more") and page_result.get("next_search_after"):
+            pending_search_pages.append({
+                "page_key": page_key,
+                "query": page_query,
+                "sort": page_sort,
+                "search_after": page_result.get("next_search_after"),
+                "total": page_result.get("total"),
+                "returned": page_result.get("returned", len(page_result.get("hits") or [])),
+                "audit_id": (page_result.get("provenance") or {}).get("audit_id"),
+            })
+
     if needles0:
         all_needles_run.extend(needles0)
     else:
         all_needles_run.append(q0)
     hits = r0.get("hits", [])
+    _record_search_page(seed_query, r0)
     iterations.append({
         "iteration": 0,
         "action": "initial_query",
@@ -759,6 +804,9 @@ def run_iterative_loop(
         "dsl": bool(parsed0.get("dsl_query")),
         "fallback": (parsed0.get("dsl") or {}).get("fallback", False),
         "hits": r0.get("total", 0),
+        "returned": r0.get("returned", len(hits)),
+        "has_more": bool(r0.get("has_more")),
+        "next_search_after": r0.get("next_search_after"),
         "backend": r0.get("backend", ""),
         "audit_id": (r0.get("provenance") or {}).get("audit_id"),
     })
@@ -781,7 +829,10 @@ def run_iterative_loop(
     for it in range(1, max_iterations + 1):
         if not hits:
             break
-        proposal = propose_next_needles(case_dir, question, hits, all_needles_run, model, briefing=briefing)
+        proposal = propose_next_needles(
+            case_dir, question, hits, all_needles_run, model,
+            briefing=briefing, search_pages=list(pending_search_pages),
+        )
         dsl_queries = [
             q for q in (proposal.get("dsl_queries")
                         or [{"query": n, "dsl": False, "fallback": False}
@@ -800,15 +851,24 @@ def run_iterative_loop(
             query = spec.get("query") or {"match_all": {}}
             label = "es_search " + json.dumps(query, sort_keys=True, default=str)[:200]
             all_needles_run.append(label)
+            page_sort = spec.get("sort") if isinstance(spec.get("sort"), list) else None
+            page_size = spec.get("size") if spec.get("size") is not None else limit
+            page_cursor = spec.get("search_after") if isinstance(spec.get("search_after"), list) else None
+            search_args: dict[str, Any] = {"query": query, "size": page_size}
+            if page_sort is not None:
+                search_args["sort"] = page_sort
+            if page_cursor is not None:
+                search_args["search_after"] = page_cursor
             ran = backbone_call("es_search", audit=loop_audit, case_id=case_id,
                                 case_dir=case_dir,
-                                query=query, size=min(max(int(limit or 100), 1), 200))
+                                **search_args)
             if ran.get("error"):
                 iterations.append({"iteration": it, "action": "query_error",
                                    "query": label, "error": ran["error"]})
                 append_chat(case_dir, "llm", "mode1_error", ran["error"], {"iteration": it})
                 break
             new_hits = ran.get("hits") or []
+            _record_search_page(query, ran, page_sort)
             new_families |= {str(h.get("family")) for h in new_hits}
             iteration_queries.append({
                 "query": label,
@@ -817,15 +877,19 @@ def run_iterative_loop(
                 "fallback": spec.get("fallback", False),
                 "fallback_reason": "invalid ES query — degraded to text" if spec.get("fallback") else "",
                 "hits": ran.get("total", 0),
+                "returned": ran.get("returned", len(new_hits)),
+                "has_more": bool(ran.get("has_more")),
+                "next_search_after": ran.get("next_search_after"),
                 "audit_id": (ran.get("provenance") or {}).get("audit_id"),
             })
             hits = hits + new_hits
         for qspec in dsl_queries:
             q = qspec["query"]
             all_needles_run.append(q)
+            query = _es_query_from_expr(q)
             ran = backbone_call("es_search", audit=loop_audit, case_id=case_id,
                                 case_dir=case_dir,
-                                query=_es_query_from_expr(q), size=limit)
+                                query=query, size=limit)
             if ran.get("error"):
                 # gated/no-case — the loop cannot run; surface honestly
                 iterations.append({"iteration": it, "action": "query_error",
@@ -833,6 +897,7 @@ def run_iterative_loop(
                 append_chat(case_dir, "llm", "mode1_error", ran["error"], {"iteration": it})
                 break
             new_hits = ran.get("hits", [])
+            _record_search_page(query, ran)
             new_families |= {str(h.get("family")) for h in new_hits}
             iteration_queries.append({
                 "query": q,
@@ -840,6 +905,9 @@ def run_iterative_loop(
                 "fallback": qspec.get("fallback", False),
                 "fallback_reason": qspec.get("reason", ""),
                 "hits": ran.get("total", 0),
+                "returned": ran.get("returned", len(new_hits)),
+                "has_more": bool(ran.get("has_more")),
+                "next_search_after": ran.get("next_search_after"),
                 "audit_id": (ran.get("provenance") or {}).get("audit_id"),
             })
             hits = hits + new_hits
@@ -927,6 +995,8 @@ def run_iterative_loop(
         # iteration 0 is not a proposal and early stops are not "capped".
         "capped": ran_proposals >= max_iterations,
         "hits": hits,
+        "pending_search_pages": pending_search_pages,
+        "coverage_complete": not pending_search_pages,
     }
 
 

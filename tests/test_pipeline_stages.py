@@ -391,15 +391,21 @@ def test_index_state_records_capping_truthfully(tmp_path):
     assert cov["present"] == 5 and cov["tz_assumed"] == 5
 
 
-def test_index_caps_default_to_unlimited():
-    """Caps default to 0 = unlimited. A silent default cap is a silent gap."""
+def test_index_has_no_application_document_caps():
+    """Document counts and files are exhaustive; only bulk batch size is bounded."""
     import inspect
 
     from nexus.langgraph import case_index
 
     src = inspect.getsource(case_index)
-    for m in re.finditer(r'def (_env_index_int|_env_int)\([^)]*?default\s*=\s*(\d+)', src):
-        assert m.group(2) == "0", f"{m.group(1)} defaults to {m.group(2)}, expected 0"
+    for name in (
+        "NEXUS_INDEX_SMALL_DOCS",
+        "NEXUS_INDEX_PER_FAMILY_CAP",
+        "NEXUS_INDEX_PER_FILE_CAP",
+        "_MAX_DOCS_PER_FAMILY",
+        "_MAX_DOCS_PER_FILE",
+    ):
+        assert name not in src, f"application-defined index cap remains: {name}"
 
 
 def test_raw_tool_scratch_is_not_indexed_as_evidence():

@@ -15,9 +15,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-#: The most rows one draft (or one audit entry) keeps. Mode 1 has always capped at this.
-EVIDENCE_ROW_CAP = 12
-
 
 def render_hit_detail(hit: dict[str, Any]) -> str:
     """Readable 'what it shows' for a hit — parsed fields, not raw CSV."""
@@ -68,9 +65,9 @@ def hit_time_of(hit: dict[str, Any]) -> str:
 
 
 def evidence_rows_for_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The evidence rows for the first ``EVIDENCE_ROW_CAP`` hits, in order."""
+    """The evidence row for every returned hit, in order."""
     evidence_rows = []
-    for h in hits[:EVIDENCE_ROW_CAP]:
+    for h in hits:
         hit_time = hit_time_of(h)
         fields = h.get("fields") or {}
         row = {
@@ -107,8 +104,7 @@ def cited_calls(case_dir: Path | None, audit_ids: list[str]) -> dict[str, dict[s
     """What each cited audit entry recorded of its call, read once for all the ids.
 
     ``{audit_id: {"tool", "params", "total", "rows", "verdict"}}``: the tool and its arguments, the total the
-    call reported (None when it reported none) and the rows it stored, which are at most ``EVIDENCE_ROW_CAP``
-    of them (D238: a check that reads the rows must know when they are all of them). ``rows`` is None
+    call reported (None when it reported none) and every evidence row it stored. ``rows`` is None
     for an entry that stored no rows (a non-search tool). ``verdict`` is a baseline check's answer, else "".
     """
     wanted = {a for a in audit_ids if a}
@@ -157,20 +153,19 @@ def rows_of_calls(calls: dict[str, dict[str, Any]]) -> dict[str, list[Any]]:
 
 
 def unique_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict[str, Any]]:
-    """The stored rows of the given ids, duplicates dropped, capped at EVIDENCE_ROW_CAP.
+    """The stored rows of the given ids, duplicates dropped, in round-robin citation order.
 
-    Taken in turn from each cited id, in citation order (D194). Taking the first id's rows first
-    let one call fill the cap: on 2026-10-14 a call returned 63 rows, so every claim that cited it
-    first got the same 12 rows, the same subject, and was linked to another claim's DRAFT.
+    Taken in turn from each cited id, in citation order (D194), so one large call cannot hide
+    all rows from later cited calls.
     """
     queues = [[r for r in stored.get(aid, []) if isinstance(r, dict)]
               for aid in dict.fromkeys(audit_ids)]
     out: list[dict[str, Any]] = []
     seen: set[tuple[Any, Any, Any]] = set()
     depth = 0
-    while len(out) < EVIDENCE_ROW_CAP and any(depth < len(q) for q in queues):
+    while any(depth < len(q) for q in queues):
         for queue in queues:
-            if depth >= len(queue) or len(out) >= EVIDENCE_ROW_CAP:
+            if depth >= len(queue):
                 continue
             row = queue[depth]
             key = (row.get("source"), row.get("loc"), row.get("detail"))
@@ -185,8 +180,8 @@ def unique_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict
 def all_rows(stored: dict[str, list[Any]], audit_ids: list[str]) -> list[dict[str, Any]]:
     """Every stored row of the given ids, duplicates dropped, in citation order: what a subject is derived from.
 
-    A DRAFT shows at most ``EVIDENCE_ROW_CAP`` rows, taken in turn from each cited id (``unique_rows``). Its
-    subject was derived from that cut as well, so it depended on how many calls the claim cited (D256): run
+    A DRAFT shows every distinct row taken in turn from each cited id (``unique_rows``). Its
+    subject is derived from the same complete set, so it cannot depend on how many calls the claim cited (D256): run
     15d8cd92's initial-access claim cited four calls, three of them context, and read ``other``; restated with
     three it read ``ps_script`` and was staged a second time (F-claudebot-072). Every cited row gives one subject.
     """
