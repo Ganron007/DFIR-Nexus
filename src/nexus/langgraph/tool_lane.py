@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.langgraph.tool_call import call_tool
+from nexus.langgraph.tool_output_policy import is_tool_own_log_name
 
 log = logging.getLogger(__name__)
 
@@ -147,13 +148,16 @@ def _logfileparser_timeout(logfile: Path) -> int:
     """LogFileParser's budget for a $LogFile, on every path that schedules it (D288).
 
     The drive-tree plan gave it a fixed 600 s while a registered $LogFile got this; sample S08's 57 MB $LogFile ran
-    past 600 s on three of its fifteen hosts and each was killed.
+    past 600 s on three of its fifteen hosts and each was killed. A later S08
+    run showed that a 3,600 s ceiling can clip the size-scaled budget for a
+    57,360,384-byte input, so the ceiling is two hours while the actual budget
+    remains proportional to the input size.
     """
     try:
         nbytes = logfile.stat().st_size
     except OSError:
         nbytes = 0
-    return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=3600)
+    return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=7200)
 
 
 def _stem(evidence: Path) -> str:
@@ -4232,11 +4236,9 @@ async def run_tool_lane(
         # was told to write into (the before/after snapshot), whatever its flag spelling. The argv
         # check alone misses `/OutputPath:` and `-d`, so LogFileParser's progress log (5,138 rows),
         # maldump's and bmc-tools' banners were promoted and indexed beside their CSVs (D229).
-        _created = [f for f in _new_output_files(_out_dirs, _before)
+        _created = [f for f in _new_output_files(_out_dirs, _before, tool=job.tool)
                     if not Path(f).name.lower().endswith(_CAPTURE_SUFFIXES)]
-        if job.output_saved_to and not (
-            _created or _structured_output_present(job) or _tool_wrote_structured_output(job)
-        ):
+        if _should_promote_stdout(job, _created):
             # Promote into the RUN's extraction dir, which is what the indexer
             # walks. Beside the source is the case-level dir the MCP tool chose,
             # and nothing reads that.
@@ -4274,7 +4276,7 @@ async def run_tool_lane(
             # Zimmerman 1.5 tools print "Administrator privileges not found"
             # whether or not they then write a valid CSV, so a stdout marker
             # would fail a job that actually succeeded.
-            _fresh = _new_output_files(_out_dirs, _before)
+            _fresh = _new_output_files(_out_dirs, _before, tool=job.tool)
             if status == "OK" and _fresh:
                 job.output_files = [*job.output_files, *_fresh]
             if status == "OK" and job.host == "sift":
@@ -4657,6 +4659,7 @@ _WINDOWS_SWITCH_OUTPUT = frozenset({
     "scomma", "stab", "shtml", "sxml", "sjson", "stext", "scsv",
     "save", "out", "output",
 })
+_WINDOWS_SWITCH_OUTPUT_DIRS = frozenset({"outputpath"})
 
 
 def _flag(value: object) -> str:
@@ -4689,6 +4692,35 @@ def _windows_switch_output_paths(argv: list[str]) -> list[Path]:
     return out
 
 
+def _windows_switch_output_dirs(argv: list[str]) -> list[Path]:
+    """Paths named by Windows-style output-directory switches."""
+    out: list[Path] = []
+    for raw in argv:
+        match = re.match(r"^/([A-Za-z]+):(.+)$", str(raw))
+        if match and match.group(1).lower() in _WINDOWS_SWITCH_OUTPUT_DIRS:
+            out.append(Path(match.group(2)))
+    return out
+
+
+def _has_declared_output_target(job: ToolJob) -> bool:
+    """Whether argv names an output target, so stdout cannot mask its absence."""
+    argv = [str(arg) for arg in (job.argv or ())]
+    return (
+        any(_flag(arg) in _OUTPUT_FLAGS or _flag(arg) in _NAMED_OUTPUT_FLAGS for arg in argv)
+        or bool(_windows_switch_output_paths(argv))
+        or bool(_windows_switch_output_dirs(argv))
+    )
+
+
+def _should_promote_stdout(job: ToolJob, created_outputs: list[str]) -> bool:
+    """Promote stdout only when it is the job's declared product."""
+    return bool(job.output_saved_to) and not _has_declared_output_target(job) and not (
+        created_outputs
+        or _structured_output_present(job)
+        or _tool_wrote_structured_output(job)
+    )
+
+
 #: The executor's own capture of a job: its console output and the call's metadata.
 _CAPTURE_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 
@@ -4696,11 +4728,44 @@ _CAPTURE_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 def _structured_output_present(job: ToolJob) -> bool:
     """True when a job produced something other than its own stdout capture."""
     for path in (job.output_files or []):
-        name = Path(str(path)).name.lower()
-        if name.endswith(_CAPTURE_SUFFIXES):
+        raw_path = path.get("path") if isinstance(path, dict) else path
+        if not raw_path:
             continue
-        if Path(str(path)).is_file():
+        candidate = Path(str(raw_path))
+        if _is_tool_capture_file(candidate):
+            continue
+        if is_tool_own_log_name(job.tool, candidate):
+            continue
+        if candidate.is_file():
             return True
+    return False
+
+
+def _is_tool_capture_file(path: str | Path) -> bool:
+    """Whether a path is the executor's stdout, stderr or metadata capture."""
+    return Path(path).name.lower().endswith(_CAPTURE_SUFFIXES)
+
+
+def _has_nonempty_tool_product(target: Path, tool: str) -> bool:
+    """True when a named output target holds a product, excluding run logs."""
+    try:
+        if target.is_file():
+            return (
+                target.stat().st_size > 0
+                and not _is_tool_capture_file(target)
+                and not is_tool_own_log_name(tool, target)
+            )
+        if target.is_dir():
+            for path in target.rglob("*"):
+                try:
+                    if (path.is_file() and path.stat().st_size > 0
+                            and not _is_tool_capture_file(path)
+                            and not is_tool_own_log_name(tool, path)):
+                        return True
+                except OSError:
+                    continue
+    except OSError:
+        return False
     return False
 
 
@@ -4896,16 +4961,10 @@ def _tool_wrote_structured_output(job: ToolJob) -> bool:
     for i, arg in enumerate(argv):
         if _flag(arg) in _OUTPUT_FLAGS and i + 1 < len(argv):
             target = Path(argv[i + 1])
-            if target.is_dir():
-                try:
-                    if any(f.is_file() and f.stat().st_size > 0
-                           for f in target.rglob("*")):
-                        return True
-                except OSError:
-                    continue
-            elif target.is_file() and target.stat().st_size > 0:
+            if _has_nonempty_tool_product(target, job.tool):
                 return True
-    return False
+    return any(_has_nonempty_tool_product(target, job.tool)
+               for target in _windows_switch_output_dirs(argv))
 
 
 def _output_dirs_of(job: ToolJob, root: Path | None = None) -> list[Path]:
@@ -4967,8 +5026,10 @@ def _snapshot(dirs: list[Path]) -> set[str]:
     return seen
 
 
-def _new_output_files(dirs: list[Path], before: set[str]) -> list[str]:
-    """Files present now that were not present before, and are non-empty."""
+def _new_output_files(
+    dirs: list[Path], before: set[str], *, tool: str = ""
+) -> list[str]:
+    """New non-empty product files, excluding a tool's own run logs."""
     fresh: list[str] = []
     for d in dirs:
         try:
@@ -4976,6 +5037,9 @@ def _new_output_files(dirs: list[Path], before: set[str]) -> list[str]:
         except OSError:
             continue
         for f in files:
+            if (_is_tool_capture_file(f)
+                    or (tool and is_tool_own_log_name(tool, f))):
+                continue
             try:
                 size = f.stat().st_size
             except OSError:
@@ -5011,7 +5075,7 @@ def _produced_expected_output(job: ToolJob) -> bool:
                 target = Path(argv[i + 1])
                 cand = target / named
                 if cand.is_file():
-                    return cand.stat().st_size > 0
+                    return _has_nonempty_tool_product(cand, job.tool)
                 if job.tool in _PREFIXED_NAMED_OUTPUT_TOOLS:
                     prefix = f"{Path(named).stem}_".lower()
                     with contextlib.suppress(OSError):
@@ -5045,12 +5109,9 @@ def _produced_expected_output(job: ToolJob) -> bool:
         if _flag(arg) in _OUTPUT_FLAGS and i + 1 < len(argv):
             target = Path(argv[i + 1])
             if target.is_file():
-                return target.stat().st_size > 0
-            if target.is_dir():
-                # A file that exists but is empty is not output.
-                with contextlib.suppress(OSError):
-                    if any(f.is_file() and f.stat().st_size > 0 for f in target.rglob("*")):
-                        produced = True
+                return _has_nonempty_tool_product(target, job.tool)
+            if _has_nonempty_tool_product(target, job.tool):
+                produced = True
     if produced:
         return True
     # Windows-style `/scomma:<file>` switches name this job's own output file.
@@ -5059,7 +5120,10 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # the caller reports through the empty-output path, not as success.
     for target in _windows_switch_output_paths(argv):
         if target.is_file():
-            return target.stat().st_size > 0
+            return _has_nonempty_tool_product(target, job.tool)
+    if any(_has_nonempty_tool_product(target, job.tool)
+           for target in _windows_switch_output_dirs(argv)):
+        return True
     # Tools that write into a directory given positionally in the argv.
     for arg in argv:
         if arg.startswith("-"):
@@ -5074,15 +5138,12 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # producing no files at all - the ledger said OK, nothing was written, and
     # the index showed zero docs for those families. The capture is the audit
     # trail, not the extraction.
-    named_target = any(
-        _flag(a) in _OUTPUT_FLAGS or _flag(a) in _NAMED_OUTPUT_FLAGS
-        for a in argv
-    )
+    named_target = _has_declared_output_target(job)
     if named_target:
         return False
     if job.output_saved_to:
         p = Path(job.output_saved_to)
-        if p.is_file() and p.stat().st_size > 0:
+        if p.is_file() and p.stat().st_size > 0 and not is_tool_own_log_name(job.tool, p):
             return True
     return False
 
@@ -5189,7 +5250,7 @@ def _empty_output_status(
         "FAIL",
         (
             f"{job.tool} {EMPTY_OUTPUT_FAIL_MARKER} "
-            f"(expected a file under the --csv target). Treat this evidence as "
+            f"(expected a file under the declared output target). Treat this evidence as "
             f"unparsed, not clean."
         ),
     )

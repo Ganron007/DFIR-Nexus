@@ -43,6 +43,33 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _limit_plan_to_logfileparser(monkeypatch) -> None:
+    """Keep these lane-path tests focused on the one real planned parser job."""
+    from nexus.langgraph import tool_lane
+
+    plan = tool_lane.plan_windows_triage
+
+    def logfileparser_only(*args, **kwargs):
+        return [job for job in plan(*args, **kwargs) if job.tool == "logfileparser"]
+
+    monkeypatch.setattr(tool_lane, "plan_windows_triage", logfileparser_only)
+
+
+def _configure_lane_test(monkeypatch) -> None:
+    """Isolate the output gate from evidence freshness and optional SIFT work."""
+    from nexus.analysis import freshness
+    from nexus.langgraph import case_index, tool_lane
+
+    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    monkeypatch.setattr(
+        freshness,
+        "capture_freshness",
+        lambda *_args, **_kwargs: {"items": [], "result": "unknown"},
+    )
+    monkeypatch.setattr(tool_lane, "sift_jobs_for_lane", lambda *_args, **_kwargs: [])
+    _limit_plan_to_logfileparser(monkeypatch)
+
+
 def test_the_index_leaves_out_logfileparsers_own_log(run_case):
     from nexus.langgraph.case_index import iter_index_doc_batches
     from nexus.langgraph.query_pack import iter_extraction_files
@@ -81,10 +108,9 @@ def lane_case(tmp_path, monkeypatch) -> Path:
 
 def test_a_job_that_wrote_its_csvs_through_outputpath_keeps_its_console_log_out(lane_case, monkeypatch):
     from nexus.case.evidence_service import register_evidence
-    from nexus.langgraph import case_index
     from nexus.langgraph.tool_lane import run_tool_lane
 
-    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    _configure_lane_test(monkeypatch)
     volume = lane_case / "evidence" / "C"
     (volume / "Windows" / "System32").mkdir(parents=True)
     (volume / "$LogFile").write_bytes(b"RSTR" + b"\0" * 8188)
@@ -124,3 +150,55 @@ def test_a_job_that_wrote_its_csvs_through_outputpath_keeps_its_console_log_out(
     names = {Path(str(f.get("path") if isinstance(f, dict) else f)).name for f in row.get("output_files") or []}
     assert "LogFile.csv" in names
     assert not [n for n in names if n.startswith("logfileparser-") and n.endswith(".txt")], names
+
+
+def test_logfileparser_run_logs_and_stdout_do_not_count_as_extraction(tmp_path):
+    """D312: a parser's own log or executor capture cannot satisfy its output target."""
+    from nexus.langgraph.tool_lane import (
+        ToolJob,
+        _empty_output_status,
+        _has_declared_output_target,
+        _new_output_files,
+        _produced_expected_output,
+        _should_promote_stdout,
+        _structured_output_present,
+        _tool_wrote_structured_output,
+    )
+
+    out = tmp_path / "logfileparser"
+    debug_log = out / "LogFile_2026-10-15_12-00-00" / "debug.log"
+    saved = out / "20261015T120001_logfileparser_stdout.txt"
+    job = ToolJob(
+        host="windows",
+        tool="logfileparser",
+        argv=["logfileparser", "/LogFileFile:input:$LogFile", f"/OutputPath:{out}"],
+        purpose="NTFS $LogFile",
+        output_saved_to=str(saved),
+        output_files=[
+            {"path": str(debug_log), "kind": "file"},
+            {"path": str(saved), "kind": "stdout"},
+        ],
+    )
+    _write(debug_log, DEBUG_LOG)
+    _write(saved, DEBUG_LOG)
+
+    assert _has_declared_output_target(job)
+    assert _new_output_files([out], set(), tool=job.tool) == []
+    assert not _structured_output_present(job)
+    assert not _tool_wrote_structured_output(job)
+    assert not _produced_expected_output(job)
+    assert not _should_promote_stdout(job, [])
+    status, reason = _empty_output_status(job, {"success": True})
+    assert status == "FAIL"
+    assert "produced no output file" in reason.lower()
+    assert "declared output target" in reason.lower()
+
+    csv = debug_log.with_name("LogFile.csv")
+    _write(csv, LOGFILE_CSV)
+    job.output_files.append({"path": str(csv), "kind": "file"})
+    fresh = _new_output_files([out], set(), tool=job.tool)
+    assert fresh == [str(csv)]
+    assert _structured_output_present(job)
+    assert _tool_wrote_structured_output(job)
+    assert _produced_expected_output(job)
+    assert not _should_promote_stdout(job, fresh)

@@ -19,6 +19,7 @@ from nexus.langgraph.path_sanitize import (
     sanitize_field_map,
     sanitize_row_text,
 )
+from nexus.langgraph.tool_output_policy import TOOL_OWN_LOGS, is_tool_own_log_name
 
 _MAX_MD = 60000
 # Full-row index/scan of small CSVs. Hayabusa/USN live above this;
@@ -139,11 +140,7 @@ _SKIP_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 # The files a tool writes about its own run, not about the evidence (D229). D273 (2026-10-18): Suricata's engine log and
 # counters and Zeek's packet filter and loaded scripts are dated by when the tool ran, so samples S03 and S04 read as
 # active on the day of their lane run.
-_TOOL_OWN_LOGS: dict[str, frozenset[str]] = {
-    "logfileparser": frozenset({"debug.log"}),
-    "suricata": frozenset({"suricata.log", "stats.log"}),
-    "zeek": frozenset({"packet_filter.log", "loaded_scripts.log"}),
-}
+_TOOL_OWN_LOGS = TOOL_OWN_LOGS
 _MAX_COLLECT_PER_FILE = _env_int("NEXUS_N4_COLLECT_PER_FILE", 200)
 _USB_TERMS = frozenset({"usbstor", "mountpoints2"})
 _CLOUD_TERMS = frozenset({"googledrive", "drivefs", "my drive"})
@@ -592,7 +589,7 @@ def _tool_folder_family(rel: str) -> str:
 
 def is_tool_own_log(path: Path, root: Path) -> bool:
     """True for a file a tool writes about its own run (D229); the index leaves it out."""
-    return path.name.lower() in _TOOL_OWN_LOGS.get(_family(path, root), frozenset())
+    return is_tool_own_log_name(_family(path, root), path)
 
 
 def _family(path: Path, root: Path) -> str:
