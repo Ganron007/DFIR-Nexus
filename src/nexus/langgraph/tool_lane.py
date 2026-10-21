@@ -25,7 +25,7 @@ import re
 import shlex
 import shutil
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -497,7 +497,9 @@ def schedule_evtx_parsers(
     many = len(evtx_dirs) > 1
     for evtx_dir in evtx_dirs:
         label = _evtx_label(evtx_dir)
-        n = len(list(evtx_dir.glob("*.evtx")))
+        # EvtxECmd recursively enumerates its -d directory. Count the same
+        # tree here so the ledger's expected input count matches the tool.
+        n = len(list(evtx_dir.rglob("*.evtx")))
         hay_dir = extractions / "hayabusa" / label if many else extractions / "hayabusa"
         hay_dir.mkdir(parents=True, exist_ok=True)
         add(
@@ -536,7 +538,8 @@ def schedule_evtx_parsers(
         ev_dir.mkdir(parents=True, exist_ok=True)
         add(
             "evtxecmd",
-            ["evtxecmd", "-d", str(evtx_dir), "--csv", str(ev_dir)],
+            ["evtxecmd", "-d", str(evtx_dir), "--csv", str(ev_dir),
+             "--dedupe", "false"],
             f"Parse all EVTX {label} ({n} logs)",
             _evtxecmd_timeout(evtx_dir),
         )
@@ -4334,6 +4337,10 @@ async def run_tool_lane(
             elif status == "OK" and not (_fresh or _produced_expected_output(job)):
                 status, job.reason = _empty_output_status(job, result)
                 detail += " (no output produced)" if status == "FAIL" else " (no findings)"
+            if status == "OK" and job.tool == "evtxecmd":
+                quality_failure = _evtxecmd_incomplete_reason(job, result)
+                if quality_failure:
+                    status, job.reason = "FAIL", quality_failure
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
         if aid:
@@ -4676,6 +4683,83 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
             idx = blob.find(m)
             return blob[idx:idx + 240].replace("\n", " ")
     return ""
+
+
+def _evtxecmd_incomplete_reason(job: ToolJob, result: dict[str, Any]) -> str:
+    """Fail an EvtxECmd directory pass that silently omits inputs or records.
+
+    EvtxECmd's upstream default deduplicates files by SHA-1 and only processes
+    the first copy. The lane opts out so every evidence path is represented in
+    the output. Reconcile the tool's own start/final counts and record-error
+    footer before calling the aggregate CSV complete.
+    """
+    if job.tool != "evtxecmd":
+        return ""
+
+    saved = str(result.get("output_saved_to") or "")
+    if saved and Path(saved).is_file():
+        # EvtxECmd's file and record errors occur well after its first 8 KB,
+        # so the generic soft-failure preview is insufficient here.
+        with contextlib.suppress(OSError), Path(saved).open(
+            "r", encoding="utf-8", errors="replace"
+        ) as stream:
+            return _evtxecmd_incomplete_reason_from_lines(job, stream)
+    fallback = (
+        line
+        for key in ("stdout", "stderr", "preview", "message", "error")
+        for line in str(result.get(key) or "").splitlines()
+    )
+    return _evtxecmd_incomplete_reason_from_lines(job, fallback)
+
+
+def _evtxecmd_incomplete_reason_from_lines(job: ToolJob, lines: Iterable[str]) -> str:
+    """Reconcile the aggregate EVTX run while streaming its saved output."""
+    issues: list[str] = []
+
+    expected_match = re.search(r"\((\d[\d,]*)\s+logs?\)", job.purpose, re.IGNORECASE)
+    expected = int(expected_match.group(1).replace(",", "")) if expected_match else None
+    starts = 0
+    processed: int | None = None
+    error_counts: list[int] = []
+    record_error_lines = 0
+    dropped_total = 0
+    for raw_line in lines:
+        line = raw_line.rstrip("\r\n")
+        if line.startswith("Processing ") and line.endswith("..."):
+            starts += 1
+        processed_match = re.match(
+            r"(?i)^Processed\s+(\d[\d,]*)\s+files?\s+in\s+", line
+        )
+        if processed_match:
+            processed = int(processed_match.group(1).replace(",", ""))
+        error_match = re.search(r"(?i)\berror count:\s*(\d[\d,]*)\s*$", line)
+        if error_match:
+            error_counts.append(int(error_match.group(1).replace(",", "")))
+        if re.match(r"(?i)^Record\s+#\d+:\s*Error:", line):
+            record_error_lines += 1
+        dropped_match = re.search(r"(?i)Events dropped:\s*(\d[\d,]*)", line)
+        if dropped_match:
+            dropped_total += int(dropped_match.group(1).replace(",", ""))
+
+    if expected is not None and starts != expected:
+        issues.append(f"started {starts} of {expected} planned EVTX inputs")
+    if processed is None:
+        issues.append("did not report a final processed-file count")
+    else:
+        if expected is not None and processed != expected:
+            issues.append(f"processed {processed} of {expected} planned EVTX inputs")
+
+    if error_counts:
+        issues.append(
+            f"reported record errors in {len(error_counts)} EVTX file(s) "
+            f"({sum(error_counts)} record error(s))"
+        )
+    elif record_error_lines:
+        issues.append(f"emitted {record_error_lines} record parse error(s)")
+    if dropped_total:
+        issues.append(f"reported {dropped_total} dropped event(s)")
+
+    return "; ".join(issues)
 
 
 # Output-target flags, matched case-insensitively: DeepBlueCLI names its target
