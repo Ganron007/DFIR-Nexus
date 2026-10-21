@@ -317,10 +317,11 @@ def completeness_table(
     scheduled_tools: set[str],
     ledger: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
-    """Examiner rows: absent / parsed / fail / still queued / staged / no parser."""
+    """Examiner rows: absent / parsed / fail / queued / staged / policy-skipped / no parser."""
     rows = []
     scheduled_l = {invokable_tool_key(t) for t in scheduled_tools}
     ran: dict[str, str] = {}
+    optional_skip_reasons: dict[str, str] = {}
     rank = {"OK": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
     for row in ledger or []:
         key = invokable_tool_key(str(row.get("tool") or ""))
@@ -329,29 +330,45 @@ def completeness_table(
             continue
         if rank[st] >= rank.get(ran.get(key, ""), 0):
             ran[key] = st
+            reason = str(row.get("reason") or "").strip()
+            if st == "SKIP" and reason.casefold().startswith("optional by operator policy"):
+                optional_skip_reasons[key] = reason
+            else:
+                optional_skip_reasons.pop(key, None)
     for h in hits:
         keys = {invokable_tool_key(t) for t in h.related_tools}
         covered = bool(keys & scheduled_l)
         ran_hit = [ran[k] for k in keys if k in ran]
         if not h.present:
             status = "ABSENT"
+            reason = h.reason
         elif any(s == "OK" for s in ran_hit):
             status = "PARSED"
+            reason = h.reason
         elif any(s == "FAIL" for s in ran_hit):
             status = "FAIL"
+            reason = h.reason
+        elif keys and keys.issubset(optional_skip_reasons) and all(
+            ran.get(key) == "SKIP" for key in keys
+        ):
+            status = "NOT_APPLICABLE"
+            reason = "; ".join(optional_skip_reasons[key] for key in sorted(keys))
         elif covered:
             status = "SCHEDULED"
+            reason = h.reason
         elif not keys:
             # Plain-text copy (SetupAPI, transcripts, PSReadLine) — no parser.
             status = "STAGED"
+            reason = h.reason
         else:
             status = "PRESENT_NO_PARSER"
+            reason = h.reason
         rows.append({
             "artifact": h.name,
             "status": status,
             "tools": ", ".join(h.related_tools) or "-",
             "hits": str(len(h.hits)),
-            "reason": h.reason,
+            "reason": reason,
         })
     return rows
 

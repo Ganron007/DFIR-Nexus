@@ -5,6 +5,7 @@ from pathlib import Path
 from nexus.langgraph.tool_lane import (
     ToolJob,
     _apply_default_optional_tool_skips,
+    _artifact_completeness_for_paths,
     find_windows_root,
     plan_sift_triage,
     plan_windows_triage,
@@ -18,6 +19,55 @@ def test_find_windows_root(tmp_path: Path):
     (root / "Windows" / "System32").mkdir(parents=True)
     assert find_windows_root(root) == root
     assert find_windows_root(tmp_path / "missing") is None
+
+
+def test_completeness_covers_expanded_roots_in_plan_paths(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import artifact_map
+
+    source = tmp_path / "S08"
+    source.mkdir()
+    (source / "sample.7z").write_bytes(b"archive")
+    expanded_a = tmp_path / "case" / "evidence" / "_expanded" / "archive-a"
+    expanded_b = tmp_path / "case" / "evidence" / "_expanded" / "archive-b"
+    roots = [expanded_a / "host-a" / "C", expanded_b / "host-b" / "C"]
+    for root in roots:
+        (root / "Windows" / "System32").mkdir(parents=True)
+
+    discovered = []
+    monkeypatch.setattr(
+        artifact_map,
+        "discover_windows_artifacts",
+        lambda root: discovered.append(root) or [],
+    )
+    monkeypatch.setattr(artifact_map, "completeness_table", lambda hits, tools, ledger=None: [])
+
+    rows = _artifact_completeness_for_paths(
+        [source, expanded_a, expanded_b, expanded_a], set(),
+    )
+
+    assert rows == []
+    assert discovered == roots
+
+
+def test_completeness_finds_root_for_a_registered_file(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import artifact_map
+
+    root = tmp_path / "case" / "evidence" / "_expanded" / "host" / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    registered_file = root / "Windows" / "System32" / "winevt" / "Logs" / "Security.evtx"
+    registered_file.parent.mkdir(parents=True)
+    registered_file.write_bytes(b"evtx")
+
+    discovered = []
+    monkeypatch.setattr(
+        artifact_map,
+        "discover_windows_artifacts",
+        lambda image_root: discovered.append(image_root) or [],
+    )
+    monkeypatch.setattr(artifact_map, "completeness_table", lambda hits, tools, ledger=None: [])
+
+    assert _artifact_completeness_for_paths([registered_file], set()) == []
+    assert discovered == [root]
 
 
 def test_plan_windows_triage_skips_and_schedules(tmp_path: Path):

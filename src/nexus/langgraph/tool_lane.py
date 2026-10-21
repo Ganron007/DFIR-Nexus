@@ -373,6 +373,50 @@ def find_windows_root(evidence: Path) -> Path | None:
     return None
 
 
+def _windows_roots_for_paths(paths: Iterable[str | Path]) -> list[Path]:
+    """Find each Windows image root the lane planned, including expanded archives.
+
+    I1 can receive registered files nested inside a Windows image. In that case
+    its root is discovered from the case evidence directory, so the completeness
+    table must use the same bounded lookup.
+    """
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = Path(raw_path)
+        root = find_windows_root(path)
+        if root is None and path.is_file():
+            evidence_dir = next(
+                (parent for parent in path.parents if parent.name.lower() == "evidence"),
+                None,
+            )
+            if evidence_dir is not None:
+                root = find_windows_root(evidence_dir)
+        if root is None:
+            continue
+        key = os.path.normcase(os.path.abspath(root))
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(root)
+    return roots
+
+
+def _artifact_completeness_for_paths(
+    paths: Iterable[str | Path],
+    scheduled_tools: set[str],
+    ledger: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]] | None:
+    """Build coverage for all Windows roots in the lane's filtered plan paths."""
+    roots = _windows_roots_for_paths(paths)
+    if not roots:
+        return None
+    from nexus.langgraph.artifact_map import completeness_table, discover_windows_artifacts
+
+    hits = [hit for root in roots for hit in discover_windows_artifacts(root)]
+    return completeness_table(hits, scheduled_tools, ledger=ledger)
+
+
 def _fs_safe(name: str) -> str:
     keep = []
     for ch in (name or "host").strip() or "host":
@@ -4054,17 +4098,9 @@ async def run_tool_lane(
     try:
         import json as _json
 
-        from nexus.langgraph.artifact_map import (
-            completeness_table,
-            discover_windows_artifacts,
-        )
-
-        win_root = find_windows_root(Path(evidence_path))
-        if win_root is not None:
-            scheduled = {j.tool for j in jobs if j.status == "PENDING"}
-            table = completeness_table(
-                discover_windows_artifacts(win_root), scheduled,
-            )
+        scheduled = {j.tool for j in jobs if j.status == "PENDING"}
+        table = _artifact_completeness_for_paths(plan_paths, scheduled)
+        if table is not None:
             (extractions / "_artifact_completeness.json").write_text(
                 _json.dumps(table, indent=2), encoding="utf-8",
             )
@@ -4627,20 +4663,15 @@ async def run_tool_lane(
     try:
         import json as _json
 
-        from nexus.langgraph.artifact_map import (
-            apply_ledger_to_completeness,
-            completeness_table,
-            discover_windows_artifacts,
-        )
+        from nexus.langgraph.artifact_map import apply_ledger_to_completeness
 
         dest = extractions / "_artifact_completeness.json"
-        win_root = find_windows_root(Path(evidence_path))
-        if win_root is not None:
-            table = completeness_table(
-                discover_windows_artifacts(win_root),
-                {j.tool for j in jobs if j.status == "PENDING"},
-                ledger=ledger,
-            )
+        table = _artifact_completeness_for_paths(
+            plan_paths,
+            {j.tool for j in jobs if j.status == "PENDING"},
+            ledger=ledger,
+        )
+        if table is not None:
             dest.write_text(_json.dumps(table, indent=2), encoding="utf-8")
         elif dest.is_file():
             rows = _json.loads(dest.read_text(encoding="utf-8"))
