@@ -12,6 +12,17 @@ param(
 $ErrorActionPreference = 'Continue'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $repo
+$repoSrc = [System.IO.Path]::GetFullPath((Join-Path $repo 'src'))
+$pythonPathSeparator = [System.IO.Path]::PathSeparator
+if ($env:PYTHONPATH) {
+    $env:PYTHONPATH = "$repoSrc$pythonPathSeparator$env:PYTHONPATH"
+} else {
+    $env:PYTHONPATH = $repoSrc
+}
+$loadedSrc = & python -c "from pathlib import Path; import nexus; print(Path(nexus.__file__).resolve().parent.parent)"
+if ($LASTEXITCODE -ne 0 -or [System.IO.Path]::GetFullPath($loadedSrc.Trim()) -ne $repoSrc) {
+    throw "Python imported nexus from '$loadedSrc'; expected this checkout's source at '$repoSrc'. Refusing to run the lane against another tree."
+}
 $trace = Join-Path $repo "cases\$CaseId\.trace"
 New-Item -ItemType Directory -Force $trace | Out-Null
 $log = Join-Path $trace "lane-$Tag.log"
@@ -32,7 +43,7 @@ if ($Sift) {
     # Set here, in PowerShell: Git Bash rewrites a /home/... value into a Windows path.
     $env:NEXUS_SIFT_EVIDENCE_ROOT = "/home/sansforensics/.nexus/cases/$CaseId/evidence"
 }
-"== $Tag $CaseId $(Get-Date -Format o) HEAD $(git rev-parse --short HEAD)" | Tee-Object -FilePath $log
+"== $Tag $CaseId $(Get-Date -Format o) HEAD $(git rev-parse --short HEAD) PythonSource $repoSrc" | Tee-Object -FilePath $log
 python -m nexus pipeline --mode tools --from-case $CaseId *>> $log
 "exit $LASTEXITCODE"
 Select-String -Path $log -Pattern 'tool (FAIL|BLOCKED)|lane complete|auto-index|N2 gate|I0 archive|REJECTED|timed out' |
