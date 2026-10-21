@@ -1151,6 +1151,7 @@ def n4_hits(
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
     catalog: dict[str, Any] | None = None,
+    run_id: str = "",
 ) -> tuple[list[dict[str, str]], str]:
     """One query API: Elasticsearch when reachable+indexed, else CSV pack.
 
@@ -1180,6 +1181,17 @@ def n4_hits(
             "backend": "csv",
             "fallback_reason": fallback_reason,
         })
+
+    if run_id.strip():
+        # The Elasticsearch index is case-scoped, so it cannot prove which
+        # tools run produced a row. A named run must be read from that run's
+        # extraction tree to prevent stale or concurrent-run rows from leaking
+        # into its timeline.
+        _csv_stats("explicit run ID requires the named extraction tree")
+        return scan_extractions(
+            case_dir, terms, window, priority_terms, query=query,
+            match_all=match_all, stats=stats, catalog=catalog, run_id=run_id,
+        ), "csv"
 
     from nexus.langgraph.query_dsl import QuerySyntaxError
 
@@ -1348,7 +1360,11 @@ def _header_for_file(root: Path, file_rel: str) -> list[str]:
     return header
 
 
-def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def attach_hit_fields(
+    case_dir: Path,
+    hits: list[dict[str, Any]],
+    run_id: str = "",
+) -> list[dict[str, Any]]:
     """WP 4d.1: attach parsed ``fields`` (CSV header -> value) and a
     best-effort ``host`` to each hit so the UI can render type-aware
     columns instead of raw text rows.
@@ -1362,7 +1378,7 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
         return hits
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    tools_root = resolve_tools_extractions(case_dir)
+    tools_root = resolve_tools_extractions(case_dir, run_id)
     # Hits can come from the tools run, the SIFT mirror, or the ingest store —
     # resolve the source file against every candidate root.
     candidate_roots = [tools_root, tools_root.parent / "sift" / "extractions", case_dir]
@@ -1739,6 +1755,7 @@ def scan_extractions(
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
     catalog: dict[str, Any] | None = None,
+    run_id: str = "",
 ) -> list[dict[str, str]]:
     """Scan parsed CSVs. ``query`` (query_dsl.ParsedQuery) adds boolean /
     field-filter / regex semantics on top of the plain needle list.
@@ -1754,6 +1771,7 @@ def scan_extractions(
     files_capped = 0
     for path, root, fam in iter_extraction_files(
         case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES, stats=stats,
+        run_id=run_id,
     ):
         try:
             file_hits, capped = _hits_from_file(

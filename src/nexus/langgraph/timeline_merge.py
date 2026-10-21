@@ -661,6 +661,7 @@ def _finding_evidence_events(case_dir: Path) -> list[dict[str, Any]]:
 def rebuild_case_timeline(
     case_dir: Path,
     hits: list[dict[str, str]] | None = None,
+    run_id: str = "",
 ) -> list[dict[str, Any]]:
     """N7: N4 hits + I1 artifacts + finding evidence + ledger events.
 
@@ -691,11 +692,12 @@ def rebuild_case_timeline(
                 terms = []
         hits, _backend = n4_hits(
             case_dir, terms, window, priority_terms=collect_playbook_query_terms(intake),
+            run_id=run_id,
         )
         try:
             from nexus.langgraph.query_pack import attach_hit_fields
 
-            hits = attach_hit_fields(case_dir, hits)
+            hits = attach_hit_fields(case_dir, hits, run_id=run_id)
         except Exception:
             pass  # fields absent → severity stays unset, timeline still builds
     # Ledger events already staged in timeline.json (evidence registration,

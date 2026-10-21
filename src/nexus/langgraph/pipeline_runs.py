@@ -456,11 +456,15 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     would blind the briefing, the indexer and the entity census.
     """
     case_dir = Path(case_dir)
+    requested_run_id = run_id.strip()
     run: PipelineRun | None = None
     try:
-        run = resolve_run(case_dir, "tools", run_id)
+        run = resolve_run(case_dir, "tools", requested_run_id)
     except ValueError:
+        if requested_run_id:
+            raise
         run = None
+    requested_run = run
 
     # When no explicit run was asked for, the NEWEST run with data is the lane
     # that actually ran. Following the pointer chain first landed on a stale run
@@ -501,11 +505,22 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
         if _run_dir_has_data(run.path):
             return run.extractions
         manifest = load_manifest(run.path)
-        nxt = run.parent_run_id or str(manifest.get("previous_active_run_id") or "")
+        # Only follow previous_active_run_id for an implicit lookup. A named
+        # tools run's previous active run is history, not a reuse dependency;
+        # reading it would turn an empty/incomplete run into stale evidence.
+        nxt = run.parent_run_id
+        if not requested_run_id:
+            nxt = nxt or str(manifest.get("previous_active_run_id") or "")
         try:
             run = _load_run(case_dir, nxt) if nxt else None
         except ValueError:
             run = None
+    if requested_run_id:
+        # A named run is a hard scope boundary. If it and its declared reuse
+        # chain have no parsed output, return the named run's empty extraction
+        # root instead of silently borrowing another run's evidence.
+        assert requested_run is not None
+        return requested_run.extractions
     runs_dir = case_dir / "runs"
     if runs_dir.is_dir():
         candidates = sorted(

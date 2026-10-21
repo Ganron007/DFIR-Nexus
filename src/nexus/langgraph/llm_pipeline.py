@@ -1216,7 +1216,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             steps.append(f"I1 yearless-time anchoring failed: {exc}")
         try:
-            rebuild_case_timeline(case_dir)
+            rebuild_case_timeline(case_dir, run_id=str(state.get("run_id") or ""))
         except Exception as exc:  # noqa: BLE001
             steps.append(f"I3 merge after extra ingest skipped: {exc}")
         result["step_log"] = steps
@@ -2438,7 +2438,7 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         if case_yaml.is_file():
             meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
         try:
-            timeline = rebuild_case_timeline(case_dir)
+            timeline = rebuild_case_timeline(case_dir, run_id=pipeline_run.run_id)
             step_log.append(f"N7 chronology: {len(timeline)} events")
         except Exception as exc:  # noqa: BLE001
             step_log.append(f"N7 chronology skipped: {exc}")
