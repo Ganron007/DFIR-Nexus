@@ -4623,6 +4623,29 @@ async def run_tool_lane(
             log.warning("evidence freshness regression: %s", reg)
     except Exception as exc:  # noqa: BLE001 - never die on a reporting hook
         log.warning("lane-end freshness capture failed: %s", exc)
+    completeness = None
+    try:
+        import json as _json
+
+        from nexus.langgraph.artifact_map import apply_ledger_to_completeness
+
+        dest = extractions / "_artifact_completeness.json"
+        table = _artifact_completeness_for_paths(
+            plan_paths,
+            {j.tool for j in jobs if j.status == "PENDING"},
+            ledger=ledger,
+        )
+        if table is not None:
+            completeness = table
+            dest.write_text(_json.dumps(table, indent=2), encoding="utf-8")
+        elif dest.is_file():
+            rows = _json.loads(dest.read_text(encoding="utf-8"))
+            if isinstance(rows, list):
+                completeness = apply_ledger_to_completeness(rows, ledger)
+                dest.write_text(_json.dumps(completeness, indent=2), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("artifact completeness refresh failed: %s", exc)
+
     try:
         from nexus.langgraph.lane_gate import write_lane_gate
 
@@ -4632,20 +4655,9 @@ async def run_tool_lane(
         # image with no memory job is unprocessed evidence and blocks the gate,
         # instead of reporting `clear` under the "never skip evidence" rule.
         registered = registered_memory_images(case_dir)
-        # WO-TA item 9: the completeness table this same lane pass wrote, read
-        # back so the gate reconciles PRESENT_NO_PARSER / STAGED / FAIL rows
-        # against the "never skip evidence processing" rule.
-        completeness = None
-        try:
-            _completeness_path = extractions / "_artifact_completeness.json"
-            if _completeness_path.is_file():
-                completeness = _json.loads(
-                    _completeness_path.read_text(encoding="utf-8")
-                )
-                if not isinstance(completeness, list):
-                    completeness = None
-        except Exception as exc:  # noqa: BLE001 - the gate still runs without it
-            log.warning("completeness table unreadable for the gate: %s", exc)
+        # Reconcile the final table from this run's ledger before checking it.
+        # The initial table is written before jobs run; reading it here would
+        # make policy SKIPs appear as PRESENT_NO_PARSER (D323).
         gate = write_lane_gate(
             case_dir, run_id, ledger,
             registered_evidence=registered, completeness=completeness,
@@ -4659,28 +4671,6 @@ async def run_tool_lane(
             log.warning(summary)
     except Exception as exc:  # noqa: BLE001 - never die writing the gate
         log.warning("lane gate write failed: %s", exc)
-
-    try:
-        import json as _json
-
-        from nexus.langgraph.artifact_map import apply_ledger_to_completeness
-
-        dest = extractions / "_artifact_completeness.json"
-        table = _artifact_completeness_for_paths(
-            plan_paths,
-            {j.tool for j in jobs if j.status == "PENDING"},
-            ledger=ledger,
-        )
-        if table is not None:
-            dest.write_text(_json.dumps(table, indent=2), encoding="utf-8")
-        elif dest.is_file():
-            rows = _json.loads(dest.read_text(encoding="utf-8"))
-            dest.write_text(
-                _json.dumps(apply_ledger_to_completeness(rows, ledger), indent=2),
-                encoding="utf-8",
-            )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("artifact completeness refresh failed: %s", exc)
 
     # Pull SIFT extractions onto examiner case (scp) so LLM + report see them. Only a run that sent jobs to the
     # SIFT host has SIFT output of its own: the pull used to run for every lane run, and on a Windows-only sample
