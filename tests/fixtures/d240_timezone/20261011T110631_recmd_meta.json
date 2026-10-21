@@ -1,0 +1,10 @@
+{
+  "tool": "recmd",
+  "command": "recmd -d H:\\C\\Windows\\System32\\config --bn C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\tools\\windows\\zimmerman\\net9\\RECmd\\BatchExamples\\DFIRBatch.reb --nl true --csv C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-C5B04D31\\runs\\RUN-20261011T110426201672Z-tools-5618aeb2\\extractions\\recmd",
+  "purpose": "Registry batch (DFIRBatch.reb)",
+  "saved_at": "2026-10-11T11:06:31.902241+00:00",
+  "stdout_bytes": 19583,
+  "stderr_bytes": 0,
+  "stdout_sha256": "b70fd9e074893118362d8fa78131591b7ab9b85e8da3d16639b4a4a62d833630",
+  "stdout_path": "C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-C5B04D31\\runs\\RUN-20261011T110426201672Z-tools-5618aeb2\\extractions\\recmd\\20261011T110631_recmd_stdout.txt"
+}

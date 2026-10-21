@@ -36,6 +36,21 @@ columns:
     families:
       - ingest-scheduled_tasks
       - tasks
+  task_timezone_assumed:
+    type: boolean
+    families:
+      - ingest-scheduled_tasks
+      - tasks
+  task_timezone_key_name:
+    type: text
+    families:
+      - ingest-scheduled_tasks
+      - tasks
+  task_timezone_iana:
+    type: text
+    families:
+      - ingest-scheduled_tasks
+      - tasks
   # IC-6 (Part 9): the catalog's sqlecmd entry was derived from the HistoryVisits output alone (its notes list
   # Downloads and KeywordSearches too). SQLECmd's Downloads and KeywordSearches outputs carry these columns
   # (ES-Mapping/outputs/sqlecmd2/*_ChromiumBrowser_Downloads_*.csv and *_KeywordSearches_*.csv headers); the

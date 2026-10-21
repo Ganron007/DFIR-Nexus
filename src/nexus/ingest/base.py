@@ -94,7 +94,18 @@ class Importer(ABC):
         raise NotImplementedError
         yield  # pragma: no cover  (makes this a generator for type-checkers)
 
-    def ingest(self, path: Path, limit: int = 0, on_batch=None, batch_size: int = 5000) -> ImportResult:
+    def parse_with_context(self, path: Path, context: dict[str, Any]) -> Iterator[Artifact]:
+        """Parse with optional case context; existing importers remain context-free."""
+        return self.parse(path)
+
+    def ingest(
+        self,
+        path: Path,
+        limit: int = 0,
+        on_batch=None,
+        batch_size: int = 5000,
+        context: dict[str, Any] | None = None,
+    ) -> ImportResult:
         """Top-level import: parse all input, return ImportResult.
 
         ``limit`` (0 = unlimited) caps artifacts WHILE parsing — a multi-GB
@@ -118,7 +129,7 @@ class Importer(ABC):
             if limit and result.parsed_lines >= limit:
                 break
             try:
-                stream = self.parse(file)
+                stream = self.parse_with_context(file, context or {})
                 if limit:
                     remaining = max(0, limit - result.parsed_lines)
                     stream = itertools.islice(stream, remaining)

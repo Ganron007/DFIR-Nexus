@@ -536,13 +536,24 @@ def ingest_into_case(
         }
     cap = limit if limit > 0 else _ingest_limit()
     stored = 0
+    import_context: dict[str, Any] = {}
+    if getattr(resolved, "value", resolved) == "scheduled_tasks":
+        from nexus.ingest.windows_timezones import record_case_host_timezones
+
+        import_context["host_timezones"] = record_case_host_timezones(Path(case_dir))
 
     def _store(batch: list[Any]) -> None:
         nonlocal stored
         append_ingest_artifacts(case_dir, batch)
         stored += len(batch)
 
-    result = get_registry().import_path(path, source=resolved, limit=cap, on_batch=_store)
+    result = get_registry().import_path(
+        path,
+        source=resolved,
+        limit=cap,
+        on_batch=_store,
+        context=import_context,
+    )
     capped = bool(cap) and result.parsed_lines >= cap
     if audit:
         with contextlib.suppress(Exception):

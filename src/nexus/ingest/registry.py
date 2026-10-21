@@ -110,7 +110,12 @@ class ImporterRegistry:
         return None
 
     def import_path(
-        self, path: Path, source: ArtifactSource | None = None, limit: int = 0, on_batch=None,
+        self,
+        path: Path,
+        source: ArtifactSource | None = None,
+        limit: int = 0,
+        on_batch=None,
+        context: dict | None = None,
     ) -> ImportResult:
         """Import a path using the specified or auto-detected importer.
 
@@ -140,7 +145,7 @@ class ImporterRegistry:
             return result
 
         importer = importer_cls()
-        result = importer.ingest(path, limit=limit, on_batch=on_batch)
+        result = importer.ingest(path, limit=limit, on_batch=on_batch, context=context)
         return result
 
 

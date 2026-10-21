@@ -251,6 +251,9 @@ class Artifact:
     # RFC 3164 syslog carries no year; the current year is assumed. The event
     # time exists, but the year is a guess and must be visible as such.
     ts_year_assumed: bool = False
+    # Some source timestamps omit their timezone; keep that policy assumption
+    # explicit even after normalizing the stored timestamp to UTC.
+    ts_tz_assumed: bool = False
 
     @staticmethod
     def new_id() -> str:

@@ -57,6 +57,110 @@ def test_registration_date_becomes_the_timestamp():
     assert (art.timestamp.year, art.timestamp.month) == (2017, 8)
 
 
+def test_naive_registration_date_uses_recorded_system_zone_and_dst(tmp_path, monkeypatch):
+    from nexus.ingest import windows_timezones
+    from nexus.ingest.df.scheduled_tasks import parse_task_record
+    from nexus.ingest.windows_timezones import record_case_host_timezones, windows_path_root
+
+    case = _seed_case(tmp_path, monkeypatch)
+    recmd = case / "runs" / "RUN-D240-REAL-RECMD" / "extractions" / "recmd"
+    output = recmd / "20261011110620"
+    output.mkdir(parents=True)
+    fixtures = REPO / "tests" / "fixtures" / "d240_timezone"
+    (output / "20261011110620_TimeZoneInfo__SYSTEM.csv").write_bytes(
+        (fixtures / "20261011110620_TimeZoneInfo__SYSTEM.csv").read_bytes()
+    )
+    (recmd / "20261011T110631_recmd_meta.json").write_bytes(
+        (fixtures / "20261011T110631_recmd_meta.json").read_bytes()
+    )
+
+    zones = record_case_host_timezones(case)
+    assert len(zones) == 1
+    zone = zones[0]
+    assert zone["windows_timezone"] == "Eastern Standard Time"
+    assert zone["iana_timezone"] == "America/New_York"
+    assert zone["bias_minutes"] == 300
+    assert zone["daylight_bias_minutes"] == -60
+    assert zone["source_sha256"]
+    assert zone["mapping_sha256"]
+    assert zone["timezone_data_version"] == "2026.5"
+    assert len(zone["timezone_data_sha256"]) == 64
+    persisted = json.loads((case / "analysis" / "host_timezones.json").read_text(encoding="utf-8"))
+    assert persisted["records"] == zones
+
+    task_path = (
+        tmp_path / "evidence" / "host1" / "Windows" / "System32" / "Tasks" / OFFICE.name
+    )
+    task_path.parent.mkdir(parents=True)
+    task_path.write_bytes(OFFICE.read_bytes())
+    task = parse_task_record(task_path)
+    # The captured SYSTEM command names H:\C, while this real task XML lives in
+    # the project corpus. Scope the proven zone to this fixture path to exercise
+    # the normal ingest-to-index context handoff; H:\C matching is tested below.
+    scoped_zone = {**zone, "evidence_root": windows_path_root(task_path)}
+    monkeypatch.setattr(
+        windows_timezones,
+        "record_case_host_timezones",
+        lambda _case_dir: [scoped_zone],
+    )
+    assert task["registration_date"] == "2017-08-05T12:13:18.0043321"
+
+    from nexus.langgraph.case_index import iter_index_docs
+    from nexus.langgraph.timeline_merge import ingest_into_case
+
+    result = ingest_into_case(task_path, case, audit=False)
+    assert result["success"] is True
+    assert result["artifacts"] == 1
+    doc = next(d for d in iter_index_docs(case) if d.get("family") == "scheduled_tasks")
+    assert doc["ts"] == "2017-08-05T16:13:18Z"
+    assert "ts_tz_assumed" not in doc
+    assert doc["fields"]["ts_tz_assumed"] == "False"
+    assert doc["fields"]["task_timezone_key_name"] == "Eastern Standard Time"
+    assert doc["fields"]["task_timezone_iana"] == "America/New_York"
+
+
+def test_c5_system_zone_is_matched_only_to_its_evidence_root(tmp_path, monkeypatch):
+    from nexus.ingest.windows_timezones import record_case_host_timezones, timezone_for_task
+
+    case = _seed_case(tmp_path, monkeypatch)
+    recmd = case / "runs" / "RUN-D240-REAL-RECMD" / "extractions" / "recmd"
+    output = recmd / "20261011110620"
+    output.mkdir(parents=True)
+    fixtures = REPO / "tests" / "fixtures" / "d240_timezone"
+    (output / "20261011110620_TimeZoneInfo__SYSTEM.csv").write_bytes(
+        (fixtures / "20261011110620_TimeZoneInfo__SYSTEM.csv").read_bytes()
+    )
+    (recmd / "20261011T110631_recmd_meta.json").write_bytes(
+        (fixtures / "20261011T110631_recmd_meta.json").read_bytes()
+    )
+    zones = record_case_host_timezones(case)
+
+    assert timezone_for_task(r"H:\C\Windows\System32\Tasks\SRL Update Service", zones) == zones[0]
+    assert timezone_for_task(r"J:\D\Windows\System32\Tasks\another host task", zones) is None
+
+
+def test_naive_registration_without_matching_zone_stays_flagged(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+
+    from nexus.ingest.df.scheduled_tasks import ScheduledTasksImporter
+
+    artifact = list(ScheduledTasksImporter().parse(OFFICE))[0]
+    assert artifact.timestamp == datetime(2017, 8, 5, 12, 13, 18, 4332, tzinfo=UTC)
+    assert artifact.ts_tz_assumed is True
+    assert artifact.raw["timezone_assumed"] is True
+
+    case = _seed_case(tmp_path, monkeypatch)
+    from nexus.langgraph.case_index import iter_index_docs
+    from nexus.langgraph.timeline_merge import append_ingest_artifacts
+
+    append_ingest_artifacts(case, [artifact])
+    doc = next(d for d in iter_index_docs(case) if d.get("family") == "scheduled_tasks")
+    assert doc["ts"] == "2017-08-05T12:13:18Z"
+    assert doc["ts_tz_assumed"] is True
+    assert doc["fields"]["ts_tz_assumed"] == "True"
+    assert doc["fields"]["task_timezone_assumed"] == "True"
+
+
 def test_com_handler_class_id_and_typed_triggers():
     from nexus.ingest.df.scheduled_tasks import parse_task_record
 
