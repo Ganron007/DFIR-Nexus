@@ -45,7 +45,38 @@ if ($Sift) {
 }
 "== $Tag $CaseId $(Get-Date -Format o) HEAD $(git rev-parse --short HEAD) PythonSource $repoSrc" | Tee-Object -FilePath $log
 python -m nexus pipeline --mode tools --from-case $CaseId *>> $log
-"exit $LASTEXITCODE"
+$pipelineExitCode = $LASTEXITCODE
+"exit $pipelineExitCode" | Tee-Object -FilePath $log -Append
+if ($pipelineExitCode -ne 0) {
+    $message = "Pipeline failed with exit $pipelineExitCode; skipping the case-wide gate because it may belong to an earlier run."
+    $message | Tee-Object -FilePath $log -Append
+    Write-Error $message
+    exit $pipelineExitCode
+}
+$completedRun = Select-String -Path $log -Pattern '^\s*run_id=(?<id>RUN-[A-Za-z0-9-]+)\s+status=completed mode=tools\s*$' |
+    Select-Object -Last 1
+if (-not $completedRun) {
+    $message = 'Pipeline returned without a completed tools run_id; skipping the case-wide gate summary.'
+    $message | Tee-Object -FilePath $log -Append
+    Write-Error $message
+    exit 1
+}
+$runId = $completedRun.Matches[0].Groups['id'].Value
+$gatePath = Join-Path $repo "cases\$CaseId\analysis\lane_gate.json"
+if (-not (Test-Path -LiteralPath $gatePath)) {
+    $message = "Completed run $runId did not write $gatePath; refusing to report a prior gate."
+    $message | Tee-Object -FilePath $log -Append
+    Write-Error $message
+    exit 1
+}
+$gate = Get-Content -LiteralPath $gatePath -Raw | ConvertFrom-Json
+if ($gate.run_id -ne $runId) {
+    $message = "Gate run_id '$($gate.run_id)' does not match completed run $runId; refusing to report a stale gate."
+    $message | Tee-Object -FilePath $log -Append
+    Write-Error $message
+    exit 1
+}
 Select-String -Path $log -Pattern 'tool (FAIL|BLOCKED)|lane complete|auto-index|N2 gate|I0 archive|REJECTED|timed out' |
     Select-Object -Last 40 | ForEach-Object { '   ' + $_.Line.Substring(0, [Math]::Min(240, $_.Line.Length)) }
 python devtools/runbook/gate_unread.py $CaseId
+exit $LASTEXITCODE
