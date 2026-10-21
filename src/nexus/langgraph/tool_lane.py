@@ -4061,9 +4061,11 @@ async def run_tool_lane(
                     "command": _command_text(e.get("argv") or []),
                     "reason": str(e.get("reason") or "")[:300],
                     "output": str(e.get("output_saved_to") or ""),
-                    "duration_s": durations.get((
-                        str(e.get("tool")), str(e.get("host")), str(e.get("purpose"))
-                    )),
+                    # The ledger row is the job's identity. Tool/host/purpose
+                    # are not unique: a host plan schedules the same tool and
+                    # purpose once per evidence source, so a shared duration
+                    # map made every earlier row show the latest job's time.
+                    "duration_s": e.get("duration_s"),
                 }
                 for e in ledger
             ]
