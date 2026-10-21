@@ -213,6 +213,41 @@ def test_amcacheparser_empty_or_unrelated_csv_does_not_count_as_output(tmp_path)
     assert _produced_expected_output(job) is False
 
 
+def test_jlecmd_generated_destination_suffix_counts_as_output(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    out = tmp_path / "jlecmd"
+    out.mkdir()
+    for destination_type in ("AutomaticDestinations", "CustomDestinations"):
+        job = ToolJob(
+            host="windows",
+            tool="jlecmd",
+            argv=[
+                "jlecmd", "-d", destination_type, "--csv", str(out),
+                "--csvf", "dfargo-jumplist.csv",
+            ],
+            purpose="Jump lists (dfargo)",
+        )
+        expected = out / f"dfargo-jumplist_{destination_type}.csv"
+        expected.write_text("non-empty parser output\n", encoding="utf-8")
+        assert _produced_expected_output(job) is True
+        expected.unlink()
+
+    (out / "other-jumplist_AutomaticDestinations.csv").write_text(
+        "unrelated output\n", encoding="utf-8"
+    )
+    automatic_job = ToolJob(
+        host="windows",
+        tool="jlecmd",
+        argv=[
+            "jlecmd", "-d", "AutomaticDestinations", "--csv", str(out),
+            "--csvf", "dfargo-jumplist.csv",
+        ],
+        purpose="Jump lists (dfargo)",
+    )
+    assert _produced_expected_output(automatic_job) is False
+
+
 def test_recmd_batch_csv_with_generated_name_counts_as_output(tmp_path):
     from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
 

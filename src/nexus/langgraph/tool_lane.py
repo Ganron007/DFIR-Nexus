@@ -5129,6 +5129,33 @@ def _produced_expected_output(job: ToolJob) -> bool:
                             for f in target.iterdir()
                         ):
                             return True
+                if job.tool == "jlecmd":
+                    # JLECmd appends the source folder type to the supplied
+                    # --csvf basename, e.g. `dfargo-jumplist.csv` becomes
+                    # `dfargo-jumplist_AutomaticDestinations.csv`. Derive the
+                    # suffix from the -d folder, and only accept the two
+                    # destination folders JLECmd parses, so unrelated files
+                    # in this shared extraction directory cannot satisfy the
+                    # job's output contract.
+                    named_stem = Path(named).stem.lower()
+                    destination_type = next(
+                        (
+                            Path(argv[i + 1]).name.lower()
+                            for i, arg in enumerate(argv[:-1])
+                            if _flag(arg) == "-d"
+                        ),
+                        "",
+                    )
+                    if destination_type in {
+                        "automaticdestinations",
+                        "customdestinations",
+                    }:
+                        candidate = target / (
+                            f"{named_stem}_{destination_type}.csv"
+                        )
+                        with contextlib.suppress(OSError):
+                            if candidate.is_file() and candidate.stat().st_size > 0:
+                                return True
                 if job.tool == "recmd" and any(
                     _flag(a) == "--bn" for a in argv
                 ):
