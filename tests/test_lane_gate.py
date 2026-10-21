@@ -319,6 +319,32 @@ def test_a_skip_for_a_present_artifact_is_still_not_applicable(tmp_path: Path):
     assert gate["unprocessed"] == []
 
 
+def test_default_optional_parser_skips_stay_visible_without_blocking(tmp_path: Path):
+    """The operator-designated slow parsers are visible skips, not incomplete lane work."""
+    optional_rows = [
+        {
+            "tool": "logfileparser",
+            "purpose": "NTFS $LogFile",
+            "reason": "optional by operator policy; examiner may run manually",
+            "status": "SKIP",
+        },
+        {
+            "tool": "deepbluecli",
+            "purpose": "Security.evtx",
+            "reason": "optional by operator policy; excluded from the default lane",
+            "status": "SKIP",
+        },
+    ]
+    ok_row = {"tool": "hayabusa", "purpose": "EVTX timeline", "reason": "", "status": "OK"}
+
+    gate = write_lane_gate(tmp_path, "RUN-OPTIONAL-SKIPS", [ok_row, *optional_rows])
+
+    assert gate["status"] == "clear"
+    assert gate["unprocessed"] == []
+    assert [item["tool"] for item in gate["not_applicable"]] == ["logfileparser", "deepbluecli"]
+    assert [item["reason"] for item in gate["not_applicable"]] == [row["reason"] for row in optional_rows]
+
+
 def test_a_sift_row_that_does_not_apply_waits_for_nothing(tmp_path: Path):
     """D270: sample S04's gate waited on two rows that never could run, so every analysis run asked for SIFT."""
     gate = write_lane_gate(tmp_path, "RUN-1", [

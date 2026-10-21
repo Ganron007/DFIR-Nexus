@@ -364,9 +364,10 @@ def write_lane_gate(
     #   to "never skip evidence"); it is surfaced, not dropped.
     #
     # A SKIP from any other lane is a tool that does not apply to this evidence
-    # (Suzaku 2.x is cloud-log only; prefetch is absent; Plaso is opt-in). That is
-    # not evidence being skipped, so it must not block - it stays visible in
-    # `jobs`. What guards "evidence was skipped" is a pass that processed
+    # (Suzaku 2.x is cloud-log only; prefetch is absent; Plaso is opt-in), or an
+    # operator-designated optional parser excluded by default (LogFileParser and
+    # DeepBlueCLI). That is not evidence being skipped, so it must not block - it
+    # stays visible in `jobs`/`not_applicable`. What guards "evidence was skipped" is a pass that processed
     # *nothing*, which `_recompute` blocks.
     unprocessed: list[dict[str, Any]] = []
     waiting_sift: list[dict[str, Any]] = []

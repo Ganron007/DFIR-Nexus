@@ -3,6 +3,8 @@
 from pathlib import Path
 
 from nexus.langgraph.tool_lane import (
+    ToolJob,
+    _apply_default_optional_tool_skips,
     find_windows_root,
     plan_sift_triage,
     plan_windows_triage,
@@ -656,3 +658,56 @@ def test_is_host_evidence_routes_non_host_to_importers(tmp_path: Path):
     pcap.write_bytes(b"p")
     assert is_host_evidence(str(evtx)) is True
     assert is_host_evidence(str(pcap)) is False
+
+
+def test_default_optional_tools_are_explicit_skips():
+    jobs = [
+        ToolJob(host="windows", tool="logfileparser", argv=["logfileparser"], purpose="$LogFile"),
+        ToolJob(host="windows", tool="DeepBlueCLI", argv=["deepbluecli"], purpose="Security.evtx"),
+        ToolJob(host="windows", tool="hayabusa", argv=["hayabusa"], purpose="EVTX"),
+        ToolJob(
+            host="windows", tool="deepbluecli", argv=["deepbluecli"], purpose="reused result",
+            status="OK", audit_id="old-audit", output_saved_to="old-output.csv",
+            output_files=["old-output.csv"], result={"success": True}, lineage={"version": "1.0"},
+        ),
+        ToolJob(host="windows", tool="logfileparser", argv=[], purpose="missing", status="SKIP", reason="missing artifact"),
+    ]
+
+    assert _apply_default_optional_tool_skips(jobs) == 3
+    assert [job.status for job in jobs] == ["SKIP", "SKIP", "PENDING", "SKIP", "SKIP"]
+    assert "run manually" in jobs[0].reason
+    assert "long channel scans" in jobs[1].reason
+    assert jobs[4].reason == "missing artifact"
+    assert jobs[3].audit_id == ""
+    assert jobs[3].output_saved_to == ""
+    assert jobs[3].output_files == []
+    assert jobs[3].result == {}
+    assert jobs[3].lineage == {}
+
+
+def test_optional_parser_skip_overrides_carried_prior_ok(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import tool_lane
+
+    prior_ok = {
+        "host": "windows",
+        "tool": "deepbluecli",
+        "purpose": "Security.evtx",
+        "status": "OK",
+        "audit_id": "old-audit",
+        "output_saved_to": "old-output.csv",
+        "lineage": {"version": "1.0"},
+    }
+    monkeypatch.setattr(tool_lane, "_prior_ledger_rows", lambda *_args: [prior_ok])
+    jobs = [ToolJob(
+        host="windows", tool="deepbluecli", argv=["deepbluecli"], purpose="Security.evtx",
+    )]
+
+    carried = tool_lane._settle_prior_rows(
+        jobs, tmp_path, tmp_path / "extractions", carry_ok=True,
+        only_tools=frozenset({"hayabusa"}),
+    )
+
+    assert carried == []
+    assert len(jobs) == 1
+    assert jobs[0].status == "SKIP"
+    assert "operator policy" in jobs[0].reason

@@ -2,13 +2,16 @@
 
 Every host-triage tool whose artifact is **present on this evidence** is
 scheduled, executed via MCP (``run_windows_command`` / ``run_command``),
-and recorded in a ledger (OK / FAIL / SKIP + reason).
+and recorded in a ledger (OK / FAIL / SKIP + reason). The operator-designated
+optional ``logfileparser`` and ``deepbluecli`` jobs are recorded as SKIP by
+default; their evidence remains available for examiner-run manual processing.
 
 Presence comes from knowledge YAML locations
 (``src/nexus/data/knowledge/artifacts/windows/*.yaml``) plus well-known
 paths. Argv stays here (YAML ``quick_start`` is not structured enough).
 
-  tools     — this lane only; no RAG, no LLM. SKIP = artifact absent.
+  tools     — this lane only; no RAG, no LLM. SKIP = artifact absent or a
+              documented default-optional-tool exclusion.
   coverage  — this lane, then RAG+LLM interpret. FAIL does not abort interpret.
   design    — this lane first, then ReAct may **add** corroboration tools.
 
@@ -43,7 +46,7 @@ class ToolJob:
     argv: list[str]
     purpose: str
     timeout: int = 600
-    status: str = "PENDING"  # PENDING | OK | FAIL | SKIP
+    status: str = "PENDING"  # PENDING | OK | FAIL | SKIP | BLOCKED
     reason: str = ""
     audit_id: str = ""
     output_saved_to: str = ""
@@ -87,6 +90,43 @@ class ToolJob:
     queued_s: float = 0.0
     duration_s: float = 0.0
     tool_elapsed_s: float = 0.0
+
+
+_DEFAULT_OPTIONAL_TOOL_SKIP_REASONS = {
+    "logfileparser": (
+        "optional by operator policy; LogFileParser is excluded from the default lane "
+        "and may be run manually by the examiner when needed"
+    ),
+    "deepbluecli": (
+        "optional by operator policy; DeepBlueCLI is excluded from the default lane "
+        "to avoid long channel scans"
+    ),
+}
+
+
+def _apply_default_optional_tool_skips(jobs: list[ToolJob]) -> int:
+    """Mark the operator-approved optional parsers as visible lane skips.
+
+    Existing planner SKIPs keep their more specific reason. Every other planned
+    state is replaced so prior-run reuse or an unavailable optional executable
+    cannot turn this policy into a tool invocation or a blocking row.
+    """
+    skipped = 0
+    for job in jobs:
+        reason = _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS.get(str(job.tool or "").strip().lower())
+        if reason is None or job.status == "SKIP":
+            continue
+        job.status = "SKIP"
+        job.reason = reason
+        job.audit_id = ""
+        job.output_saved_to = ""
+        job.output_files = []
+        job.result = {}
+        job.lineage = {}
+        job.duration_s = 0.0
+        job.tool_elapsed_s = 0.0
+        skipped += 1
+    return skipped
 
 
 class CasePipelineTool:
@@ -2886,6 +2926,10 @@ def _settle_prior_rows(
     kept: list[ToolJob] = []
     for job in jobs:
         key = (job.host, job.tool, job.purpose)
+        if str(job.tool or "").strip().lower() in _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS:
+            _apply_default_optional_tool_skips([job])
+            kept.append(job)
+            continue
         if only_tools and job.tool not in only_tools:
             if key in prior_by_job:
                 carried.append(dict(prior_by_job[key]))  # the run's own row stands; the job is not run again
@@ -2896,7 +2940,11 @@ def _settle_prior_rows(
         kept.append(job)
     jobs[:] = kept
     for key, row in prior_by_job.items():
-        if key not in planned and row.get("status") == "OK":
+        if (
+            key not in planned
+            and row.get("status") == "OK"
+            and str(row.get("tool") or "").strip().lower() not in _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS
+        ):
             carried.append(dict(row))  # a passing job the plan no longer names keeps its record
     return carried
 
@@ -3993,6 +4041,9 @@ async def run_tool_lane(
             jobs.append(_job)
     jobs.extend(_memory_image_jobs(plan_paths, extractions))
     jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
+    # These parsers are examiner-run optional work. Apply the policy before
+    # prior-result reuse so a previous OK cannot bypass the default skip.
+    _apply_default_optional_tool_skips(jobs)
     # WO-TA item 12: a job that finished OK in this run's ledger is reused, not run again.
     # apply_prior_ok had no caller before this, so a retry re-ran every job.
     reused = apply_prior_ok(
@@ -4055,6 +4106,7 @@ async def run_tool_lane(
         jobs, case_dir, extractions, carry_ok=carry_ok, only_tools=only_tools,
     )
     _hold_examiner_skips(jobs, case_dir)
+    _apply_default_optional_tool_skips(jobs)
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = list(carried_rows)
 
