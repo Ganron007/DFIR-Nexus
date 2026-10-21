@@ -160,6 +160,44 @@ def _logfileparser_timeout(logfile: Path) -> int:
     return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=7200)
 
 
+def _evtxecmd_timeout_for_bytes(nbytes: int) -> int:
+    """Budget an EvtxECmd directory pass by the bytes it must parse (D315).
+
+    A 372-file S08 collection totals 3.29 GiB and exceeded the planner's flat
+    1,800 s limit. At roughly 0.5 s/MiB on the completed S08 directory passes,
+    one second per MiB leaves a 2x throughput margin without imposing the same
+    hour-long timeout on small EVTX sets.
+    """
+    return timeout_for_bytes(nbytes, base=300, per_mb=1, cap=7200)
+
+
+def _evtxecmd_timeout(evtx_dir: Path) -> int:
+    """Use the aggregate size of every top-level EVTX file in a directory."""
+    total_bytes = 0
+    try:
+        for evtx in evtx_dir.glob("*.evtx"):
+            if not evtx.is_dir():
+                total_bytes += evtx.stat().st_size
+    except OSError:
+        # An incomplete size scan must not under-budget a large folder.
+        return 7200
+    return _evtxecmd_timeout_for_bytes(total_bytes)
+
+
+def _deepbluecli_timeout_for_bytes(nbytes: int | None) -> int:
+    """Scale DeepBlueCLI's per-channel budget with headroom for dense logs (D315).
+
+    S08's 20 MiB Security.evtx jobs got 900 s under the old slope; two timed
+    out at that exact limit while another same-sized job completed in 601 s.
+    The steeper slope gives that input 1,500 s while keeping the existing
+    one-hour ceiling for the larger channels.
+    """
+    if nbytes is None:
+        # Unknown input size must not receive the minimum-size budget.
+        return 3600
+    return timeout_for_bytes(nbytes, base=300, per_mb=60, cap=3600)
+
+
 def _stem(evidence: Path) -> str:
     """A filesystem-safe output stem for a per-file parser invocation.
 
@@ -500,7 +538,7 @@ def schedule_evtx_parsers(
             "evtxecmd",
             ["evtxecmd", "-d", str(evtx_dir), "--csv", str(ev_dir)],
             f"Parse all EVTX {label} ({n} logs)",
-            1800,
+            _evtxecmd_timeout(evtx_dir),
         )
         # DeepBlueCLI runs once per channel file after this loop (WO-TA item 2), not per directory.
         # Zircolite against its own bundled Windows ruleset - it ships
@@ -549,14 +587,16 @@ def schedule_evtx_parsers(
                 try:
                     nbytes = evtx.stat().st_size
                 except OSError:
-                    nbytes = 0
-                # A flat 300s killed Security.evtx (115 MB, 280s when the host
-                # was idle, timeout under load). Scale from the file size.
+                    nbytes = None
+                # The old 30s/MiB slope gave a 20 MiB Security.evtx 900s; two S08
+                # files timed out at that exact limit while another same-sized
+                # file took 601s. Keep the per-file budget size-based, with
+                # headroom for dense logs rather than raising every job equally.
                 add(
                     "deepbluecli",
                     ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
                     f"DeepBlueCLI attack patterns ({evtx.name})",
-                    timeout_for_bytes(nbytes, base=300, per_mb=30, cap=3600),
+                    _deepbluecli_timeout_for_bytes(nbytes),
                 )
         else:
             skip("deepbluecli", "no EVTX for a channel DeepBlueCLI handles (" + ", ".join(DEEPBLUE_LOGNAMES) + ")")
