@@ -39,11 +39,9 @@ if ($Stage -in 'lanes', 'all') {
         $tag = "$t-$Round"
         $laneArgs = @('-NoProfile', '-File', 'devtools/runbook/run_lane.ps1', '-CaseId', $e.case_id, '-Tag', $tag)
         if ($e.sift_inputs -and $e.sift_inputs.Count -gt 0) {
-            $files = foreach ($rel in $e.sift_inputs) {
-                $p = Join-Path $e.folder $rel
-                if (Test-Path $p -PathType Container) { Get-ChildItem $p -Recurse -File | ForEach-Object FullName } else { $p }
-            }
-            $laneArgs += @('-Sift', '-Capture', ($files -join ','))
+            # A folder is passed as itself; run_lane.ps1 expands it (a file list would pass the command-line limit).
+            $inputs = foreach ($rel in $e.sift_inputs) { Join-Path $e.folder $rel }
+            $laneArgs += @('-Sift', '-Capture', ($inputs -join ','))
         }
         $start = Get-Date
         pwsh @args *> (Join-Path $out "lane-$tag.txt")
