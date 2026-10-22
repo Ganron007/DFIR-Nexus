@@ -588,9 +588,9 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
             except Exception as exc:  # noqa: BLE001
                 log.debug("event-id probe failed: %s", exc)
                 scan_stats["event_id_probe_failed"] = True
-    # Per-needle counts below are computed inside this window — when the scan
-    # is truncated (result cap, per-file cap, skipped files, failed terms),
-    # "rundll32 (21)" means "at least 21" and the UI marks those chips honestly.
+    # Per-needle counts below cover the full scan window. If files cannot be
+    # read, CSV recovery is needed, or an ES clause fails, counts are lower
+    # bounds and the UI marks those chips honestly.
     from nexus.langgraph.query_pack import _incomplete_reasons
 
     incomplete_reasons = _incomplete_reasons(scan_stats)
@@ -688,9 +688,9 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
     # --- field facts (id/label columns) — pivots, never signal ---
     # Match-site awareness: a keyword that lands in an EventId/RecordNumber/
     # Provider/Level cell says the evidence contains the value, not that
-    # behaviour is suspicious. Counted during the scan (stats) so the
-    # per-file hit cap cannot crowd fact-only rows out; fall back to the
-    # hit list for backends that do not populate the counters.
+    # behaviour is suspicious. Counted during the exhaustive scan so a
+    # downstream page cannot crowd fact-only rows out; fall back to the hit
+    # list for backends that do not populate the counters.
     stat_fact_counts = dict((scan_stats or {}).get("fact_counts") or {})
     stat_fact_fields = (scan_stats or {}).get("fact_fields") or {}
     fact_counts: dict[str, int] = {}
@@ -763,8 +763,8 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         alert_hits.append(h)
     pairs = sorted(
         zip(alerts, alert_hits, strict=False),
-        # Rank BEFORE capping/ordering, so a `crit` row is never pushed below a
-        # `high` one by file order (WO-R1F items 1 and 7d).
+        # Rank before ordering, so a `crit` row is never pushed below a `high`
+        # one by file order (WO-R1F items 1 and 7d).
         key=lambda p: (_ALERT_LEVEL_RANK.get(p[0]["level"], 2), p[0]["time"]),
     )
     alerts = [a for a, _h in pairs]
