@@ -113,6 +113,33 @@ def reap_stale_running_runs(cases_root: Path | None = None) -> list[str]:
     return reaped
 
 
+def _windows_process_alive(pid: int, kernel32: Any = None) -> bool:
+    """Query a Windows process conservatively; an access failure is not proof of exit."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = kernel32 or ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.GetLastError.restype = wintypes.DWORD
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        # OpenProcess reports ERROR_INVALID_PARAMETER (87) when no process has this PID.
+        # Access denied and every other failure leave liveness unknown, so fail closed.
+        return int(kernel32.GetLastError()) != 87
+    try:
+        code = wintypes.DWORD()
+        kernel32.GetExitCodeProcess.argtypes = (
+            wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+        )
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == 259  # STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def process_alive(pid: Any) -> bool:
     """Return False only when the process ``pid`` is confirmed to have exited.
 
@@ -125,28 +152,11 @@ def process_alive(pid: Any) -> bool:
     try:
         pid = int(pid)
     except (TypeError, ValueError):
-        return False
+        return True
     if pid <= 0:
-        return False
+        return True
     if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            # ERROR_INVALID_PARAMETER means this positive PID does not identify a
-            # process. ERROR_ACCESS_DENIED (and every other error) is ambiguous:
-            # the process may be alive but owned by an elevated/different user.
-            return ctypes.get_last_error() != 87  # ERROR_INVALID_PARAMETER
-        try:
-            code = wintypes.DWORD()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return True  # inability to query an opened process is not exit evidence
-            return code.value == 259  # STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
+        return _windows_process_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

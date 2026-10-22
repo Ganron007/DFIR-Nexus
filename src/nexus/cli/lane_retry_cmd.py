@@ -52,8 +52,33 @@ def retry(
 
     case_dir = _resolve(case)
     ledger, run_dir = _load_ledger(case_dir)
+    if run_dir is not None:
+        from nexus.langgraph.pipeline_runs import load_manifest, process_alive
+
+        manifest = load_manifest(run_dir)
+        if str(manifest.get("status") or "") == "running":
+            pid = manifest.get("pid")
+            try:
+                parsed_pid = int(pid) if not isinstance(pid, bool) else 0
+            except (TypeError, ValueError):
+                parsed_pid = 0
+            if parsed_pid <= 0 or process_alive(parsed_pid):
+                typer.echo(
+                    f"Tools run {run_dir.name} is still marked running and its process "
+                    "is alive or cannot be confirmed dead.",
+                    err=True,
+                )
+                raise typer.Exit(1)
     if not ledger:
-        typer.echo("No lane ledger for this case - run the lane first.", err=True)
+        if run_dir is not None:
+            typer.echo(
+                f"No lane ledger in active tools run {run_dir.name}; refusing to fall back "
+                "to an older run. The retry command cannot resume this run without a ledger; "
+                "re-run the lane.",
+                err=True,
+            )
+        else:
+            typer.echo("No lane ledger for this case - run the lane first.", err=True)
         raise typer.Exit(1)
     if run_dir is None:
         typer.echo(
@@ -218,14 +243,32 @@ def _read_rows(path: Path) -> list[dict]:
 def _load_ledger(case_dir) -> tuple[list[dict], Path | None]:
     """The lane ledger of the case's tools run, and that run's folder.
 
-    The run is the one the pipeline resolves as the active tools run (committed or
-    newest with data), the same run the lane's reuse rule reads. A case made before runs
-    existed keeps its flat ledger, which has no run folder to retry into.
+    An active, uncommitted tools run must be selected directly. The general extraction
+    resolver intentionally prefers completed runs for analysis, but using it for retry
+    silently falls back to an older ledger after a newer lane was interrupted. If there
+    is no such active run, the resolver supplies the committed tools output. A case made
+    before runs existed keeps its flat ledger, which has no run folder to retry into.
     """
-    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+    from nexus.langgraph.pipeline_runs import (
+        load_manifest,
+        resolve_run,
+        resolve_tools_extractions,
+    )
+
+    case_dir = Path(case_dir)
+    try:
+        active = resolve_run(case_dir, "tools")
+    except ValueError as exc:
+        if not str(exc).startswith("No active tools run in case "):
+            raise
+        active = None
+    if active is not None and active.mode == "tools":
+        manifest = load_manifest(active.path)
+        if str(manifest.get("status") or "") != "completed":
+            return _read_rows(active.extractions / "_tool_lane_ledger.json"), active.path
 
     try:
-        run_extractions = resolve_tools_extractions(Path(case_dir))
+        run_extractions = resolve_tools_extractions(case_dir)
     except Exception:  # noqa: BLE001 - no run yet: fall through to the legacy ledgers
         run_extractions = None
     if run_extractions is not None:

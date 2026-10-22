@@ -10,6 +10,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+import typer
+
 from nexus.cli import lane_retry_cmd
 from nexus.langgraph.tool_lane import ToolJob, apply_prior_ok
 
@@ -142,6 +145,61 @@ def test_the_retry_finds_the_run_ledger_and_the_run_folder(tmp_path):
     assert [r["tool"] for r in rows] == ["sbecmd"]
     assert run_dir == extractions.parent, "the retry runs inside the same run folder"
     assert lane_retry_cmd._run_evidence_paths(run_dir) == [str(tmp_path / "H")]
+
+
+def test_the_retry_does_not_fall_back_to_an_older_run_when_the_active_lane_has_no_ledger(
+    tmp_path, monkeypatch, capsys,
+):
+    case_dir, _old_extractions = _run_case(
+        tmp_path, [_ledger_row("sbecmd", "FAIL")], [str(tmp_path / "H")]
+    )
+    active_id = "RUN-20261011T000000Z-tools-interrupted"
+    active_dir = case_dir / "runs" / active_id
+    (active_dir / "extractions").mkdir(parents=True)
+    (active_dir / "manifest.json").write_text(json.dumps({
+        "run_id": active_id,
+        "mode": "tools",
+        "status": "interrupted",
+        "evidence_paths": [str(tmp_path / "H")],
+    }), encoding="utf-8")
+    (case_dir / "active_runs.json").write_text(json.dumps({"tools": active_id}), encoding="utf-8")
+
+    rows, run_dir = lane_retry_cmd._load_ledger(case_dir)
+
+    assert rows == [], "the old run's failures are not failures of the interrupted run"
+    assert run_dir == active_dir, "retry selection stays bound to the active tools run"
+    monkeypatch.setattr(lane_retry_cmd, "_resolve", lambda _case: case_dir)
+
+    with pytest.raises(typer.Exit):
+        lane_retry_cmd.retry(case=case_dir.name, tool="", dry_run=True)
+
+    error = capsys.readouterr().err
+    assert active_id in error
+    assert "refusing to fall back to an older run" in error
+
+
+def test_retry_refuses_an_active_tools_run_whose_process_is_still_live(tmp_path, monkeypatch, capsys):
+    import os
+
+    case_dir, _old_extractions = _run_case(
+        tmp_path, [_ledger_row("sbecmd", "FAIL")], [str(tmp_path / "H")]
+    )
+    active_id = "RUN-20261011T000001Z-tools-live"
+    active_dir = case_dir / "runs" / active_id
+    (active_dir / "extractions").mkdir(parents=True)
+    (active_dir / "manifest.json").write_text(json.dumps({
+        "run_id": active_id,
+        "mode": "tools",
+        "status": "running",
+        "pid": os.getpid(),
+    }), encoding="utf-8")
+    (case_dir / "active_runs.json").write_text(json.dumps({"tools": active_id}), encoding="utf-8")
+    monkeypatch.setattr(lane_retry_cmd, "_resolve", lambda _case: case_dir)
+
+    with pytest.raises(typer.Exit):
+        lane_retry_cmd.retry(case="CASE-X", tool="", dry_run=True)
+
+    assert "still marked running" in capsys.readouterr().err
 
 
 def test_a_flat_legacy_ledger_has_no_run_folder_to_retry_into(tmp_path):

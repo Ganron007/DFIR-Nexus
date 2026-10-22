@@ -18,6 +18,9 @@ from nexus.langgraph import lane_gate
 def passes(tmp_path, monkeypatch):
     run_dir = tmp_path / "runs" / "RUN-T"
     run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        '{"run_id":"RUN-T","mode":"tools","status":"completed"}', encoding="utf-8"
+    )
     calls: list[tuple] = []
 
     async def fake_run_retry(case_dir, run_id, evidence_paths, rerun_tools=frozenset(), only_tools=frozenset()):
