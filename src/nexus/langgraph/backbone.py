@@ -235,9 +235,10 @@ def _es_call(
     try:
         result = fn(str(Path(case_dir).name), **kwargs)
     except Exception as exc:  # noqa: BLE001 — audit every failure, not just ESQueryError
+        audit_id = ""
         if audit is not None:
             with contextlib.suppress(Exception):
-                audit.log(
+                audit_id = str(audit.log(
                     tool=label,
                     params={"case_id": Path(case_dir).name,
                             **{k: v for k, v in kwargs.items() if k in audit_keys}},
@@ -246,11 +247,17 @@ def _es_call(
                     },
                     elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
                     extra={"canonical_tool": name} if label != name else None,
-                )
-        return {
+                ) or "")
+        failed = {
             "error": f"{label} failed: {type(exc).__name__}: {exc}"[:400],
             "case_id": Path(case_dir).name,
         }
+        if audit_id:
+            failed["provenance"] = {
+                "audit_id": audit_id,
+                "case_id": Path(case_dir).name,
+            }
+        return failed
     aid = None
     if audit is not None:
         # D70: the rows this call returned, in the shape a DRAFT's evidence takes,

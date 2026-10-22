@@ -156,7 +156,11 @@ def read_run_record(case_dir: Path, run_id: str) -> dict[str, Any] | None:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    from nexus.langgraph.pipeline_runs import effective_mode_run_record
+
+    return effective_mode_run_record(case_dir, run_id, data)
 
 
 def _persist(case_dir: Path, run_id: str, record: dict[str, Any]) -> None:
@@ -1953,7 +1957,28 @@ def run_mode3(
     run_id = run_id or f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
     from nexus.analysis.context_policy import normalize_policy
     from nexus.audit import AuditWriter
-    from nexus.langgraph.pipeline_runs import configured_model
+    from nexus.langgraph.pipeline_runs import (
+        configured_model,
+        mode_run_recovery_exists,
+    )
+
+    if mode_run_recovery_exists(case_dir, run_id):
+        existing = read_run_record(case_dir, run_id)
+        if existing is not None and existing.get("status") == "interrupted":
+            return existing
+        return {
+            "run_id": run_id,
+            "case_id": case_dir.name,
+            "status": "failed",
+            "stop_reason": "invalid_recovery_event",
+            "error": "recovery marker exists but does not match this run record",
+        }
+    existing = read_run_record(case_dir, run_id)
+    if existing is not None and resume_state is None:
+        return {
+            **existing,
+            "error": "run id already exists; resume a paused run or start a new run id",
+        }
 
     # One writer per run (locked decision): seats share it, no seat builds one.
     run_audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
@@ -2009,7 +2034,7 @@ def run_mode3(
     if resume_state is not None:
         existing = read_run_record(case_dir, run_id)
         if existing is not None and str(existing.get("status") or "") in {
-            "completed", "failed", "stopped",
+            "completed", "failed", "stopped", "interrupted",
         }:
             return existing
         if existing is not None:
@@ -2018,6 +2043,10 @@ def run_mode3(
             record["stop_reason"] = ""
             record.pop("resume_state", None)
             record.pop("completed_at", None)
+    # Dashboard runs execute in worker threads inside a long-lived server;
+    # recording only its PID cannot expose a worker that exited unexpectedly.
+    record["process_pid"] = os.getpid()
+    record["process_thread_id"] = threading.get_native_id()
     # What an informed run adds, read once for every seat (D235): the case's report and pending DRAFTs,
     # labelled as not evidence. Empty for an independent run.
     from nexus.analysis.context_policy import context_sections
@@ -2743,7 +2772,7 @@ def resume_mode3(
     if record is None:
         return {"error": "run not found", "run_id": run_id}
     status = str(record.get("status") or "")
-    if status in {"stopped", "completed", "failed"}:
+    if status in {"stopped", "completed", "failed", "interrupted"}:
         return {**record, "error": f"run is {status}; start a new run"}
     if status != "paused":
         return {**record, "error": f"run is {status}; nothing to resume"}

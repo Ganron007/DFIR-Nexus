@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -1659,13 +1660,17 @@ def run_work_order(
                 data={"args": event.get("args") or {}},
             ))
         elif kind == "tool_result":
+            summary = event.get("summary") or {}
+            error = str(event.get("error") or (
+                summary.get("error") if isinstance(summary, dict) else ""
+            ) or "")
             sink.emit(new_event(
                 run_id, "tool.result", actor="agent", turn_id=turn_id,
                 agent_id=agent_id, tool=str(event.get("tool") or ""),
                 audit_id=str(event.get("audit_id") or ""),
-                status="error" if event.get("error") else "ok",
-                detail=str(event.get("error") or ""),
-                data={"summary": event.get("summary") or {}},
+                status="error" if error else "ok",
+                detail=error,
+                data={"summary": summary, "replayed": bool(event.get("replayed"))},
             ))
         elif kind == "round":
             sink.emit(new_event(
@@ -2035,11 +2040,10 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
         log.warning("run state persist failed: %s", exc)
 
 
-#: Statuses in which a Mode 2/3 run is still writing to the case. ``planned``
-#: belongs here: the director node writes it as soon as the work orders exist
-#: and it stays for the whole investigation, so a guard that only accepts
-#: ``running`` is blind to every in-flight run.
-MODE_LIVE_STATUSES = ("running", "planned")
+#: Every nonterminal status in which a Mode 2/3 run is still writing to this
+#: case. Mode 2 persists ``verified`` and ``assessed`` between follow-up work
+#: orders too; those states are not completion.
+MODE_LIVE_STATUSES = ("running", "planned", "verified", "assessed")
 
 
 def busy_runs(case_dir: Path | str, own_run_id: str = "") -> list[dict[str, str]]:
@@ -2057,6 +2061,8 @@ def busy_runs(case_dir: Path | str, own_run_id: str = "") -> list[dict[str, str]
     """
     case_dir = Path(case_dir)
     running: list[dict[str, str]] = []
+    from nexus.langgraph.pipeline_runs import read_mode_run_recovery
+
     for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
         d = case_dir / "analysis" / sub
         if not d.is_dir():
@@ -2071,6 +2077,8 @@ def busy_runs(case_dir: Path | str, own_run_id: str = "") -> list[dict[str, str]
             if str(loaded.get("status") or "") not in MODE_LIVE_STATUSES:
                 continue
             rid = str(loaded.get("run_id") or rec.stem)
+            if read_mode_run_recovery(case_dir, rid) is not None:
+                continue
             if own_run_id and rid == own_run_id:
                 continue
             running.append({"run_id": rid, "status": "running", "source": sub})
@@ -2165,6 +2173,27 @@ def run_mode2(
 
     state["context_policy"] = normalize_policy(context_policy)
     state_path = case_dir / _MODE2_DIR / f"{run_id}.json"
+    from nexus.langgraph.pipeline_runs import (
+        effective_mode_run_record,
+        mode_run_recovery_exists,
+    )
+
+    if mode_run_recovery_exists(case_dir, run_id):
+        try:
+            loaded = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            loaded = None
+        if isinstance(loaded, dict) and loaded.get("run_id") == run_id:
+            recovered = effective_mode_run_record(case_dir, run_id, loaded)
+            if recovered.get("status") == "interrupted":
+                return recovered
+        return {
+            "run_id": run_id,
+            "case_id": case_dir.name,
+            "status": "failed",
+            "stop_reason": "invalid_recovery_event",
+            "error": "recovery marker exists but does not match this run record",
+        }
     if resume and state_path.is_file():
         try:
             loaded = json.loads(state_path.read_text(encoding="utf-8"))
@@ -2174,7 +2203,7 @@ def run_mode2(
                 # them used to re-enter verify/synthesis and append a second
                 # pass onto a finished investigation.
                 if str(state.get("status") or "") in (
-                    "stopped", "completed", "failed",
+                    "stopped", "completed", "failed", "interrupted",
                 ):
                     return state
                 state["status"] = "running"
@@ -2189,6 +2218,11 @@ def run_mode2(
                 state.setdefault("examiner_feedback", {})
         except (OSError, ValueError):
             pass
+
+    # Let the shared preflight distinguish a live dashboard worker thread from
+    # a dead worker inside the still-running web-server process.
+    state["process_pid"] = os.getpid()
+    state["process_thread_id"] = threading.get_native_id()
 
     # Elasticsearch is required for a Mode 2 run (the workers query the N3
     # index). Refuse before any work starts instead of producing a hollow run.
@@ -2884,7 +2918,11 @@ def read_run_record(case_dir: Path, run_id: str) -> dict[str, Any] | None:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return loaded if isinstance(loaded, dict) else None
+    if not isinstance(loaded, dict):
+        return None
+    from nexus.langgraph.pipeline_runs import effective_mode_run_record
+
+    return effective_mode_run_record(case_dir, run_id, loaded)
 
 
 def read_run_events(

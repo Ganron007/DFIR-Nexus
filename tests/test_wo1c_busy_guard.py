@@ -153,6 +153,7 @@ def test_busy_guard_sees_a_planned_mode3_run(tmp_path: Path):
     assert err.status_code == 409
 
 
+
 def test_busy_runs_reports_the_blocking_run_id(tmp_path: Path):
     """The refusal must NAME the run, so the operator can find and stop it."""
     from nexus.modes.multi_role import busy_message, busy_runs

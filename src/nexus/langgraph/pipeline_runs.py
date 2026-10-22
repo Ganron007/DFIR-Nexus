@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
 import re
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +19,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,95}$")
+_MODE_RUN_PREFIXES = {"M2-": "mode2_runs", "M3-": "mode3_runs"}
+_MODE_RUN_LIVE_STATUSES = {"running", "planned", "verified", "assessed"}
 
 
 def configured_model() -> dict[str, str]:
@@ -154,13 +158,222 @@ def process_alive(pid: Any) -> bool:
     return True
 
 
+def run_owner_alive(pid: Any, thread_id: Any = None) -> bool:
+    """Whether a run's recorded process/thread owner is still executing.
+
+    Mode 2/3 can run in dashboard worker threads inside the long-lived web
+    server. A PID-only check would keep those records busy after their worker
+    thread exits, so same-process records also name the owning native thread.
+    For a different process, the PID remains the available liveness signal.
+    """
+    if not process_alive(pid):
+        return False
+    try:
+        owner_pid = int(pid)
+        owner_thread_id = int(thread_id)
+    except (TypeError, ValueError):
+        return True
+    if owner_pid == os.getpid():
+        return any(getattr(thread, "native_id", None) == owner_thread_id
+                   for thread in threading.enumerate())
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenThread.restype = wintypes.HANDLE
+        kernel32.OpenThread.argtypes = [
+            wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
+        ]
+        kernel32.GetProcessIdOfThread.restype = wintypes.DWORD
+        kernel32.GetProcessIdOfThread.argtypes = [wintypes.HANDLE]
+        kernel32.GetExitCodeThread.restype = wintypes.BOOL
+        kernel32.GetExitCodeThread.argtypes = [
+            wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.OpenThread(0x0800, False, owner_thread_id)  # THREAD_QUERY_LIMITED_INFORMATION
+        if not handle:
+            # Access denied is inconclusive; other errors mean that native
+            # thread no longer exists. Preserve the busy state if uncertain.
+            return ctypes.get_last_error() == 5
+        try:
+            thread_owner_pid = kernel32.GetProcessIdOfThread(handle)
+            if thread_owner_pid == 0:
+                return True
+            if thread_owner_pid != owner_pid:
+                return False
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeThread(handle, ctypes.byref(code)):
+                return True
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    task_dir = Path(f"/proc/{owner_pid}/task/{owner_thread_id}")
+    if Path("/proc").is_dir():
+        return task_dir.is_dir()
+    # On platforms without a cross-process thread query, keep the conservative
+    # process-level answer rather than interrupting a possibly live run.
+    return process_alive(owner_pid)
+
+
+def _mode_run_paths(case_dir: Path | str, run_id: str) -> tuple[Path, Path]:
+    """Return validated record and append-only recovery marker paths."""
+    run_id = str(run_id or "")
+    if not _RUN_ID.fullmatch(run_id):
+        raise ValueError("invalid run id")
+    sub = next((value for prefix, value in _MODE_RUN_PREFIXES.items()
+                if run_id.startswith(prefix)), "")
+    if not sub:
+        raise ValueError("only Mode 2 and Mode 3 runs can be recovered")
+    root = Path(case_dir)
+    return (
+        root / "analysis" / sub / f"{run_id}.json",
+        root / "analysis" / "run_recoveries" / f"{run_id}.json",
+    )
+
+
+def read_mode_run_recovery(case_dir: Path | str, run_id: str) -> dict[str, Any] | None:
+    """Read a valid append-only lifecycle event for one Mode 2/3 run."""
+    try:
+        record_path, recovery_path = _mode_run_paths(case_dir, run_id)
+        raw_record = record_path.read_bytes()
+        recovery = json.loads(recovery_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if (not isinstance(recovery, dict)
+            or recovery.get("run_id") != run_id
+            or recovery.get("event_type") != "run.recovered"
+            or recovery.get("to_status") != "interrupted"
+            or recovery.get("source_record_sha256")
+            != hashlib.sha256(raw_record).hexdigest()):
+        return None
+    return recovery
+
+
+def mode_run_recovery_exists(case_dir: Path | str, run_id: str) -> bool:
+    """Whether a recovery marker exists, including one that fails validation.
+
+    Callers that would start or resume a run use this to fail closed on a
+    malformed or stale marker instead of reusing the run id and overwriting
+    its source record.
+    """
+    try:
+        _record_path, recovery_path = _mode_run_paths(case_dir, run_id)
+    except ValueError:
+        return False
+    return recovery_path.exists()
+
+
+def recover_mode_run(
+    case_dir: Path | str,
+    run_id: str,
+    *,
+    confirmed_no_worker: bool = False,
+) -> dict[str, Any]:
+    """Append an interrupted transition without rewriting the run record.
+
+    Ownerless legacy records require an explicit examiner confirmation because
+    their age and file timestamps cannot prove that a worker has exited.
+    """
+    record_path, recovery_path = _mode_run_paths(case_dir, run_id)
+    try:
+        raw_record = record_path.read_bytes()
+        record = json.loads(raw_record.decode("utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"run record not found: {run_id}") from exc
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"run record is unreadable: {run_id}") from exc
+    if not isinstance(record, dict) or str(record.get("run_id") or "") != run_id:
+        raise ValueError(f"run record identity does not match: {run_id}")
+
+    record_digest = hashlib.sha256(raw_record).hexdigest()
+    if recovery_path.exists():
+        existing = read_mode_run_recovery(case_dir, run_id)
+        if existing is not None and existing.get("source_record_sha256") == record_digest:
+            return existing
+        raise ValueError(f"a recovery event already exists but does not match the run: {run_id}")
+
+    status = str(record.get("status") or "")
+    if status not in _MODE_RUN_LIVE_STATUSES:
+        raise ValueError(f"run is {status or 'unknown'}; only a live run can be recovered")
+
+    pid = record.get("process_pid")
+    thread_id = record.get("process_thread_id")
+    if pid is None:
+        if not confirmed_no_worker:
+            raise ValueError(
+                "this legacy run has no owner metadata; confirm the no-worker check explicitly")
+        reason = "examiner confirmed no worker is live for this ownerless legacy run"
+    else:
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("run owner PID is invalid; cannot prove the worker exited") from exc
+        if pid <= 0:
+            raise ValueError("run owner PID is invalid; cannot prove the worker exited")
+        if run_owner_alive(pid, thread_id):
+            raise ValueError(f"run owner is still live (pid {pid}, thread {thread_id})")
+        if process_alive(pid):
+            reason = f"run worker thread {thread_id} exited while process {pid} remains live"
+        else:
+            reason = f"run process {pid} has exited"
+
+    recovery: dict[str, Any] = {
+        "schema": 1,
+        "event_type": "run.recovered",
+        "run_id": run_id,
+        "from_status": status,
+        "to_status": "interrupted",
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "reason": reason,
+        "source_record_sha256": record_digest,
+        "process_pid": pid,
+        "process_thread_id": thread_id,
+        "confirmed_no_worker": bool(confirmed_no_worker),
+    }
+    recovery_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = (json.dumps(recovery, sort_keys=True) + "\n").encode("utf-8")
+    try:
+        fd = os.open(str(recovery_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        existing = read_mode_run_recovery(case_dir, run_id)
+        if existing is not None and existing.get("source_record_sha256") == record_digest:
+            return existing
+        raise ValueError(f"a recovery event already exists for {run_id}") from None
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return recovery
+
+
+def effective_mode_run_record(
+    case_dir: Path | str,
+    run_id: str,
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    """Overlay an append-only recovery event for readers; preserve stored JSON."""
+    recovery = read_mode_run_recovery(case_dir, run_id)
+    if recovery is None:
+        return record
+    effective = dict(record)
+    effective["status"] = "interrupted"
+    effective["stop_reason"] = "recovered_interrupted"
+    effective["error"] = str(recovery.get("reason") or "run explicitly recovered")
+    effective["finished_at"] = str(recovery.get("recorded_at") or "")
+    effective["recovery_event"] = recovery
+    return effective
+
+
 def reap_dead_runs(case_dir: Path) -> list[str]:
-    """Mark a run whose manifest says 'running' and whose process has exited as interrupted.
+    """Mark dead Mode 1/2/3 runs interrupted before the busy guard reads them.
 
     A CLI run that is stopped (Ctrl+C, a closed terminal, a crash) leaves its manifest at
     'running', and no server reaps it: the 2026-10-14 Mode 1 run read 'running' after its
-    process was gone. Only a manifest that names its process is judged; one with no pid is left
-    to the server's startup reaper.
+    process was gone. Mode 2/3 records similarly outlive failed CLI processes and dashboard
+    worker threads. New owner-bound records are recovered by an append-only event; ownerless
+    legacy records remain busy until an explicit recovery.
     """
     reaped: list[str] = []
     for manifest_path in sorted((Path(case_dir) / "runs").glob("*/manifest.json")):
@@ -181,6 +394,29 @@ def reap_dead_runs(case_dir: Path) -> list[str]:
         except OSError:
             continue
         reaped.append(str(manifest.get("run_id") or manifest_path.parent.name))
+
+    for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
+        records_dir = Path(case_dir) / "analysis" / sub
+        for record_path in sorted(records_dir.glob(f"{prefix}*.json")):
+            try:
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if (not isinstance(record, dict)
+                    or record.get("status") not in _MODE_RUN_LIVE_STATUSES):
+                continue
+            pid = record.get("process_pid")
+            thread_id = record.get("process_thread_id")
+            # No owner means no safe process-liveness inference. An examiner
+            # must use recover_mode_run after checking the live process list.
+            if pid is None or run_owner_alive(pid, thread_id):
+                continue
+            try:
+                recovery = recover_mode_run(case_dir, record_path.stem)
+            except (OSError, ValueError):
+                continue
+            if recovery:
+                reaped.append(str(record.get("run_id") or record_path.stem))
     return reaped
 
 

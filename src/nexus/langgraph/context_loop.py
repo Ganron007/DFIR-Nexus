@@ -1063,6 +1063,8 @@ def run_context_loop(
                 "why": why, "audit_id": obs.get("audit_id"),
                 "summary": _event_summary(obs.get("summary")),
                 "ms": round(elapsed, 1),
+                **({"error": str(obs["summary"]["error"])}
+                   if (obs.get("summary") or {}).get("error") else {}),
                 **({"normalized": obs["normalized"]} if moved else {}),
             })
             if time.monotonic() >= deadline:
