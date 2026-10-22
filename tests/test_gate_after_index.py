@@ -77,3 +77,65 @@ def test_no_completeness_file_is_a_no_op(tmp_path):
     (case / "runs").mkdir(parents=True)
 
     assert reconcile_after_index(case, {}) == {"changed": 0}
+
+
+def test_reconciliation_keeps_the_active_uncommitted_run_bound(tmp_path: Path):
+    case = tmp_path / "CASE-GATE0003"
+    old_id = "RUN-20261021T000000000000Z-tools-old"
+    active_id = "RUN-20261022T000000000000Z-tools-active"
+    old_run = case / "runs" / old_id
+    active_run = case / "runs" / active_id
+    for run, status in ((old_run, "completed"), (active_run, "running")):
+        extractions = run / "extractions"
+        (extractions / "evtxecmd").mkdir(parents=True)
+        (extractions / "evtxecmd" / "rows.csv").write_text(
+            "a,b\n1,2\n", encoding="utf-8"
+        )
+        (run / "manifest.json").write_text(
+            json.dumps({"status": status}), encoding="utf-8"
+        )
+        (extractions / "_tool_lane_ledger.json").write_text(
+            json.dumps([{"tool": run.name, "purpose": "lane row", "status": "OK"}]),
+            encoding="utf-8",
+        )
+    active_extractions = active_run / "extractions"
+    active_rows = [_row("PowerShell Transcript Logs", "STAGED")]
+    (active_extractions / "_artifact_completeness.json").write_text(
+        json.dumps(active_rows), encoding="utf-8"
+    )
+    (old_run / "extractions" / "_artifact_completeness.json").write_text(
+        json.dumps([_row("PowerShell Transcript Logs", "PRESENT_NO_PARSER")]),
+        encoding="utf-8",
+    )
+    (case / "active_runs.json").write_text(
+        json.dumps({"tools": active_id}), encoding="utf-8"
+    )
+    (case / "evidence.json").write_text("[]", encoding="utf-8")
+
+    from nexus.langgraph.lane_gate import write_lane_gate
+
+    write_lane_gate(
+        case,
+        old_id,
+        [{"tool": old_id, "purpose": "old lane row", "status": "OK"}],
+    )
+    result = reconcile_after_index(
+        case,
+        {"pstranscript/x.txt": {"docs": 5, "deduped": 0}},
+        run_id=active_id,
+    )
+
+    assert result["changed"] == 1
+    active_after = json.loads(
+        (active_extractions / "_artifact_completeness.json").read_text(encoding="utf-8")
+    )
+    old_after = json.loads(
+        (old_run / "extractions" / "_artifact_completeness.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert active_after[0]["status"] == "PARSED"
+    assert old_after[0]["status"] == "PRESENT_NO_PARSER"
+    gate = read_lane_gate(case)
+    assert gate["run_id"] == active_id
+    assert gate["jobs"][0]["tool"] == active_id

@@ -446,7 +446,7 @@ def playbook_strong_terms_for_families(families: set[str] | list[str] | None) ->
     return filter_scannable(_dedupe(out))
 
 
-def _present_families(case_dir: Path) -> list[str]:
+def _present_families(case_dir: Path, run_id: str = "") -> list[str]:
     """This case's evidence families, from its own tool-run ledger.
 
     WO-R1F item 6: with no playbooks, the needle packs are chosen from the
@@ -457,7 +457,9 @@ def _present_families(case_dir: Path) -> list[str]:
 
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    ledger_path = resolve_tools_extractions(Path(case_dir)) / "_tool_lane_ledger.json"
+    ledger_path = resolve_tools_extractions(
+        Path(case_dir), run_id=run_id
+    ) / "_tool_lane_ledger.json"
     if not ledger_path.is_file():
         return []
     try:
@@ -1915,6 +1917,7 @@ def build_query_pack_markdown(
     case_dir: Path,
     ledger: list[dict[str, Any]] | None = None,
     intake: dict[str, str] | None = None,
+    run_id: str = "",
 ) -> str:
     case_dir = Path(case_dir)
     intake = intake if intake is not None else load_case_intake(case_dir)
@@ -1926,7 +1929,7 @@ def build_query_pack_markdown(
     derived_from_families: list[str] = []
     if not str(intake.get("playbooks") or "").strip():
         try:
-            families_present = _present_families(case_dir)
+            families_present = _present_families(case_dir, run_id=run_id)
             derived_from_families = _dedupe(
                 playbook_strong_terms_for_families(families_present)
                 + playbook_terms_for_families(families_present)
@@ -1938,7 +1941,8 @@ def build_query_pack_markdown(
     window = parse_intake_window(intake)
     pack_stats: dict[str, Any] = {}
     hits, backend = n4_hits(
-        case_dir, terms, window, priority_terms=pb_terms, stats=pack_stats
+        case_dir, terms, window, priority_terms=pb_terms, stats=pack_stats,
+        run_id=run_id,
     )
 
     if ledger is None:
@@ -2019,19 +2023,20 @@ def write_query_pack(
     ledger: list[dict[str, Any]] | None = None,
     intake: dict[str, str] | None = None,
     output_dir: Path | None = None,
+    run_id: str = "",
 ) -> Path:
     case_dir = Path(case_dir)
     out_dir = Path(output_dir) if output_dir else case_dir / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "query_pack.md"
     path.write_text(
-        build_query_pack_markdown(case_dir, ledger, intake),
+        build_query_pack_markdown(case_dir, ledger, intake, run_id=run_id),
         encoding="utf-8",
     )
     try:
         from nexus.langgraph.timeline_merge import rebuild_case_timeline
 
-        rebuild_case_timeline(case_dir)
+        rebuild_case_timeline(case_dir, run_id=run_id)
     except Exception:
         pass
     return path

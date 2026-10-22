@@ -20,14 +20,20 @@ def _head_text(path: Path, limit: int = _MAX_PER_FILE) -> str:
     return raw[:limit] + f"\n... [truncated {len(raw) - limit} bytes] ..."
 
 
-def build_snippets_markdown(case_dir: Path, ledger: list[dict[str, Any]] | None = None) -> str:
+def build_snippets_markdown(
+    case_dir: Path,
+    ledger: list[dict[str, Any]] | None = None,
+    *,
+    run_dir: Path | None = None,
+) -> str:
     """Collect heads of stdout/CSV outputs for Windows + pulled SIFT trees."""
     case_dir = Path(case_dir)
+    output_root = Path(run_dir) if run_dir is not None else case_dir
     parts: list[str] = ["# Tool output snippets (for interpretation)\n"]
     total = 0
 
     if ledger is None:
-        lp = case_dir / "extractions" / "_tool_lane_ledger.json"
+        lp = output_root / "extractions" / "_tool_lane_ledger.json"
         if lp.is_file():
             try:
                 ledger = json.loads(lp.read_text(encoding="utf-8"))
@@ -47,8 +53,8 @@ def build_snippets_markdown(case_dir: Path, ledger: list[dict[str, Any]] | None 
     parts.append("")
 
     roots = [
-        ("windows", case_dir / "extractions"),
-        ("sift", case_dir / "sift" / "extractions"),
+        ("windows", output_root / "extractions"),
+        ("sift", output_root / "sift" / "extractions"),
     ]
     # Prefer high-signal small files first so vol/fls/LNK are not crowded out
     preferred_names = (
@@ -101,17 +107,24 @@ def build_snippets_markdown(case_dir: Path, ledger: list[dict[str, Any]] | None 
     return "\n".join(parts)
 
 
-def write_snippets(case_dir: Path, ledger: list[dict[str, Any]] | None = None) -> Path:
+def write_snippets(
+    case_dir: Path,
+    ledger: list[dict[str, Any]] | None = None,
+    *,
+    run_dir: Path | None = None,
+    run_id: str = "",
+) -> Path:
     case_dir = Path(case_dir)
-    out_dir = case_dir / "analysis"
+    output_root = Path(run_dir) if run_dir is not None else case_dir
+    out_dir = output_root / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
-    md = build_snippets_markdown(case_dir, ledger)
+    md = build_snippets_markdown(case_dir, ledger, run_dir=run_dir)
     path = out_dir / "snippets.md"
     path.write_text(md, encoding="utf-8")
     try:
         from nexus.langgraph.query_pack import write_query_pack
 
-        write_query_pack(case_dir, ledger)
+        write_query_pack(case_dir, ledger, output_dir=out_dir, run_id=run_id)
     except Exception as exc:  # noqa: BLE001
         import logging
 

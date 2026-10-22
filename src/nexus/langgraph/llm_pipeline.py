@@ -1320,7 +1320,9 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         load_manifest(tools_run.path).get("evidence_paths") or [],
         parent_run_id=tools_run.run_id,
     )
-    write_snippets(tools_run.path, ledger)
+    write_snippets(
+        case_dir, ledger, run_dir=tools_run.path, run_id=tools_run.run_id
+    )
     intake = load_case_intake(case_dir)
     ctx = dict(state.get("case_context") or {})
     for key, val in intake.items():

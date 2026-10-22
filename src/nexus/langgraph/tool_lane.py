@@ -4655,7 +4655,9 @@ async def run_tool_lane(
     try:
         from nexus.langgraph.snippets import write_snippets
 
-        snip = write_snippets(pipeline_run.path, ledger)
+        snip = write_snippets(
+            case_dir, ledger, run_dir=pipeline_run.path, run_id=run_id
+        )
         summary = f"{summary}; snippets={snip}"
     except Exception as exc:  # noqa: BLE001
         log.warning("snippet write failed: %s", exc)

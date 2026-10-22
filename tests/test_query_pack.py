@@ -228,6 +228,69 @@ def test_write_snippets_also_writes_query_pack(tmp_path: Path):
     assert "sdelete" in qp.lower()
 
 
+def test_run_scoped_snippets_keep_case_intake_and_run_scope(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import query_pack, timeline_merge
+    from nexus.langgraph.snippets import write_snippets
+
+    case = tmp_path / "case"
+    run_id = "RUN-20261022T000000000000Z-tools-test"
+    run_dir = case / "runs" / run_id
+    (run_dir / "extractions").mkdir(parents=True)
+    (case / "CASE.yaml").write_text(
+        "intake:\n  question: Compromise suspected.\n  set_by: examiner\n",
+        encoding="utf-8",
+    )
+    observed: dict[str, object] = {}
+
+    def present_families(case_dir: Path, run_id: str = "") -> list[str]:
+        observed["family_case"] = Path(case_dir)
+        observed["family_run_id"] = run_id
+        return ["hayabusa"]
+
+    def n4_hits(
+        case_dir: Path,
+        terms: list[str],
+        window,
+        priority_terms=None,
+        backend=None,
+        query=None,
+        match_all=False,
+        stats=None,
+        catalog=None,
+        run_id: str = "",
+    ):
+        observed["n4_case"] = Path(case_dir)
+        observed["n4_terms"] = terms
+        observed["n4_priority_terms"] = priority_terms
+        observed["n4_run_id"] = run_id
+        return [], "csv"
+
+    def rebuild(case_dir: Path, run_id: str = "") -> list[dict]:
+        observed["timeline_case"] = Path(case_dir)
+        observed["timeline_run_id"] = run_id
+        return []
+
+    monkeypatch.setattr(query_pack, "_present_families", present_families)
+    monkeypatch.setattr(query_pack, "n4_hits", n4_hits)
+    monkeypatch.setattr(timeline_merge, "rebuild_case_timeline", rebuild)
+
+    written = write_snippets(case, [], run_dir=run_dir, run_id=run_id)
+
+    assert written == run_dir / "analysis" / "snippets.md"
+    pack_path = run_dir / "analysis" / "query_pack.md"
+    pack = pack_path.read_text(encoding="utf-8")
+    assert "question: Compromise suspected." in pack
+    assert observed["family_case"] == case
+    assert observed["family_run_id"] == run_id
+    assert observed["n4_case"] == case
+    assert observed["n4_terms"] == query_pack.collect_query_terms(
+        query_pack.load_case_intake(case)
+    )
+    assert observed["n4_run_id"] == run_id
+    assert observed["timeline_case"] == case
+    assert observed["timeline_run_id"] == run_id
+
+
 def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     from nexus.langgraph.query_pack import run_ad_hoc_query
 

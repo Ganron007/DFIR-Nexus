@@ -1689,7 +1689,9 @@ def index_case(
     try:
         from nexus.langgraph.lane_gate import reconcile_after_index
 
-        reconcile_after_index(case_dir, meta.get("file_counts") or {})
+        reconcile_after_index(
+            case_dir, meta.get("file_counts") or {}, run_id=run_id
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning("gate reconciliation after indexing failed: %s", exc)
     _schema_cache.pop(case_dir.name, None)

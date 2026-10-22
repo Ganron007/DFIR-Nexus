@@ -639,7 +639,11 @@ def _read_json_list(path: Path) -> list[Any]:
     return loaded if isinstance(loaded, list) else []
 
 
-def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> dict[str, int]:
+def reconcile_after_index(
+    case_dir: Path | str,
+    file_counts: dict[str, Any],
+    run_id: str = "",
+) -> dict[str, int]:
     """Re-derive the gate from what the index now holds (WO-TA item 9).
 
     The completeness table is built before anything is indexed, so an artifact the lane copied into
@@ -652,7 +656,7 @@ def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> 
 
     case_dir = Path(case_dir)
     try:
-        extractions = resolve_tools_extractions(case_dir)
+        extractions = resolve_tools_extractions(case_dir, run_id=run_id)
     except ValueError:
         return {"changed": 0}
     comp_path = extractions / "_artifact_completeness.json"
@@ -689,7 +693,7 @@ def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> 
         return {"changed": changed}
     ledger = _read_json_list(extractions / "_tool_lane_ledger.json")
     write_lane_gate(
-        case_dir, extractions.parent.name, ledger,
+        case_dir, run_id or extractions.parent.name, ledger,
         registered_evidence=evidence, completeness=rows,
     )
     return {"changed": changed}
