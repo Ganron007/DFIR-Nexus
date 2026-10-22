@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)] [string] $CaseId,
     [Parameter(Mandatory)] [string] $Tag,
     [switch] $Sift,
+    [switch] $PreflightOnly,
     [string] $Capture = '',
     [string] $SiftHost = '192.168.77.135'
 )
@@ -27,6 +28,46 @@ $trace = Join-Path $repo "cases\$CaseId\.trace"
 New-Item -ItemType Directory -Force $trace | Out-Null
 $log = Join-Path $trace "lane-$Tag.log"
 $env:PYTHONIOENCODING = 'utf-8'
+
+# Worktrees share the ignored tool installation through the main checkout. Resolve the
+# Git common directory instead of trusting a caller-provided NEXUS_TOOL_PATHS value.
+$gitCommonDir = & git rev-parse --path-format=absolute --git-common-dir
+if ($LASTEXITCODE -ne 0 -or -not $gitCommonDir) {
+    throw 'Cannot resolve the repository Git common directory; refusing to run the lane.'
+}
+$mainRepo = Split-Path -Parent $gitCommonDir.Trim()
+$toolRoot = Join-Path $mainRepo 'Tools\windows'
+if (-not (Test-Path -LiteralPath $toolRoot -PathType Container)) {
+    throw "Shared Windows tool root is missing at '$toolRoot'; refusing to run the lane."
+}
+$env:NEXUS_TOOL_PATHS = $toolRoot
+$resolvedEvtxECmd = & python -c "from nexus.tools.windows import _find_binary; print(_find_binary('evtxecmd') or '')" 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $resolvedEvtxECmd) {
+    $message = 'EvtxECmd resolver preflight could not find a binary; refusing to run the lane.'
+    $message | Tee-Object -FilePath $log -Append
+    throw $message
+}
+$resolvedEvtxECmd = $resolvedEvtxECmd.Trim()
+if (-not (Test-Path -LiteralPath $resolvedEvtxECmd -PathType Leaf)) {
+    $message = "EvtxECmd resolver returned a missing path '$resolvedEvtxECmd'; refusing to run the lane."
+    $message | Tee-Object -FilePath $log -Append
+    throw $message
+}
+$evtxVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedEvtxECmd).FileVersion
+$evtxSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedEvtxECmd).Hash.ToUpperInvariant()
+$expectedEvtxSha256 = '5A179DEBEB9157A0712F2512136C75D1402CD63A24A22D7A9EAD5AC9CE1B04E1'
+$preflight = "EvtxECmd preflight: path=$resolvedEvtxECmd version=$evtxVersion sha256=$evtxSha256"
+$preflight | Tee-Object -FilePath $log -Append
+if ($evtxVersion -ne '2026.10.0.0' -or $evtxSha256 -ne $expectedEvtxSha256) {
+    $message = "EvtxECmd preflight rejected version '$evtxVersion' / SHA-256 '$evtxSha256'; expected 2026.10.0.0 / $expectedEvtxSha256. Refusing to process evidence."
+    $message | Tee-Object -FilePath $log -Append
+    throw $message
+}
+if ($PreflightOnly) {
+    Write-Output $preflight
+    exit 0
+}
+
 foreach ($n in 'NEXUS_SIFT_MCP_URL', 'NEXUS_SIFT_EVIDENCE_ROOT', 'NEXUS_SIFT_ZEEK', 'NEXUS_WINDOWS_MCP_URL') {
     Remove-Item "Env:$n" -ErrorAction SilentlyContinue
 }
