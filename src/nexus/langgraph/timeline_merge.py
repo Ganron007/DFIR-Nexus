@@ -518,13 +518,23 @@ def ingest_into_case(
             "path": str(original),
         }
     stored = 0
+    import_context: dict[str, Any] = {}
+    if getattr(resolved, "value", resolved) == "scheduled_tasks":
+        from nexus.ingest.windows_timezones import record_case_host_timezones
+
+        import_context["host_timezones"] = record_case_host_timezones(Path(case_dir))
 
     def _store(batch: list[Any]) -> None:
         nonlocal stored
         append_ingest_artifacts(case_dir, batch)
         stored += len(batch)
 
-    result = get_registry().import_path(path, source=resolved, on_batch=_store)
+    result = get_registry().import_path(
+        path,
+        source=resolved,
+        on_batch=_store,
+        context=import_context,
+    )
     if audit:
         with contextlib.suppress(Exception):
             from nexus.audit import AuditWriter

@@ -967,7 +967,10 @@ def iter_index_doc_batches(
             }
             doc["ts_src"] = "synthesized" if synth else "event"
             doc["ts_precision"] = ts_info["precision"]
-            if ts_info["tz_assumed"]:
+            explicit_tz = bool(fields) and str(
+                fields.get("ts_tz_assumed") or ""
+            ).lower() in {"true", "1", "yes"}
+            if ts_info["tz_assumed"] or explicit_tz:
                 doc["ts_tz_assumed"] = True
             explicit_year = bool(fields) and str(
                 fields.get("ts_year_assumed") or ""
@@ -977,7 +980,7 @@ def iter_index_doc_batches(
             cov["present"] += 1
             if synth:
                 cov["synthesized"] += 1
-            if ts_info["tz_assumed"]:
+            if ts_info["tz_assumed"] or explicit_tz:
                 cov["tz_assumed"] += 1
             explicit_year_flag = bool(fields) and str(
                 fields.get("ts_year_assumed") or ""
@@ -1027,7 +1030,7 @@ def iter_index_doc_batches(
                 "source", "artifact_type", "severity", "timestamp", "host",
                 "user", "source_ip", "source_port", "dest_ip", "dest_port",
                 "protocol", "description",
-                "ts_synthesized", "ts_year_assumed",
+                "ts_synthesized", "ts_year_assumed", "ts_tz_assumed",
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):
@@ -1065,6 +1068,9 @@ def iter_index_doc_batches(
                     ("task_uri", raw.get("uri")),
                     ("task_author", raw.get("author")),
                     ("task_registration_date", raw.get("registration_date")),
+                    ("task_timezone_assumed", raw.get("timezone_assumed")),
+                    ("task_timezone_key_name", raw.get("timezone_key_name")),
+                    ("task_timezone_iana", raw.get("timezone_iana")),
                     ("principal_user_id", raw.get("principal_user_id")),
                     ("run_level", raw.get("run_level")),
                     ("logon_type", raw.get("logon_type")),

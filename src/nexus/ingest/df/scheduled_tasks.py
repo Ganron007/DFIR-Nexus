@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 from xml.etree import ElementTree as ET
+from zoneinfo import ZoneInfoNotFoundError
 
 from nexus.ingest.base import Importer
 from nexus.ingest.schemas import (
@@ -175,17 +176,39 @@ def _task_definition_head(path: Path) -> bool:
     return "<Task" in text or "<?xml" in text
 
 
-def _registration_datetime(record: dict[str, Any]) -> datetime | None:
+def _registration_datetime(
+    record: dict[str, Any], timezone_info: dict[str, Any] | None = None,
+) -> tuple[datetime | None, bool]:
+    """Return UTC time plus whether a naive source time's zone was assumed."""
     raw = str(record.get("registration_date") or "").strip()
     if not raw:
-        return None
+        return None, False
     try:
         parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed
+        return None, False
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(UTC), False
+    if not timezone_info:
+        return parsed.replace(tzinfo=UTC), True
+    try:
+        from nexus.ingest.windows_timezones import _pinned_zoneinfo
+
+        zone, _tzif_sha256 = _pinned_zoneinfo(str(timezone_info["iana_timezone"]))
+        first = parsed.replace(tzinfo=zone, fold=0)
+        second = parsed.replace(tzinfo=zone, fold=1)
+        # A repeated wall time has two valid UTC instants; the registry key
+        # alone cannot identify which one Task Scheduler recorded.
+        if first.utcoffset() != second.utcoffset():
+            return parsed.replace(tzinfo=UTC), True
+        utc = first.astimezone(UTC)
+        round_trip = utc.astimezone(zone).replace(tzinfo=None)
+        # A wall time in a DST spring-forward gap has no corresponding instant.
+        if round_trip != parsed:
+            return parsed.replace(tzinfo=UTC), True
+        return utc, False
+    except (KeyError, ZoneInfoNotFoundError, ValueError):
+        return parsed.replace(tzinfo=UTC), True
 
 
 class ScheduledTasksImporter(Importer):
@@ -249,12 +272,34 @@ class ScheduledTasksImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact from a scheduled task XML."""
+        yield from self._parse(path, None)
+
+    def parse_with_context(
+        self, path: Path, context: dict[str, Any],
+    ) -> Iterator[Artifact]:
+        """Apply only timezone evidence matched to this task's Windows root."""
+        from nexus.ingest.windows_timezones import timezone_for_task
+
+        timezone_info = timezone_for_task(
+            path, context.get("host_timezones") or [],
+        )
+        yield from self._parse(path, timezone_info)
+
+    def _parse(
+        self, path: Path, timezone_info: dict[str, Any] | None,
+    ) -> Iterator[Artifact]:
         record = parse_task_record(path)
         if record is None:
             log.debug("Could not parse task XML: %s", path)
             return
 
-        ts = _registration_datetime(record)
+        ts, timezone_assumed = _registration_datetime(record, timezone_info)
+        record["timezone_assumed"] = timezone_assumed
+        if timezone_info:
+            record["timezone_key_name"] = timezone_info.get("windows_timezone") or ""
+            record["timezone_iana"] = timezone_info.get("iana_timezone") or ""
+            record["timezone_source_file"] = timezone_info.get("source_file") or ""
+            record["timezone_source_sha256"] = timezone_info.get("source_sha256") or ""
         ts_synthesized = ts is None
         if ts is None:
             try:
@@ -307,6 +352,7 @@ class ScheduledTasksImporter(Importer):
             raw=record,
             technique_ids=technique_ids,
             tags=["scheduled_task", f"author.{record.get('author') or 'unknown'}"],
+            ts_tz_assumed=timezone_assumed,
         )
 
     def _compute_severity(self, record: dict[str, Any]) -> Severity:
