@@ -371,6 +371,32 @@ def test_n4_returns_every_row_from_one_file_and_pages_without_loss(tmp_path: Pat
     assert final["next_offset"] is None
 
 
+def test_n4_snapshots_path_roots_once_for_all_rows(tmp_path: Path, monkeypatch):
+    """Path sanitization reuses one case-root snapshot for the whole scan."""
+    from nexus.langgraph import query_pack
+
+    case = tmp_path / "CASE-ROOT-SNAPSHOT"
+    output = case / "extractions" / "evtxecmd"
+    output.mkdir(parents=True)
+    (output / "events.csv").write_text(
+        "Message\nC:\\Evidence\\payload.exe\nC:\\Evidence\\payload.exe\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def roots(case_dir):
+        calls.append(case_dir)
+        return [(r"C:\Evidence", "<evidence>")]
+
+    monkeypatch.setattr(query_pack, "machine_roots", roots)
+    hits = query_pack.scan_extractions(case, ["payload"], (None, None))
+
+    assert len(calls) == 1
+    assert len(hits) == 2
+    assert all("<evidence>" in hit["text"] for hit in hits)
+    assert all(r"C:\Evidence" not in hit["text"] for hit in hits)
+
+
 def test_n4_scans_hayabusa_named_file(tmp_path: Path):
     hay = tmp_path / "extractions" / "hayabusa"
     hay.mkdir(parents=True)

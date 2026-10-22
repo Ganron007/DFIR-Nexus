@@ -133,7 +133,7 @@ def test_es_scan_pages_until_every_row_is_returned(monkeypatch, tmp_path):
     assert stats["search_pages"] == 2
     assert len(hits) == 450
 
-def test_attach_hit_fields_ingest_uses_cached_line_index(tmp_path):
+def test_attach_hit_fields_ingest_uses_cached_line_index(tmp_path, monkeypatch):
     """EH-10: N ingest hits must not re-scan artifacts.jsonl N times."""
     import json as _json
 
@@ -151,6 +151,10 @@ def test_attach_hit_fields_ingest_uses_cached_line_index(tmp_path):
         for i in range(60)
     ]
     (store / "artifacts.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    root_calls = []
+    monkeypatch.setattr(
+        query_pack, "machine_roots", lambda case_dir: root_calls.append(case_dir) or []
+    )
 
     hits = [
         {"family": "suricata", "file": "ingest/artifacts.jsonl", "line": str(i + 1),
@@ -159,10 +163,12 @@ def test_attach_hit_fields_ingest_uses_cached_line_index(tmp_path):
     ]
     query_pack._ingest_line_cache.clear()  # global cache — other tests may have filled it
     out = attach_hit_fields(case, hits)
+    assert root_calls == [case]
     assert out and out[0]["fields"]["source"] == "suricata"
     assert out[-1]["fields"]["description"] == "flow 55"
     assert len(query_pack._ingest_line_cache) == 1
     # second call reuses the cache (no second entry for the same store)
     snapshot = dict(query_pack._ingest_line_cache)
     attach_hit_fields(case, hits)
+    assert root_calls == [case, case]
     assert query_pack._ingest_line_cache == snapshot

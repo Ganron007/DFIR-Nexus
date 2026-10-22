@@ -16,6 +16,7 @@ from typing import Any
 
 from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.path_sanitize import (
+    machine_roots,
     sanitize_field_map,
     sanitize_row_text,
 )
@@ -654,6 +655,7 @@ def _hits_from_file(
     query: Any | None = None,
     match_all: bool = False,
     case_dir: Path | None = None,
+    roots: list[tuple[str, str]] | None = None,
     stats: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Return every matching row, ranking strong matches before weaker ones."""
@@ -668,7 +670,9 @@ def _hits_from_file(
         ):
             # Source/provenance columns carry the machine path the parser read:
             # replace them outright, then normalize remaining machine prefixes.
-            line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
+            line = sanitize_row_text(
+                line, raw_fields, case_dir, roots=roots, family=fam
+            )
             low = line.lower()
             classified: dict[str, Any] = {
                 "signal": [], "facts": [], "weak": [], "sites": [],
@@ -677,7 +681,9 @@ def _hits_from_file(
                 from nexus.langgraph.query_dsl import row_matches
 
                 row_fields = (
-                    sanitize_field_map(raw_fields, case_dir, family=fam)
+                    sanitize_field_map(
+                        raw_fields, case_dir, roots=roots, family=fam
+                    )
                     if raw_fields else None
                 )
                 ok, matched = row_matches(
@@ -807,6 +813,7 @@ def _hits_from_ingest(
     query: Any | None = None,
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
+    roots: list[tuple[str, str]] | None = None,
 ) -> list[dict[str, str]]:
     """Same matching semantics as ``_hits_from_file`` over the artifact store.
 
@@ -814,7 +821,7 @@ def _hits_from_ingest(
     """
     hits: list[dict[str, Any]] = []
     for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
-        text = sanitize_row_text(text, record, case_dir, family=fam)
+        text = sanitize_row_text(text, record, case_dir, roots=roots, family=fam)
         low = text.lower()
         classified: dict[str, Any] = {
             "signal": [], "facts": [], "weak": [], "sites": [],
@@ -828,6 +835,7 @@ def _hits_from_ingest(
                     if v not in (None, "", [], {})
                 },
                 case_dir,
+                roots=roots,
                 family=fam,
             )
             ok, matched = row_matches(
@@ -845,6 +853,7 @@ def _hits_from_ingest(
                         if v not in (None, "", [], {})
                     },
                     case_dir,
+                    roots=roots,
                     family=fam,
                 )
                 classified = classify_matched_terms(
@@ -1251,6 +1260,7 @@ def attach_hit_fields(
         return hits
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
+    roots = machine_roots(case_dir)
     tools_root = resolve_tools_extractions(case_dir, run_id)
     # Hits can come from the tools run, the SIFT mirror, or the ingest store —
     # resolve the source file against every candidate root.
@@ -1328,7 +1338,7 @@ def attach_hit_fields(
             m = _HOST_RE.search(h.get("text", "")) or _UNC_RE.search(h.get("text", ""))
             host = (m.group(1) if m else "").rstrip(".").lower()
         row["fields"] = sanitize_field_map(
-            fields, case_dir, family=str(h.get("family") or "")
+            fields, case_dir, roots=roots, family=str(h.get("family") or "")
         )
         # Never clobber an envelope host the backend already resolved
         # (ES schema-v2 hits carry `host`; CSV rows often don't).
@@ -1631,13 +1641,17 @@ def scan_extractions(
         return hits
 
     scan_stats = stats if stats is not None else {}
+    # Evidence roots are stable for one scan. Snapshot once so sanitizing every
+    # row does not stat evidence.json and rebuild the same root list per row.
+    roots = machine_roots(case_dir)
     for path, root, fam in iter_extraction_files(
         case_dir, stats=scan_stats, run_id=run_id,
     ):
         try:
             file_hits, _ = _hits_from_file(
                 path, root, fam, needles, strong, start, end,
-                query=query, match_all=match_all, case_dir=case_dir, stats=scan_stats,
+                query=query, match_all=match_all, case_dir=case_dir,
+                roots=roots, stats=scan_stats,
             )
         except OSError:
             scan_stats["files_unreadable"] = int(scan_stats.get("files_unreadable", 0)) + 1
@@ -1648,7 +1662,7 @@ def scan_extractions(
     hits.extend(
         _hits_from_ingest(
             case_dir, needles, start, end,
-            query=query, match_all=match_all, stats=scan_stats,
+            query=query, match_all=match_all, stats=scan_stats, roots=roots,
         )
     )
     final = finalize_hits(hits, terms, priority_terms)
@@ -1697,6 +1711,7 @@ def _iter_matching_rows(
     query: Any | None = None,
     match_all: bool = False,
     header: list[str] | None = None,
+    roots: list[tuple[str, str]] | None = None,
 ):
     """Yield (line_no, matched_terms, text) for EVERY matching row (EH-12).
 
@@ -1711,13 +1726,17 @@ def _iter_matching_rows(
         for i, line, raw_fields in iter_indexable_rows(path, fh, header):
             # Source/provenance columns carry the machine path the parser read:
             # replace them outright, then normalize remaining machine prefixes.
-            line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
+            line = sanitize_row_text(
+                line, raw_fields, case_dir, roots=roots, family=fam
+            )
             low = line.lower()
             if query is not None:
                 from nexus.langgraph.query_dsl import row_matches
 
                 row_fields = (
-                    sanitize_field_map(raw_fields, case_dir, family=fam)
+                    sanitize_field_map(
+                        raw_fields, case_dir, roots=roots, family=fam
+                    )
                     if raw_fields else None
                 )
                 ok, matched = row_matches(
@@ -1748,6 +1767,7 @@ def iter_extraction_hits(
 ):
     """Stream every matching parsed-CSV row (no caps) — EH-12 CSV path."""
     case_dir = Path(case_dir)
+    roots = machine_roots(case_dir)
     file_stats: dict[str, Any] = {}
     for path, root, fam in iter_extraction_files(
         case_dir, stats=file_stats,
@@ -1763,7 +1783,7 @@ def iter_extraction_hits(
                 header = _header_for_file(root, rel)
             for i, matched, text in _iter_matching_rows(
                 path, root, fam, needles, start, end,
-                query=query, match_all=match_all, header=header,
+                query=query, match_all=match_all, header=header, roots=roots,
             ):
                 yield {
                     "family": fam,
@@ -1791,8 +1811,10 @@ def iter_ingest_hits(
     stats: dict[str, Any] | None = None,
 ):
     """Stream every matching imported-evidence row (no caps) — EH-12."""
+    case_dir = Path(case_dir)
+    roots = machine_roots(case_dir)
     for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
-        text = sanitize_row_text(text, record, case_dir, family=fam)
+        text = sanitize_row_text(text, record, case_dir, roots=roots, family=fam)
         low = text.lower()
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
@@ -1803,6 +1825,7 @@ def iter_ingest_hits(
                     if v not in (None, "", [], {})
                 },
                 case_dir,
+                roots=roots,
                 family=fam,
             )
             ok, matched = row_matches(
