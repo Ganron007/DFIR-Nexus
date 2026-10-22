@@ -116,35 +116,14 @@ def disable(case: str = typer.Option("", "--case", help="Case id or directory (r
 
 
 #: The SIFT MCP runs the host's copy of src/nexus, not this tree. A host that is not synced runs old code
-#: without any sign of it (D108), so setup compares the two before it starts or restarts the server.
-def code_manifest(src_dir: Path) -> dict[str, str]:
-    """SHA-256 of every file under ``src_dir/nexus``, keyed by its path relative to ``src_dir``."""
-    import hashlib
-
-    manifest: dict[str, str] = {}
-    for path in sorted((src_dir / "nexus").rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts:
-            manifest[path.relative_to(src_dir).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return manifest
-
-
-def parse_sha256sum(text: str) -> dict[str, str]:
-    """{path: sha256} from ``sha256sum`` output: one ``<digest>  <path>`` line per file."""
-    manifest: dict[str, str] = {}
-    for line in text.splitlines():
-        digest, _, path = line.strip().partition("  ")
-        if len(digest) == 64 and path:
-            manifest[path] = digest
-    return manifest
-
-
-def compare_manifests(local: dict[str, str], host: dict[str, str]) -> dict[str, list[str]]:
-    """The paths that differ between this tree and the host: changed, only here, only on the host."""
-    return {
-        "changed": sorted(p for p in local.keys() & host.keys() if local[p] != host[p]),
-        "local_only": sorted(local.keys() - host.keys()),
-        "host_only": sorted(host.keys() - local.keys()),
-    }
+#: without any sign of it (D108), so setup compares the two before it starts or restarts the server; the lane
+#: compares them again before it hands the host a job (D148). One implementation, in `nexus.case.sift_parity`.
+from nexus.case.sift_parity import (  # noqa: E402
+    HOST_LISTING,
+    code_manifest,
+    compare_manifests,
+    parse_sha256sum,
+)
 
 
 def push_code(src_dir: Path, ssh_base: list[str]) -> bool:
@@ -254,8 +233,7 @@ def setup(
     # D108: the MCP runs the host's src/nexus. Compare it with this tree before anything is started or restarted.
     src_dir = _P(__file__).resolve().parents[2]
     local_code = code_manifest(src_dir)
-    rc, out = _ssh("cd ~/DFIR-Nexus/src && find nexus -type f -not -path '*/__pycache__/*' "
-                   "| LC_ALL=C sort | xargs sha256sum")
+    rc, out = _ssh(HOST_LISTING)
     host_code = parse_sha256sum(out) if rc == 0 else {}
     if not host_code:
         typer.echo(f"  code: could not read the host's src/nexus ({out.strip()[:160]})", err=True)
