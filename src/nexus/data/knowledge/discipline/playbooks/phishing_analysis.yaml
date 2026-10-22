@@ -50,3 +50,5 @@ caveats:
   - "URLs in the body may be wrapped/rewritten by safe-link gateways — collect the ORIGINAL URL from the raw .eml, not the client display."
   - "Attachment hashes should be SHA256 of the raw attachment, not the container message."
   - "Never open attachments or URLs on a production host — use the REMnux/detonation lane."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): email <- step "Preserve the full .eml/.msg with headers"
+families: [email]

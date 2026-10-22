@@ -42,3 +42,5 @@ phases:
     steps:
       - "Correlate encryption start time with process execution (Prefetch/Amcache/4688)"
       - "Check network for exfil before encryption"
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- step "Check for vssadmin/wmic shadow copy deletion"; evtxecmd <- step "Check for vssadmin/wmic shadow copy deletion"; hayabusa <- step "Check for vssadmin/wmic shadow copy deletion"; mftecmd <- step "Look for ransom notes (README/DECRYPT/RESTORE) and renamed extensions"
+families: [chainsaw, evtxecmd, hayabusa, mftecmd]

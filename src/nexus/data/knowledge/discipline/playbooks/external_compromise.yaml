@@ -34,3 +34,5 @@ caveats:
   - "SIEM/EDR exports are INGEST evidence (another system's view), not direct host acquisition — cite them as corroboration, not primary host artifacts."
   - "Cobalt Strike 'beacon' hits in host CSVs can be false positives on the literal word — require process/network context before claiming C2."
   - "Do not force an APT/threat-actor name onto findings — describe the behavior and let the examiner attribute."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): amcache <- artifact Amcache (AmcacheParser); chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- artifact Scheduled Tasks (EvtxECmd); hayabusa <- artifact Scheduled Tasks (Hayabusa); pecmd <- artifact Prefetch (PECmd); recmd <- artifact Amcache (RECmd); zircolite <- event logs
+families: [amcache, chainsaw, deepbluecli, evtxecmd, hayabusa, pecmd, recmd, zircolite]

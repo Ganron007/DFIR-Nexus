@@ -54,3 +54,5 @@ caveats:
   - "Suricata: config /etc/suricata/suricata.yaml (test with -T); logs at /var/log/suricata (fast.log alerts, eve.json structured, stats.log); custom rules in /var/lib/suricata/rules/local.rules; reload with kill -USR2 $(pidof suricata)."
   - "OS fingerprinting from TTL: Windows ~128, Linux/Mac ~64, some Unix 255; TCP window size hints (Linux 2920-5840, Mac 65535) — use for initial OS attribution only, TTL can be rewritten."
   - "Elastic/Packetbeat exfil hunting: agent.type:'packetbeat' AND type:dns AND NOT dns.response_code:'NOERROR' — NXDOMAIN bursts and randomized subdomains are exfil signals (CCD Module 8)."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; zeek <- names zeek; zircolite <- event logs
+families: [chainsaw, deepbluecli, evtxecmd, hayabusa, zeek, zircolite]

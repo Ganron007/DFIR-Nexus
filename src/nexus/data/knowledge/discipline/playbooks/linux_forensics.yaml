@@ -82,3 +82,5 @@ caveats:
   - "touch -t and touch -r modify atime/mtime ONLY — ctime and birth time survive, which is the timestomping tell on ext4."
   - "dmesg is not persistent across reboots; the persistent kernel log is kern.log or the journal."
   - "Sysmon for Linux writes XML into syslog (Debian) or messages (Fedora) — parse accordingly."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): authlog <- step "Review auth.log/secure for accepted/failed password"; plaso <- step "Super-timeline with Plaso"; syslog <- step "syslog/messages"; volatility <- step "Volatility Linux requires a kernel"
+families: [authlog, plaso, syslog, volatility]

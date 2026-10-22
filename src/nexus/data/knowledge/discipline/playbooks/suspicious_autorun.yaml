@@ -67,3 +67,5 @@ caveats:
   - "Service control events: 7034 crashed, 7035 start/stop control, 7036 started/stopped, 7040 start-type changed."
   - "Use RECmd batch RegistryASEPs.reb to pull dozens of ASEP locations across SOFTWARE, SOFTWARE\\Classes, WOW64, and SYSTEM hives in one pass."
   - "Registry last-write time is the only registry timestamp — it proves 'no earlier than' for key creation and 'no later than' for last modification."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): bitsparser <- artifact BITS Jobs (BitsParser); chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- artifact Scheduled Tasks (EvtxECmd); hayabusa <- artifact Scheduled Tasks (Hayabusa); mftecmd <- artifact USN Journal (MFTECmd); rbcmd <- artifact Recycle Bin (RBCmd); recmd <- artifact Scheduled Tasks (RECmd); sigcheck <- artifact Digital Signatures (sigcheck); zircolite <- event logs
+families: [bitsparser, chainsaw, deepbluecli, evtxecmd, hayabusa, mftecmd, rbcmd, recmd, sigcheck, zircolite]

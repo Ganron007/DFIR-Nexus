@@ -94,3 +94,5 @@ caveats:
   - "Pagefile/swapfile are not parsed by Volatility/MemProcFS — use strings/bstrings. AV signature strings ('mimikatz', 'Cobalt Strike') appear in pagefile from scanner databases; correlate to a process before citing."
   - "Paged-out pages are not in the dump; MemCompression (Win10) can hide data. Absence in memory is not absence on disk."
   - "hashdump/cachedump require hive offsets from hivelist (-y System, -s SAM/Security)."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): amcache <- artifact Amcache (AmcacheParser); appcompat <- artifact ShimCache (AppCompatCacheParser); memprocfs <- names memprocfs; pecmd <- artifact Prefetch (PECmd); recmd <- artifact Amcache (RECmd); strings <- names strings; vol <- names vol
+families: [amcache, appcompat, memprocfs, pecmd, recmd, strings, vol]

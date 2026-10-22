@@ -38,12 +38,12 @@ def test_sigma_grounds_mode1_without_llm():
 
 
 def test_playbook_strong_terms_tiering():
-    strong = playbook_strong_terms_for_families({"powershell"})
-    assert any(t.lower() in ("-enc", "-encodedcommand", "frombase64string") for t in strong)
-    weak = playbook_terms_for_families({"powershell"})
-    assert set(t.lower() for t in strong) <= set(t.lower() for t in weak) | set(
-        t.lower() for t in strong
-    )
+    # EVTX is the lane's canonical family for Windows event-log output; the
+    # PowerShell playbook is selected from the log families it actually uses.
+    strong = {t.lower() for t in playbook_strong_terms_for_families({"evtxecmd"})}
+    assert {"-enc", "-encodedcommand", "frombase64string"} <= strong
+    weak = {t.lower() for t in playbook_terms_for_families({"evtxecmd"})}
+    assert {"-encodedcommand", "frombase64string"}.isdisjoint(weak)
 
 
 # --- H: labeled benchmark --------------------------------------------------

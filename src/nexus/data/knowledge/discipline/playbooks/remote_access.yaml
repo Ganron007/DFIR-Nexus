@@ -86,3 +86,5 @@ caveats:
   - "PsExec creates a NEW PSEXESVC service (and a new 7045) on EVERY run, even seconds apart — multiple 7045s are normal for repeated PsExec use."
   - "Event 4648 (explicit credentials / RunAs) often accompanies lateral movement with alternate credentials."
   - "RDPClient 1029 on the SOURCE contains a hash of the username, not the username — correlate by hash value across source systems."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): appcompat <- artifact ShimCache (AppCompatCacheParser); chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; kape <- names kape; mftecmd <- names MFTECmd; pecmd <- artifact Prefetch (PECmd); recmd <- artifact ShimCache (RECmd); srum <- names SrumECmd; zircolite <- event logs
+families: [appcompat, chainsaw, deepbluecli, evtxecmd, hayabusa, kape, mftecmd, pecmd, recmd, srum, zircolite]

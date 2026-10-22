@@ -56,3 +56,5 @@ caveats:
   - "NTFS stores times in UTC (100-nanosecond intervals since 1601-01-01); Prefetch/registry display local time — normalize before comparing."
   - "$SI vs $FN: timestomping tools typically alter $SI (the API-visible set); $FN is updated by the filesystem itself and is harder to forge — $SI earlier than $FN is the classic indicator."
   - "LINUX/ext4: touch -t and touch -r change atime/mtime ONLY — ctime and birth (CR) time survive; all-zero sub-seconds on BOTH atime and mtime is the programmatic tell. Attackers may also stop NTP, set the clock, drop files, then restart NTP."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): amcache <- artifact Amcache (AmcacheParser); appcompat <- artifact ShimCache (AppCompatCacheParser); mftecmd <- artifact MFT (MFTECmd); pecmd <- artifact Prefetch (PECmd); recmd <- artifact Amcache (RECmd)
+families: [amcache, appcompat, mftecmd, pecmd, recmd]

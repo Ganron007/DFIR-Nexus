@@ -77,3 +77,5 @@ caveats:
   - "Kerberos: 4768 TGT request, 4769 service ticket (0x17 RC4 = Kerberoasting candidate), 4771 pre-auth failed; 4776 = DC credential validation."
   - "LINUX hosts: /var/log/auth.log (Debian) or secure (RHEL) record PAM/sudo/sshd events; wtmp (last), btmp (lastb), utmp (who), lastlog are BINARY — parse dead images with last -F / lastb -F."
   - "System identity registry values for context: TimeZoneInformation and ComputerName (SYSTEM hive), NetworkList\\Signatures + Profiles (DefaultGatewayMac, SSID, DateCreated/DateLastConnected, network type 0x06 wired / 0x17 broadband / 0x47 wireless)."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): bmc-tools <- artifact RDP Bitmap Cache (bmc-tools); chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- artifact Scheduled Tasks (EvtxECmd); hayabusa <- artifact Scheduled Tasks (Hayabusa); mftecmd <- names MFTECmd; pecmd <- names PECmd; recmd <- artifact Scheduled Tasks (RECmd); zircolite <- event logs
+families: [bmc-tools, chainsaw, deepbluecli, evtxecmd, hayabusa, mftecmd, pecmd, recmd, zircolite]

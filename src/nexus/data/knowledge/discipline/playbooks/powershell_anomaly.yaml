@@ -72,3 +72,5 @@ caveats:
   - "Base64 -enc payloads are UTF-16LE, not UTF-8 — decoding as UTF-8 yields garbage; decode as UTF-16LE."
   - "Module logging (4103) writes pipeline execution detail but is NOT enabled by default; its presence depends on group policy."
   - "Third-party AV/EDR also logs to Application — correlate PowerShell findings with Defender Operational 1116/1117 detections."
+# D199: derived from what this playbook names (devtools/knowledge/declare_playbook_families.py): amcache <- artifact Amcache (AmcacheParser); chainsaw <- event logs; deepbluecli <- event logs; evtxecmd <- event logs; hayabusa <- event logs; mftecmd <- artifact MFT (MFTECmd); pecmd <- artifact Prefetch (PECmd); recmd <- artifact Amcache (RECmd); strings <- names strings; zircolite <- event logs
+families: [amcache, chainsaw, deepbluecli, evtxecmd, hayabusa, mftecmd, pecmd, recmd, strings, zircolite]
