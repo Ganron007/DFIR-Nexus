@@ -1,6 +1,6 @@
 # Run the evidence lane (tools, importer pass, gate, index) on one case (TIER1-WORK-ORDERS Part 10, P2).
-#   pwsh -NoProfile -File devtools/runbook/run_lane.ps1 -CaseId CASE-X -Tag S05 [-Sift -Capture <path under the sample>]
-# -Sift stages the capture on the SIFT host, sets the remote case up and runs Zeek there; without it the lane runs
+#   pwsh -NoProfile -File devtools/runbook/run_lane.ps1 -CaseId CASE-X -Tag S05 [-Sift -Capture <file>[,<file>...]]
+# -Sift stages the capture(s) on the SIFT host, sets the remote case up and runs Zeek there; without it the lane runs
 # on this host only. The log is cases/<CASE>/.trace/lane-<Tag>.log; the summary is printed at the end.
 param(
     [Parameter(Mandatory)] [string] $CaseId,
@@ -72,9 +72,10 @@ foreach ($n in 'NEXUS_SIFT_MCP_URL', 'NEXUS_SIFT_EVIDENCE_ROOT', 'NEXUS_SIFT_ZEE
     Remove-Item "Env:$n" -ErrorAction SilentlyContinue
 }
 if ($Sift) {
-    if (-not $Capture) { throw '-Sift needs -Capture <the capture file to stage>' }
+    if (-not $Capture) { throw '-Sift needs -Capture <the capture file(s) to stage, comma-separated>' }
     $env:NEXUS_SIFT_SSH_HOST = $SiftHost
     pwsh -NoProfile -File scripts/stage-sift-evidence.ps1 -CaseId $CaseId -Evidence $Capture
+    if ($LASTEXITCODE -ne 0) { throw "Staging the SIFT inputs for $CaseId failed (exit $LASTEXITCODE)" }
     # The host runs this tree's code: setup refuses to start the MCP on stale code, and --sync-code pushes this
     # tree (the host's previous src is kept as src.bak-<stamp>).
     python -m nexus sift setup --case $CaseId --sync-code
