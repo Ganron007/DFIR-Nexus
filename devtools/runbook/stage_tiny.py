@@ -11,7 +11,10 @@ on its own copy (D291). A staged path that contains a leak word (the selection's
 - the sealed map (``sealed_map``): staged path, source path and hash, read only to score a finished group.
 
 Re-running is safe: an identical file is left as it is; a different file at a staged path stops the case.
-``--check`` re-hashes the staged files against the public file lists and copies nothing.
+``--check`` re-hashes the staged files against the public file lists and copies nothing; it reads only the public
+manifest, so it needs no ``--selection``:
+
+    python devtools/runbook/stage_tiny.py --check [--only T01]
 """
 from __future__ import annotations
 
@@ -177,8 +180,8 @@ def write_outputs(sel: dict, staged: dict[str, dict], root: Path) -> None:
                       encoding="utf-8", newline="\n")
 
 
-def check(sel: dict, only: set[str]) -> int:
-    manifest = yaml.safe_load(Path(sel["public_manifest"]).read_text(encoding="utf-8"))
+def check(manifest_path: Path, only: set[str]) -> int:
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     bad = 0
     for cid, entry in manifest["cases"].items():
         if only and cid not in only:
@@ -196,14 +199,16 @@ def check(sel: dict, only: set[str]) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--selection", required=True)
+    ap.add_argument("--selection")
     ap.add_argument("--only", default="")
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
-    sel = yaml.safe_load(Path(args.selection).read_text(encoding="utf-8"))
     only = {c.strip() for c in args.only.split(",") if c.strip()}
     if args.check:
-        return check(sel, only)
+        return check(Path(__file__).resolve().parents[2] / "Docs" / "internal" / "eval" / "tiny-cases.yaml", only)
+    if not args.selection:
+        ap.error("--selection (the sealed selection) is required to stage")
+    sel = yaml.safe_load(Path(args.selection).read_text(encoding="utf-8"))
     root = Path(sel["staging_root"])
     staged = {}
     for cid, spec in sel["cases"].items():
