@@ -3950,6 +3950,7 @@ async def run_tool_lane(
     rerun_tools: frozenset[str] | None = None,
     carry_ok: bool = False,
     only_tools: frozenset[str] | None = None,
+    defer_analysis: bool = False,
 ) -> dict[str, Any]:
     """Execute the planned triage lane via MCP tools. Returns ledger + audit_ids.
 
@@ -3957,6 +3958,8 @@ async def run_tool_lane(
 
     RAG does not belong in this lane (``skip_rag=True``). Coverage/design load
     RAG in ``ensure_rag`` / interpret. Strict FAIL→error is **tools mode only**.
+    Pipeline callers defer N4 output until after I1; standalone lane retries
+    keep the default immediate query-pack/timeline write.
     """
     from nexus.config import settings
 
@@ -4653,17 +4656,20 @@ async def run_tool_lane(
             summary = f"{summary}; sift_pull_error={exc}"
 
     analysis_error = ""
-    try:
-        from nexus.langgraph.snippets import write_snippets
+    if defer_analysis:
+        summary = f"{summary}; N4 query-pack/timeline deferred until I1 completes"
+    else:
+        try:
+            from nexus.langgraph.snippets import write_snippets
 
-        snip = write_snippets(
-            case_dir, ledger, run_dir=pipeline_run.path, run_id=run_id
-        )
-        summary = f"{summary}; snippets={snip}"
-    except Exception as exc:  # noqa: BLE001
-        analysis_error = f"N4 query-pack/timeline generation failed: {exc}"
-        log.error("%s", analysis_error)
-        summary = f"{summary}; {analysis_error}"
+            snip = write_snippets(
+                case_dir, ledger, run_dir=pipeline_run.path, run_id=run_id
+            )
+            summary = f"{summary}; snippets={snip}"
+        except Exception as exc:  # noqa: BLE001
+            analysis_error = f"N4 query-pack/timeline generation failed: {exc}"
+            log.error("%s", analysis_error)
+            summary = f"{summary}; {analysis_error}"
 
     step_log = [summary]
     # Strict abort is tools-mode only. Coverage/design record FAILs in the

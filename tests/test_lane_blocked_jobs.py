@@ -118,3 +118,106 @@ def test_required_query_pack_failure_is_returned_as_lane_error(case_dir, monkeyp
         "N4 query-pack/timeline generation failed" in step
         for step in lane["step_log"]
     )
+
+
+def test_pipeline_query_pack_includes_rows_from_its_i1_import(case_dir, tmp_path, monkeypatch):
+    from nexus.langgraph import snippets, tool_lane
+    from nexus.langgraph.lane_gate import write_lane_gate
+    from nexus.langgraph.llm_pipeline import execute_tool_lane
+    from nexus.langgraph.pipeline_runs import create_run
+
+    evidence = tmp_path / "evidence" / "bind.log"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text(
+        "12-Jul-2016 09:49:46.413 client 10.10.10.44#61936 "
+        "(isatap.pwnd.biz): query: isatap.pwnd.biz IN A + (10.10.10.5)\n",
+        encoding="utf-8",
+    )
+    (case_dir / "CASE.yaml").write_text(
+        "intake:\n  query_extra: isatap.pwnd.biz\n",
+        encoding="utf-8",
+    )
+    run = create_run(case_dir, "tools", [str(evidence)])
+    write_lane_gate(case_dir, run.run_id, [{
+        "tool": "(discovery)",
+        "purpose": "locate evidence",
+        "status": "SKIP",
+        "reason": "No recognized Windows image shape",
+    }])
+
+    async def fake_run_tool_lane(**kwargs):
+        assert kwargs["defer_analysis"] is True
+        return {
+            "tool_run_ledger": [],
+            "evidence_audit_ids": [],
+            "rag_notes": [],
+            "step_log": ["tool lane complete"],
+        }
+
+    monkeypatch.setattr(tool_lane, "run_tool_lane", fake_run_tool_lane)
+    real_write_snippets = snippets.write_snippets
+    writer_calls: list[Path] = []
+
+    def write_after_import(case, ledger, **kwargs):
+        artifact_store = case / "ingest" / "artifacts.jsonl"
+        assert artifact_store.is_file()
+        assert "isatap.pwnd.biz" in artifact_store.read_text(encoding="utf-8")
+        writer_calls.append(Path(kwargs["run_dir"]))
+        return real_write_snippets(case, ledger, **kwargs)
+
+    monkeypatch.setattr(snippets, "write_snippets", write_after_import)
+    result = asyncio.run(execute_tool_lane({
+        "case_id": case_dir.name,
+        "run_id": run.run_id,
+        "pipeline_mode": "tools",
+        "evidence_path": str(evidence),
+        "evidence_paths": [str(evidence)],
+        "case_context": {"query_extra": "isatap.pwnd.biz"},
+    }, {}))
+
+    pack = run.path / "analysis" / "query_pack.md"
+    assert writer_calls == [run.path]
+    assert pack.is_file()
+    packed = pack.read_text(encoding="utf-8")
+    assert "isatap.pwnd.biz" in packed
+    assert "ingest/artifacts.jsonl" in packed
+    assert any("generated after I1" in step for step in result["step_log"])
+    assert "error" not in result
+
+
+def test_pipeline_query_pack_failure_is_returned_as_lane_error(case_dir, monkeypatch):
+    from nexus.langgraph import snippets, tool_lane
+    from nexus.langgraph.llm_pipeline import execute_tool_lane
+    from nexus.langgraph.pipeline_runs import create_run
+
+    run = create_run(case_dir, "tools")
+
+    async def fake_run_tool_lane(**kwargs):
+        assert kwargs["defer_analysis"] is True
+        return {
+            "tool_run_ledger": [],
+            "evidence_audit_ids": [],
+            "rag_notes": [],
+            "step_log": ["tool lane complete"],
+        }
+
+    def fail_snippets(*_args, **_kwargs):
+        raise OSError("post-I1 query-pack output unavailable")
+
+    monkeypatch.setattr(tool_lane, "run_tool_lane", fake_run_tool_lane)
+    monkeypatch.setattr(snippets, "write_snippets", fail_snippets)
+    result = asyncio.run(execute_tool_lane({
+        "case_id": case_dir.name,
+        "run_id": run.run_id,
+        "pipeline_mode": "tools",
+        "evidence_paths": [],
+        "case_context": {},
+    }, {}))
+
+    assert result["error"] == (
+        "N4 query-pack/timeline generation failed: post-I1 query-pack output unavailable"
+    )
+    assert any(
+        "N4 query-pack/timeline generation failed" in step
+        for step in result["step_log"]
+    )

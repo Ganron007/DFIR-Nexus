@@ -961,6 +961,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         is_expansion_marker,
     )
 
+    case_dir = _arch_settings.cases_root / case_id
     registered = [p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p]
     # D285: a Magnet AXIOM case is read from its Case.mfdb; its own index, logs, log archive and attachment store
     # are gate rows that say what they are, and are neither expanded nor imported as evidence.
@@ -972,7 +973,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         parts = case_parts(db)
         axiom_parts.update(parts)
         axiom_rows.extend(part_gate_rows(db, parts))
-    expansions = expand_archives([str(p) for p in registered], _arch_settings.cases_root / case_id,
+    expansions = expand_archives([str(p) for p in registered], case_dir,
                                  exclude=axiom_parts)
     expanded_roots = [e["root"] for e in expansions if e["status"] == "OK"]
     consumed_archives = {str(Path(e["archive"])) for e in expansions}
@@ -987,6 +988,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         parse_result=_parse_tool_result,
         skip_rag=True,
         pipeline_mode=mode,
+        defer_analysis=True,
         evidence_paths=(lane_paths if expansions else state.get("evidence_paths")) or None,
         on_event=_lane_event,
     )
@@ -1074,16 +1076,13 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         import asyncio as _asyncio
         import threading as _threading
 
-        from nexus.config import settings as _settings
         from nexus.langgraph.network_lane import enrich_local_network
         from nexus.langgraph.timeline_merge import (
             anchor_assumed_years,
             ingest_into_case,
-            rebuild_case_timeline,
         )
         from nexus.langgraph.tool_lane import _lane_concurrency, find_windows_root
 
-        case_dir = _settings.cases_root / case_id
         steps = list(result.get("step_log") or [])
         # EH-15: store writes are serialized (artifacts.jsonl/audit append);
         # parsing/enrichment may overlap up to NEXUS_TOOL_LANE_CONCURRENCY.
@@ -1185,10 +1184,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 )
         except Exception as exc:  # noqa: BLE001
             steps.append(f"I1 yearless-time anchoring failed: {exc}")
-        try:
-            rebuild_case_timeline(case_dir, run_id=str(state.get("run_id") or ""))
-        except Exception as exc:  # noqa: BLE001
-            steps.append(f"I3 merge after extra ingest skipped: {exc}")
         result["step_log"] = steps
     steps = list(result.get("step_log") or [])
     label = "tools mode" if mode == "tools" else "coverage mode"
@@ -1224,6 +1219,28 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         except Exception as exc:  # noqa: BLE001 — interpret's EH-13 gate reports
             steps.append(f"N3 auto-index failed: {exc}")
         result["step_log"] = steps
+    # I1 appends imported rows to case/ingest/artifacts.jsonl. Generate the
+    # run-bound N4 pack only after that pass so its CSV scan can see these rows;
+    # write_query_pack also builds the final timeline from the same N4 scan.
+    try:
+        from nexus.langgraph.pipeline_runs import resolve_run
+        from nexus.langgraph.snippets import write_snippets
+
+        run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        snip = write_snippets(
+            case_dir,
+            result.get("tool_run_ledger") or [],
+            run_dir=run.path,
+            run_id=run.run_id,
+        )
+        result.setdefault("step_log", []).append(
+            f"N4 query-pack/timeline generated after I1: {snip}"
+        )
+    except Exception as exc:  # noqa: BLE001 - surface the required N4 failure
+        analysis_error = f"N4 query-pack/timeline generation failed: {exc}"
+        prior_error = str(result.get("error") or "").strip()
+        result["error"] = f"{prior_error}; {analysis_error}" if prior_error else analysis_error
+        result.setdefault("step_log", []).append(analysis_error)
     return result
 
 
