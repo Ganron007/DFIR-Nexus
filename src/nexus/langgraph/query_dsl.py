@@ -55,9 +55,6 @@ _NUMERIC_TYPES = frozenset({
     "scaled_float", "unsigned_long",
 })
 _DATE_TYPES = frozenset({"date", "date_nanos"})
-_MAX_OR = 24
-_MAX_AND = 12
-_MAX_NOT = 12
 _MAX_REGEX = 120
 
 # WO-CS1: a dotted field name (`ecs.process.command_line`) must be a token, in both
@@ -168,12 +165,6 @@ def parse_query(text: str, catalog: dict[str, Any] | None = None) -> ParsedQuery
             continue
         _add_term(q, tok, pending, catalog)
 
-    if len(q.or_terms) > _MAX_OR:
-        raise QuerySyntaxError(f"too many OR terms (max {_MAX_OR})")
-    if len(q.and_terms) > _MAX_AND:
-        raise QuerySyntaxError(f"too many AND terms (max {_MAX_AND})")
-    if len(q.not_terms) > _MAX_NOT:
-        raise QuerySyntaxError(f"too many NOT terms (max {_MAX_NOT})")
     return q
 
 

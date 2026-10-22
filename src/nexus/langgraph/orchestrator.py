@@ -277,7 +277,7 @@ def _run_agent(
             queries_run.append(q)
             step_hits: list[dict[str, Any]] = []
             try:
-                result = n4_query(case_dir, q, limit=80)
+                result = n4_query(case_dir, q, limit=None)
                 step_hits = list(result.get("hits") or [])
             except Exception as exc:
                 log.warning("Agent %s skill %s step query failed: %s", agent_name, skill_id, exc)
@@ -314,7 +314,7 @@ def _run_agent(
     for v in sorted(pivot_values)[:6]:
         queries_run.append(f"pivot:{v}")
         try:
-            result = n4_query(case_dir, v, limit=40)
+            result = n4_query(case_dir, v, limit=None)
             all_hits.extend(result.get("hits") or [])
         except Exception as exc:
             log.debug("Agent %s pivot query failed: %s", agent_name, exc)
@@ -338,7 +338,7 @@ def _run_agent(
         for q in queries[:5]:
             queries_run.append(q)
             try:
-                result = n4_query(case_dir, q, limit=80)
+                result = n4_query(case_dir, q, limit=None)
                 all_hits.extend(result.get("hits") or [])
             except Exception as exc:
                 log.warning("Agent %s query '%s' failed: %s", agent_name, q, exc)
@@ -476,7 +476,7 @@ def run_orchestrator(
         from nexus.langgraph.query_pack import iter_extraction_files
 
         families_present: set[str] = {
-            fam for _path, _root, fam in iter_extraction_files(case_dir, max_bytes=None)
+                fam for _path, _root, fam in iter_extraction_files(case_dir)
         }
 
         # WP 4i.8/4i.9: select skills for this case — matched on families

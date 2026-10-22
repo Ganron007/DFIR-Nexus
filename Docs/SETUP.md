@@ -132,21 +132,22 @@ no reasoning levels and turns thinking on with `chat_template_kwargs.enable_thin
 | `NEXUS_CONTEXT_RETRY_RATIO` | `0.5` | Downgrade ratio for the one retry when a provider rejects an over-long prompt. |
 | `NEXUS_INTERPRET_ROUNDS` | `3` | Default interpretation rounds for the LLM interpretation loop (1–5). Also settable per run before processing. |
 | `NEXUS_WEB_ALLOW` | unset (off) | `1` enables the opt-in `web_search`/`web_fetch` tools (loopback/private blocked). |
-| `NEXUS_INGEST_MAX_ARTIFACTS` | `20000` | Per-file cap for imported artifacts (network/cloud/…) with honest `N/N (capped)` reporting. |
 | `NEXUS_PCAP_TIMEOUT` | command timeout | tshark conversion timeout for raw PCAP ingestion. |
-| `NEXUS_PCAP_MAX_PACKETS` | `0` (all) | Optional packet cap for PCAP conversion. |
 
-**Complete-data-stream knobs (Phase 4k.2 — defaults keep EVERY row):**
+**Complete-data-stream behavior (Phase 4k.2):**
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEXUS_SCAN_MAX_FILE_MB` | `0` (unlimited) | Cap the full-row index/scan of a prepared CSV. `0` indexes every row; set a positive MB value only if you deliberately want a guard (the per-family cap and skipped files are reported, never silent). |
-| `NEXUS_N4_MAX_FILE_MB` | `0` (unlimited) | Same guard for N4 needle scans of parse outputs above the full-scan threshold. |
-| `NEXUS_INDEX_MAX_DOCS` | `0` (unlimited) | Total per-case ES docs. `0` = index everything. |
-| `NEXUS_INDEX_SMALL_DOCS` / `NEXUS_INDEX_PER_FAMILY_CAP` / `NEXUS_INDEX_PER_FILE_CAP` | `0` (unlimited) | Optional index guards; when set, `es_index.json` records `capped`/`caps`. |
-| `NEXUS_INDEX_BATCH` | `4000` | Docs per streaming bulk batch (memory stays flat on million-row cases). |
-| `NEXUS_N4_MAX_HITS` / `NEXUS_N4_HITS_PER_FILE` / `NEXUS_N4_COLLECT_PER_FILE` / `NEXUS_N4_FILES_PER_FAMILY` | `400` / `40` / `200` / `120` | Interactive result caps. They bound the rendered page only — totals are exact (`count_exact`) and `Export all` / report appendices enumerate every row uncapped. |
+| `NEXUS_INDEX_BATCH` | `4000` | Documents per Elasticsearch bulk request. This is a transfer batch; indexing continues until every eligible row is submitted. |
 | `NEXUS_TOOL_LANE_CONCURRENCY` | `1` | Tool-lane job parallelism (`1..4`). `1` keeps execution order deterministic for reproducibility; `2..4` cuts wall time on multi-core hosts (outputs are order-independent). |
+
+Evidence import and N4 indexing retain every parsed artifact, eligible file,
+and matching row; no application-configured record caps are applied. There are no
+application-defined per-file, per-family, total-row, row-text, or field-value
+caps. Search responses use `limit`/`offset` paging and return `next_offset`;
+continue until `complete=true`. Elasticsearch is paged with `search_after`.
+Legacy `NEXUS_INDEX_*CAP`, `NEXUS_INDEX_MAX_DOCS`, `NEXUS_N4_*`,
+`NEXUS_SCAN_MAX_FILE_MB`, and `NEXUS_CSV_MAX_RECORD_*` settings are ignored.
 
 **Network evidence (Phase 4k.2):**
 
@@ -452,6 +453,7 @@ sudo ln -s /opt/hayabusa/hayabusa /usr/local/bin/hayabusa
 
 DFIR-Nexus resolves binaries when you call `run_command` (Linux) or `run_windows_command` (Windows):
 1. **Windows:** `NEXUS_TOOL_PATHS` / `tool_paths` in `~/.nexus/config.yaml`, then the repo folder `Tools/windows/` (including Zimmerman `net9/` and versioned Hayabusa/Suzaku names). System `PATH` is **not** searched — personal copies of PECmd/EvtxECmd elsewhere are ignored.
+   For the RB-A8 Windows lane, EvtxECmd must be version 2026.10.0.0 at `Tools/windows/zimmerman/net10/EvtxECmd`, with SHA-256 `5A179DEBEB9157A0712F2512136C75D1402CD63A24A22D7A9EAD5AC9CE1B04E1`. The `run_lane.ps1` preflight verifies the selected path, version, and hash before evidence processing. This binary is a separately provisioned, gitignored local tool dependency; older Chocolatey or standalone copies are refused by the preflight.
 2. **Linux/SIFT:** `PATH` (`shutil.which`), then `NEXUS_TOOL_PATHS` / `tool_paths`.
 3. Specialized checks occur for variables like `NEXUS_HAYABUSA_DIR` (defaults to `/opt/hayabusa` on Linux).
 
@@ -654,9 +656,10 @@ the host) — so the lane can find the evidence.
   aligns the host to this case with `case_activate` before its jobs, so a host
   left on another case by hand is corrected on the next run.
 - **A saved output is the whole capture**, not the reply slice the MCP returns.
-  If the capture exceeds `NEXUS_MAX_OUTPUT_BYTES` the job is **FAIL** — "the
-  saved output is incomplete, treat as unparsed" — because a half-parsed
-  artifact must never clear the evidence gate.
+  The command capture has no application-defined byte ceiling. The MCP reply
+  may show a bounded preview, while the complete stdout and stderr are saved
+  under the case extraction path. A tool timeout or non-zero exit remains a
+  failed job and cannot clear the evidence gate.
 - **A row can be `WARN`.** The job ran and returned an output, but a
   prerequisite was empty: a process-list plugin with `psscan` > 0, or a registry
   key read when the module list is unreadable. A `WARN` is a **coverage gap, not

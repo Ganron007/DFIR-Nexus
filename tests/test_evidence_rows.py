@@ -12,7 +12,6 @@ from pathlib import Path
 
 from nexus.langgraph import backbone, es_native
 from nexus.langgraph.evidence_rows import (
-    EVIDENCE_ROW_CAP,
     evidence_rows_for_audit_ids,
     evidence_rows_for_hits,
     hit_time_of,
@@ -37,10 +36,10 @@ def test_a_hit_becomes_a_row_in_the_mode1_shape():
     assert row["fields"]["EventId"] == "1004"
 
 
-def test_rows_keep_the_first_hits_in_order_up_to_the_cap():
+def test_rows_keep_every_hit_in_order():
     rows = evidence_rows_for_hits([_hit(n) for n in range(1, 31)])
-    assert len(rows) == EVIDENCE_ROW_CAP
-    assert [r["loc"] for r in rows] == [f"a.csv:{n}" for n in range(1, EVIDENCE_ROW_CAP + 1)]
+    assert len(rows) == 30
+    assert [r["loc"] for r in rows] == [f"a.csv:{n}" for n in range(1, 31)]
 
 
 def test_the_time_is_parsed_from_the_row_text_when_the_hit_has_none():
@@ -67,8 +66,8 @@ def test_cited_audit_entries_return_their_stored_rows_in_citation_order(tmp_path
     assert rows == [r2, r1], "citation order, each row once, ids without rows add nothing"
 
 
-def test_every_cited_call_is_represented_when_the_first_fills_the_cap(tmp_path):
-    """D194: a 63-row call cited first used to fill all 12 rows, so the other citations vanished."""
+def test_every_cited_call_and_row_is_preserved_without_a_cap(tmp_path):
+    """D194: every row from a large call and later citations stays available."""
     big = [{"source": "hayabusa/t.csv", "loc": f"t.csv:{n}", "detail": f"row {n}"} for n in range(1, 64)]
     other = [{"source": "evtxecmd/e.csv", "loc": f"e.csv:{n}", "detail": f"event {n}"} for n in (5, 6)]
     _write_audit(tmp_path, [
@@ -76,9 +75,9 @@ def test_every_cited_call_is_represented_when_the_first_fills_the_cap(tmp_path):
         {"audit_id": "OTHER", "tool": "es_search", "result_summary": {"evidence_rows": other}},
     ])
     rows = evidence_rows_for_audit_ids(tmp_path, ["BIG", "OTHER", "BIG"])
-    assert len(rows) == EVIDENCE_ROW_CAP
+    assert len(rows) == 65
     assert [r["loc"] for r in rows[:4]] == ["t.csv:1", "e.csv:5", "t.csv:2", "e.csv:6"]
-    assert evidence_rows_for_audit_ids(tmp_path, ["BIG"]) != rows
+    assert len(evidence_rows_for_audit_ids(tmp_path, ["BIG"])) == 63
 
 
 def test_no_cited_rows_means_no_evidence(tmp_path):

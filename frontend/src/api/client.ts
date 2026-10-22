@@ -258,10 +258,13 @@ export interface AskResponse {
 export interface SearchResponse {
   hits: N4Hit[];
   count: number;
-  /** True when a cap was hit — ``count`` is a LOWER BOUND (EH-1). */
+  /** True when a read/query failure makes the scanned count a lower bound. */
   count_lower_bound?: boolean;
   count_exact?: boolean;
-  capped_reasons?: string[];
+  scan_complete?: boolean;
+  incomplete_reasons?: string[];
+  complete?: boolean;
+  next_offset?: number | null;
   total_before_family_filter: number;
   backend: string;
   families: string[];

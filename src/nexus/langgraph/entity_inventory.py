@@ -19,10 +19,10 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 _EXE_RE = re.compile(r"[A-Za-z0-9_\-.]+\.exe\b", re.IGNORECASE)
-_PATH_RE = re.compile(r"[A-Za-z]:\\[^\s\",;'<>|]{3,160}")
+_PATH_RE = re.compile(r"[A-Za-z]:\\[^\s\",;'<>|]{3,}")
 _USER_RE = re.compile(
     r"(?:SrcUser|TgtUser|TargetUser|SourceUser|UserName|AccountName|user|account)"
-    r"\s*[:=]\s*([A-Za-z0-9_.\\$-]{2,64})",
+    r"\s*[:=]\s*([A-Za-z0-9_.\\$-]{2,})",
     re.IGNORECASE,
 )
 _CMD_HINTS = (
@@ -30,9 +30,6 @@ _CMD_HINTS = (
     "certutil", "bitsadmin", "curl", "wget", "nltest", "net.exe",
     "vssadmin", "wbadmin", "schtasks", "wevtutil", "icacls",
 )
-_CAP = 40
-
-
 def _looks_like_path(value: str) -> bool:
     """True when a value is a filesystem path (or a path fragment).
 
@@ -64,18 +61,17 @@ def _add_path(counts: dict[str, int], value: str) -> None:
     low = v.lower()
     if "\\cases\\" in low or "evidence-files" in low or "\\runs\\" in low:
         return
-    counts[v[:160]] = counts.get(v[:160], 0) + 1
+    counts[v] = counts.get(v, 0) + 1
 
 
-def _top(counts: dict[str, int], cap: int = _CAP) -> list[dict[str, Any]]:
+def _top(counts: dict[str, int]) -> list[dict[str, Any]]:
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))
-    return [{"value": v, "count": c} for v, c in ranked[:cap]]
+    return [{"value": v, "count": c} for v, c in ranked]
 
 
 def build_entity_inventory(
     case_id: str,
     *,
-    cap: int = _CAP,
     hits: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Census entities from the case's indexed evidence rows (no LLM).
@@ -88,7 +84,7 @@ def build_entity_inventory(
     if hits is None:
         from nexus.tools.evidence_index import do_n4_query
 
-        result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
+        result = do_n4_query(case_id=case_id, dsl="", limit=None, match_all=True)
         hits = result.get("hits") or []
         fetch_error = str(result.get("error") or "")
         fetch_capped = bool(result.get("count_lower_bound"))
@@ -129,17 +125,17 @@ def build_entity_inventory(
 
     from nexus.langgraph.ti_context import extract_iocs
 
-    network = extract_iocs([str(h.get("text") or "") for h in hits], cap=cap)
+    network = extract_iocs([str(h.get("text") or "") for h in hits])
 
     inventory = {
         "hits_scanned": len(hits),
         "hits_capped": fetch_capped,
         "error": fetch_error,
-        "processes": _top(procs, cap),
-        "paths": _top(paths, cap),
-        "users": _top(users, cap),
-        "hosts": _top(hosts, cap),
-        "commands": _top(commands, cap),
+        "processes": _top(procs),
+        "paths": _top(paths),
+        "users": _top(users),
+        "hosts": _top(hosts),
+        "commands": _top(commands),
         "network": {
             "ipv4": network.get("ipv4", []),
             "domain": network.get("domain", []),
@@ -154,7 +150,7 @@ def build_entity_inventory(
     return inventory
 
 
-def render_inventory_markdown(inv: dict[str, Any], *, per_kind: int = 20) -> str:
+def render_inventory_markdown(inv: dict[str, Any]) -> str:
     """Compact prompt/markdown block for the interpret agent."""
     lines = [
         "# Entity inventory (deterministic census — address EVERY item)",
@@ -171,7 +167,7 @@ def render_inventory_markdown(inv: dict[str, Any], *, per_kind: int = 20) -> str
         if not items:
             return
         rendered = []
-        for item in items[:per_kind]:
+        for item in items:
             if isinstance(item, dict):
                 rendered.append(f"{item.get('value')} ({item.get('count')})")
             else:
@@ -214,25 +210,28 @@ def write_entity_inventory(case_dir: Path, inv: dict[str, Any]) -> Path | None:
 def _iter_significant(inv: dict[str, Any]) -> list[tuple[str, str]]:
     """(kind, value) pairs worth coverage-checking, most significant first."""
     out: list[tuple[str, str]] = []
-    for item in (inv.get("processes") or [])[:15]:
+    for item in (inv.get("processes") or []):
         out.append(("process", str(item.get("value") or "")))
-    for item in (inv.get("hosts") or [])[:6]:
+    for item in (inv.get("hosts") or []):
         out.append(("host", str(item.get("value") or "")))
-    for item in (inv.get("users") or [])[:6]:
+    for item in (inv.get("users") or []):
         out.append(("user", str(item.get("value") or "")))
+    for item in (inv.get("paths") or []):
+        out.append(("path", str(item.get("value") or "")))
+    for item in (inv.get("commands") or []):
+        out.append(("command", str(item.get("value") or "")))
     net = inv.get("network") or {}
     for kind in ("ipv4", "domain", "url"):
-        for value in (net.get(kind) or [])[:8]:
+        for value in (net.get(kind) or []):
             out.append((kind, str(value)))
     hashes = inv.get("hashes") or {}
     for kind in ("sha256", "sha1", "md5"):
-        for value in (hashes.get(kind) or [])[:4]:
+        for value in (hashes.get(kind) or []):
             out.append((kind, str(value)))
     return [(k, v) for k, v in out if v]
 
 
-def compute_coverage_gaps(inv: dict[str, Any], findings: list[dict[str, Any]],
-                          *, cap: int = 25) -> list[dict[str, str]]:
+def compute_coverage_gaps(inv: dict[str, Any], findings: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Items in the inventory never mentioned by any staged finding."""
     blob = " ".join(
         " ".join(str(f.get(k) or "") for k in
@@ -244,6 +243,4 @@ def compute_coverage_gaps(inv: dict[str, Any], findings: list[dict[str, Any]],
     for kind, value in _iter_significant(inv):
         if value.lower() not in blob:
             gaps.append({"kind": kind, "value": value})
-        if len(gaps) >= cap:
-            break
     return gaps

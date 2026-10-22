@@ -3,6 +3,9 @@
 from pathlib import Path
 
 from nexus.langgraph.tool_lane import (
+    ToolJob,
+    _apply_default_optional_tool_skips,
+    _artifact_completeness_for_paths,
     find_windows_root,
     plan_sift_triage,
     plan_windows_triage,
@@ -16,6 +19,55 @@ def test_find_windows_root(tmp_path: Path):
     (root / "Windows" / "System32").mkdir(parents=True)
     assert find_windows_root(root) == root
     assert find_windows_root(tmp_path / "missing") is None
+
+
+def test_completeness_covers_expanded_roots_in_plan_paths(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import artifact_map
+
+    source = tmp_path / "S08"
+    source.mkdir()
+    (source / "sample.7z").write_bytes(b"archive")
+    expanded_a = tmp_path / "case" / "evidence" / "_expanded" / "archive-a"
+    expanded_b = tmp_path / "case" / "evidence" / "_expanded" / "archive-b"
+    roots = [expanded_a / "host-a" / "C", expanded_b / "host-b" / "C"]
+    for root in roots:
+        (root / "Windows" / "System32").mkdir(parents=True)
+
+    discovered = []
+    monkeypatch.setattr(
+        artifact_map,
+        "discover_windows_artifacts",
+        lambda root: discovered.append(root) or [],
+    )
+    monkeypatch.setattr(artifact_map, "completeness_table", lambda hits, tools, ledger=None: [])
+
+    rows = _artifact_completeness_for_paths(
+        [source, expanded_a, expanded_b, expanded_a], set(),
+    )
+
+    assert rows == []
+    assert discovered == roots
+
+
+def test_completeness_finds_root_for_a_registered_file(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import artifact_map
+
+    root = tmp_path / "case" / "evidence" / "_expanded" / "host" / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    registered_file = root / "Windows" / "System32" / "winevt" / "Logs" / "Security.evtx"
+    registered_file.parent.mkdir(parents=True)
+    registered_file.write_bytes(b"evtx")
+
+    discovered = []
+    monkeypatch.setattr(
+        artifact_map,
+        "discover_windows_artifacts",
+        lambda image_root: discovered.append(image_root) or [],
+    )
+    monkeypatch.setattr(artifact_map, "completeness_table", lambda hits, tools, ledger=None: [])
+
+    assert _artifact_completeness_for_paths([registered_file], set()) == []
+    assert discovered == [root]
 
 
 def test_plan_windows_triage_skips_and_schedules(tmp_path: Path):
@@ -656,3 +708,56 @@ def test_is_host_evidence_routes_non_host_to_importers(tmp_path: Path):
     pcap.write_bytes(b"p")
     assert is_host_evidence(str(evtx)) is True
     assert is_host_evidence(str(pcap)) is False
+
+
+def test_default_optional_tools_are_explicit_skips():
+    jobs = [
+        ToolJob(host="windows", tool="logfileparser", argv=["logfileparser"], purpose="$LogFile"),
+        ToolJob(host="windows", tool="DeepBlueCLI", argv=["deepbluecli"], purpose="Security.evtx"),
+        ToolJob(host="windows", tool="hayabusa", argv=["hayabusa"], purpose="EVTX"),
+        ToolJob(
+            host="windows", tool="deepbluecli", argv=["deepbluecli"], purpose="reused result",
+            status="OK", audit_id="old-audit", output_saved_to="old-output.csv",
+            output_files=["old-output.csv"], result={"success": True}, lineage={"version": "1.0"},
+        ),
+        ToolJob(host="windows", tool="logfileparser", argv=[], purpose="missing", status="SKIP", reason="missing artifact"),
+    ]
+
+    assert _apply_default_optional_tool_skips(jobs) == 3
+    assert [job.status for job in jobs] == ["SKIP", "SKIP", "PENDING", "SKIP", "SKIP"]
+    assert "run manually" in jobs[0].reason
+    assert "long channel scans" in jobs[1].reason
+    assert jobs[4].reason == "missing artifact"
+    assert jobs[3].audit_id == ""
+    assert jobs[3].output_saved_to == ""
+    assert jobs[3].output_files == []
+    assert jobs[3].result == {}
+    assert jobs[3].lineage == {}
+
+
+def test_optional_parser_skip_overrides_carried_prior_ok(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import tool_lane
+
+    prior_ok = {
+        "host": "windows",
+        "tool": "deepbluecli",
+        "purpose": "Security.evtx",
+        "status": "OK",
+        "audit_id": "old-audit",
+        "output_saved_to": "old-output.csv",
+        "lineage": {"version": "1.0"},
+    }
+    monkeypatch.setattr(tool_lane, "_prior_ledger_rows", lambda *_args: [prior_ok])
+    jobs = [ToolJob(
+        host="windows", tool="deepbluecli", argv=["deepbluecli"], purpose="Security.evtx",
+    )]
+
+    carried = tool_lane._settle_prior_rows(
+        jobs, tmp_path, tmp_path / "extractions", carry_ok=True,
+        only_tools=frozenset({"hayabusa"}),
+    )
+
+    assert carried == []
+    assert len(jobs) == 1
+    assert jobs[0].status == "SKIP"
+    assert "operator policy" in jobs[0].reason

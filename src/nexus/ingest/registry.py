@@ -110,11 +110,11 @@ class ImporterRegistry:
         return None
 
     def import_path(
-        self, path: Path, source: ArtifactSource | None = None, limit: int = 0, on_batch=None,
+        self, path: Path, source: ArtifactSource | None = None, on_batch=None,
     ) -> ImportResult:
         """Import a path using the specified or auto-detected importer.
 
-        ``limit`` (0 = unlimited) caps artifacts during parsing.
+        Every artifact produced by the selected importer is delivered.
         """
         path = Path(path)
         if not path.exists():
@@ -140,7 +140,7 @@ class ImporterRegistry:
             return result
 
         importer = importer_cls()
-        result = importer.ingest(path, limit=limit, on_batch=on_batch)
+        result = importer.ingest(path, on_batch=on_batch)
         return result
 
 

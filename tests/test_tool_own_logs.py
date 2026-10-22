@@ -43,6 +43,33 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _limit_plan_to_logfileparser(monkeypatch) -> None:
+    """Keep these lane-path tests focused on the one real planned parser job."""
+    from nexus.langgraph import tool_lane
+
+    plan = tool_lane.plan_windows_triage
+
+    def logfileparser_only(*args, **kwargs):
+        return [job for job in plan(*args, **kwargs) if job.tool == "logfileparser"]
+
+    monkeypatch.setattr(tool_lane, "plan_windows_triage", logfileparser_only)
+
+
+def _configure_lane_test(monkeypatch) -> None:
+    """Isolate the output gate from evidence freshness and optional SIFT work."""
+    from nexus.analysis import freshness
+    from nexus.langgraph import case_index, tool_lane
+
+    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    monkeypatch.setattr(
+        freshness,
+        "capture_freshness",
+        lambda *_args, **_kwargs: {"items": [], "result": "unknown"},
+    )
+    monkeypatch.setattr(tool_lane, "sift_jobs_for_lane", lambda *_args, **_kwargs: [])
+    _limit_plan_to_logfileparser(monkeypatch)
+
+
 def test_the_index_leaves_out_logfileparsers_own_log(run_case):
     from nexus.langgraph.case_index import iter_index_doc_batches
     from nexus.langgraph.query_pack import iter_extraction_files
@@ -81,10 +108,9 @@ def lane_case(tmp_path, monkeypatch) -> Path:
 
 def test_a_job_that_wrote_its_csvs_through_outputpath_keeps_its_console_log_out(lane_case, monkeypatch):
     from nexus.case.evidence_service import register_evidence
-    from nexus.langgraph import case_index
     from nexus.langgraph.tool_lane import run_tool_lane
 
-    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    _configure_lane_test(monkeypatch)
     volume = lane_case / "evidence" / "C"
     (volume / "Windows" / "System32").mkdir(parents=True)
     (volume / "$LogFile").write_bytes(b"RSTR" + b"\0" * 8188)
@@ -124,3 +150,115 @@ def test_a_job_that_wrote_its_csvs_through_outputpath_keeps_its_console_log_out(
     names = {Path(str(f.get("path") if isinstance(f, dict) else f)).name for f in row.get("output_files") or []}
     assert "LogFile.csv" in names
     assert not [n for n in names if n.startswith("logfileparser-") and n.endswith(".txt")], names
+
+
+def test_logfileparser_run_logs_and_stdout_do_not_count_as_extraction(tmp_path):
+    """D312: a parser's own log or executor capture cannot satisfy its output target."""
+    from nexus.langgraph.tool_lane import (
+        ToolJob,
+        _empty_output_status,
+        _has_declared_output_target,
+        _new_output_files,
+        _produced_expected_output,
+        _should_promote_stdout,
+        _structured_output_present,
+        _tool_wrote_structured_output,
+    )
+
+    out = tmp_path / "logfileparser"
+    debug_log = out / "LogFile_2026-10-15_12-00-00" / "debug.log"
+    saved = out / "20261015T120001_logfileparser_stdout.txt"
+    job = ToolJob(
+        host="windows",
+        tool="logfileparser",
+        argv=["logfileparser", "/LogFileFile:input:$LogFile", f"/OutputPath:{out}"],
+        purpose="NTFS $LogFile",
+        output_saved_to=str(saved),
+        output_files=[
+            {"path": str(debug_log), "kind": "file"},
+            {"path": str(saved), "kind": "stdout"},
+        ],
+    )
+    _write(debug_log, DEBUG_LOG)
+    _write(saved, DEBUG_LOG)
+
+    assert _has_declared_output_target(job)
+    assert _new_output_files([out], set(), tool=job.tool) == []
+    assert not _structured_output_present(job)
+    assert not _tool_wrote_structured_output(job)
+    assert not _produced_expected_output(job)
+    assert not _should_promote_stdout(job, [])
+    status, reason = _empty_output_status(job, {"success": True})
+    assert status == "FAIL"
+    assert "produced no output file" in reason.lower()
+    assert "declared output target" in reason.lower()
+
+    csv = debug_log.with_name("LogFile.csv")
+    _write(csv, LOGFILE_CSV)
+    job.output_files.append({"path": str(csv), "kind": "file"})
+    fresh = _new_output_files([out], set(), tool=job.tool)
+    assert fresh == [str(csv)]
+    assert _structured_output_present(job)
+    assert _tool_wrote_structured_output(job)
+    assert _produced_expected_output(job)
+    assert not _should_promote_stdout(job, fresh)
+
+
+def test_progress_rows_keep_durations_for_repeated_tool_jobs(lane_case, monkeypatch):
+    from nexus.case.evidence_service import register_evidence
+    from nexus.langgraph import tool_lane
+    from nexus.langgraph.tool_lane import ToolJob, run_tool_lane
+
+    _configure_lane_test(monkeypatch)
+    volume = lane_case / "evidence" / "hosts"
+    sources = [volume / host / "C" / "$LogFile" for host in ("host-a", "host-b")]
+    for source in sources:
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"RSTR" + b"\0" * 8188)
+    register_evidence(lane_case, str(volume), description="duration fixture", examiner="ownlog_test")
+
+    run_id = "R-20261021-000001-duration"
+    run_dir = lane_case / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps({
+        "run_id": run_id, "mode": "tools", "case_id": lane_case.name, "status": "running"}), encoding="utf-8")
+    outputs = [run_dir / "extractions" / "logfileparser" / host for host in ("host-a", "host-b")]
+    jobs = [
+        ToolJob(
+            host="windows",
+            tool="logfileparser",
+            argv=["logfileparser", f"/LogFileFile:{source}", f"/OutputPath:{out}"],
+            purpose="NTFS $LogFile (transaction journal, LogFileParser)",
+            source=str(source),
+        )
+        for source, out in zip(sources, outputs, strict=True)
+    ]
+    monkeypatch.setattr(tool_lane, "plan_windows_triage", lambda *_args, **_kwargs: jobs)
+
+    class Executor:
+        async def ainvoke(self, args):
+            argv = list(args.get("command") or [])
+            source_arg = next(a for a in argv if a.startswith("/LogFileFile:"))
+            delay = 0.1 if "host-a" in source_arg else 0.7
+            await asyncio.sleep(delay)
+            out = Path(next(a for a in argv if a.startswith("/OutputPath:")).split(":", 1)[1])
+            csv = out / "LogFile.csv"
+            _write(csv, LOGFILE_CSV)
+            return json.dumps({"success": True, "exit_code": 0, "output_files": [
+                {"path": str(csv), "kind": "file"},
+            ]})
+
+    lane = asyncio.run(run_tool_lane(
+        tools={"run_windows_command": Executor(), "run_command": Executor()},
+        evidence_path=str(volume), case_id=lane_case.name, run_id=run_id,
+        parse_result=json.loads, pipeline_mode="tools"))
+    ledger = lane.get("tool_run_ledger") if isinstance(lane, dict) else lane
+    rows = [row for row in ledger if isinstance(row, dict) and row.get("tool") == "logfileparser"]
+    progress = json.loads((run_dir / "extractions" / "_tool_lane_progress.json").read_text(encoding="utf-8"))
+    progress_rows = [row for row in progress["entries"] if row.get("tool") == "logfileparser"]
+
+    ledger_durations = sorted(row["duration_s"] for row in rows)
+    progress_durations = sorted(row["duration_s"] for row in progress_rows)
+    assert len(rows) == len(progress_rows) == 2
+    assert ledger_durations[0] < ledger_durations[1]
+    assert progress_durations == ledger_durations

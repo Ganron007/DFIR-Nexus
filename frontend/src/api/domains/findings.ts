@@ -43,7 +43,7 @@ export const findingsApi = {
   }) => post<WorkbenchAddManyResponse>("/workbench/add_many", params),
   /** Mode 1 full run — scan all needles → bookmark all hits → stage one
    *  DRAFT per needle (heuristic scribe). Approval stays manual. */
-  mode1FullRun: (params?: { max_needles?: number; needle_filter?: string; reprocess?: boolean }) =>
+  mode1FullRun: (params?: { needle_filter?: string; reprocess?: boolean }) =>
     post<Mode1FullRunResponse>("/mode1/full-run", params || {}),
   mode1FullRunStatus: () => request<Mode1FullRunResponse>("/mode1/full-run/status"),
   workbenchRemove: (bookmarkId: string) =>

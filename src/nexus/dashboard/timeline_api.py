@@ -232,31 +232,29 @@ class TimelineStore:
             centre = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         except ValueError:
             return {"backend": "es", "anchor": source, "rows": [], "seconds": seconds}
-        window = max(1, min(86_400, int(seconds or 300)))
-        page = self.paged(
-            size=MAX_PAGE,
-            filters={
-                "ts": {
-                    "gte": (centre - timedelta(seconds=window)).isoformat(),
-                    "lte": (centre + timedelta(seconds=window)).isoformat(),
-                }
-            },
-        )
+        window = max(1, int(seconds or 300))
+        filters = {
+            "ts": {
+                "gte": (centre - timedelta(seconds=window)).isoformat(),
+                "lte": (centre + timedelta(seconds=window)).isoformat(),
+            }
+        }
+        rows: list[dict[str, Any]] = []
+        cursor = None
+        while True:
+            page = self.paged(cursor=cursor, size=MAX_PAGE, filters=filters)
+            rows.extend(page["rows"])
+            cursor = page.get("next_cursor")
+            if not cursor or not page["rows"]:
+                break
         return {
             "backend": "es",
             "anchor": source,
             "seconds": window,
-            "rows": page["rows"],
-            # The window is read in ONE page. If more events fall inside it than
-            # fit, say so - a context window that silently truncates reads as
-            # "nothing else happened near this event".
-            "capped": bool(page.get("capped")) or (
-                isinstance(page.get("total"), int) and page["total"] > len(page["rows"])
-            ),
-            "truncated": bool(
-                isinstance(page.get("total"), int) and page["total"] > len(page["rows"])
-            ),
-            "total": page["total"],
+            "rows": rows,
+            "capped": False,
+            "truncated": False,
+            "total": len(rows),
         }
 
     # -- findings link ---------------------------------------------------
@@ -297,7 +295,9 @@ class TimelineStore:
         }
 
     # -- export ----------------------------------------------------------
-    def export(self, *, filters: dict[str, Any] | None = None, limit: int = 100_000):
+    def export(
+        self, *, filters: dict[str, Any] | None = None, limit: int | None = None,
+    ):
         """Stream rows as CSV. The same rows the grid shows, not a re-query."""
         import csv
         import io
@@ -316,14 +316,14 @@ class TimelineStore:
             buffer.truncate(0)
             cursor = None
             written = 0
-            while written < limit:
+            while limit is None or written < limit:
                 page = self.paged(
                     cursor=cursor,
-                    size=min(MAX_PAGE, limit - written),
+                    size=MAX_PAGE if limit is None else min(MAX_PAGE, limit - written),
                     filters=filters,
                 )
                 for row in page["rows"]:
-                    if written >= limit:
+                    if limit is not None and written >= limit:
                         break
                     writer.writerow([row.get(c, "") for c in columns])
                     written += 1
@@ -332,7 +332,7 @@ class TimelineStore:
                         buffer.seek(0)
                         buffer.truncate(0)
                 cursor = page.get("next_cursor")
-                if written >= limit or not cursor or not page["rows"]:
+                if (limit is not None and written >= limit) or not cursor or not page["rows"]:
                     break
             if buffer.tell():
                 yield buffer.getvalue()

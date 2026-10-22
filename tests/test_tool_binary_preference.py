@@ -15,6 +15,7 @@ from pathlib import Path
 
 from nexus.tools.windows import _prefer_binary
 
+NET10 = Path("repo/Tools/windows/extra/evtxecmd-2026.10.0/zimmerman/net10/EvtxECmd.exe")
 NET9 = Path("repo/Tools/windows/zimmerman/net9/AmcacheParser.exe")
 ZIMMERMAN = Path("repo/Tools/windows/zimmerman/legacy/AmcacheParser.exe")
 EXTRA = Path("repo/Tools/windows/extra/regripper/rip.exe")
@@ -29,8 +30,13 @@ def test_net9_wins_over_zimmerman_copies_in_both_discovery_orders():
     assert _prefer_binary([NET9, ZIMMERMAN]) == NET9
 
 
+def test_net10_release_wins_over_net9_and_legacy_copies():
+    assert _prefer_binary([NET9, ZIMMERMAN, NET10]) == NET10
+    assert _prefer_binary([NET10, NET9, ZIMMERMAN]) == NET10
+
+
 def test_toolset_rank_order():
-    assert _prefer_binary([SYSINTERNALS, EXTRA, ZIMMERMAN, NET9]) == NET9
+    assert _prefer_binary([SYSINTERNALS, EXTRA, ZIMMERMAN, NET9, NET10]) == NET10
     assert _prefer_binary([SYSINTERNALS, EXTRA, ZIMMERMAN]) == ZIMMERMAN
     assert _prefer_binary([SYSINTERNALS, EXTRA]) == EXTRA
     assert _prefer_binary([SYSINTERNALS]) == SYSINTERNALS

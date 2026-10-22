@@ -1,9 +1,7 @@
 """WO-R1F item 7d — Mode 1 keeps its strength with fewer blind spots.
 
-Mode 1 works because the deterministic scan and the digest put the strong signals
-in front of the LLM. Its limits were a 400-hit cap (the SC1 run was flagged
-TRUNCATED and a crit detection sat below the cut), 8 rows x 300 chars, and a
-fixed 3 rounds.
+Mode 1 ranks strong signals first for interpretation, while preserving every
+matching N4 row. Ranking must never discard evidence.
 """
 
 from __future__ import annotations
@@ -45,30 +43,26 @@ def test_severity_is_ranked_before_the_keyword_rank():
     assert ordered[0]["family"] == "hayabusa", ordered
 
 
-def test_the_cap_records_what_it_dropped_and_whether_it_was_severe(monkeypatch):
+def test_finalize_hits_keeps_every_row_and_ranks_critical_first():
     from nexus.langgraph import query_pack
 
-    monkeypatch.setattr(query_pack, "_MAX_HITS_TOTAL", 3)
     hits = [_hit(f"f{i}") for i in range(5)] + [_hit("hayabusa", "crit")]
-    kept = query_pack.finalize_hits(hits, ["sdelete"])
-    assert len(kept) == 3
-    # The crit row survived; the 3 dropped rows are all generic.
-    assert kept[0]["family"] == "hayabusa"
-    assert kept[0]["_cap_dropped_total"] == 3
-    assert kept[0]["_cap_dropped_severe"] == []
+    ranked = query_pack.finalize_hits(hits, ["sdelete"])
+    assert len(ranked) == len(hits)
+    assert ranked[0]["family"] == "hayabusa"
+    assert not any("_cap_dropped_total" in hit for hit in ranked)
 
 
-def test_the_cap_names_severe_rows_it_had_to_drop(monkeypatch):
+def test_finalize_hits_preserves_all_critical_rows():
     from nexus.langgraph import query_pack
 
-    monkeypatch.setattr(query_pack, "_MAX_HITS_TOTAL", 1)
     hits = [_hit("hayabusa", "crit"), _hit("chaini", "crit")]
-    kept = query_pack.finalize_hits(hits, ["sdelete"])
-    assert len(kept) == 1
-    assert kept[0]["_cap_dropped_severe"], kept[0]
+    ranked = query_pack.finalize_hits(hits, ["sdelete"])
+    assert len(ranked) == 2
+    assert {hit["family"] for hit in ranked} == {"hayabusa", "chaini"}
 
 
-def test_the_pack_header_names_the_dropped_severe_rows(tmp_path: Path, monkeypatch):
+def test_empty_pack_has_no_truncation_warning(tmp_path: Path, monkeypatch):
     from nexus.langgraph import query_pack
 
     monkeypatch.setattr(query_pack, "n4_hits", lambda *a, **k: ([], "test"))

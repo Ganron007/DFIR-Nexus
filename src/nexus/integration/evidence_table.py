@@ -66,9 +66,6 @@ _USB_PRODUCT = re.compile(
     re.I,
 )
 
-_MAX_ROWS = 12
-_CELL = 160
-
 # Most-informative parsed CSV fields first — what an examiner reads.
 SALIENT_HIT_FIELDS = (
     "RuleTitle", "detections", "MapDescription", "Payload", "CommandLine",
@@ -78,37 +75,29 @@ SALIENT_HIT_FIELDS = (
 )
 
 
-def render_hit_fields(fields: dict[str, Any], max_pairs: int = 8) -> str:
+def render_hit_fields(fields: dict[str, Any]) -> str:
     """'What it shows' from parsed CSV fields — 'k: v' pairs, not raw text."""
     if not isinstance(fields, dict):
         return ""
-    parts = [
-        f"{k}: {' '.join(str(fields[k]).split())}"
-        for k in SALIENT_HIT_FIELDS
-        if str(fields.get(k) or "").strip()
-    ]
-    if not parts:
-        parts = []
-        for k, v in list(fields.items())[:8]:
-            v = " ".join(str(v).split())
-            if not v.strip():
-                continue
-            # Continuation rows misalign a timestamp column onto free text —
-            # show the value bare instead of 'timestamp: CommandLine: …'.
-            if k.lower() in ("timestamp", "timecreated", "time") and not v[:4].isdigit():
-                parts.append(v)
-            else:
-                parts.append(f"{k}: {v}")
-            if len(parts) >= 6:
-                break
-    return " · ".join(parts[:max_pairs])
+    ordered = [k for k in SALIENT_HIT_FIELDS if k in fields]
+    ordered.extend(k for k in fields if k not in SALIENT_HIT_FIELDS)
+    parts = []
+    for key in ordered:
+        value = " ".join(str(fields.get(key) or "").split())
+        if not value:
+            continue
+        # Continuation rows misalign a timestamp column onto free text —
+        # show the value bare instead of 'timestamp: CommandLine: …'.
+        if key.lower() in ("timestamp", "timecreated", "time") and not value[:4].isdigit():
+            parts.append(value)
+        else:
+            parts.append(f"{key}: {value}")
+    return " · ".join(parts)
 
 
 def _cell(value: Any) -> str:
     text = " ".join(str(value or "").split())
     text = text.replace("|", "/")
-    if len(text) > _CELL:
-        text = text[: _CELL - 1] + "…"
     return text or "—"
 
 
@@ -217,8 +206,6 @@ def rows_from_n4_observation(text: str) -> list[dict[str, str]]:
             terms = m.group("terms").strip()
             detail = f"{terms}: {body}"
         rows.append(_row(ts, source, artifact or "USB/device", detail))
-        if len(rows) >= _MAX_ROWS:
-            break
     return rows
 
 
@@ -281,8 +268,6 @@ def rows_from_observation(text: str) -> list[dict[str, str]]:
         if art and art in detail:
             detail = detail.replace(art, art.split("\\")[-1], 1)
         rows.append(_row(ts, src, art or "—", detail))
-        if len(rows) >= _MAX_ROWS:
-            break
 
     # Drop a leading intro row that is only "Host artifacts show…"
     cleaned = []
@@ -293,17 +278,16 @@ def rows_from_observation(text: str) -> list[dict[str, str]]:
         if r["artifact"] == "—" and r["time"] == "—" and len(r["detail"]) < 40:
             continue
         cleaned.append(r)
-    return cleaned[:_MAX_ROWS] or rows[:_MAX_ROWS]
+    return cleaned or rows
 
 
 def normalize_evidence_rows(
     finding: dict[str, Any],
-    limit: int | None = _MAX_ROWS,
 ) -> list[dict[str, str]]:
     """Prefer structured `evidence` on the finding; else parse observation.
 
-    ``limit=None`` returns every row — cluster fusion and the analysis layer
-    need the full evidence set, not the 12-row display cap.
+    Every stored row is returned. Pagination belongs at the evidence query
+    boundary, where continuation is explicit and auditable.
     """
     structured = finding.get("evidence") or (finding.get("metadata") or {}).get("evidence")
     rows: list[dict[str, str]] = []
@@ -327,15 +311,10 @@ def normalize_evidence_rows(
                 audit_id=str(item.get("audit_id") or ""),
                 loc=str(item.get("loc") or item.get("file_line") or ""),
             ))
-            if limit is not None and len(rows) >= limit:
-                break
     if rows:
         return rows
     obs = str(finding.get("observation") or finding.get("description") or "")
     return rows_from_observation(obs)
-
-
-_MAX_TABLE_ROWS = 40
 
 
 def _family_of(source: str) -> str:
@@ -361,7 +340,7 @@ def collapse_signatures(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     sigs: dict[tuple[str, str], dict[str, Any]] = {}
     for r in rows:
         detail = _detail_with_artifact(r)
-        key = (_family_of(str(r.get("source") or "")), detail[:140].lower())
+        key = (_family_of(str(r.get("source") or "")), detail.lower())
         if key in sigs:
             sigs[key]["n"] += 1
             continue
@@ -382,11 +361,12 @@ def collapse_signatures(rows: list[dict[str, str]]) -> list[dict[str, str]]:
 
 def render_evidence_table(
     rows: list[dict[str, str]],
-    max_rows: int = _MAX_TABLE_ROWS,
 ) -> list[str]:
     if not rows:
         return ["_No structured evidence rows._", ""]
-    sig = collapse_signatures(rows)
+    # Keep every evidence row and its location visible. Similarity grouping
+    # belongs in a separate summary, never in the evidence table itself.
+    sig = rows
     has_audit = any(str(r.get("audit_id") or "").strip() for r in sig)
     has_loc = any(str(r.get("loc") or "").strip() for r in sig)
     cols = "| Time (UTC) | Source | What it shows |"
@@ -398,7 +378,7 @@ def render_evidence_table(
         cols += " file:line |"
         rule += "---|"
     lines = [cols, rule]
-    for r in sig[:max_rows]:
+    for r in sig:
         cells = (
             f"| {_cell(r.get('time'))} | {_cell(_family_of(str(r.get('source') or '')))} "
             f"| {_cell(r.get('detail'))} |"
@@ -408,16 +388,11 @@ def render_evidence_table(
         if has_loc:
             cells += f" {_cell(r.get('loc'))} |"
         lines.append(cells)
-    if len(sig) > max_rows:
-        lines.append(
-            f"\n_… {len(sig) - max_rows} more distinct evidence row(s) — "
-            "full set on the Timeline / Explore pages._"
-        )
     lines.append("")
     return lines
 
 
-def evidence_rows_from_n4_hits(hits: list[dict[str, Any]], limit: int = _MAX_ROWS) -> list[dict[str, str]]:
+def evidence_rows_from_n4_hits(hits: list[dict[str, Any]]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for h in hits or []:
         body = str(h.get("text") or "")
@@ -429,6 +404,4 @@ def evidence_rows_from_n4_hits(hits: list[dict[str, Any]], limit: int = _MAX_ROW
         source = str(h.get("family") or "n4")
         loc = f"{h.get('file')}:{h.get('line')}"
         rows.append(_row(ts, source, artifact, f"{loc} {body}", loc=loc))
-        if len(rows) >= limit:
-            break
     return rows

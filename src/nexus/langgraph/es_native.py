@@ -13,7 +13,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 DEFAULT_SIZE = 200
-MAX_SIZE = 1000
+PAGE_SIZE = 1000
 MAX_AGGS = 40
 
 _QUERY_KEYS = {
@@ -736,8 +736,8 @@ def es_search(
         size_i = int(size)
     except (TypeError, ValueError):
         raise ESQueryError("size must be an integer") from None
-    if not 1 <= size_i <= MAX_SIZE:
-        raise ESQueryError(f"size must be 1..{MAX_SIZE}")
+    if size_i < 1:
+        raise ESQueryError("size must be at least 1")
     if sort is not None:
         if not isinstance(sort, list) or len(sort) > 4:
             raise ESQueryError("sort must be a list of at most 4 entries")
@@ -1144,7 +1144,12 @@ def es_sample(
     """Representative rows from ES (family/field filter), spread over time."""
     if not case_id:
         raise ESQueryError("case_id is required")
-    count = max(1, min(int(n or 12), 60))
+    try:
+        count = int(n)
+    except (TypeError, ValueError):
+        raise ESQueryError("sample size must be an integer") from None
+    if count < 1:
+        raise ESQueryError("sample size must be at least 1")
     filt: list[dict[str, Any]] = []
     if family:
         filt.append({"term": {"family": family.lower()}})
@@ -1180,9 +1185,9 @@ def es_sample(
         sample_notes.append("no field given: the value was searched in the row text")
     query: dict[str, Any] = {"bool": {"filter": filt}} if filt else {"match_all": {}}
 
-    fetch = min(2000, max(400, count * 40))
+    fetch = max(400, count * 40)
     result = es_search(
-        case_id, query, size=min(fetch, MAX_SIZE),
+        case_id, query, size=fetch,
         sort=[{"ts": {"order": "asc", "missing": "_last", "unmapped_type": "date"}}, {"_doc": "asc"}],
     )
     hits = result.get("hits") or []

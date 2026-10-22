@@ -745,8 +745,16 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
         case_id = result.get("case_id", case_id)
         log.info("Case created (authority): %s", case_id)
         step_log = [f"Case {case_id} created on case-authority host"]
+    from nexus.config import settings
+    from nexus.langgraph.pipeline_runs import reap_dead_runs
+
+    reaped_runs = reap_dead_runs(settings.cases_root / case_id)
+    if reaped_runs:
+        step_log.append(
+            "Marked confirmed-dead prior run(s) interrupted before new run: "
+            + ", ".join(reaped_runs)
+        )
     try:
-        from nexus.config import settings
         from nexus.langgraph.case_intake import persist_case_intake
 
         written = persist_case_intake(settings.cases_root / case_id, ctx)
@@ -847,11 +855,11 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
                 step_log.append(f"Evidence registered: {p}")
 
     try:
-        from nexus.config import settings
         from nexus.langgraph.pipeline_runs import create_run
 
+        case_dir = settings.cases_root / case_id
         pipeline_run = create_run(
-            settings.cases_root / case_id,
+            case_dir,
             state.get("pipeline_mode") or "tools",
             paths,
         )
@@ -905,22 +913,6 @@ async def scope(state: InvestigationState, tools: dict, model) -> dict:
         "hosts": hosts,
         "step_log": [f"Scoped investigation: {len(hosts)} hosts identified"],
     }
-
-
-def _import_file_cap() -> int:
-    """Optional operator cap on files routed to importers. 0 = unlimited.
-
-    D50's lesson: a silent cap drops evidence while the gate still reports the
-    lane complete. If the operator sets one, every file it drops is counted and
-    reported - never skipped quietly.
-    """
-    raw = os.environ.get("NEXUS_IMPORT_FILE_CAP", "").strip()
-    if not raw:
-        return 0
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return 0
 
 
 def _i1_route(path: str | Path, *, windows_root: Path | None = None) -> str:
@@ -977,6 +969,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         is_expansion_marker,
     )
 
+    case_dir = _arch_settings.cases_root / case_id
     registered = [p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p]
     # D285: a Magnet AXIOM case is read from its Case.mfdb; its own index, logs, log archive and attachment store
     # are gate rows that say what they are, and are neither expanded nor imported as evidence.
@@ -988,7 +981,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         parts = case_parts(db)
         axiom_parts.update(parts)
         axiom_rows.extend(part_gate_rows(db, parts))
-    expansions = expand_archives([str(p) for p in registered], _arch_settings.cases_root / case_id,
+    expansions = expand_archives([str(p) for p in registered], case_dir,
                                  exclude=axiom_parts)
     expanded_roots = [e["root"] for e in expansions if e["status"] == "OK"]
     consumed_archives = {str(Path(e["archive"])) for e in expansions}
@@ -1003,6 +996,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         parse_result=_parse_tool_result,
         skip_rag=True,
         pipeline_mode=mode,
+        defer_analysis=True,
         evidence_paths=(lane_paths if expansions else state.get("evidence_paths")) or None,
         on_event=_lane_event,
     )
@@ -1028,8 +1022,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     # the lane complete. A cap that drops evidence without recording it is the
     # same defect as D50's copy cap, one level up. The walk is now bounded only
     # by what is on the evidence, and every file it drops is recorded.
-    _MAX_IMPORTED_FILES = _import_file_cap()
-    _import_truncated = 0
     ingest_paths: list[str] = []
     raw_skipped: list[str] = []
     windows_unconfirmed: list[str] = []
@@ -1048,9 +1040,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                         fp = str(Path(root_dir) / fname)
                         if is_expansion_marker(Path(fp)):
                             continue  # D295: lane-generated expansion metadata is not evidence
-                        if _MAX_IMPORTED_FILES and len(ingest_paths) >= _MAX_IMPORTED_FILES:
-                            _import_truncated += 1
-                            continue
                         if fp in consumed_archives:
                             continue  # expanded above (D276): its contents are planned, not the file
                         if Path(fp) in axiom_parts:
@@ -1091,28 +1080,17 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
             f"I1 left {len(windows_unconfirmed)} file(s) inside a recognised Windows root on the host lane "
             f"because no importer confirmed them; check the Windows-lane completeness rows. Examples: {examples}"
         )
-    if _import_truncated:
-        # A cap the operator set is reported, not hidden: the gate and the
-        # briefing must both show that evidence was left unrouted.
-        result["_import_truncated_note"] = (
-            f"I1 routed {len(ingest_paths)} file(s) to importers; "
-            f"{_import_truncated} more were left unrouted by "
-            f"NEXUS_IMPORT_FILE_CAP={_MAX_IMPORTED_FILES}."
-        )
     if ingest_paths:
         import asyncio as _asyncio
         import threading as _threading
 
-        from nexus.config import settings as _settings
         from nexus.langgraph.network_lane import enrich_local_network
         from nexus.langgraph.timeline_merge import (
             anchor_assumed_years,
             ingest_into_case,
-            rebuild_case_timeline,
         )
         from nexus.langgraph.tool_lane import _lane_concurrency, find_windows_root
 
-        case_dir = _settings.cases_root / case_id
         steps = list(result.get("step_log") or [])
         # EH-15: store writes are serialized (artifacts.jsonl/audit append);
         # parsing/enrichment may overlap up to NEXUS_TOOL_LANE_CONCURRENCY.
@@ -1154,7 +1132,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 import_rows.append(import_row(path, {"error": str(exc)}, net))
                 return lines
             import_rows.append(import_row(path, info, net))
-            capped = " (capped)" if info.get("artifacts_capped") else ""
             err_note = ""
             problems = list(info.get("errors") or [])
             if info.get("error"):
@@ -1163,7 +1140,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 err_note = " errors=" + " | ".join(str(e)[:120] for e in problems[:2])
             lines.append(
                 f"I1 ingest extra path {p}: {info.get('source')} "
-                f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')}{capped} "
+                f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')} "
                 f"ok={info.get('success')}{err_note}"
             )
             if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and path.suffix.lower() in (
@@ -1215,10 +1192,6 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 )
         except Exception as exc:  # noqa: BLE001
             steps.append(f"I1 yearless-time anchoring failed: {exc}")
-        try:
-            rebuild_case_timeline(case_dir)
-        except Exception as exc:  # noqa: BLE001
-            steps.append(f"I3 merge after extra ingest skipped: {exc}")
         result["step_log"] = steps
     steps = list(result.get("step_log") or [])
     label = "tools mode" if mode == "tools" else "coverage mode"
@@ -1254,6 +1227,28 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         except Exception as exc:  # noqa: BLE001 — interpret's EH-13 gate reports
             steps.append(f"N3 auto-index failed: {exc}")
         result["step_log"] = steps
+    # I1 appends imported rows to case/ingest/artifacts.jsonl. Generate the
+    # run-bound N4 pack only after that pass so its CSV scan can see these rows;
+    # write_query_pack also builds the final timeline from the same N4 scan.
+    try:
+        from nexus.langgraph.pipeline_runs import resolve_run
+        from nexus.langgraph.snippets import write_snippets
+
+        run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        snip = write_snippets(
+            case_dir,
+            result.get("tool_run_ledger") or [],
+            run_dir=run.path,
+            run_id=run.run_id,
+        )
+        result.setdefault("step_log", []).append(
+            f"N4 query-pack/timeline generated after I1: {snip}"
+        )
+    except Exception as exc:  # noqa: BLE001 - surface the required N4 failure
+        analysis_error = f"N4 query-pack/timeline generation failed: {exc}"
+        prior_error = str(result.get("error") or "").strip()
+        result["error"] = f"{prior_error}; {analysis_error}" if prior_error else analysis_error
+        result.setdefault("step_log", []).append(analysis_error)
     return result
 
 
@@ -1350,7 +1345,9 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         load_manifest(tools_run.path).get("evidence_paths") or [],
         parent_run_id=tools_run.run_id,
     )
-    write_snippets(tools_run.path, ledger)
+    write_snippets(
+        case_dir, ledger, run_dir=tools_run.path, run_id=tools_run.run_id
+    )
     intake = load_case_intake(case_dir)
     ctx = dict(state.get("case_context") or {})
     for key, val in intake.items():
@@ -1850,7 +1847,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         try:
             from nexus.tools.evidence_index import do_n4_query as _wide_query
 
-            _wide = _wide_query(case_id=case_id, dsl="", limit=400, match_all=True)
+            _wide = _wide_query(case_id=case_id, dsl="", limit=None, match_all=True)
             wide_hits = [h for h in (_wide.get("hits") or []) if isinstance(h, dict)]
         except Exception as exc:  # noqa: BLE001 — builders fall back to their own fetch
             log.debug("wide case scan unavailable: %s", exc)
@@ -1862,7 +1859,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
 
             emit_stage(state, "interpret", "setup", "threat-intel context")
-            ti_ctx = build_case_ti_context(case_id, max_iocs=6, hits=share_hits)
+            ti_ctx = build_case_ti_context(case_id, hits=share_hits)
             write_ti_context(settings.cases_root / case_id, ti_ctx)
             ti_block = str(ti_ctx.get("markdown") or "")
         except Exception as exc:  # noqa: BLE001 — TI is best-effort context
@@ -1878,7 +1875,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             )
 
             emit_stage(state, "interpret", "setup", "entity inventory")
-            inv = build_entity_inventory(case_id, cap=40, hits=share_hits)
+            inv = build_entity_inventory(case_id, hits=share_hits)
             write_entity_inventory(settings.cases_root / case_id, inv)
             inv_md = render_inventory_markdown(inv)
         except Exception as exc:  # noqa: BLE001 — inventory is best-effort
@@ -2438,7 +2435,7 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         if case_yaml.is_file():
             meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
         try:
-            timeline = rebuild_case_timeline(case_dir)
+            timeline = rebuild_case_timeline(case_dir, run_id=pipeline_run.run_id)
             step_log.append(f"N7 chronology: {len(timeline)} events")
         except Exception as exc:  # noqa: BLE001
             step_log.append(f"N7 chronology skipped: {exc}")

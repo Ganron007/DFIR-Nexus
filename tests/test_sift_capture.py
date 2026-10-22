@@ -24,7 +24,6 @@ def _py(code: str) -> list[str]:
 
 
 def test_a_long_capture_is_kept_whole_even_when_the_reply_is_sliced(monkeypatch):
-    monkeypatch.setattr(settings, "max_output_bytes", 5_000_000)
     monkeypatch.setattr(settings, "response_byte_budget", 10_240)
 
     lines = 500
@@ -47,21 +46,21 @@ def test_a_long_capture_is_kept_whole_even_when_the_reply_is_sliced(monkeypatch)
     assert result["persist_truncated"] is False, "the capture was not capped"
 
 
-def test_hitting_the_capture_cap_is_flagged_not_silent(monkeypatch):
-    monkeypatch.setattr(settings, "max_output_bytes", 2_048)
+def test_capture_above_the_former_50_mib_limit_is_kept_whole(monkeypatch):
     monkeypatch.setattr(settings, "response_byte_budget", 10_240)
+    chunks = 805  # More than the former 50 MiB application capture ceiling.
+    result = _execute(_py(
+        "import sys\n"
+        f"block = b'x' * 65536\nfor _ in range({chunks}): sys.stdout.buffer.write(block)\n"
+    ))
 
-    result = _execute(_py("print('x' * 50000)"))
-
-    assert result["persist_truncated"] is True
-    assert result["stdout_full_length"] <= 2_048
-    # A capped capture is not a success, and the lane has a reason to say why.
-    reason = persist_truncation_reason(result)
-    assert reason and "byte cap" in reason
+    assert result["exit_code"] == 0
+    assert result["stdout_full_length"] == chunks * 65536
+    assert len(result["stdout_full"]) == chunks * 65536
+    assert result["persist_truncated"] is False
 
 
 def test_a_whole_capture_carries_no_truncation_reason(monkeypatch):
-    monkeypatch.setattr(settings, "max_output_bytes", 5_000_000)
     monkeypatch.setattr(settings, "response_byte_budget", 10_240)
 
     result = _execute(_py("print('one short row')"))
@@ -74,7 +73,6 @@ def test_a_jsonl_capture_larger_than_the_reply_budget_keeps_every_row(monkeypatc
     """``vol -r jsonl`` shape: one JSON object per line, over the reply budget."""
     import json
 
-    monkeypatch.setattr(settings, "max_output_bytes", 5_000_000)
     monkeypatch.setattr(settings, "response_byte_budget", 10_240)
 
     rows = 500
@@ -93,7 +91,6 @@ def test_a_jsonl_capture_larger_than_the_reply_budget_keeps_every_row(monkeypatc
 
 
 def test_execute_reports_the_command_that_ran(monkeypatch):
-    monkeypatch.setattr(settings, "max_output_bytes", 5_000_000)
     result = _execute(_py("print('ok')"))
     assert result["command"].strip()
     assert result["stdout_full"].strip() == "ok"

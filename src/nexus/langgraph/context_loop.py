@@ -37,8 +37,6 @@ from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
-_MAX_PREVIEW_ROWS = 25
-_MAX_PREVIEW_CHARS = 900
 _CALL_CHARS_DEFAULT = 120_000
 
 DEFAULT_SYSTEM = """\
@@ -296,16 +294,20 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
             return {}, f"{tool}: source_ids must be a list of strings"
     if tool == "es_search":
         try:
-            size = int(clean.get("size") or 50)
+            size = int(clean.get("size", 50))
         except (TypeError, ValueError):
             return {}, "es_search: size must be an integer"
-        clean["size"] = max(1, min(size, 200))
+        if size < 1:
+            return {}, "es_search: size must be at least 1"
+        clean["size"] = size
     if tool == "sample_rows":
         try:
-            n = int(clean.get("n") or 12)
+            n = int(clean.get("n", 12))
         except (TypeError, ValueError):
             return {}, "sample_rows: n must be an integer"
-        clean["n"] = max(1, min(n, 60))
+        if n < 1:
+            return {}, "sample_rows: n must be at least 1"
+        clean["n"] = n
     if tool == "rag_search":
         try:
             clean["top_k"] = max(1, min(int(clean.get("top_k") or 8), 50))
@@ -314,22 +316,9 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
     return clean, ""
 
 
-def _preview_rows(rows: list[dict[str, Any]], limit: int = _MAX_PREVIEW_ROWS) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for row in rows[:limit]:
-        if not isinstance(row, dict):
-            continue
-        fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
-        out.append({
-            "family": str(row.get("family") or "")[:80],
-            "file": str(row.get("file") or "")[:200],
-            "line": str(row.get("line") or "")[:16],
-            "ts": str(row.get("ts") or row.get("time") or "")[:40],
-            "host": str(row.get("host") or "")[:80],
-            "text": str(row.get("text") or "")[:_MAX_PREVIEW_CHARS],
-            "fields": {str(k)[:60]: str(v)[:160] for k, v in list(fields.items())[:8]},
-        })
-    return out
+def _preview_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retain the complete returned page; prompt_budget owns model-window limits."""
+    return [row for row in rows if isinstance(row, dict)]
 
 
 def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -382,7 +371,7 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
             "bucket_count": len(buckets),
             "buckets": [
                 {"key": b.get("key"), "count": b.get("doc_count")}
-                for b in buckets[:40] if isinstance(b, dict)
+                for b in buckets if isinstance(b, dict)
             ],
             "next_after_key": result.get("next_after_key"),
         }
@@ -392,7 +381,7 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
             "counts": result.get("counts"),
             "entries": [
                 {k: e.get(k) for k in ("tool", "status", "reason", "purpose", "output", "audit_id")}
-                for e in (result.get("entries") or [])[:40]
+                for e in (result.get("entries") or [])
             ],
             "total": result.get("total"),
         }
@@ -520,7 +509,8 @@ def _event_summary(summary: Any) -> dict[str, Any]:
             out[key] = f"{len(value)} value(s)"
     hits = out.get("hits")
     if isinstance(hits, list):
-        out["hits"] = hits[:3]
+        out["hits_preview"] = hits[:3]
+        out.pop("hits", None)
         out["hits_total"] = len(hits)
     return out
 
@@ -700,18 +690,12 @@ def _fallback_partial_reply(
                 break
         lines.append("")
     if hits:
-        lines.append(f"**Rows already retrieved ({len(hits)}):**")
+        lines.append(f"**Rows already retrieved ({len(hits)}; full details follow):**")
         lines.append("")
-        lines.append("| Family | File | Line | Detail |")
-        lines.append("|---|---|---|---|")
-        for hit in hits[:20]:
-            text = str(hit.get("text") or "").replace("|", "\\|")[:180]
-            lines.append(
-                f"| {str(hit.get('family') or '')[:40]} "
-                f"| {str(hit.get('file') or '')[:80]} "
-                f"| {str(hit.get('line') or '')[:12]} "
-                f"| {text} |"
-            )
+        lines.extend(
+            json.dumps(hit, ensure_ascii=False, sort_keys=True, default=str)
+            for hit in hits
+        )
     else:
         lines.append("No rows had been retrieved when the budget expired.")
     lines.append("")

@@ -58,6 +58,19 @@ def test_two_evtx_folders_keep_their_outputs_apart(tmp_path):
     assert len(outputs) == 2 and all(Path(o).is_relative_to(tmp_path / "x" / "deepbluecli") for o in outputs)
 
 
+def test_evtxecmd_parses_every_input_and_counts_nested_logs(tmp_path):
+    logs = tmp_path / "Logs"
+    _write(logs, ["Security.evtx"])
+    _write(logs / "nested", ["System.evtx"])
+    jobs = []
+
+    tool_lane.schedule_evtx_parsers(jobs, [logs], tmp_path / "out")
+
+    evtxecmd = next(j for j in jobs if j.tool == "evtxecmd")
+    assert evtxecmd.argv[-2:] == ["--dedupe", "false"]
+    assert "(2 logs)" in evtxecmd.purpose
+
+
 def test_the_sift_pull_needs_a_job_that_went_to_sift():
     windows = ToolJob(host="windows", tool="hayabusa", argv=["hayabusa"], purpose="", status="OK")
     assert not tool_lane._sift_jobs_ran([windows])

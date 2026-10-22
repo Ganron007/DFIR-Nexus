@@ -24,6 +24,47 @@ def test_column_classes():
     assert column_class("evtxecmd", "FancyNewTextColumn") == "content"
 
 
+def test_column_class_caches_static_schema_lookups(monkeypatch):
+    from nexus.langgraph import match_site
+
+    match_site.column_class.cache_clear()
+    calls = []
+    original = match_site._file_sig
+
+    def counted(path):
+        calls.append(path)
+        return original(path)
+
+    monkeypatch.setattr(match_site, "_file_sig", counted)
+    try:
+        assert match_site.column_class("evtxecmd", "Payload") == "content"
+        first_calls = len(calls)
+        assert first_calls >= 1
+        assert match_site.column_class("evtxecmd", "Payload") == "content"
+        assert len(calls) == first_calls
+    finally:
+        match_site.column_class.cache_clear()
+
+
+def test_match_site_annotations_are_exhaustive(monkeypatch):
+    from nexus.langgraph import match_site
+    from nexus.langgraph.query_pack import _count_fact_sites
+
+    terms = [f"needle{chr(65 + i)}" for i in range(20)]
+    fields = {f"Column{i}": term for i, term in enumerate(terms)}
+    monkeypatch.setattr(match_site, "column_class", lambda _family, _name: "structure")
+
+    classified = match_site.classify_matched_terms(
+        "evtxecmd", fields, " ".join(terms), terms
+    )
+    stats = {}
+    _count_fact_sites(stats, classified)
+
+    assert classified["facts"] == terms
+    assert len(classified["sites"]) == len(terms)
+    assert sum(stats["fact_counts"].values()) == len(terms)
+
+
 def test_numeric_event_id_is_a_fact_not_signal():
     from nexus.langgraph.match_site import classify_matched_terms
 

@@ -242,14 +242,14 @@ def test_m1_full_run_starts_async_and_runs_one_at_a_time(client, c1):
     map and the index.
     """
     first = client.post("/portal/api/mode1/full-run",
-                        json={"max_needles": 2}, headers=_h(client, c1))
+                        json={"needle_filter": "sdelete"}, headers=_h(client, c1))
     assert first.status_code in (202, 200, 409), first.text
     body = first.json()
     if first.status_code in (202, 200):
         assert body.get("run_id"), body
         assert body.get("status") in ("running", "complete", "done", "failed"), body
     second = client.post("/portal/api/mode1/full-run",
-                         json={"max_needles": 2}, headers=_h(client, c1))
+                         json={"needle_filter": "sdelete"}, headers=_h(client, c1))
     assert second.status_code in (202, 200, 409), second.text
     # Whichever way the race fell, the status endpoint must agree with reality.
     st = client.get("/portal/api/mode1/full-run/status", headers=_h(client, c1))

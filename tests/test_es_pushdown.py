@@ -261,25 +261,35 @@ def test_resolve_agg_field_direct_and_parsed(monkeypatch):
     assert case_index._resolve_agg_field("CASE-X", "nope") is None
 
 
-def test_es_aggregate_uses_cardinality_for_distinct(monkeypatch, tmp_path):
+def test_es_aggregate_pages_every_distinct_value(monkeypatch, tmp_path):
     from nexus.langgraph import case_index
 
-    captured = {}
+    captured = {"bodies": []}
 
     class Response:
         status_code = 200
         text = ""
 
+        def __init__(self, page):
+            self.page = page
+
         def json(self):
+            if self.page == 1:
+                return {
+                    "hits": {"total": {"value": 500}},
+                    "aggregations": {"v": {
+                        "buckets": [
+                            {"key": {"value": "host-a"}, "doc_count": 20},
+                            {"key": {"value": "host-b"}, "doc_count": 10},
+                        ],
+                        "after_key": {"value": "host-b"},
+                    }},
+                }
             return {
                 "hits": {"total": {"value": 500}},
-                "aggregations": {
-                    "v": {"buckets": [
-                        {"key": "host-a", "doc_count": 20},
-                        {"key": "host-b", "doc_count": 10},
-                    ]},
-                    "distinct": {"value": 257},
-                },
+                "aggregations": {"v": {"buckets": [
+                    {"key": {"value": "host-c"}, "doc_count": 5},
+                ]}},
             }
 
     class Client:
@@ -291,20 +301,21 @@ def test_es_aggregate_uses_cardinality_for_distinct(monkeypatch, tmp_path):
 
         def post(self, path, json):
             captured["path"] = path
-            captured["body"] = json
-            return Response()
+            captured["bodies"].append(json)
+            return Response(len(captured["bodies"]))
 
     monkeypatch.setattr(case_index, "es_available", lambda: True)
     monkeypatch.setattr(case_index, "_schema_version_cached", lambda _case_id: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _case_id, _field: "host")
     monkeypatch.setattr(case_index, "_client", lambda: Client())
 
-    result = case_index.es_aggregate(tmp_path / "CASE-X", field="host", top=2, match_all=True)
+    result = case_index.es_aggregate(tmp_path / "CASE-X", field="host", match_all=True)
     assert result is not None
-    assert result["distinct"] == 257
-    assert result["distinct_approximate"] is True
-    assert len(result["top"]) == 2
-    assert "cardinality" in captured["body"]["aggs"]["distinct"]
+    assert result["distinct"] == 3
+    assert result["distinct_approximate"] is False
+    assert [item["value"] for item in result["top"]] == ["host-a", "host-b", "host-c"]
+    assert len(captured["bodies"]) == 2
+    assert captured["bodies"][1]["aggs"]["v"]["composite"]["after"] == {"value": "host-b"}
 
 
 def test_doc_shape_includes_structured_fields(tmp_path):
@@ -346,6 +357,17 @@ def test_trim_hit_preserves_structured_envelope():
     assert hit["event_id"] == "4688"
     assert hit["ts"] == "2026-01-01T10:00:00"
     assert hit["fields"]["RuleTitle"] == "Suspicious Sdelete"
+
+
+def test_trim_hit_preserves_full_row_and_every_field():
+    from nexus.tools.evidence_index import _trim_hit
+
+    text = "x" * 5000
+    fields = {f"Field{i}": "v" * 500 for i in range(30)}
+    hit = _trim_hit({"text": text, "fields": fields, "terms": "needle" * 100})
+    assert hit["text"] == text
+    assert hit["fields"] == fields
+    assert len(hit["fields"]) == 30
 
 def test_stray_date_field_filter_degrades_to_text():
     """A stray ts/timestamp field filter must degrade to text, not 400.

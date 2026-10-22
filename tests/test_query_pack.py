@@ -228,6 +228,150 @@ def test_write_snippets_also_writes_query_pack(tmp_path: Path):
     assert "sdelete" in qp.lower()
 
 
+def test_run_scoped_snippets_keep_case_intake_and_run_scope(tmp_path: Path, monkeypatch):
+    from nexus.langgraph import query_pack, timeline_merge
+    from nexus.langgraph.snippets import write_snippets
+
+    case = tmp_path / "case"
+    run_id = "RUN-20261022T000000000000Z-tools-test"
+    run_dir = case / "runs" / run_id
+    (run_dir / "extractions").mkdir(parents=True)
+    (case / "CASE.yaml").write_text(
+        "intake:\n  question: Compromise suspected.\n  set_by: examiner\n",
+        encoding="utf-8",
+    )
+    observed: dict[str, object] = {}
+
+    def present_families(case_dir: Path, run_id: str = "") -> list[str]:
+        observed["family_case"] = Path(case_dir)
+        observed["family_run_id"] = run_id
+        return ["hayabusa"]
+
+    def n4_hits(
+        case_dir: Path,
+        terms: list[str],
+        window,
+        priority_terms=None,
+        backend=None,
+        query=None,
+        match_all=False,
+        stats=None,
+        catalog=None,
+        run_id: str = "",
+    ):
+        observed["n4_case"] = Path(case_dir)
+        observed["n4_terms"] = terms
+        observed["n4_priority_terms"] = priority_terms
+        observed["n4_run_id"] = run_id
+        return [], "csv"
+
+    def rebuild(
+        case_dir: Path,
+        hits: list[dict] | None = None,
+        run_id: str = "",
+    ) -> list[dict]:
+        observed["timeline_case"] = Path(case_dir)
+        observed["timeline_run_id"] = run_id
+        observed["timeline_hits"] = hits
+        return []
+
+    monkeypatch.setattr(query_pack, "_present_families", present_families)
+    monkeypatch.setattr(query_pack, "n4_hits", n4_hits)
+    monkeypatch.setattr(timeline_merge, "rebuild_case_timeline", rebuild)
+
+    written = write_snippets(case, [], run_dir=run_dir, run_id=run_id)
+
+    assert written == run_dir / "analysis" / "snippets.md"
+    pack_path = run_dir / "analysis" / "query_pack.md"
+    pack = pack_path.read_text(encoding="utf-8")
+    assert "question: Compromise suspected." in pack
+    assert observed["family_case"] == case
+    assert observed["family_run_id"] == run_id
+    assert observed["n4_case"] == case
+    assert observed["n4_terms"] == query_pack.collect_query_terms(
+        query_pack.load_case_intake(case)
+    )
+    assert observed["n4_run_id"] == run_id
+    assert observed["timeline_case"] == case
+    assert observed["timeline_run_id"] == run_id
+    assert observed["timeline_hits"] == []
+
+
+def test_write_query_pack_reuses_one_real_n4_scan_for_timeline(tmp_path, monkeypatch):
+    import json
+    import shutil
+
+    from nexus.langgraph import query_pack, timeline_merge
+    from nexus.langgraph.pipeline_runs import create_run
+
+    case = tmp_path / "CASE-SHARED-N4"
+    run = create_run(case, "tools")
+    run_id = run.run_id
+    run_dir = run.path
+    extraction = run_dir / "extractions" / "evtxecmd"
+    extraction.mkdir(parents=True)
+    fixture = Path(__file__).parent / "fixtures" / "cs1b_evtx_real_rows.csv"
+    shutil.copyfile(fixture, extraction / "EvtxECmd_Output.csv")
+    (case / "CASE.yaml").write_text(
+        "intake:\n  query_extra: Process creation\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NEXUS_N4_BACKEND", "csv")
+    monkeypatch.setattr(query_pack, "extras_gap_notes", lambda *_args, **_kwargs: [])
+    calls = 0
+    real_n4_hits = query_pack.n4_hits
+
+    def counted_n4_hits(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_n4_hits(*args, **kwargs)
+
+    monkeypatch.setattr(query_pack, "n4_hits", counted_n4_hits)
+
+    pack_path = query_pack.write_query_pack(
+        case, ledger=[], output_dir=run_dir / "analysis", run_id=run_id,
+    )
+    actual_events = json.loads((case / "timeline.json").read_text(encoding="utf-8"))
+
+    assert pack_path.is_file()
+    assert calls == 1
+    assert any("process creation" in event["description"].lower() for event in actual_events)
+
+    # The old independent timeline path remains the parity oracle for the same
+    # verbatim public EVTX output rows; it must produce the identical events.
+    monkeypatch.setattr(query_pack, "n4_hits", real_n4_hits)
+    expected_events = timeline_merge.rebuild_case_timeline(case, run_id=run_id)
+    assert actual_events == expected_events
+
+
+def test_write_query_pack_propagates_timeline_rebuild_failure(tmp_path, monkeypatch):
+    import pytest
+
+    from nexus.langgraph import query_pack, timeline_merge
+
+    case = tmp_path / "CASE-TIMELINE-FAILURE"
+    case.mkdir()
+    (case / "CASE.yaml").write_text(
+        "intake:\n  query_extra: Process creation\n",
+        encoding="utf-8",
+    )
+    terms = query_pack.collect_query_terms(query_pack.load_case_intake(case))
+    monkeypatch.setattr(query_pack, "extras_gap_notes", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(query_pack, "_present_families", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(query_pack, "n4_hits", lambda *_args, **_kwargs: ([], "csv"))
+    monkeypatch.setattr(
+        timeline_merge, "timeline_query_plan", lambda *_args, **_kwargs: (terms, []),
+    )
+
+    def fail_timeline(*_args, **_kwargs):
+        raise OSError("timeline disk full")
+
+    monkeypatch.setattr(timeline_merge, "rebuild_case_timeline", fail_timeline)
+
+    with pytest.raises(OSError, match="timeline disk full"):
+        query_pack.write_query_pack(case, ledger=[], run_id="R-FAIL")
+
+
 def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     from nexus.langgraph.query_pack import run_ad_hoc_query
 
@@ -259,19 +403,79 @@ def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     assert "192.168.77.62" in yaml_text
 
 
-def test_bmc_tools_keeps_every_file_by_default(tmp_path: Path):
-    """Operator decision 2026-10-11: valid evidence is not capped. Every file of a family is
-    walked by default; an explicit family cap still applies when it is asked for."""
+def test_bmc_tools_keeps_every_file_even_with_legacy_cap_setting(tmp_path: Path, monkeypatch):
+    """Valid evidence is not capped by a legacy per-family setting."""
     from nexus.langgraph.query_pack import iter_extraction_files
 
     bmc = tmp_path / "extractions" / "bmc-tools"
     bmc.mkdir(parents=True)
     for i in range(200):
-        (bmc / f"tile{i}.txt").write_text("rdp cache tile\n", encoding="utf-8")
+        (bmc / f"tile{i}.txt").touch()
+    monkeypatch.setenv("NEXUS_N4_FILES_PER_FAMILY", "120")
     files = iter_extraction_files(tmp_path)
     assert sum(1 for _p, _r, fam in files if fam == "bmc-tools") == 200
-    capped = iter_extraction_files(tmp_path, max_files_per_family=120)
-    assert sum(1 for _p, _r, fam in capped if fam == "bmc-tools") == 120
+
+
+def test_n4_returns_every_row_from_one_file_and_pages_without_loss(tmp_path: Path):
+    """N4 collection is exhaustive; an API page is explicit and resumable."""
+    from nexus.langgraph.query_pack import n4_hits, run_ad_hoc_query
+
+    case = tmp_path / "CASE-N4-UNCAPPED"
+    hayabusa = case / "extractions" / "hayabusa"
+    hayabusa.mkdir(parents=True)
+    rows = ["Timestamp,Computer,RuleTitle"]
+    rows.extend(
+        f"2026-10-20T10:{i // 60:02d}:{i % 60:02d}Z,WS01,Mimikatz execution {i}"
+        for i in range(349)
+    )
+    (hayabusa / "timeline.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (case / "CASE.yaml").write_text(
+        "intake:\n  query_extra: mimikatz\n", encoding="utf-8"
+    )
+
+    hits, backend = n4_hits(
+        case, ["mimikatz"], (None, None), priority_terms=["mimikatz"],
+        backend="csv", stats={},
+    )
+    assert backend == "csv"
+    assert len(hits) == 349
+    assert hits[-1]["text"].endswith("Mimikatz execution 348")
+
+    first = run_ad_hoc_query(case, backend="csv", limit=100)
+    final = run_ad_hoc_query(case, backend="csv", limit=100, offset=300)
+    assert first["count"] == 349
+    assert len(first["hits"]) == 100
+    assert first["complete"] is False
+    assert first["next_offset"] == 100
+    assert len(final["hits"]) == 49
+    assert final["complete"] is True
+    assert final["next_offset"] is None
+
+
+def test_n4_snapshots_path_roots_once_for_all_rows(tmp_path: Path, monkeypatch):
+    """Path sanitization reuses one case-root snapshot for the whole scan."""
+    from nexus.langgraph import query_pack
+
+    case = tmp_path / "CASE-ROOT-SNAPSHOT"
+    output = case / "extractions" / "evtxecmd"
+    output.mkdir(parents=True)
+    (output / "events.csv").write_text(
+        "Message\nC:\\Evidence\\payload.exe\nC:\\Evidence\\payload.exe\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def roots(case_dir):
+        calls.append(case_dir)
+        return [(r"C:\Evidence", "<evidence>")]
+
+    monkeypatch.setattr(query_pack, "machine_roots", roots)
+    hits = query_pack.scan_extractions(case, ["payload"], (None, None))
+
+    assert len(calls) == 1
+    assert len(hits) == 2
+    assert all("<evidence>" in hit["text"] for hit in hits)
+    assert all(r"C:\Evidence" not in hit["text"] for hit in hits)
 
 
 def test_n4_scans_hayabusa_named_file(tmp_path: Path):

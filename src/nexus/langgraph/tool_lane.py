@@ -2,13 +2,16 @@
 
 Every host-triage tool whose artifact is **present on this evidence** is
 scheduled, executed via MCP (``run_windows_command`` / ``run_command``),
-and recorded in a ledger (OK / FAIL / SKIP + reason).
+and recorded in a ledger (OK / FAIL / SKIP + reason). The operator-designated
+optional ``logfileparser`` and ``deepbluecli`` jobs are recorded as SKIP by
+default; their evidence remains available for examiner-run manual processing.
 
 Presence comes from knowledge YAML locations
 (``src/nexus/data/knowledge/artifacts/windows/*.yaml``) plus well-known
 paths. Argv stays here (YAML ``quick_start`` is not structured enough).
 
-  tools     — this lane only; no RAG, no LLM. SKIP = artifact absent.
+  tools     — this lane only; no RAG, no LLM. SKIP = artifact absent or a
+              documented default-optional-tool exclusion.
   coverage  — this lane, then RAG+LLM interpret. FAIL does not abort interpret.
   design    — this lane first, then ReAct may **add** corroboration tools.
 
@@ -25,12 +28,13 @@ import re
 import shlex
 import shutil
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from nexus.langgraph.tool_call import call_tool
+from nexus.langgraph.tool_output_policy import is_tool_own_log_name
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +46,7 @@ class ToolJob:
     argv: list[str]
     purpose: str
     timeout: int = 600
-    status: str = "PENDING"  # PENDING | OK | FAIL | SKIP
+    status: str = "PENDING"  # PENDING | OK | FAIL | SKIP | BLOCKED
     reason: str = ""
     audit_id: str = ""
     output_saved_to: str = ""
@@ -86,6 +90,43 @@ class ToolJob:
     queued_s: float = 0.0
     duration_s: float = 0.0
     tool_elapsed_s: float = 0.0
+
+
+_DEFAULT_OPTIONAL_TOOL_SKIP_REASONS = {
+    "logfileparser": (
+        "optional by operator policy; LogFileParser is excluded from the default lane "
+        "and may be run manually by the examiner when needed"
+    ),
+    "deepbluecli": (
+        "optional by operator policy; DeepBlueCLI is excluded from the default lane "
+        "to avoid long channel scans"
+    ),
+}
+
+
+def _apply_default_optional_tool_skips(jobs: list[ToolJob]) -> int:
+    """Mark the operator-approved optional parsers as visible lane skips.
+
+    Existing planner SKIPs keep their more specific reason. Every other planned
+    state is replaced so prior-run reuse or an unavailable optional executable
+    cannot turn this policy into a tool invocation or a blocking row.
+    """
+    skipped = 0
+    for job in jobs:
+        reason = _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS.get(str(job.tool or "").strip().lower())
+        if reason is None or job.status == "SKIP":
+            continue
+        job.status = "SKIP"
+        job.reason = reason
+        job.audit_id = ""
+        job.output_saved_to = ""
+        job.output_files = []
+        job.result = {}
+        job.lineage = {}
+        job.duration_s = 0.0
+        job.tool_elapsed_s = 0.0
+        skipped += 1
+    return skipped
 
 
 class CasePipelineTool:
@@ -147,13 +188,54 @@ def _logfileparser_timeout(logfile: Path) -> int:
     """LogFileParser's budget for a $LogFile, on every path that schedules it (D288).
 
     The drive-tree plan gave it a fixed 600 s while a registered $LogFile got this; sample S08's 57 MB $LogFile ran
-    past 600 s on three of its fifteen hosts and each was killed.
+    past 600 s on three of its fifteen hosts and each was killed. A later S08
+    run showed that a 3,600 s ceiling can clip the size-scaled budget for a
+    57,360,384-byte input, so the ceiling is two hours while the actual budget
+    remains proportional to the input size.
     """
     try:
         nbytes = logfile.stat().st_size
     except OSError:
         nbytes = 0
-    return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=3600)
+    return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=7200)
+
+
+def _evtxecmd_timeout_for_bytes(nbytes: int) -> int:
+    """Budget an EvtxECmd directory pass by the bytes it must parse (D315).
+
+    A 372-file S08 collection totals 3.29 GiB and exceeded the planner's flat
+    1,800 s limit. At roughly 0.5 s/MiB on the completed S08 directory passes,
+    one second per MiB leaves a 2x throughput margin without imposing the same
+    hour-long timeout on small EVTX sets.
+    """
+    return timeout_for_bytes(nbytes, base=300, per_mb=1, cap=7200)
+
+
+def _evtxecmd_timeout(evtx_dir: Path) -> int:
+    """Use the aggregate size of every top-level EVTX file in a directory."""
+    total_bytes = 0
+    try:
+        for evtx in evtx_dir.glob("*.evtx"):
+            if not evtx.is_dir():
+                total_bytes += evtx.stat().st_size
+    except OSError:
+        # An incomplete size scan must not under-budget a large folder.
+        return 7200
+    return _evtxecmd_timeout_for_bytes(total_bytes)
+
+
+def _deepbluecli_timeout_for_bytes(nbytes: int | None) -> int:
+    """Scale DeepBlueCLI's per-channel budget with headroom for dense logs (D315).
+
+    S08's 20 MiB Security.evtx jobs got 900 s under the old slope; two timed
+    out at that exact limit while another same-sized job completed in 601 s.
+    The steeper slope gives that input 1,500 s while keeping the existing
+    one-hour ceiling for the larger channels.
+    """
+    if nbytes is None:
+        # Unknown input size must not receive the minimum-size budget.
+        return 3600
+    return timeout_for_bytes(nbytes, base=300, per_mb=60, cap=3600)
 
 
 def _stem(evidence: Path) -> str:
@@ -289,6 +371,50 @@ def find_windows_root(evidence: Path) -> Path | None:
     except OSError:
         return None
     return None
+
+
+def _windows_roots_for_paths(paths: Iterable[str | Path]) -> list[Path]:
+    """Find each Windows image root the lane planned, including expanded archives.
+
+    I1 can receive registered files nested inside a Windows image. In that case
+    its root is discovered from the case evidence directory, so the completeness
+    table must use the same bounded lookup.
+    """
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = Path(raw_path)
+        root = find_windows_root(path)
+        if root is None and path.is_file():
+            evidence_dir = next(
+                (parent for parent in path.parents if parent.name.lower() == "evidence"),
+                None,
+            )
+            if evidence_dir is not None:
+                root = find_windows_root(evidence_dir)
+        if root is None:
+            continue
+        key = os.path.normcase(os.path.abspath(root))
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(root)
+    return roots
+
+
+def _artifact_completeness_for_paths(
+    paths: Iterable[str | Path],
+    scheduled_tools: set[str],
+    ledger: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]] | None:
+    """Build coverage for all Windows roots in the lane's filtered plan paths."""
+    roots = _windows_roots_for_paths(paths)
+    if not roots:
+        return None
+    from nexus.langgraph.artifact_map import completeness_table, discover_windows_artifacts
+
+    hits = [hit for root in roots for hit in discover_windows_artifacts(root)]
+    return completeness_table(hits, scheduled_tools, ledger=ledger)
 
 
 def _fs_safe(name: str) -> str:
@@ -455,7 +581,9 @@ def schedule_evtx_parsers(
     many = len(evtx_dirs) > 1
     for evtx_dir in evtx_dirs:
         label = _evtx_label(evtx_dir)
-        n = len(list(evtx_dir.glob("*.evtx")))
+        # EvtxECmd recursively enumerates its -d directory. Count the same
+        # tree here so the ledger's expected input count matches the tool.
+        n = len(list(evtx_dir.rglob("*.evtx")))
         hay_dir = extractions / "hayabusa" / label if many else extractions / "hayabusa"
         hay_dir.mkdir(parents=True, exist_ok=True)
         add(
@@ -494,9 +622,10 @@ def schedule_evtx_parsers(
         ev_dir.mkdir(parents=True, exist_ok=True)
         add(
             "evtxecmd",
-            ["evtxecmd", "-d", str(evtx_dir), "--csv", str(ev_dir)],
+            ["evtxecmd", "-d", str(evtx_dir), "--csv", str(ev_dir),
+             "--dedupe", "false"],
             f"Parse all EVTX {label} ({n} logs)",
-            1800,
+            _evtxecmd_timeout(evtx_dir),
         )
         # DeepBlueCLI runs once per channel file after this loop (WO-TA item 2), not per directory.
         # Zircolite against its own bundled Windows ruleset - it ships
@@ -545,14 +674,16 @@ def schedule_evtx_parsers(
                 try:
                     nbytes = evtx.stat().st_size
                 except OSError:
-                    nbytes = 0
-                # A flat 300s killed Security.evtx (115 MB, 280s when the host
-                # was idle, timeout under load). Scale from the file size.
+                    nbytes = None
+                # The old 30s/MiB slope gave a 20 MiB Security.evtx 900s; two S08
+                # files timed out at that exact limit while another same-sized
+                # file took 601s. Keep the per-file budget size-based, with
+                # headroom for dense logs rather than raising every job equally.
                 add(
                     "deepbluecli",
                     ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
                     f"DeepBlueCLI attack patterns ({evtx.name})",
-                    timeout_for_bytes(nbytes, base=300, per_mb=30, cap=3600),
+                    _deepbluecli_timeout_for_bytes(nbytes),
                 )
         else:
             skip("deepbluecli", "no EVTX for a channel DeepBlueCLI handles (" + ", ".join(DEEPBLUE_LOGNAMES) + ")")
@@ -567,26 +698,6 @@ def schedule_evtx_parsers(
             "needs mappings/sigma-event-logs-all.yml and a sigma/ rules tree "
             "(Tools/windows/extra/chainsaw)",
         )
-
-
-#: Per-folder dispatch bound for ``_plan_single_artifact`` (WO-13): a folder of
-#: one artifact format is planned file-by-file. 0 = unlimited, and that is the
-#: default - lane concurrency already bounds load, and the old implicit 200 cap
-#: meant a real ``Recent\`` LNK or jump-list folder could exceed it silently.
-#: When an examiner sets ``NEXUS_FOLDER_DISPATCH_MAX`` and the folder exceeds
-#: it, the overflow is a FAIL row (critical) so the evidence gate blocks; the
-#: old SKIP left evidence unprocessed with a clear gate, against the hard rule.
-_FOLDER_DISPATCH_DEFAULT = 0
-
-
-def _folder_dispatch_max() -> int:
-    raw = os.environ.get("NEXUS_FOLDER_DISPATCH_MAX", "").strip()
-    if not raw:
-        return _FOLDER_DISPATCH_DEFAULT
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return _FOLDER_DISPATCH_DEFAULT
 
 
 def _plan_single_artifact(
@@ -671,17 +782,10 @@ def _plan_single_artifact(
         # (bmc-tools -s <dir>) is then scheduled once, not once per cache file.
         # SKIP rows are never deduped: each names its own file.
         files: list[Path] = []
-        capped = False
-        cap = _folder_dispatch_max()
         for p in evidence.rglob("*"):
             if not p.is_file() or p.name.startswith("."):
                 continue
             files.append(p)
-            if cap and len(files) > cap:
-                capped = True
-                break
-        if capped:
-            files = files[:cap]
         if files:
             stems: dict[str, int] = {}
             for p in files:
@@ -701,21 +805,6 @@ def _plan_single_artifact(
                             continue
                         seen.add(key)
                     dispatched.append(job)
-            if capped:
-                # WO-13: with a cap set, the overflow is a FAIL (critical) so the
-                # evidence gate blocks. A SKIP here left unprocessed evidence
-                # behind a clear gate, against the operator hard rule.
-                dispatched.append(ToolJob(
-                    host="windows", tool="(discovery)", argv=[], status="FAIL",
-                    purpose="folder dispatch overflow",
-                    critical=True,
-                    reason=(
-                        f"more than the configured {cap} file(s) in this folder "
-                        "were not scheduled - raise NEXUS_FOLDER_DISPATCH_MAX or "
-                        "register that part separately; evidence must not be "
-                        "skipped unnoticed"
-                    ),
-                ))
             if dispatched:
                 return dispatched
         return jobs
@@ -2041,7 +2130,7 @@ def plan_windows_triage(
         if rr_hives:
             d = extractions / "regripper"
             d.mkdir(parents=True, exist_ok=True)
-            for hive_name, hive in rr_hives[:8]:
+            for hive_name, hive in rr_hives:
                 prof = profiles.get(hive_name.split("-")[0], "all")
                 add(
                     "regripper",
@@ -2159,9 +2248,11 @@ def _plan_n2_extras(
                 continue
             dest = extractions / "drivefs" / user.name
             dest.mkdir(parents=True, exist_ok=True)
-            for logf in list(gdfs.rglob("*.log"))[:20] + list(gdfs.rglob("*.txt"))[:20]:
-                if logf.is_file() and logf.stat().st_size < 20 * 1024 * 1024:
-                    _copy_text(dest, logf.name, logf)
+            for logf in gdfs.rglob("*"):
+                if logf.is_file() and logf.suffix.lower() in {".log", ".txt"}:
+                    # Keep the source-relative path so same-named files in different
+                    # DriveFS subfolders cannot overwrite or suppress one another.
+                    _copy_text(dest, str(logf.relative_to(gdfs)), logf)
                     n += 1
         if not n:
             skip("drivefs", "no Google DriveFS logs under user profiles")
@@ -2192,9 +2283,7 @@ def _usb_serials_from_setupapi(path: Path) -> list[str]:
     for line in text.splitlines():
         low = line.lower()
         if "usbstor" in low or "serial number" in low or "usb\\vid_" in low:
-            found.append(line.strip()[:240])
-            if len(found) >= 80:
-                break
+            found.append(line.strip())
     return found
 
 
@@ -2472,7 +2561,7 @@ def _plan_gap_parsers(
     if i30_files and not quick:
         out = extractions / "mftecmd-i30"
         out.mkdir(parents=True, exist_ok=True)
-        for i30 in i30_files[:3]:
+        for i30 in i30_files:
             add(
                 "mftecmd",
                 ["mftecmd", "-f", str(i30), "--csv", str(out), "--csvf", f"{i30.name}.csv"],
@@ -2601,7 +2690,7 @@ def _plan_gap_parsers(
         if s not in seen:
             seen.add(s)
             uniq.append(s)
-    samples = uniq[:10]
+    samples = uniq
     yara_rules = os.environ.get("NEXUS_YARA_RULES", "").strip()
     if samples:
         present = [Path(s) for s in samples if Path(s).is_file()]
@@ -2839,6 +2928,10 @@ def _settle_prior_rows(
     kept: list[ToolJob] = []
     for job in jobs:
         key = (job.host, job.tool, job.purpose)
+        if str(job.tool or "").strip().lower() in _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS:
+            _apply_default_optional_tool_skips([job])
+            kept.append(job)
+            continue
         if only_tools and job.tool not in only_tools:
             if key in prior_by_job:
                 carried.append(dict(prior_by_job[key]))  # the run's own row stands; the job is not run again
@@ -2849,7 +2942,11 @@ def _settle_prior_rows(
         kept.append(job)
     jobs[:] = kept
     for key, row in prior_by_job.items():
-        if key not in planned and row.get("status") == "OK":
+        if (
+            key not in planned
+            and row.get("status") == "OK"
+            and str(row.get("tool") or "").strip().lower() not in _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS
+        ):
             carried.append(dict(row))  # a passing job the plan no longer names keeps its record
     return carried
 
@@ -2984,7 +3081,7 @@ async def _align_remote_active_case(activate_tool, case_id: str) -> str:
 
 
 def persist_truncation_reason(result: dict[str, Any]) -> str:
-    """Why a capture that hit the byte cap is not OK, or "" when it is whole.
+    """Why a capture reported incomplete is not OK, or "" when it is whole.
 
     A tool whose output was cut mid-stream produced an incomplete artifact; the
     lane must not record that as processed, or the evidence gate clears on a
@@ -2992,8 +3089,8 @@ def persist_truncation_reason(result: dict[str, Any]) -> str:
     """
     if result.get("persist_truncated"):
         return (
-            "captured output hit the byte cap, so the saved output is "
-            "incomplete — treat this evidence as unparsed, not clean"
+            "captured output is incomplete — treat this evidence as "
+            "unparsed, not clean"
         )
     return ""
 
@@ -3853,6 +3950,7 @@ async def run_tool_lane(
     rerun_tools: frozenset[str] | None = None,
     carry_ok: bool = False,
     only_tools: frozenset[str] | None = None,
+    defer_analysis: bool = False,
 ) -> dict[str, Any]:
     """Execute the planned triage lane via MCP tools. Returns ledger + audit_ids.
 
@@ -3860,6 +3958,8 @@ async def run_tool_lane(
 
     RAG does not belong in this lane (``skip_rag=True``). Coverage/design load
     RAG in ``ensure_rag`` / interpret. Strict FAIL→error is **tools mode only**.
+    Pipeline callers defer N4 output until after I1; standalone lane retries
+    keep the default immediate query-pack/timeline write.
     """
     from nexus.config import settings
 
@@ -3946,6 +4046,9 @@ async def run_tool_lane(
             jobs.append(_job)
     jobs.extend(_memory_image_jobs(plan_paths, extractions))
     jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
+    # These parsers are examiner-run optional work. Apply the policy before
+    # prior-result reuse so a previous OK cannot bypass the default skip.
+    _apply_default_optional_tool_skips(jobs)
     # WO-TA item 12: a job that finished OK in this run's ledger is reused, not run again.
     # apply_prior_ok had no caller before this, so a retry re-ran every job.
     reused = apply_prior_ok(
@@ -3956,17 +4059,9 @@ async def run_tool_lane(
     try:
         import json as _json
 
-        from nexus.langgraph.artifact_map import (
-            completeness_table,
-            discover_windows_artifacts,
-        )
-
-        win_root = find_windows_root(Path(evidence_path))
-        if win_root is not None:
-            scheduled = {j.tool for j in jobs if j.status == "PENDING"}
-            table = completeness_table(
-                discover_windows_artifacts(win_root), scheduled,
-            )
+        scheduled = {j.tool for j in jobs if j.status == "PENDING"}
+        table = _artifact_completeness_for_paths(plan_paths, scheduled)
+        if table is not None:
             (extractions / "_artifact_completeness.json").write_text(
                 _json.dumps(table, indent=2), encoding="utf-8",
             )
@@ -4008,6 +4103,7 @@ async def run_tool_lane(
         jobs, case_dir, extractions, carry_ok=carry_ok, only_tools=only_tools,
     )
     _hold_examiner_skips(jobs, case_dir)
+    _apply_default_optional_tool_skips(jobs)
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = list(carried_rows)
 
@@ -4057,9 +4153,11 @@ async def run_tool_lane(
                     "command": _command_text(e.get("argv") or []),
                     "reason": str(e.get("reason") or "")[:300],
                     "output": str(e.get("output_saved_to") or ""),
-                    "duration_s": durations.get((
-                        str(e.get("tool")), str(e.get("host")), str(e.get("purpose"))
-                    )),
+                    # The ledger row is the job's identity. Tool/host/purpose
+                    # are not unique: a host plan schedules the same tool and
+                    # purpose once per evidence source, so a shared duration
+                    # map made every earlier row show the latest job's time.
+                    "duration_s": e.get("duration_s"),
                 }
                 for e in ledger
             ]
@@ -4232,11 +4330,9 @@ async def run_tool_lane(
         # was told to write into (the before/after snapshot), whatever its flag spelling. The argv
         # check alone misses `/OutputPath:` and `-d`, so LogFileParser's progress log (5,138 rows),
         # maldump's and bmc-tools' banners were promoted and indexed beside their CSVs (D229).
-        _created = [f for f in _new_output_files(_out_dirs, _before)
+        _created = [f for f in _new_output_files(_out_dirs, _before, tool=job.tool)
                     if not Path(f).name.lower().endswith(_CAPTURE_SUFFIXES)]
-        if job.output_saved_to and not (
-            _created or _structured_output_present(job) or _tool_wrote_structured_output(job)
-        ):
+        if _should_promote_stdout(job, _created):
             # Promote into the RUN's extraction dir, which is what the indexer
             # walks. Beside the source is the case-level dir the MCP tool chose,
             # and nothing reads that.
@@ -4247,7 +4343,7 @@ async def run_tool_lane(
                 job.output_files = [*job.output_files, promoted]
         persist_reason = persist_truncation_reason(result)
         if persist_reason:
-            # The capture hit the byte cap, so what was saved is incomplete.
+            # The executor or transport reported an incomplete capture.
             # Marking it OK would let a half-parsed artifact pass the evidence
             # gate and index as if it were whole (WO-V5).
             job.reason = persist_reason
@@ -4274,7 +4370,7 @@ async def run_tool_lane(
             # Zimmerman 1.5 tools print "Administrator privileges not found"
             # whether or not they then write a valid CSV, so a stdout marker
             # would fail a job that actually succeeded.
-            _fresh = _new_output_files(_out_dirs, _before)
+            _fresh = _new_output_files(_out_dirs, _before, tool=job.tool)
             if status == "OK" and _fresh:
                 job.output_files = [*job.output_files, *_fresh]
             if status == "OK" and job.host == "sift":
@@ -4290,6 +4386,10 @@ async def run_tool_lane(
             elif status == "OK" and not (_fresh or _produced_expected_output(job)):
                 status, job.reason = _empty_output_status(job, result)
                 detail += " (no output produced)" if status == "FAIL" else " (no findings)"
+            if status == "OK" and job.tool == "evtxecmd":
+                quality_failure = _evtxecmd_incomplete_reason(job, result)
+                if quality_failure:
+                    status, job.reason = "FAIL", quality_failure
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
         if aid:
@@ -4484,6 +4584,29 @@ async def run_tool_lane(
             log.warning("evidence freshness regression: %s", reg)
     except Exception as exc:  # noqa: BLE001 - never die on a reporting hook
         log.warning("lane-end freshness capture failed: %s", exc)
+    completeness = None
+    try:
+        import json as _json
+
+        from nexus.langgraph.artifact_map import apply_ledger_to_completeness
+
+        dest = extractions / "_artifact_completeness.json"
+        table = _artifact_completeness_for_paths(
+            plan_paths,
+            {j.tool for j in jobs if j.status == "PENDING"},
+            ledger=ledger,
+        )
+        if table is not None:
+            completeness = table
+            dest.write_text(_json.dumps(table, indent=2), encoding="utf-8")
+        elif dest.is_file():
+            rows = _json.loads(dest.read_text(encoding="utf-8"))
+            if isinstance(rows, list):
+                completeness = apply_ledger_to_completeness(rows, ledger)
+                dest.write_text(_json.dumps(completeness, indent=2), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("artifact completeness refresh failed: %s", exc)
+
     try:
         from nexus.langgraph.lane_gate import write_lane_gate
 
@@ -4493,20 +4616,9 @@ async def run_tool_lane(
         # image with no memory job is unprocessed evidence and blocks the gate,
         # instead of reporting `clear` under the "never skip evidence" rule.
         registered = registered_memory_images(case_dir)
-        # WO-TA item 9: the completeness table this same lane pass wrote, read
-        # back so the gate reconciles PRESENT_NO_PARSER / STAGED / FAIL rows
-        # against the "never skip evidence processing" rule.
-        completeness = None
-        try:
-            _completeness_path = extractions / "_artifact_completeness.json"
-            if _completeness_path.is_file():
-                completeness = _json.loads(
-                    _completeness_path.read_text(encoding="utf-8")
-                )
-                if not isinstance(completeness, list):
-                    completeness = None
-        except Exception as exc:  # noqa: BLE001 - the gate still runs without it
-            log.warning("completeness table unreadable for the gate: %s", exc)
+        # Reconcile the final table from this run's ledger before checking it.
+        # The initial table is written before jobs run; reading it here would
+        # make policy SKIPs appear as PRESENT_NO_PARSER (D323).
         gate = write_lane_gate(
             case_dir, run_id, ledger,
             registered_evidence=registered, completeness=completeness,
@@ -4520,33 +4632,6 @@ async def run_tool_lane(
             log.warning(summary)
     except Exception as exc:  # noqa: BLE001 - never die writing the gate
         log.warning("lane gate write failed: %s", exc)
-
-    try:
-        import json as _json
-
-        from nexus.langgraph.artifact_map import (
-            apply_ledger_to_completeness,
-            completeness_table,
-            discover_windows_artifacts,
-        )
-
-        dest = extractions / "_artifact_completeness.json"
-        win_root = find_windows_root(Path(evidence_path))
-        if win_root is not None:
-            table = completeness_table(
-                discover_windows_artifacts(win_root),
-                {j.tool for j in jobs if j.status == "PENDING"},
-                ledger=ledger,
-            )
-            dest.write_text(_json.dumps(table, indent=2), encoding="utf-8")
-        elif dest.is_file():
-            rows = _json.loads(dest.read_text(encoding="utf-8"))
-            dest.write_text(
-                _json.dumps(apply_ledger_to_completeness(rows, ledger), indent=2),
-                encoding="utf-8",
-            )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("artifact completeness refresh failed: %s", exc)
 
     # Pull SIFT extractions onto examiner case (scp) so LLM + report see them. Only a run that sent jobs to the
     # SIFT host has SIFT output of its own: the pull used to run for every lane run, and on a Windows-only sample
@@ -4570,13 +4655,21 @@ async def run_tool_lane(
             log.warning("SIFT pull failed: %s", exc)
             summary = f"{summary}; sift_pull_error={exc}"
 
-    try:
-        from nexus.langgraph.snippets import write_snippets
+    analysis_error = ""
+    if defer_analysis:
+        summary = f"{summary}; N4 query-pack/timeline deferred until I1 completes"
+    else:
+        try:
+            from nexus.langgraph.snippets import write_snippets
 
-        snip = write_snippets(pipeline_run.path, ledger)
-        summary = f"{summary}; snippets={snip}"
-    except Exception as exc:  # noqa: BLE001
-        log.warning("snippet write failed: %s", exc)
+            snip = write_snippets(
+                case_dir, ledger, run_dir=pipeline_run.path, run_id=run_id
+            )
+            summary = f"{summary}; snippets={snip}"
+        except Exception as exc:  # noqa: BLE001
+            analysis_error = f"N4 query-pack/timeline generation failed: {exc}"
+            log.error("%s", analysis_error)
+            summary = f"{summary}; {analysis_error}"
 
     step_log = [summary]
     # Strict abort is tools-mode only. Coverage/design record FAILs in the
@@ -4592,16 +4685,19 @@ async def run_tool_lane(
         "rag_notes": rag_notes,
         "step_log": step_log,
     }
+    lane_errors = [analysis_error] if analysis_error else []
     if strict and fail:
         fails = [
             f"{r.get('host')}/{r.get('tool')}: {r.get('reason', '')[:120]}"
             for r in ledger if r.get("status") == "FAIL"
         ]
-        out["error"] = (
+        lane_errors.append(
             f"Tool lane FAIL={fail} (strict mode). "
             + "; ".join(fails[:6])
         )
-        step_log.append(out["error"])
+    if lane_errors:
+        out["error"] = "; ".join(lane_errors)
+        step_log.extend(lane_errors)
     return out
 
 
@@ -4634,6 +4730,83 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
     return ""
 
 
+def _evtxecmd_incomplete_reason(job: ToolJob, result: dict[str, Any]) -> str:
+    """Fail an EvtxECmd directory pass that silently omits inputs or records.
+
+    EvtxECmd's upstream default deduplicates files by SHA-1 and only processes
+    the first copy. The lane opts out so every evidence path is represented in
+    the output. Reconcile the tool's own start/final counts and record-error
+    footer before calling the aggregate CSV complete.
+    """
+    if job.tool != "evtxecmd":
+        return ""
+
+    saved = str(result.get("output_saved_to") or "")
+    if saved and Path(saved).is_file():
+        # EvtxECmd's file and record errors occur well after its first 8 KB,
+        # so the generic soft-failure preview is insufficient here.
+        with contextlib.suppress(OSError), Path(saved).open(
+            "r", encoding="utf-8", errors="replace"
+        ) as stream:
+            return _evtxecmd_incomplete_reason_from_lines(job, stream)
+    fallback = (
+        line
+        for key in ("stdout", "stderr", "preview", "message", "error")
+        for line in str(result.get(key) or "").splitlines()
+    )
+    return _evtxecmd_incomplete_reason_from_lines(job, fallback)
+
+
+def _evtxecmd_incomplete_reason_from_lines(job: ToolJob, lines: Iterable[str]) -> str:
+    """Reconcile the aggregate EVTX run while streaming its saved output."""
+    issues: list[str] = []
+
+    expected_match = re.search(r"\((\d[\d,]*)\s+logs?\)", job.purpose, re.IGNORECASE)
+    expected = int(expected_match.group(1).replace(",", "")) if expected_match else None
+    starts = 0
+    processed: int | None = None
+    error_counts: list[int] = []
+    record_error_lines = 0
+    dropped_total = 0
+    for raw_line in lines:
+        line = raw_line.rstrip("\r\n")
+        if line.startswith("Processing ") and line.endswith("..."):
+            starts += 1
+        processed_match = re.match(
+            r"(?i)^Processed\s+(\d[\d,]*)\s+files?\s+in\s+", line
+        )
+        if processed_match:
+            processed = int(processed_match.group(1).replace(",", ""))
+        error_match = re.search(r"(?i)\berror count:\s*(\d[\d,]*)\s*$", line)
+        if error_match:
+            error_counts.append(int(error_match.group(1).replace(",", "")))
+        if re.match(r"(?i)^Record\s+#\d+:\s*Error:", line):
+            record_error_lines += 1
+        dropped_match = re.search(r"(?i)Events dropped:\s*(\d[\d,]*)", line)
+        if dropped_match:
+            dropped_total += int(dropped_match.group(1).replace(",", ""))
+
+    if expected is not None and starts != expected:
+        issues.append(f"started {starts} of {expected} planned EVTX inputs")
+    if processed is None:
+        issues.append("did not report a final processed-file count")
+    else:
+        if expected is not None and processed != expected:
+            issues.append(f"processed {processed} of {expected} planned EVTX inputs")
+
+    if error_counts:
+        issues.append(
+            f"reported record errors in {len(error_counts)} EVTX file(s) "
+            f"({sum(error_counts)} record error(s))"
+        )
+    elif record_error_lines:
+        issues.append(f"emitted {record_error_lines} record parse error(s)")
+    if dropped_total:
+        issues.append(f"reported {dropped_total} dropped event(s)")
+
+    return "; ".join(issues)
+
+
 # Output-target flags, matched case-insensitively: DeepBlueCLI names its target
 # `-Out`, zircolite uses `-o`, chainsaw `--output`, the Zimmerman tools `--csvf`.
 # A case-sensitive list missed `-Out` entirely, so the named target was never
@@ -4657,6 +4830,7 @@ _WINDOWS_SWITCH_OUTPUT = frozenset({
     "scomma", "stab", "shtml", "sxml", "sjson", "stext", "scsv",
     "save", "out", "output",
 })
+_WINDOWS_SWITCH_OUTPUT_DIRS = frozenset({"outputpath"})
 
 
 def _flag(value: object) -> str:
@@ -4689,6 +4863,35 @@ def _windows_switch_output_paths(argv: list[str]) -> list[Path]:
     return out
 
 
+def _windows_switch_output_dirs(argv: list[str]) -> list[Path]:
+    """Paths named by Windows-style output-directory switches."""
+    out: list[Path] = []
+    for raw in argv:
+        match = re.match(r"^/([A-Za-z]+):(.+)$", str(raw))
+        if match and match.group(1).lower() in _WINDOWS_SWITCH_OUTPUT_DIRS:
+            out.append(Path(match.group(2)))
+    return out
+
+
+def _has_declared_output_target(job: ToolJob) -> bool:
+    """Whether argv names an output target, so stdout cannot mask its absence."""
+    argv = [str(arg) for arg in (job.argv or ())]
+    return (
+        any(_flag(arg) in _OUTPUT_FLAGS or _flag(arg) in _NAMED_OUTPUT_FLAGS for arg in argv)
+        or bool(_windows_switch_output_paths(argv))
+        or bool(_windows_switch_output_dirs(argv))
+    )
+
+
+def _should_promote_stdout(job: ToolJob, created_outputs: list[str]) -> bool:
+    """Promote stdout only when it is the job's declared product."""
+    return bool(job.output_saved_to) and not _has_declared_output_target(job) and not (
+        created_outputs
+        or _structured_output_present(job)
+        or _tool_wrote_structured_output(job)
+    )
+
+
 #: The executor's own capture of a job: its console output and the call's metadata.
 _CAPTURE_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 
@@ -4696,11 +4899,44 @@ _CAPTURE_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 def _structured_output_present(job: ToolJob) -> bool:
     """True when a job produced something other than its own stdout capture."""
     for path in (job.output_files or []):
-        name = Path(str(path)).name.lower()
-        if name.endswith(_CAPTURE_SUFFIXES):
+        raw_path = path.get("path") if isinstance(path, dict) else path
+        if not raw_path:
             continue
-        if Path(str(path)).is_file():
+        candidate = Path(str(raw_path))
+        if _is_tool_capture_file(candidate):
+            continue
+        if is_tool_own_log_name(job.tool, candidate):
+            continue
+        if candidate.is_file():
             return True
+    return False
+
+
+def _is_tool_capture_file(path: str | Path) -> bool:
+    """Whether a path is the executor's stdout, stderr or metadata capture."""
+    return Path(path).name.lower().endswith(_CAPTURE_SUFFIXES)
+
+
+def _has_nonempty_tool_product(target: Path, tool: str) -> bool:
+    """True when a named output target holds a product, excluding run logs."""
+    try:
+        if target.is_file():
+            return (
+                target.stat().st_size > 0
+                and not _is_tool_capture_file(target)
+                and not is_tool_own_log_name(tool, target)
+            )
+        if target.is_dir():
+            for path in target.rglob("*"):
+                try:
+                    if (path.is_file() and path.stat().st_size > 0
+                            and not _is_tool_capture_file(path)
+                            and not is_tool_own_log_name(tool, path)):
+                        return True
+                except OSError:
+                    continue
+    except OSError:
+        return False
     return False
 
 
@@ -4896,16 +5132,10 @@ def _tool_wrote_structured_output(job: ToolJob) -> bool:
     for i, arg in enumerate(argv):
         if _flag(arg) in _OUTPUT_FLAGS and i + 1 < len(argv):
             target = Path(argv[i + 1])
-            if target.is_dir():
-                try:
-                    if any(f.is_file() and f.stat().st_size > 0
-                           for f in target.rglob("*")):
-                        return True
-                except OSError:
-                    continue
-            elif target.is_file() and target.stat().st_size > 0:
+            if _has_nonempty_tool_product(target, job.tool):
                 return True
-    return False
+    return any(_has_nonempty_tool_product(target, job.tool)
+               for target in _windows_switch_output_dirs(argv))
 
 
 def _output_dirs_of(job: ToolJob, root: Path | None = None) -> list[Path]:
@@ -4967,8 +5197,10 @@ def _snapshot(dirs: list[Path]) -> set[str]:
     return seen
 
 
-def _new_output_files(dirs: list[Path], before: set[str]) -> list[str]:
-    """Files present now that were not present before, and are non-empty."""
+def _new_output_files(
+    dirs: list[Path], before: set[str], *, tool: str = ""
+) -> list[str]:
+    """New non-empty product files, excluding a tool's own run logs."""
     fresh: list[str] = []
     for d in dirs:
         try:
@@ -4976,6 +5208,9 @@ def _new_output_files(dirs: list[Path], before: set[str]) -> list[str]:
         except OSError:
             continue
         for f in files:
+            if (_is_tool_capture_file(f)
+                    or (tool and is_tool_own_log_name(tool, f))):
+                continue
             try:
                 size = f.stat().st_size
             except OSError:
@@ -5011,7 +5246,7 @@ def _produced_expected_output(job: ToolJob) -> bool:
                 target = Path(argv[i + 1])
                 cand = target / named
                 if cand.is_file():
-                    return cand.stat().st_size > 0
+                    return _has_nonempty_tool_product(cand, job.tool)
                 if job.tool in _PREFIXED_NAMED_OUTPUT_TOOLS:
                     prefix = f"{Path(named).stem}_".lower()
                     with contextlib.suppress(OSError):
@@ -5023,6 +5258,33 @@ def _produced_expected_output(job: ToolJob) -> bool:
                             for f in target.iterdir()
                         ):
                             return True
+                if job.tool == "jlecmd":
+                    # JLECmd appends the source folder type to the supplied
+                    # --csvf basename, e.g. `dfargo-jumplist.csv` becomes
+                    # `dfargo-jumplist_AutomaticDestinations.csv`. Derive the
+                    # suffix from the -d folder, and only accept the two
+                    # destination folders JLECmd parses, so unrelated files
+                    # in this shared extraction directory cannot satisfy the
+                    # job's output contract.
+                    named_stem = Path(named).stem.lower()
+                    destination_type = next(
+                        (
+                            Path(argv[i + 1]).name.lower()
+                            for i, arg in enumerate(argv[:-1])
+                            if _flag(arg) == "-d"
+                        ),
+                        "",
+                    )
+                    if destination_type in {
+                        "automaticdestinations",
+                        "customdestinations",
+                    }:
+                        candidate = target / (
+                            f"{named_stem}_{destination_type}.csv"
+                        )
+                        with contextlib.suppress(OSError):
+                            if candidate.is_file() and candidate.stat().st_size > 0:
+                                return True
                 if job.tool == "recmd" and any(
                     _flag(a) == "--bn" for a in argv
                 ):
@@ -5045,12 +5307,9 @@ def _produced_expected_output(job: ToolJob) -> bool:
         if _flag(arg) in _OUTPUT_FLAGS and i + 1 < len(argv):
             target = Path(argv[i + 1])
             if target.is_file():
-                return target.stat().st_size > 0
-            if target.is_dir():
-                # A file that exists but is empty is not output.
-                with contextlib.suppress(OSError):
-                    if any(f.is_file() and f.stat().st_size > 0 for f in target.rglob("*")):
-                        produced = True
+                return _has_nonempty_tool_product(target, job.tool)
+            if _has_nonempty_tool_product(target, job.tool):
+                produced = True
     if produced:
         return True
     # Windows-style `/scomma:<file>` switches name this job's own output file.
@@ -5059,7 +5318,10 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # the caller reports through the empty-output path, not as success.
     for target in _windows_switch_output_paths(argv):
         if target.is_file():
-            return target.stat().st_size > 0
+            return _has_nonempty_tool_product(target, job.tool)
+    if any(_has_nonempty_tool_product(target, job.tool)
+           for target in _windows_switch_output_dirs(argv)):
+        return True
     # Tools that write into a directory given positionally in the argv.
     for arg in argv:
         if arg.startswith("-"):
@@ -5074,15 +5336,12 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # producing no files at all - the ledger said OK, nothing was written, and
     # the index showed zero docs for those families. The capture is the audit
     # trail, not the extraction.
-    named_target = any(
-        _flag(a) in _OUTPUT_FLAGS or _flag(a) in _NAMED_OUTPUT_FLAGS
-        for a in argv
-    )
+    named_target = _has_declared_output_target(job)
     if named_target:
         return False
     if job.output_saved_to:
         p = Path(job.output_saved_to)
-        if p.is_file() and p.stat().st_size > 0:
+        if p.is_file() and p.stat().st_size > 0 and not is_tool_own_log_name(job.tool, p):
             return True
     return False
 
@@ -5189,7 +5448,7 @@ def _empty_output_status(
         "FAIL",
         (
             f"{job.tool} {EMPTY_OUTPUT_FAIL_MARKER} "
-            f"(expected a file under the --csv target). Treat this evidence as "
+            f"(expected a file under the declared output target). Treat this evidence as "
             f"unparsed, not clean."
         ),
     )

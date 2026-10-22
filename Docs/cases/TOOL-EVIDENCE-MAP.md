@@ -93,7 +93,7 @@ If SIFT MCP is connected but no root is set, the ledger records one honest SKIP.
 |---|---|
 | `OK` | Ran and produced output |
 | `WARN` | Ran and produced output, but a prerequisite was empty — a **coverage gap, not a finding of absence**. The reason names the population it was compared against, and a `coverage_gap` note is recorded in the report's coverage section. |
-| `FAIL` | Did not produce usable output, or its saved output is incomplete (a capture over `NEXUS_MAX_OUTPUT_BYTES`). The evidence gate blocks analysis until the examiner re-runs or records an audited skip. |
+| `FAIL` | Did not produce usable output, or execution failed/timed out. Captures have no application-defined byte ceiling; the evidence gate blocks analysis until the examiner re-runs or records an audited skip. |
 | `SKIP` | Never scheduled, with a reason (no root, plugin absent from the host, non-Windows plugin on a Linux image, …) |
 
 Two collection behaviours belong to the lane rather than the examiner:

@@ -420,6 +420,8 @@ def execute_plan(
             "iterations": len(iterative_result.get("iterations", [])),
             "total_hits": iterative_result.get("total_hits", 0),
             "capped": iterative_result.get("capped", False),
+            "coverage_complete": iterative_result.get("coverage_complete", True),
+            "pending_search_pages": iterative_result.get("pending_search_pages", []),
         })
 
     # Derive per-query summary from the iterative result (avoids a second
@@ -434,7 +436,7 @@ def execute_plan(
         from nexus.langgraph.query_pack import n4_query
 
         for q in approved_queries:
-            r = n4_query(case_dir, q, limit=40)
+            r = n4_query(case_dir, q, limit=None)
             query_results.append({"query": q, "count": r.get("count", 0), "error": r.get("error")})
 
     _log_agent_run(case_dir, {

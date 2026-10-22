@@ -638,7 +638,6 @@ export default function Briefing() {
           </div>
           <div className={styles.s8}>
             {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit_total ?? fullRunResult.needles_total ?? 0} with hits
-            {(fullRunResult.needles_capped ?? 0) > 0 && ` (${fullRunResult.needles_capped} more hit — raise max_needles to include)`}
             {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
             {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench
             {(fullRunResult.superseded?.length ?? 0) > 0 && ` · ${fullRunResult.superseded!.length} draft(s) superseded`}

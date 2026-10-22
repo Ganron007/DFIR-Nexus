@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from nexus.langgraph.artifact_map import (
+    ArtifactHit,
     apply_ledger_to_completeness,
     completeness_table,
     discover_windows_artifacts,
@@ -11,6 +12,52 @@ from nexus.langgraph.artifact_map import (
 )
 from nexus.langgraph.case_intake import extra_playbook_names, persist_case_intake
 from nexus.langgraph.tool_lane import plan_windows_triage
+
+
+def test_operator_policy_skip_is_visible_and_not_a_completeness_gap(tmp_path: Path):
+    hit = ArtifactHit(
+        name="NTFS Log File",
+        slug="ntfs_logfile",
+        related_tools=["LogFileParser"],
+        present=True,
+        hits=[tmp_path / "$LogFile"],
+        locations=["$LogFile"],
+        reason="1 hit(s)",
+    )
+    rows = completeness_table(
+        [hit],
+        set(),
+        ledger=[{
+            "tool": "logfileparser",
+            "status": "SKIP",
+            "reason": "optional by operator policy; examiner may run it manually",
+        }],
+    )
+
+    assert rows[0]["status"] == "NOT_APPLICABLE"
+    assert rows[0]["reason"].startswith("optional by operator policy")
+    from nexus.langgraph.lane_gate import _completeness_gaps
+
+    assert _completeness_gaps(rows) == []
+
+
+def test_non_policy_skip_does_not_hide_an_unparsed_artifact(tmp_path: Path):
+    hit = ArtifactHit(
+        name="NTFS Log File",
+        slug="ntfs_logfile",
+        related_tools=["LogFileParser"],
+        present=True,
+        hits=[tmp_path / "$LogFile"],
+        locations=["$LogFile"],
+        reason="1 hit(s)",
+    )
+    rows = completeness_table(
+        [hit],
+        set(),
+        ledger=[{"tool": "logfileparser", "status": "SKIP", "reason": "executor unavailable"}],
+    )
+
+    assert rows[0]["status"] == "PRESENT_NO_PARSER"
 
 
 def _win_root(tmp_path: Path) -> Path:

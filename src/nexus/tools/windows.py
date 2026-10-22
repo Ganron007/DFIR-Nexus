@@ -241,7 +241,8 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
     # Which copy of a tool to run when the tree ships several. This used to be
     # extension then alphabetical order, which meant `Tools/windows/kape/...`
     # always won over `Tools/windows/zimmerman/...` purely on the letter "k":
-    # the KAPE bundle is from 2022-10 and the Zimmerman net9 set from 2026-05, so
+    # the KAPE bundle is from 2022-10 and the Zimmerman net9/net10 releases are
+    # the current vendor builds, so
     # every Zimmerman parser we ran was four years old.
     #
     # Measured consequences: MFTECmd 1.2.2.1 does not accept `$LogFile` (the
@@ -253,7 +254,8 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
     # Preferring by toolset is deliberate rather than by mtime: copy operations
     # rewrite mtimes, so "newest file" is not a reliable version signal.
     _TOOLSET_RANK = (
-        "zimmerman\\net9", "zimmerman/net9",     # current Zimmerman release
+        "zimmerman\\net10", "zimmerman/net10",   # current .NET 10 Zimmerman release
+        "zimmerman\\net9", "zimmerman/net9",     # prior current Zimmerman release
         "zimmerman",                              # other Zimmerman copies
         "extra",                                  # curated extras (bmc-tools, hindsight, ...)
         "sysinternals",
@@ -277,7 +279,7 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
 def _find_binary(name: str) -> str | None:
     """Resolve a catalog binary from NEXUS_TOOL_PATHS, then repo Tools/windows.
 
-    Does not search PATH. Walks a few levels so Zimmerman net9/EvtxeCmd/EvtxECmd.exe
+    Does not search PATH. Walks a few levels so Zimmerman runtime-specific tool folders
     and versioned Hayabusa/Suzaku names resolve. Skips rule/sigma trees.
     """
     if not name:
@@ -514,6 +516,26 @@ def case_pipeline_refusal(
     return (
         "command names no path inside registered evidence or this run's extractions"
     )
+
+
+def _batch_scan_files(tool: str, scan_dir: Path, filter_pattern: str, timeout: int, runner) -> dict:
+    """Run one catalog tool on every file selected by the caller's directory/pattern."""
+    files = scan_dir.glob(filter_pattern) if filter_pattern else scan_dir.iterdir()
+    results = []
+    for path in files:
+        if path.is_file():
+            safe_path = str(path).replace('"', '\\"')
+            command = f'{tool} -f "{safe_path}"'
+            result = runner(command, "", timeout)
+            results.append({"file": path.name, "success": result.get("success", False)})
+
+    return {
+        "tool": tool,
+        "directory": str(scan_dir),
+        "files_processed": len(results),
+        "successful": sum(1 for result in results if result["success"]),
+        "failed": sum(1 for result in results if not result["success"]),
+    }
 
 
 def register_tools(server: FastMCP, audit: AuditWriter):
@@ -1108,14 +1130,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
     @server.tool()
     def batch_scan(tool: str, directory: str, filter_pattern: str = "",
-                   max_files: int = 50, timeout: int = 600) -> dict:
-        """Run a tool against files in a directory with safety bounds.
+                   timeout: int = 600) -> dict:
+        """Run a tool against every matching file in a directory.
 
         Args:
             tool: Tool name from catalog
             directory: Directory containing evidence files
             filter_pattern: Optional glob pattern (e.g. '*.evtx')
-            max_files: Max files to process (default: 50)
             timeout: Per-file timeout in seconds (default: 600)
         """
         if not _IS_WINDOWS:
@@ -1123,20 +1144,4 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         scan_dir = Path(directory)
         if not scan_dir.is_dir():
             return {"success": False, "error": f"Directory not found: {directory}"}
-
-        files = list(scan_dir.iterdir())[:max_files] if not filter_pattern else list(scan_dir.glob(filter_pattern))[:max_files]
-        results = []
-        for f in files:
-            if f.is_file():
-                safe_path = str(f).replace('"', '\\"')
-                cmd = f"{tool} -f \"{safe_path}\""
-                res = run_windows_command(cmd, "", timeout)
-                results.append({"file": f.name, "success": res.get("success", False)})
-
-        return {
-            "tool": tool,
-            "directory": directory,
-            "files_processed": len(results),
-            "successful": sum(1 for r in results if r["success"]),
-            "failed": sum(1 for r in results if not r["success"]),
-        }
+        return _batch_scan_files(tool, scan_dir, filter_pattern, timeout, run_windows_command)

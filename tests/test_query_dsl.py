@@ -70,9 +70,9 @@ class TestParse:
         assert parse_query("").is_empty()
         assert parse_query("   ").is_empty()
 
-    def test_caps(self):
-        with pytest.raises(QuerySyntaxError):
-            parse_query(" OR ".join(f"t{i}" for i in range(40)))
+    def test_evidence_terms_are_not_artificially_capped(self):
+        query = parse_query(" OR ".join(f"term{i}" for i in range(40)))
+        assert len(query.or_terms) == 40
 
     def test_short_terms_dropped(self):
         q = parse_query("a ab abc")

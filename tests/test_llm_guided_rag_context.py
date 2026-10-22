@@ -245,8 +245,13 @@ class TestContextEnrichment:
         assert "mimikatz" in user_msg
 
     def test_top_hits_per_family_in_prompt(self, tmp_path):
-        """Top hits per family (up to N) must appear with more text than before."""
-        from nexus.modes.llm_guided import _MAX_HIT_TEXT_ENRICHED
+        """Every returned row and its full text reach the proposal context."""
+        from nexus.modes.llm_guided import _top_hits_per_family
 
-        # The enriched hit text cap should be larger than the old 160-char cap
-        assert _MAX_HIT_TEXT_ENRICHED >= 400
+        rows = [
+            {"family": "evtxecmd", "line": i, "text": f"row-{i}-" + ("x" * 700)}
+            for i in range(5)
+        ]
+        rendered = _top_hits_per_family(rows)
+        assert all(f"row-{i}-" in rendered for i in range(5))
+        assert "x" * 700 in rendered

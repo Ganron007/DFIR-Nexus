@@ -36,8 +36,6 @@ _REGISTRY_PATH = _DATA / "schema" / "field_registry.yaml"
 _NUMERIC_TERM = re.compile(r"^\d+$")
 _BOUNDARY_RX: dict[str, re.Pattern[str]] = {}
 _NUMERIC_RX: dict[str, re.Pattern[str]] = {}
-_MAX_SITES = 12
-
 _NUMERIC_TYPES = frozenset({"long", "integer", "short", "byte", "double", "float"})
 _TIMESTAMP_TYPES = frozenset({"date", "timestamp", "date_nanos"})
 
@@ -98,6 +96,7 @@ def _registry_types() -> dict[str, str]:
     )
 
 
+@lru_cache(maxsize=16384)
 def column_class(family: str, name: str) -> str:
     """Match-site class for one column of one family."""
     n = _norm(name)
@@ -182,7 +181,7 @@ def classify_matched_terms(
 
     Returns ``signal`` (content, token-boundary), ``facts`` (id/label columns),
     ``weak`` (embedded / numeric-in-text / no-column numerics) and ``sites``
-    (term/field/class/kind detail, capped). Only terms the caller already
+    (term/field/class/kind detail). Only terms the caller already
     matched are classified — this stays cheap.
     """
     empty: dict[str, Any] = {"signal": [], "facts": [], "weak": [], "sites": []}
@@ -201,8 +200,7 @@ def classify_matched_terms(
     sites: list[dict[str, str]] = []
 
     def _site(term: str, field: str, cls: str, kind: str) -> None:
-        if len(sites) < _MAX_SITES:
-            sites.append({"term": term, "field": field, "class": cls, "kind": kind})
+        sites.append({"term": term, "field": field, "class": cls, "kind": kind})
 
     for term in terms:
         if term == "*":

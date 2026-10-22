@@ -364,9 +364,10 @@ def write_lane_gate(
     #   to "never skip evidence"); it is surfaced, not dropped.
     #
     # A SKIP from any other lane is a tool that does not apply to this evidence
-    # (Suzaku 2.x is cloud-log only; prefetch is absent; Plaso is opt-in). That is
-    # not evidence being skipped, so it must not block - it stays visible in
-    # `jobs`. What guards "evidence was skipped" is a pass that processed
+    # (Suzaku 2.x is cloud-log only; prefetch is absent; Plaso is opt-in), or an
+    # operator-designated optional parser excluded by default (LogFileParser and
+    # DeepBlueCLI). That is not evidence being skipped, so it must not block - it
+    # stays visible in `jobs`/`not_applicable`. What guards "evidence was skipped" is a pass that processed
     # *nothing*, which `_recompute` blocks.
     unprocessed: list[dict[str, Any]] = []
     waiting_sift: list[dict[str, Any]] = []
@@ -638,7 +639,11 @@ def _read_json_list(path: Path) -> list[Any]:
     return loaded if isinstance(loaded, list) else []
 
 
-def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> dict[str, int]:
+def reconcile_after_index(
+    case_dir: Path | str,
+    file_counts: dict[str, Any],
+    run_id: str = "",
+) -> dict[str, int]:
     """Re-derive the gate from what the index now holds (WO-TA item 9).
 
     The completeness table is built before anything is indexed, so an artifact the lane copied into
@@ -651,7 +656,7 @@ def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> 
 
     case_dir = Path(case_dir)
     try:
-        extractions = resolve_tools_extractions(case_dir)
+        extractions = resolve_tools_extractions(case_dir, run_id=run_id)
     except ValueError:
         return {"changed": 0}
     comp_path = extractions / "_artifact_completeness.json"
@@ -688,7 +693,7 @@ def reconcile_after_index(case_dir: Path | str, file_counts: dict[str, Any]) -> 
         return {"changed": changed}
     ledger = _read_json_list(extractions / "_tool_lane_ledger.json")
     write_lane_gate(
-        case_dir, extractions.parent.name, ledger,
+        case_dir, run_id or extractions.parent.name, ledger,
         registered_evidence=evidence, completeness=rows,
     )
     return {"changed": changed}

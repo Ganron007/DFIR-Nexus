@@ -45,6 +45,20 @@ def _mkcase(tmp_path: Path) -> Path:
     return case
 
 
+def test_steer_serializes_every_full_row_for_the_answer_prompt():
+    from nexus.langgraph.steer_agent import _format_hits_for_llm
+
+    value = "complete-evidence-" * 80
+    hits = [
+        {"family": "evtxecmd", "line": i, "text": value, "fields": {f"f{j}": value for j in range(9)}}
+        for i in range(405)
+    ]
+    rendered = _format_hits_for_llm(hits)
+    assert '"line": 404' in rendered
+    assert f'"f8": "{value}"' in rendered
+    assert rendered.count("complete-evidence-") == 405 * 10 * 80
+
+
 def test_steer_agent_3_step_pipeline(tmp_path):
     """PLAN → EXECUTE → ANSWER: the LLM plans queries, the backbone executes,
     the LLM reads the results and formulates an answer."""

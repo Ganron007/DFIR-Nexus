@@ -748,8 +748,7 @@ def test_full_run_real_staging_stages_drafts_for_approve(tmp_path):
               "skipped": [], "bookmarks_added": 0, "timeline_events": 0,
               "needles_done": 0, "current": ""}
 
-    _mode1_full_run_worker(case, rec_path, record, max_needles=60,
-                           only=set(), reprocess=False)
+    _mode1_full_run_worker(case, rec_path, record, only=set(), reprocess=False)
 
     assert record["status"] == "complete", record.get("error")
     assert record["drafts_staged"] >= 1, record.get("skipped")

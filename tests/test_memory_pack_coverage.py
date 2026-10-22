@@ -25,7 +25,7 @@ from nexus.langgraph.tool_lane import (
 
 EMPTY_OUTPUT_REASON = "vol exited cleanly but produced no output file"
 TRUNCATED_REASON = (
-    "captured output hit the byte cap, so the saved output is incomplete"
+    "captured output is incomplete"
 )
 
 

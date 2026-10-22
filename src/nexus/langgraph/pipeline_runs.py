@@ -110,11 +110,13 @@ def reap_stale_running_runs(cases_root: Path | None = None) -> list[str]:
 
 
 def process_alive(pid: Any) -> bool:
-    """True while the process ``pid`` is running on this machine; False when it has exited.
+    """Return False only when the process ``pid`` is confirmed to have exited.
 
     Used for run manifests written by a CLI process: no server reaps them, so a crash would
     otherwise leave a run 'running' for ever. ``os.kill(pid, 0)`` is a probe on POSIX only (on
     Windows it would send CTRL_C_EVENT), so Windows asks the kernel for the exit code instead.
+    A permission or query error is not proof of exit; treat it as live so the reaper cannot
+    overwrite a run whose process could not be inspected.
     """
     try:
         pid = int(pid)
@@ -130,11 +132,14 @@ def process_alive(pid: Any) -> bool:
         kernel32.OpenProcess.restype = wintypes.HANDLE
         handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
-            return False
+            # ERROR_INVALID_PARAMETER means this positive PID does not identify a
+            # process. ERROR_ACCESS_DENIED (and every other error) is ambiguous:
+            # the process may be alive but owned by an elevated/different user.
+            return ctypes.get_last_error() != 87  # ERROR_INVALID_PARAMETER
         try:
             code = wintypes.DWORD()
             if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
+                return True  # inability to query an opened process is not exit evidence
             return code.value == 259  # STILL_ACTIVE
         finally:
             kernel32.CloseHandle(handle)
@@ -145,7 +150,7 @@ def process_alive(pid: Any) -> bool:
     except PermissionError:
         return True
     except OSError:
-        return False
+        return True  # only ProcessLookupError above confirms absence
     return True
 
 
@@ -456,11 +461,15 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     would blind the briefing, the indexer and the entity census.
     """
     case_dir = Path(case_dir)
+    requested_run_id = run_id.strip()
     run: PipelineRun | None = None
     try:
-        run = resolve_run(case_dir, "tools", run_id)
+        run = resolve_run(case_dir, "tools", requested_run_id)
     except ValueError:
+        if requested_run_id:
+            raise
         run = None
+    requested_run = run
 
     # When no explicit run was asked for, the NEWEST run with data is the lane
     # that actually ran. Following the pointer chain first landed on a stale run
@@ -501,11 +510,22 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
         if _run_dir_has_data(run.path):
             return run.extractions
         manifest = load_manifest(run.path)
-        nxt = run.parent_run_id or str(manifest.get("previous_active_run_id") or "")
+        # Only follow previous_active_run_id for an implicit lookup. A named
+        # tools run's previous active run is history, not a reuse dependency;
+        # reading it would turn an empty/incomplete run into stale evidence.
+        nxt = run.parent_run_id
+        if not requested_run_id:
+            nxt = nxt or str(manifest.get("previous_active_run_id") or "")
         try:
             run = _load_run(case_dir, nxt) if nxt else None
         except ValueError:
             run = None
+    if requested_run_id:
+        # A named run is a hard scope boundary. If it and its declared reuse
+        # chain have no parsed output, return the named run's empty extraction
+        # root instead of silently borrowing another run's evidence.
+        assert requested_run is not None
+        return requested_run.extractions
     runs_dir = case_dir / "runs"
     if runs_dir.is_dir():
         candidates = sorted(

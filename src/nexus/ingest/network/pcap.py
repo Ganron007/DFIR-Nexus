@@ -6,9 +6,9 @@ each packet to a normalized Artifact. Uses the shared WIRESHARK lane, so the
 pipeline's automatic ingest, the ``ingest_auto`` MCP tool, and the CLI all
 gain raw-pcap support through the same registry path.
 
-Bounds: timeout via ``NEXUS_PCAP_TIMEOUT`` (default: settings.command_timeout);
-optional packet cap via ``NEXUS_PCAP_MAX_PACKETS`` (default 0 = all). A
-timeout is reported honestly — never silently truncated.
+Bound: timeout via ``NEXUS_PCAP_TIMEOUT`` (default: settings.command_timeout).
+A timeout is reported honestly — never silently truncated. Successful imports
+convert every packet selected by the optional display filter.
 """
 from __future__ import annotations
 
@@ -43,7 +43,6 @@ def convert_pcap_to_json(
     out_path: Path,
     *,
     display_filter: str = "",
-    max_packets: int = 0,
     timeout: int | None = None,
 ) -> None:
     """Run ``tshark -T ek`` into ``out_path`` (NDJSON); raise on failure.
@@ -64,8 +63,6 @@ def convert_pcap_to_json(
     cmd = [tshark, "-r", str(src), "-T", "ek"]
     if display_filter:
         cmd += ["-Y", display_filter]
-    if max_packets and max_packets > 0:
-        cmd += ["-c", str(int(max_packets))]
     limit = timeout or settings.command_timeout
     try:
         with open(out_path, "wb") as out_f:
@@ -112,10 +109,6 @@ class PcapImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         try:
-            max_packets = int(os.environ.get("NEXUS_PCAP_MAX_PACKETS", "0"))
-        except ValueError:
-            max_packets = 0
-        try:
             timeout = int(os.environ.get("NEXUS_PCAP_TIMEOUT", "0")) or None
         except ValueError:
             timeout = None
@@ -125,6 +118,6 @@ class PcapImporter(Importer):
             converted = Path(tmp) / f"{path.stem}.tshark.jsonl"
             log.info("pcap: streaming %s via tshark -T ek -> %s", path.name, converted.name)
             convert_pcap_to_json(
-                path, converted, max_packets=max_packets, timeout=timeout,
+                path, converted, timeout=timeout,
             )
             yield from WiresharkImporter().parse(converted)

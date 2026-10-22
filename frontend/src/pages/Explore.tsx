@@ -105,7 +105,7 @@ export default function Explore() {
   const [count, setCount] = useState(0);
   const [countLowerBound, setCountLowerBound] = useState(false);
   const [countExact, setCountExact] = useState(false);
-  const [capReasons, setCapReasons] = useState<string[]>([]);
+  const [incompleteReasons, setIncompleteReasons] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -236,7 +236,7 @@ export default function Explore() {
       setCount(searchResult.count);
       setCountLowerBound(Boolean(searchResult.count_lower_bound));
       setCountExact(Boolean(searchResult.count_exact));
-      setCapReasons(searchResult.capped_reasons || []);
+      setIncompleteReasons(searchResult.incomplete_reasons || []);
       setOffset(targetOffset);
       setHistogram(histResult.buckets || {});
       const all = allHitColumns(searchResult.hits);
@@ -591,8 +591,8 @@ export default function Explore() {
         )}
       >
         {countLowerBound ? (
-          <p className={styles.bound} title={capReasons.join("; ") || "a cap was reached"}>
-            lower bound{capReasons.length > 0 ? ` — ${capReasons.join("; ")}` : ""}
+        <p className={styles.bound} title={incompleteReasons.join("; ") || "scan coverage is incomplete"}>
+            lower bound{incompleteReasons.length > 0 ? ` — ${incompleteReasons.join("; ")}` : ""}
           </p>
         ) : null}
         {countExact && count > PAGE_SIZE ? (

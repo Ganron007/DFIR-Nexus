@@ -58,32 +58,21 @@ def test_a_family_keeps_every_file_by_default(run_case):
     assert stats.get("files_skipped_family_cap", 0) == 0
 
 
-def test_an_explicit_family_cap_is_applied_and_reported(run_case):
-    from nexus.langgraph.query_pack import iter_extraction_files
-
-    case_dir, extractions = run_case
-    for n in range(5):
-        _write(extractions / "wer" / f"Report{n}.wer.txt", "x\n")
-    stats: dict = {}
-    found = iter_extraction_files(case_dir, max_files_per_family=2, stats=stats)
-    assert len(found) == 2
-    assert stats["files_skipped_family_cap"] == 3
-    assert stats["families_capped"] == ["wer"]
-
-
-def test_the_index_state_records_a_walk_cap(run_case, monkeypatch):
-    from nexus.langgraph import query_pack
+def test_legacy_index_caps_do_not_drop_files_or_rows(run_case, monkeypatch):
     from nexus.langgraph.case_index import iter_index_doc_batches
 
     case_dir, extractions = run_case
-    monkeypatch.setattr(query_pack, "_MAX_FILES_PER_FAMILY", 1)
+    monkeypatch.setenv("NEXUS_INDEX_MAX_DOCS", "1")
+    monkeypatch.setenv("NEXUS_INDEX_PER_FILE_CAP", "1")
+    monkeypatch.setenv("NEXUS_INDEX_PER_FAMILY_CAP", "1")
     for n in range(3):
-        _write(extractions / "wer" / f"Report{n}.wer.txt", "x\n")
+        _write(extractions / "wer" / f"Report{n}.wer.txt", "row one\nrow two\n")
     stats: dict = {}
-    for _batch in iter_index_doc_batches(case_dir, stats=stats):
-        pass
-    assert stats["files_skipped_family_cap"] == 2
-    assert "wer" in stats["families_capped"]
+    docs = [doc for batch in iter_index_doc_batches(case_dir, stats=stats) for doc in batch]
+    assert len(docs) == 6
+    assert stats["docs_capped"] is False
+    assert stats["families_capped"] == []
+    assert stats["files_capped"] == 0
 
 
 def test_a_tsv_output_is_walked_and_its_rows_are_indexed(run_case):
@@ -178,21 +167,14 @@ def test_text_indexes_the_word_parts_of_a_dotted_name():
                                          "text_analyzer": "forensic_text_v1"}
 
 
-def test_the_csv_record_guard_is_far_above_any_valid_record(monkeypatch):
-    """Valid records never reach the guard; it only stops a stray quote from swallowing a file."""
-    from nexus.langgraph.case_index import _csv_record_caps
-
-    monkeypatch.delenv("NEXUS_CSV_MAX_RECORD_LINES", raising=False)
-    monkeypatch.delenv("NEXUS_CSV_MAX_RECORD_BYTES", raising=False)
-    assert _csv_record_caps() == (1_000_000, 64 * 1024 * 1024)
-
-
-def test_a_csv_record_of_many_lines_is_kept_whole():
-    """A quoted field spanning 12,000 physical lines is one record, not a fallback."""
+def test_old_csv_size_caps_do_not_truncate_a_multiline_record(monkeypatch):
+    """Legacy record-size settings have no effect; every quoted row stays whole."""
     import io
 
     from nexus.langgraph.case_index import iter_record_rows
 
+    monkeypatch.setenv("NEXUS_CSV_MAX_RECORD_LINES", "5")
+    monkeypatch.setenv("NEXUS_CSV_MAX_RECORD_BYTES", "32")
     body = "line\n" * 12_000
     fallbacks: list[tuple[int, str]] = []
     records = list(iter_record_rows(
