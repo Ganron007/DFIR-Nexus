@@ -110,11 +110,13 @@ def reap_stale_running_runs(cases_root: Path | None = None) -> list[str]:
 
 
 def process_alive(pid: Any) -> bool:
-    """True while the process ``pid`` is running on this machine; False when it has exited.
+    """Return False only when the process ``pid`` is confirmed to have exited.
 
     Used for run manifests written by a CLI process: no server reaps them, so a crash would
     otherwise leave a run 'running' for ever. ``os.kill(pid, 0)`` is a probe on POSIX only (on
     Windows it would send CTRL_C_EVENT), so Windows asks the kernel for the exit code instead.
+    A permission or query error is not proof of exit; treat it as live so the reaper cannot
+    overwrite a run whose process could not be inspected.
     """
     try:
         pid = int(pid)
@@ -130,11 +132,14 @@ def process_alive(pid: Any) -> bool:
         kernel32.OpenProcess.restype = wintypes.HANDLE
         handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
-            return False
+            # ERROR_INVALID_PARAMETER means this positive PID does not identify a
+            # process. ERROR_ACCESS_DENIED (and every other error) is ambiguous:
+            # the process may be alive but owned by an elevated/different user.
+            return ctypes.get_last_error() != 87  # ERROR_INVALID_PARAMETER
         try:
             code = wintypes.DWORD()
             if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
+                return True  # inability to query an opened process is not exit evidence
             return code.value == 259  # STILL_ACTIVE
         finally:
             kernel32.CloseHandle(handle)
@@ -145,7 +150,7 @@ def process_alive(pid: Any) -> bool:
     except PermissionError:
         return True
     except OSError:
-        return False
+        return True  # only ProcessLookupError above confirms absence
     return True
 
 
