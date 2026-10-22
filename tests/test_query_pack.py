@@ -265,9 +265,14 @@ def test_run_scoped_snippets_keep_case_intake_and_run_scope(tmp_path: Path, monk
         observed["n4_run_id"] = run_id
         return [], "csv"
 
-    def rebuild(case_dir: Path, run_id: str = "") -> list[dict]:
+    def rebuild(
+        case_dir: Path,
+        hits: list[dict] | None = None,
+        run_id: str = "",
+    ) -> list[dict]:
         observed["timeline_case"] = Path(case_dir)
         observed["timeline_run_id"] = run_id
+        observed["timeline_hits"] = hits
         return []
 
     monkeypatch.setattr(query_pack, "_present_families", present_families)
@@ -289,6 +294,54 @@ def test_run_scoped_snippets_keep_case_intake_and_run_scope(tmp_path: Path, monk
     assert observed["n4_run_id"] == run_id
     assert observed["timeline_case"] == case
     assert observed["timeline_run_id"] == run_id
+    assert observed["timeline_hits"] == []
+
+
+def test_write_query_pack_reuses_one_real_n4_scan_for_timeline(tmp_path, monkeypatch):
+    import json
+    import shutil
+
+    from nexus.langgraph import query_pack, timeline_merge
+    from nexus.langgraph.pipeline_runs import create_run
+
+    case = tmp_path / "CASE-SHARED-N4"
+    run = create_run(case, "tools")
+    run_id = run.run_id
+    run_dir = run.path
+    extraction = run_dir / "extractions" / "evtxecmd"
+    extraction.mkdir(parents=True)
+    fixture = Path(__file__).parent / "fixtures" / "cs1b_evtx_real_rows.csv"
+    shutil.copyfile(fixture, extraction / "EvtxECmd_Output.csv")
+    (case / "CASE.yaml").write_text(
+        "intake:\n  query_extra: Process creation\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NEXUS_N4_BACKEND", "csv")
+    monkeypatch.setattr(query_pack, "extras_gap_notes", lambda *_args, **_kwargs: [])
+    calls = 0
+    real_n4_hits = query_pack.n4_hits
+
+    def counted_n4_hits(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_n4_hits(*args, **kwargs)
+
+    monkeypatch.setattr(query_pack, "n4_hits", counted_n4_hits)
+
+    pack_path = query_pack.write_query_pack(
+        case, ledger=[], output_dir=run_dir / "analysis", run_id=run_id,
+    )
+    actual_events = json.loads((case / "timeline.json").read_text(encoding="utf-8"))
+
+    assert pack_path.is_file()
+    assert calls == 1
+    assert any("process creation" in event["description"].lower() for event in actual_events)
+
+    # The old independent timeline path remains the parity oracle for the same
+    # verbatim public EVTX output rows; it must produce the identical events.
+    monkeypatch.setattr(query_pack, "n4_hits", real_n4_hits)
+    expected_events = timeline_merge.rebuild_case_timeline(case, run_id=run_id)
+    assert actual_events == expected_events
 
 
 def test_query_extra_needles_and_ingest_root(tmp_path: Path):

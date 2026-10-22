@@ -1941,6 +1941,8 @@ def build_query_pack_markdown(
     ledger: list[dict[str, Any]] | None = None,
     intake: dict[str, str] | None = None,
     run_id: str = "",
+    *,
+    _scan_output: dict[str, Any] | None = None,
 ) -> str:
     case_dir = Path(case_dir)
     intake = intake if intake is not None else load_case_intake(case_dir)
@@ -1967,6 +1969,8 @@ def build_query_pack_markdown(
         case_dir, terms, window, priority_terms=pb_terms, stats=pack_stats,
         run_id=run_id,
     )
+    if _scan_output is not None:
+        _scan_output.update({"hits": hits, "backend": backend, "stats": pack_stats})
 
     if ledger is None:
         from nexus.langgraph.pipeline_runs import resolve_tools_extractions
@@ -2052,14 +2056,32 @@ def write_query_pack(
     out_dir = Path(output_dir) if output_dir else case_dir / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "query_pack.md"
+    scan_output: dict[str, Any] = {}
     path.write_text(
-        build_query_pack_markdown(case_dir, ledger, intake, run_id=run_id),
+        build_query_pack_markdown(
+            case_dir, ledger, intake, run_id=run_id, _scan_output=scan_output,
+        ),
         encoding="utf-8",
     )
     try:
-        from nexus.langgraph.timeline_merge import rebuild_case_timeline
+        from nexus.langgraph.timeline_merge import (
+            rebuild_case_timeline,
+            timeline_query_plan,
+        )
 
-        rebuild_case_timeline(case_dir, run_id=run_id)
+        timeline_terms, _timeline_priority = timeline_query_plan(case_dir)
+        pack_intake = intake if intake is not None else load_case_intake(case_dir)
+        pack_terms = collect_query_terms(pack_intake)
+        if pack_terms == timeline_terms:
+            timeline_hits = attach_hit_fields(
+                case_dir, list(scan_output.get("hits") or []), run_id=run_id,
+            )
+            rebuild_case_timeline(case_dir, hits=timeline_hits, run_id=run_id)
+        else:
+            # A portal case with no intake needles can give N7 a Mode 1
+            # fallback search that N4's query pack does not perform. Keep
+            # that narrower/different timeline contract intact.
+            rebuild_case_timeline(case_dir, run_id=run_id)
     except Exception:
         pass
     return path
