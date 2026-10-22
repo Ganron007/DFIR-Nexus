@@ -37,6 +37,8 @@ from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
+_MAX_PREVIEW_ROWS = 25
+_MAX_PREVIEW_CHARS = 900
 _CALL_CHARS_DEFAULT = 120_000
 
 DEFAULT_SYSTEM = """\
@@ -294,20 +296,16 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
             return {}, f"{tool}: source_ids must be a list of strings"
     if tool == "es_search":
         try:
-            size = int(clean.get("size", 50))
+            size = int(clean.get("size") or 50)
         except (TypeError, ValueError):
             return {}, "es_search: size must be an integer"
-        if size < 1:
-            return {}, "es_search: size must be at least 1"
-        clean["size"] = size
+        clean["size"] = max(1, min(size, 200))
     if tool == "sample_rows":
         try:
-            n = int(clean.get("n", 12))
+            n = int(clean.get("n") or 12)
         except (TypeError, ValueError):
             return {}, "sample_rows: n must be an integer"
-        if n < 1:
-            return {}, "sample_rows: n must be at least 1"
-        clean["n"] = n
+        clean["n"] = max(1, min(n, 60))
     if tool == "rag_search":
         try:
             clean["top_k"] = max(1, min(int(clean.get("top_k") or 8), 50))
@@ -316,9 +314,22 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
     return clean, ""
 
 
-def _preview_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Retain the complete returned page; prompt_budget owns model-window limits."""
-    return [row for row in rows if isinstance(row, dict)]
+def _preview_rows(rows: list[dict[str, Any]], limit: int = _MAX_PREVIEW_ROWS) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
+        out.append({
+            "family": str(row.get("family") or "")[:80],
+            "file": str(row.get("file") or "")[:200],
+            "line": str(row.get("line") or "")[:16],
+            "ts": str(row.get("ts") or row.get("time") or "")[:40],
+            "host": str(row.get("host") or "")[:80],
+            "text": str(row.get("text") or "")[:_MAX_PREVIEW_CHARS],
+            "fields": {str(k)[:60]: str(v)[:160] for k, v in list(fields.items())[:8]},
+        })
+    return out
 
 
 def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -362,26 +373,73 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
                 summary[key] = result[key]
         return summary
     if name == "es_aggregate":
-        buckets: list[dict[str, Any]] = []
-        for spec in (result.get("aggregations") or {}).values():
-            if isinstance(spec, dict):
-                buckets = spec.get("buckets") or []
-                break
-        return {
-            "bucket_count": len(buckets),
-            "buckets": [
-                {"key": b.get("key"), "count": b.get("doc_count")}
-                for b in buckets if isinstance(b, dict)
-            ],
+        def summarize_aggregation(spec: Any, budget: list[int], depth: int = 0) -> dict[str, Any]:
+            """Keep each named aggregation's bounded result, including nested metrics."""
+            if not isinstance(spec, dict):
+                return {}
+            if depth > 4:
+                return {"truncated": True}
+            summary: dict[str, Any] = {}
+            buckets = spec.get("buckets")
+            if isinstance(buckets, list):
+                summary["bucket_count"] = len(buckets)
+                summary["buckets"] = []
+                for bucket in buckets[:40]:
+                    if budget[0] <= 0:
+                        break
+                    if not isinstance(bucket, dict):
+                        continue
+                    budget[0] -= 1
+                    item = {
+                        "key": bucket.get("key"),
+                        "count": bucket.get("doc_count"),
+                    }
+                    if "key_as_string" in bucket:
+                        item["key_as_string"] = bucket["key_as_string"]
+                    for key, value in bucket.items():
+                        if key not in {"key", "key_as_string", "doc_count"} and isinstance(value, dict):
+                            item[key] = summarize_aggregation(value, budget, depth + 1)
+                    summary["buckets"].append(item)
+                if len(summary["buckets"]) < len(buckets):
+                    summary["buckets_truncated"] = True
+            for key in ("value", "value_as_string", "after_key", "sum_other_doc_count",
+                        "doc_count_error_upper_bound"):
+                if key in spec:
+                    summary[key] = spec[key]
+            for key, value in spec.items():
+                if key not in {"buckets", "value", "value_as_string", "after_key",
+                               "sum_other_doc_count", "doc_count_error_upper_bound"} and isinstance(value, dict):
+                    summary[key] = summarize_aggregation(value, budget, depth + 1)
+            return summary
+
+        aggregations = result.get("aggregations") or {}
+        raw_named = aggregations if isinstance(aggregations, dict) else {}
+        per_aggregation_budget = max(1, min(40, 400 // max(1, len(raw_named))))
+        named = {
+            str(name): summarize_aggregation(spec, [per_aggregation_budget])
+            for name, spec in raw_named.items()
+            if isinstance(spec, dict)
+        }
+        first = next(iter(named.values()), {})
+        summary = {
+            **first,
+            "bucket_count": first.get("bucket_count", 0),
+            "buckets": first.get("buckets", []),
             "next_after_key": result.get("next_after_key"),
         }
+        # Preserve the historic single-aggregation shape. For multiple named
+        # aggregations, expose every result under its own name; selecting only
+        # the first made later buckets silently invisible to the model.
+        if len(named) > 1:
+            summary["aggregations"] = named
+        return summary
     if name == "run_record":
         return {
             "available": result.get("available"),
             "counts": result.get("counts"),
             "entries": [
                 {k: e.get(k) for k in ("tool", "status", "reason", "purpose", "output", "audit_id")}
-                for e in (result.get("entries") or [])
+                for e in (result.get("entries") or [])[:40]
             ],
             "total": result.get("total"),
         }
@@ -482,19 +540,27 @@ def _append_tool_observation(
                 seen.add(key)
                 all_hits.append(hit)
     if name == "es_aggregate" and isinstance(result, dict):
-        for spec in (result.get("aggregations") or {}).values():
-            if isinstance(spec, dict):
-                buckets = spec.get("buckets") or []
-                aggregations.append({
-                    "field": ", ".join(sorted((args.get("aggs") or {}).keys())),
-                    "distinct": len(buckets),
-                    "top": [
-                        {"value": b.get("key"), "count": b.get("doc_count")}
-                        for b in buckets[:15] if isinstance(b, dict)
-                    ],
-                    "audit_id": audit_id,
-                })
-                break
+        raw_aggs = result.get("aggregations") or {}
+        named = summary.get("aggregations")
+        if not isinstance(named, dict) and isinstance(raw_aggs, dict) and raw_aggs:
+            first_name = next(iter(raw_aggs))
+            named = {str(first_name): summary}
+        for agg_name, agg_summary in (named or {}).items():
+            if not isinstance(agg_summary, dict):
+                continue
+            buckets = agg_summary.get("buckets") or []
+            item = {
+                "field": str(agg_name),
+                "distinct": agg_summary.get("bucket_count", len(buckets)),
+                "top": [
+                    {"value": b.get("key"), "count": b.get("count")}
+                    for b in buckets[:15] if isinstance(b, dict)
+                ],
+                "audit_id": audit_id,
+            }
+            if "value" in agg_summary:
+                item["value"] = agg_summary["value"]
+            aggregations.append(item)
     return record
 
 
@@ -509,8 +575,7 @@ def _event_summary(summary: Any) -> dict[str, Any]:
             out[key] = f"{len(value)} value(s)"
     hits = out.get("hits")
     if isinstance(hits, list):
-        out["hits_preview"] = hits[:3]
-        out.pop("hits", None)
+        out["hits"] = hits[:3]
         out["hits_total"] = len(hits)
     return out
 
@@ -690,12 +755,18 @@ def _fallback_partial_reply(
                 break
         lines.append("")
     if hits:
-        lines.append(f"**Rows already retrieved ({len(hits)}; full details follow):**")
+        lines.append(f"**Rows already retrieved ({len(hits)}):**")
         lines.append("")
-        lines.extend(
-            json.dumps(hit, ensure_ascii=False, sort_keys=True, default=str)
-            for hit in hits
-        )
+        lines.append("| Family | File | Line | Detail |")
+        lines.append("|---|---|---|---|")
+        for hit in hits[:20]:
+            text = str(hit.get("text") or "").replace("|", "\\|")[:180]
+            lines.append(
+                f"| {str(hit.get('family') or '')[:40]} "
+                f"| {str(hit.get('file') or '')[:80]} "
+                f"| {str(hit.get('line') or '')[:12]} "
+                f"| {text} |"
+            )
     else:
         lines.append("No rows had been retrieved when the budget expired.")
     lines.append("")

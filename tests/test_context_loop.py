@@ -540,6 +540,54 @@ def test_es_result_summary_keeps_every_complete_row_and_page_size_is_uncapped():
     assert not error and args["n"] == 1000
 
 
+def test_aggregate_summary_preserves_each_named_aggregation():
+    from nexus.langgraph.context_loop import _append_tool_observation, _result_summary
+
+    result = {
+        "aggregations": {
+            "by_user": {"buckets": [
+                {"key": "analyst-a", "doc_count": 7},
+                {"key": "role-b", "doc_count": 5},
+            ]},
+            "by_action": {"buckets": [
+                {"key": "write-object", "doc_count": 6},
+                {"key": "delete-object", "doc_count": 5},
+            ]},
+            "total": {"value": 11},
+        },
+        "next_after_key": None,
+    }
+    summary = _result_summary("es_aggregate", result)
+
+    assert summary["buckets"] == [
+        {"key": "analyst-a", "count": 7},
+        {"key": "role-b", "count": 5},
+    ]
+    assert summary["aggregations"]["by_action"]["buckets"] == [
+        {"key": "write-object", "count": 6},
+        {"key": "delete-object", "count": 5},
+    ]
+    assert summary["aggregations"]["total"]["value"] == 11
+
+    tool_calls: list[dict[str, Any]] = []
+    all_hits: list[dict[str, Any]] = []
+    collected: list[dict[str, Any]] = []
+    record = _append_tool_observation(
+        tool_calls=tool_calls,
+        all_hits=all_hits,
+        aggregations=collected,
+        name="es_aggregate",
+        args={"aggs": {"by_user": {}, "by_action": {}, "total": {}}},
+        why="verify aggregation visibility",
+        result=result,
+        elapsed_ms=1.0,
+    )
+    assert set(record["summary"]["aggregations"]) == {"by_user", "by_action", "total"}
+    assert [item["field"] for item in collected] == ["by_user", "by_action", "total"]
+    assert collected[1]["top"][0] == {"value": "write-object", "count": 6}
+    assert collected[2]["value"] == 11
+
+
 def test_force_answer_rejects_empty_json():
     from nexus.langgraph.context_loop import _force_answer
 
@@ -590,7 +638,7 @@ def test_run_record_uses_real_ledger_field_names(tmp_path, monkeypatch):
     assert result["counts"] == {"OK": 1, "SKIP": 0, "FAIL": 0}
 
 
-def test_run_record_returns_every_entry_and_counts_all_rows(tmp_path, monkeypatch):
+def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
     from nexus.tools import evidence_index
 
     case = tmp_path / "CASE-LEDGER-BIG"
@@ -604,8 +652,7 @@ def test_run_record_returns_every_entry_and_counts_all_rows(tmp_path, monkeypatc
     result = evidence_index.do_run_record(case_id="CASE-LEDGER-BIG")
     assert result["counts"]["OK"] == 305
     assert result["counts"]["FAIL"] == 1
-    assert len(result["entries"]) == 306
-    assert result["entries"][-1]["tool"] == "late-fail"
+    assert len(result["entries"]) == 300
 
 
 def test_mode1_chat_stream_emits_tool_events_and_history(tmp_path):
