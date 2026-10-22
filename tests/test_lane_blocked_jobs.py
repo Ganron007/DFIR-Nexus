@@ -89,3 +89,32 @@ def test_a_blocked_sidr_job_is_recorded_blocked_and_never_reaches_the_executor(c
     assert "clean shutdown" in str(sidr_rows[0].get("reason") or "")
     assert not any("sidr" in json.dumps(args, default=str) for _name, args in calls), (
         "a blocked job must never reach the executor")
+
+
+def test_required_query_pack_failure_is_returned_as_lane_error(case_dir, monkeypatch):
+    from nexus.langgraph import snippets
+    from nexus.langgraph.pipeline_runs import create_run
+    from nexus.langgraph.tool_lane import run_tool_lane
+
+    run = create_run(case_dir, "tools")
+
+    def fail_snippets(*_args, **_kwargs):
+        raise OSError("timeline output unavailable")
+
+    monkeypatch.setattr(snippets, "write_snippets", fail_snippets)
+
+    lane = asyncio.run(run_tool_lane(
+        tools={},
+        evidence_path="",
+        case_id=case_dir.name,
+        run_id=run.run_id,
+        parse_result=json.loads,
+        pipeline_mode="tools",
+        strict=False,
+    ))
+
+    assert "N4 query-pack/timeline generation failed: timeline output unavailable" in lane["error"]
+    assert any(
+        "N4 query-pack/timeline generation failed" in step
+        for step in lane["step_log"]
+    )

@@ -344,6 +344,34 @@ def test_write_query_pack_reuses_one_real_n4_scan_for_timeline(tmp_path, monkeyp
     assert actual_events == expected_events
 
 
+def test_write_query_pack_propagates_timeline_rebuild_failure(tmp_path, monkeypatch):
+    import pytest
+
+    from nexus.langgraph import query_pack, timeline_merge
+
+    case = tmp_path / "CASE-TIMELINE-FAILURE"
+    case.mkdir()
+    (case / "CASE.yaml").write_text(
+        "intake:\n  query_extra: Process creation\n",
+        encoding="utf-8",
+    )
+    terms = query_pack.collect_query_terms(query_pack.load_case_intake(case))
+    monkeypatch.setattr(query_pack, "extras_gap_notes", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(query_pack, "_present_families", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(query_pack, "n4_hits", lambda *_args, **_kwargs: ([], "csv"))
+    monkeypatch.setattr(
+        timeline_merge, "timeline_query_plan", lambda *_args, **_kwargs: (terms, []),
+    )
+
+    def fail_timeline(*_args, **_kwargs):
+        raise OSError("timeline disk full")
+
+    monkeypatch.setattr(timeline_merge, "rebuild_case_timeline", fail_timeline)
+
+    with pytest.raises(OSError, match="timeline disk full"):
+        query_pack.write_query_pack(case, ledger=[], run_id="R-FAIL")
+
+
 def test_query_extra_needles_and_ingest_root(tmp_path: Path):
     from nexus.langgraph.query_pack import run_ad_hoc_query
 

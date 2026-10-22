@@ -2063,27 +2063,24 @@ def write_query_pack(
         ),
         encoding="utf-8",
     )
-    try:
-        from nexus.langgraph.timeline_merge import (
-            rebuild_case_timeline,
-            timeline_query_plan,
-        )
+    from nexus.langgraph.timeline_merge import (
+        rebuild_case_timeline,
+        timeline_query_plan,
+    )
 
-        timeline_terms, _timeline_priority = timeline_query_plan(case_dir)
-        pack_intake = intake if intake is not None else load_case_intake(case_dir)
-        pack_terms = collect_query_terms(pack_intake)
-        if pack_terms == timeline_terms:
-            timeline_hits = attach_hit_fields(
-                case_dir, list(scan_output.get("hits") or []), run_id=run_id,
-            )
-            rebuild_case_timeline(case_dir, hits=timeline_hits, run_id=run_id)
-        else:
-            # A portal case with no intake needles can give N7 a Mode 1
-            # fallback search that N4's query pack does not perform. Keep
-            # that narrower/different timeline contract intact.
-            rebuild_case_timeline(case_dir, run_id=run_id)
-    except Exception:
-        pass
+    timeline_terms, _timeline_priority = timeline_query_plan(case_dir)
+    pack_intake = intake if intake is not None else load_case_intake(case_dir)
+    pack_terms = collect_query_terms(pack_intake)
+    if pack_terms == timeline_terms:
+        timeline_hits = attach_hit_fields(
+            case_dir, list(scan_output.get("hits") or []), run_id=run_id,
+        )
+        rebuild_case_timeline(case_dir, hits=timeline_hits, run_id=run_id)
+    else:
+        # A portal case with no intake needles can give N7 a Mode 1
+        # fallback search that N4's query pack does not perform. Keep
+        # that narrower/different timeline contract intact.
+        rebuild_case_timeline(case_dir, run_id=run_id)
     return path
 
 

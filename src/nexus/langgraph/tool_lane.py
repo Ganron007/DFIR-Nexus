@@ -4652,6 +4652,7 @@ async def run_tool_lane(
             log.warning("SIFT pull failed: %s", exc)
             summary = f"{summary}; sift_pull_error={exc}"
 
+    analysis_error = ""
     try:
         from nexus.langgraph.snippets import write_snippets
 
@@ -4660,7 +4661,9 @@ async def run_tool_lane(
         )
         summary = f"{summary}; snippets={snip}"
     except Exception as exc:  # noqa: BLE001
-        log.warning("snippet write failed: %s", exc)
+        analysis_error = f"N4 query-pack/timeline generation failed: {exc}"
+        log.error("%s", analysis_error)
+        summary = f"{summary}; {analysis_error}"
 
     step_log = [summary]
     # Strict abort is tools-mode only. Coverage/design record FAILs in the
@@ -4676,16 +4679,19 @@ async def run_tool_lane(
         "rag_notes": rag_notes,
         "step_log": step_log,
     }
+    lane_errors = [analysis_error] if analysis_error else []
     if strict and fail:
         fails = [
             f"{r.get('host')}/{r.get('tool')}: {r.get('reason', '')[:120]}"
             for r in ledger if r.get("status") == "FAIL"
         ]
-        out["error"] = (
+        lane_errors.append(
             f"Tool lane FAIL={fail} (strict mode). "
             + "; ".join(fails[:6])
         )
-        step_log.append(out["error"])
+    if lane_errors:
+        out["error"] = "; ".join(lane_errors)
+        step_log.extend(lane_errors)
     return out
 
 
