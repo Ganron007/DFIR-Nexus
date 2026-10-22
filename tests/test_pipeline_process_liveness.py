@@ -89,3 +89,44 @@ def test_posix_ambiguous_oserror_is_conservatively_live(monkeypatch):
     )
 
     assert pipeline_runs.process_alive(24680) is True
+
+
+def test_new_pipeline_run_reaps_confirmed_dead_case_runs_first(monkeypatch):
+    from nexus.config import settings
+    from nexus.langgraph import pipeline_runs
+    from nexus.langgraph.llm_pipeline import register_evidence
+
+    case_id = "CASE-RECOVERY"
+    case_dir = settings.cases_root / case_id
+    case_dir.mkdir(parents=True)
+    (case_dir / "CASE.yaml").write_text(f"case_id: {case_id}\n", encoding="utf-8")
+    old_run = pipeline_runs.create_run(case_dir, "tools")
+    monkeypatch.setattr(pipeline_runs, "process_alive", lambda _pid: False)
+
+    # This reused-case path has no awaited tool calls. Drive it directly so the
+    # regression does not need Windows asyncio's self-pipe socketpair; if a
+    # future change awaits external I/O here, the test fails instead of hanging.
+    recovery = register_evidence({
+        "case_id": case_id,
+        "pipeline_mode": "tools",
+        "case_context": {},
+        "evidence_path": "",
+        "evidence_paths": [],
+    }, {"case_init": object()})
+    try:
+        recovery.send(None)
+    except StopIteration as completed:
+        result = completed.value
+    else:
+        recovery.close()
+        pytest.fail("no-tool recovery path unexpectedly awaited external I/O")
+
+    old_manifest = json.loads((old_run.path / "manifest.json").read_text(encoding="utf-8"))
+    new_manifest = json.loads(
+        (settings.cases_root / case_id / "runs" / result["run_id"] / "manifest.json")
+        .read_text(encoding="utf-8")
+    )
+    assert old_manifest["status"] == "interrupted"
+    assert new_manifest["status"] == "running"
+    assert result["run_id"] != old_run.run_id
+    assert any(old_run.run_id in step and "interrupted" in step for step in result["step_log"])

@@ -745,8 +745,16 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
         case_id = result.get("case_id", case_id)
         log.info("Case created (authority): %s", case_id)
         step_log = [f"Case {case_id} created on case-authority host"]
+    from nexus.config import settings
+    from nexus.langgraph.pipeline_runs import reap_dead_runs
+
+    reaped_runs = reap_dead_runs(settings.cases_root / case_id)
+    if reaped_runs:
+        step_log.append(
+            "Marked confirmed-dead prior run(s) interrupted before new run: "
+            + ", ".join(reaped_runs)
+        )
     try:
-        from nexus.config import settings
         from nexus.langgraph.case_intake import persist_case_intake
 
         written = persist_case_intake(settings.cases_root / case_id, ctx)
@@ -847,11 +855,11 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
                 step_log.append(f"Evidence registered: {p}")
 
     try:
-        from nexus.config import settings
         from nexus.langgraph.pipeline_runs import create_run
 
+        case_dir = settings.cases_root / case_id
         pipeline_run = create_run(
-            settings.cases_root / case_id,
+            case_dir,
             state.get("pipeline_mode") or "tools",
             paths,
         )
