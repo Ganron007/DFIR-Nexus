@@ -2392,7 +2392,7 @@ packs:
               event_id:
               - '7036'
 - id: ba-eva-timestomp
-  name: Executable whose $SI creation predates its $FN creation, set to whole seconds
+  name: Executable with $SI creation earlier than $FN creation
   families:
   - mftecmd
   citation:
@@ -2403,9 +2403,13 @@ packs:
       source.'
   techniques:
   - T1070.006
-  rationale: ATT&CK DET0591 reads timestomping as $SI and $FN timestamps mismatched or reverted. MFTECmd states
-    both facts per record (SI<FN, uSecZeros). Narrowed to executables outside the Windows servicing stores; SI<FN
-    alone is normal for copied or extracted files.
+  rationale: MFTECmd SI<FN means same-record $SI Created0x10 precedes $FN Created0x30. uSecZeros only checks for a
+    zero Millisecond component on $SI creation or last-modified time; neither flag proves malicious backdating.
+    Treat this analytic as a lead and inspect its source facts and independent chronology.
+  source_fact_ids:
+  - mftecmd.si_fn
+  - mftecmd.usec_zeros
+  - mftecmd.copied
   search:
     basis:
     - attack:DET0591
@@ -3639,7 +3643,7 @@ packs:
                   - '4104'
           minimum_should_match: 1
 - id: ba-eva-timestomp-usn
-  name: Timestamp change recorded on an executable (USN BasicInfoChange)
+  name: Executable with a USN BasicInfoChange reason
   families:
   - mftecmd
   citation:
@@ -3651,8 +3655,12 @@ packs:
       changes.'
   techniques:
   - T1070.006
-  rationale: A timestamp change through the file API is journaled as BasicInfoChange; on an executable outside the
-    servicing stores it is a candidate for backdating, read with the file's $SI/$FN times.
+  rationale: USN BasicInfoChange covers attribute changes as well as timestamp changes, and its reason flags can
+    accumulate while a file is open. This analytic identifies a candidate journal row; it does not establish a
+    timestamp edit by itself. Correlate its record time and file identity with $SI/$FN and independent evidence.
+  source_fact_ids:
+  - usn.basic_info_change
+  - usn.reason_accumulates
   search:
     basis:
     - attack:DET0591

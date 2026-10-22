@@ -219,11 +219,24 @@ steps:
           - rbcmd
 - name: timestomp_detection
   query: $SI OR $FN OR $STANDARD_INFORMATION OR 0x10 OR 0x30
-  look_for: 'Timestomping: $STANDARD_INFORMATION ($SI, modifiable) earlier than or wildly inconsistent with $FILE_NAME
-    ($FN, only set at creation). A $SI time predating the volume format, or nanosecond precision lost in $SI but
-    present in $FN, is the classic tell.'
+  look_for: >-
+    Compare the creation times on the same MFT record. MFTECmd's SI<FN flag means the $SI Created0x10 time
+    precedes the $FN Created0x30 time; it is a candidate signal, not proof that an attacker changed the time or
+    that the $SI date is the file's age. MFTECmd's uSecZeros flag is true when either $SI Created0x10 or
+    LastModified0x10 has a zero Millisecond component; do not read it as proof that every timestamp is rounded
+    to a whole second. MFTECmd's Copied flag means $SI ContentModifiedOn precedes $SI CreatedOn; consider this
+    parser heuristic as an alternative timestamp pattern, not an automatic benign verdict. Keep claimed $SI time
+    separate from later independent journal or execution evidence.
   pivot: FileName
-  corroborate: USN journal or $LogFile shows the file was written after its claimed $SI time
+  corroborate: correlate file reference and path to USN/$LogFile records and independent execution evidence; a USN
+    BasicInfoChange reason alone does not identify which attribute or timestamp changed
+  origin: authored
+  source_fact_ids:
+  - mftecmd.si_fn
+  - mftecmd.usec_zeros
+  - mftecmd.copied
+  - usn.basic_info_change
+  - usn.reason_accumulates
   requires:
     families:
     - mftecmd

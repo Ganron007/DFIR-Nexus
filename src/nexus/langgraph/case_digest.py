@@ -230,7 +230,24 @@ def lead_citation(lead: dict[str, Any]) -> str:
     cites a query (``analysis/leads.py`` `_cite_leads`).
     """
     ids = [str(a) for a in (lead.get("audit_ids") or []) if a]
-    return f" [audit_id {ids[0]}]" if ids else ""
+    citation = f" [audit_id {ids[0]}]" if ids else ""
+    extra = lead.get("extra") or {}
+    facts = lead.get("pinned_source_facts") or extra.get("pinned_source_facts") or []
+    grouped: dict[tuple[str, str, str], list[str]] = {}
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        source = str(fact.get("source") or "").strip()
+        version = str(fact.get("source_version") or "").strip()
+        digest = str(fact.get("source_sha256") or "").strip()
+        key = str(fact.get("source_key") or "").strip()
+        if source and version and digest and key:
+            grouped.setdefault((source, version, digest), []).append(key)
+    if grouped:
+        pins = [f"{source}@{version}#{','.join(keys)} sha256={digest}"
+                for (source, version, digest), keys in grouped.items()]
+        citation += " [pinned sources: " + "; ".join(pins) + "]"
+    return citation
 
 
 def top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
@@ -265,6 +282,7 @@ def top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
                 "audit_ids": [str(a) for a in (lead.get("audit_ids") or []) if a],
                 "attack_ids": [str(t) for t in ((lead.get("extra") or {}).get("attack_ids")
                                                 or (lead.get("extra") or {}).get("techniques") or []) if t],
+                "pinned_source_facts": list((lead.get("extra") or {}).get("pinned_source_facts") or []),
                 # IC-5: the ATT&CK software the lead's detection names (its hunt list reaches the prompt).
                 "software": [str(s.get("id")) for s in ((lead.get("extra") or {}).get("software") or [])
                              if isinstance(s, dict) and s.get("id")],

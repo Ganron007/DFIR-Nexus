@@ -186,6 +186,9 @@ def step_records(
             "has_es": isinstance(es_query, dict) and bool(es_query),
             "pivot": str(step.get("pivot") or ""),
             "look_for": str(step.get("look_for") or ""),
+            "source_fact_ids": list(step.get("source_fact_ids") or []),
+            "pinned_source_facts": list(step.get("pinned_source_facts") or []),
+            "pinned_source_fact_errors": list(step.get("pinned_source_fact_errors") or []),
             # WO-KR2c change 2: a procedure step is shown as a procedure and never
             # executed, so callers must not read its missing `es:` as a defect.
             "kind": str(step.get("kind") or "search"),

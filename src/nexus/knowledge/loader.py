@@ -541,6 +541,18 @@ def get_synced_entries(name: str) -> list[dict]:
     return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
 
 
+def get_pinned_source_facts() -> dict[str, dict[str, Any]]:
+    """Source-keyed facts imported from immutable upstream snapshots."""
+    facts = get_synced_source("timestomp").get("facts")
+    if not isinstance(facts, list):
+        return {}
+    return {
+        str(fact["id"]): fact
+        for fact in facts
+        if isinstance(fact, dict) and str(fact.get("id") or "").strip()
+    }
+
+
 def get_atlas_registry() -> dict:
     """MITRE ATLAS registry (AI/ML adversarial TTPs + case studies).
 
@@ -715,7 +727,22 @@ def get_skills() -> list[dict]:
         caveats: [...]
         source: [{chunk_id, rel_path, lines}]   # WP 9.1 citations (optional)
     """
-    return _load_all_in_dir("skills")
+    skills = _load_all_in_dir("skills")
+    facts = get_pinned_source_facts()
+    for skill in skills:
+        for step in (skill.get("steps") or []):
+            if not isinstance(step, dict):
+                continue
+            fact_ids = [str(value) for value in (step.get("source_fact_ids") or [])]
+            if not fact_ids:
+                continue
+            step["pinned_source_facts"] = [facts[ident] for ident in fact_ids if ident in facts]
+            missing = [ident for ident in fact_ids if ident not in facts]
+            if missing:
+                step["pinned_source_fact_errors"] = missing
+            else:
+                step.pop("pinned_source_fact_errors", None)
+    return skills
 
 
 def get_skill(name: str) -> dict | None:
