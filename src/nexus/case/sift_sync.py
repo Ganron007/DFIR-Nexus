@@ -147,13 +147,12 @@ def pull_sift_extractions(
     # scp -r may create staging/extractions or flatten
     pulled = staging / "extractions" if (staging / "extractions").is_dir() else staging
     if pulled.is_dir():
-        if not dest.exists() or not any(dest.iterdir()):
-            if dest.exists():
-                dest.rmdir()  # an empty folder the lane made: the pull takes its place
-            pulled.rename(dest)
-        else:
-            added, present = _merge_new_files(pulled, dest)
-            log.info("SIFT pull merged into %s: %d new file(s), %d already present", dest, added, present)
+        # The pull is copied into the destination, never renamed onto it: Windows refuses to rename a folder while
+        # any other handle has one of its files open, and an on-access scan opens each file scp has just written
+        # (WinError 5, D340). An empty destination simply receives every file.
+        dest.mkdir(parents=True, exist_ok=True)
+        added, present = _merge_new_files(pulled, dest)
+        log.info("SIFT pull into %s: %d new file(s), %d already present", dest, added, present)
     shutil.rmtree(staging, ignore_errors=True)
     log.info("Pulled SIFT extractions -> %s", dest)
     return dest if dest.is_dir() else None
