@@ -75,6 +75,7 @@ def test_the_retry_plans_srum_over_a_fresh_copy(tmp_path, monkeypatch):
         return replay_outcome
 
     monkeypatch.setattr(tool_lane, "_esentutl_replay", replay)
+    monkeypatch.setattr(tool_lane, "_ese_state", lambda _database: "Dirty Shutdown")
     first_jobs = tool_lane.plan_windows_triage(str(root), extractions)
     second_jobs = tool_lane.plan_windows_triage(str(root), extractions)  # the retry, in the same run folder
 
@@ -82,6 +83,7 @@ def test_the_retry_plans_srum_over_a_fresh_copy(tmp_path, monkeypatch):
     for jobs in (first_jobs, second_jobs):
         srum = next(j for j in jobs if j.tool == "srumecmd" and j.status == "PENDING")
         assert srum.preflight["esentutl_replay"] == replay_outcome
+        assert srum.preflight["state_after_replay"] == "Dirty Shutdown"
 
 
 def test_staging_copies_are_not_indexed_as_tool_output(tmp_path):

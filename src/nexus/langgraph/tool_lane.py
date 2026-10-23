@@ -1188,7 +1188,10 @@ def _plan_single_artifact(
             return jobs
         add("srumecmd", ["srumecmd", "-f", str(staged), "--csv", str(d)],
             "SRUM database", 600, source=str(evidence),
-            preflight={"esentutl_replay": replay})
+            preflight={
+                "esentutl_replay": replay,
+                "state_after_replay": _ese_state(staged),
+            })
     elif _hive_kind(evidence) in _NAMED_HIVE_KINDS:
         # The kind, not the name: NTUSER-fredr.DAT and S09's SYSTEM_clean are the
         # same hives as NTUSER.DAT and SYSTEM, and SYSTEM_clean needs the
@@ -1902,7 +1905,10 @@ def plan_windows_triage(
             if software_hive.is_file():
                 argv.extend(["-r", str(software_hive)])
             add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600,
-                source=str(srum), preflight={"esentutl_replay": replay})
+                source=str(srum), preflight={
+                    "esentutl_replay": replay,
+                    "state_after_replay": _ese_state(srum_target),
+                })
         except OSError as exc:
             skip("srumecmd", f"could not stage SRUDB copy: {exc}")
     else:
