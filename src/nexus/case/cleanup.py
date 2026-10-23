@@ -53,6 +53,15 @@ def _clear_readonly(root: Path) -> None:
                     os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
 
 
+def _index_delete_status(result: dict[str, object]) -> tuple[bool, str]:
+    if result.get("deleted"):
+        return True, "deleted"
+    reason = result.get("reason")
+    if reason == "index absent":
+        return True, "absent"
+    return False, f"failed ({reason})" if reason else "failed"
+
+
 def delete_case_data(
     case_id: str,
     *,
@@ -70,15 +79,14 @@ def delete_case_data(
             if not es_url():
                 result.add("es index", True, "skipped (NEXUS_ES_URL unset)")
             else:
-                docs = bool(delete_index(case_id).get("deleted"))
-                events = False
-                with contextlib.suppress(Exception):
-                    from nexus.langgraph.timeline_events import delete_events_index
+                docs_result = delete_index(case_id)
+                from nexus.langgraph.timeline_events import delete_events_index
 
-                    delete_events_index(case_id)
-                    events = True
-                result.add("es index", docs or events,
-                           f"docs={docs} events={events}")
+                events_result = delete_events_index(case_id)
+                docs_ok, docs_status = _index_delete_status(docs_result)
+                events_ok, events_status = _index_delete_status(events_result)
+                result.add("es index", docs_ok and events_ok,
+                           f"docs={docs_status} events={events_status}")
         except Exception as exc:  # noqa: BLE001 — reported, never silent
             result.add("es index", False, f"{type(exc).__name__}: {exc}")
 
