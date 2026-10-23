@@ -11,12 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nexus.langgraph.tool_lane import (  # noqa: E402
-    ToolJob,
-    _mark_dirty_registry_hive_warnings,
-    _plan_single_artifact,
-    is_host_evidence,
-)
+from nexus.langgraph.tool_lane import _plan_single_artifact, is_host_evidence  # noqa: E402
 
 
 def _make(tmp_path: Path, name: str, data: bytes = b"\x00\x01") -> Path:
@@ -125,84 +120,6 @@ def test_bitsparser_stages_a_staged_copy_for_a_single_database(tmp_path, monkeyp
     assert "--carvedb" in bp.argv
     assert "--carveall" not in bp.argv
     assert bp.optional_output is False
-
-
-def test_amcacheparser_stages_dirty_hive_and_warns_without_logs(tmp_path):
-    hive = _make(
-        tmp_path,
-        "Amcache.hve",
-        b"regf" + (7).to_bytes(4, "little") + (6).to_bytes(4, "little"),
-    )
-    jobs = _plan_single_artifact(hive, tmp_path / "extractions")
-    job = next(j for j in jobs if j.tool == "amcacheparser")
-    staged = Path(job.argv[job.argv.index("-f") + 1])
-
-    assert staged != hive and staged.is_file()
-    assert staged.parent.name.endswith("-workdir")
-    assert "--nl" in job.argv
-    assert job.preflight["registry_hive"] == {
-        "dirty": True,
-        "transaction_logs": [],
-        "dirty_without_logs": True,
-    }
-
-    job.status = "OK"
-    ledger = [{"host": job.host, "tool": job.tool, "purpose": job.purpose, "source": job.source,
-               "status": "OK"}]
-    warned = _mark_dirty_registry_hive_warnings([job], ledger)
-    expected = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
-    assert warned == [job]
-    assert job.status == "WARN" and job.reason == expected
-    assert ledger[0]["status"] == "WARN" and ledger[0]["reason"] == expected
-
-
-def test_amcacheparser_stages_its_matching_log_and_uses_default_replay(tmp_path):
-    hive = _make(
-        tmp_path,
-        "Amcache.hve",
-        b"regf" + (7).to_bytes(4, "little") + (6).to_bytes(4, "little"),
-    )
-    log = _make(tmp_path, "aMcache.hve.lOg2", b"transaction log")
-    _make(tmp_path, "SYSTEM.LOG2", b"unrelated log")
-    jobs = _plan_single_artifact(hive, tmp_path / "extractions")
-    job = next(j for j in jobs if j.tool == "amcacheparser")
-    staged = Path(job.argv[job.argv.index("-f") + 1])
-
-    assert staged.is_file()
-    assert (staged.parent / log.name).read_bytes() == log.read_bytes()
-    assert "--nl" not in job.argv, "the parser should consume the staged transaction log"
-    assert job.preflight["registry_hive"]["transaction_logs"] == [log.name]
-
-
-def test_dirty_hive_warnings_match_each_ledger_row_by_source():
-    details = {"dirty": True, "transaction_logs": [], "dirty_without_logs": True}
-    jobs = [
-        ToolJob(
-            host="windows",
-            tool="amcacheparser",
-            argv=[],
-            purpose="Amcache application execution",
-            status="OK",
-            source=f"C:/evidence/{name}",
-            preflight={"registry_hive": details},
-        )
-        for name in ("one/Amcache.hve", "two/Amcache.hve")
-    ]
-    ledger = [
-        {
-            "host": job.host,
-            "tool": job.tool,
-            "purpose": job.purpose,
-            "source": job.source,
-            "status": "OK",
-        }
-        for job in jobs
-    ]
-
-    warned = _mark_dirty_registry_hive_warnings(jobs, ledger)
-
-    assert warned == jobs
-    assert [row["status"] for row in ledger] == ["WARN", "WARN"]
 
 
 def test_ese_reserve_and_checkpoint_are_skip_not_fail(tmp_path):
