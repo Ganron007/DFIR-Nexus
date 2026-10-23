@@ -5694,11 +5694,20 @@ def _empty_output_status(
     """Decision for a job that ran cleanly but wrote nothing.
 
     Failure is the default: an OK row with no output is a silent coverage gap.
-    Two explained exceptions exist: a tool whose stdout proves the artifact
-    holds **zero entries** (marker table above) and a job that opted into
-    `optional_output` (BitsParser on a job-less queue) - both record SKIP with
-    an honest reason instead.
+    Explained empty results are explicit: a format-validated empty Windows 10
+    thumbcache is WARN, a tool marker that proves zero entries is SKIP, and a
+    job that opted into `optional_output` may also SKIP.
     """
+    if (
+        job.tool == "thumbcache_viewer"
+        and len(job.argv) > 2
+        and _is_header_only_windows10_thumbcache(Path(job.argv[2]))
+    ):
+        return (
+            "WARN",
+            "valid header-only Windows 10 thumbcache database: first and available "
+            "entry offsets equal EOF, so there are no entries to extract",
+        )
     markers = _EMPTY_OUTPUT_MARKERS.get(job.tool)
     if markers and result is not None:
         # Two sources, because the capture reaches us two ways: the tool result
@@ -5733,6 +5742,34 @@ def _empty_output_status(
             f"(expected a file under the declared output target). Treat this evidence as "
             f"unparsed, not clean."
         ),
+    )
+
+
+def _is_header_only_windows10_thumbcache(path: Path) -> bool:
+    """Recognize a complete Windows 10 cache header whose entry range is empty.
+
+    The 12-byte database header is followed by the Windows 10 v3 entry-info
+    fields. When both entry offsets equal the 24-byte file length, the cache
+    has no entry region to extract.
+    """
+    try:
+        if path.stat().st_size != 24:
+            return False
+        with path.open("rb") as stream:
+            header = stream.read(25)
+    except OSError:
+        return False
+    if len(header) != 24 or header[:4] != b"CMMM":
+        return False
+    version = int.from_bytes(header[4:8], "little")
+    cache_type = int.from_bytes(header[8:12], "little")
+    first_entry = int.from_bytes(header[16:20], "little")
+    available_entry = int.from_bytes(header[20:24], "little")
+    return (
+        version == 0x20
+        and 0 <= cache_type <= 0x0D
+        and first_entry == len(header)
+        and available_entry == len(header)
     )
 
 def _bridge_remote_audits(case_dir: Path, ledger: list[dict[str, Any]]) -> int:

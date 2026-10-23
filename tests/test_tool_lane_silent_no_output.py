@@ -8,6 +8,10 @@ failure class the ledger exists to prevent.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from nexus.langgraph.tool_lane import (
     ToolJob,
     _output_dirs_of,
@@ -164,6 +168,35 @@ def test_empty_output_is_fail_by_default_and_skip_when_opted_in():
     opt.optional_output = True
     status2, reason2 = _empty_output_status(opt)
     assert status2 == "SKIP" and "found nothing" in reason2
+
+
+def test_real_header_only_windows10_thumbcache_is_a_warned_empty_result():
+    from nexus.langgraph.tool_lane import ToolJob, _empty_output_status
+
+    sample = (
+        Path(__file__).resolve().parents[1]
+        / "Evidence-files"
+        / "_tiny"
+        / "T02"
+        / "thumbcache"
+        / "thumbcache_custom_stream.db"
+    )
+    if not sample.is_file():
+        pytest.skip("T02 tiny evidence is not present in this checkout")
+
+    job = ToolJob(
+        host="windows",
+        tool="thumbcache_viewer",
+        argv=["thumbcache_viewer_cmd", "-t", str(sample), "-o", "output", "-c"],
+        purpose="Thumbcache entries (thumbcache_custom_stream.db)",
+    )
+    status, reason = _empty_output_status(job, {"success": True, "exit_code": 0})
+
+    assert status == "WARN"
+    assert reason == (
+        "valid header-only Windows 10 thumbcache database: first and available "
+        "entry offsets equal EOF, so there are no entries to extract"
+    )
 
 
 def test_recmd_zero_key_value_capture_is_an_explained_empty_result(tmp_path):
