@@ -221,7 +221,7 @@ def test_ingest_into_case_writes_audit(tmp_path, monkeypatch):
         parsed_lines = 0
 
     class _FakeRegistry:
-        def import_path(self, path, source=None, on_batch=None):
+        def import_path(self, path, source=None, on_batch=None, context=None):
             return _Result()
 
     monkeypatch.setattr(registry_mod, "get_registry", lambda: _FakeRegistry())

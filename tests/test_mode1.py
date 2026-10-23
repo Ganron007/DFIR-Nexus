@@ -208,13 +208,15 @@ class TestPromoteHitsToDraft:
         )
         assert draft["interpretation"] == "Possible insider staging"
 
-    def test_evidence_capped_at_12(self, tmp_path: Path):
+    def test_evidence_rows_are_not_artificially_capped(self, tmp_path: Path):
         hits = [
             {"family": "f", "file": "a.csv", "line": str(i), "text": f"hit{i}", "terms": "x"}
             for i in range(20)
         ]
         draft = promote_hits_to_draft(tmp_path, hits=hits, title="Test")
-        assert len(draft["evidence"]) == 12
+        assert len(draft["evidence"]) == len(hits)
+        assert draft["evidence"][0]["detail"] == "hit0"
+        assert draft["evidence"][-1]["detail"] == "hit19"
 
 
 # ---------------------------------------------------------------------------

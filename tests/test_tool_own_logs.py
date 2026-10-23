@@ -106,7 +106,7 @@ def lane_case(tmp_path, monkeypatch) -> Path:
     return root
 
 
-def test_a_job_that_wrote_its_csvs_through_outputpath_keeps_its_console_log_out(lane_case, monkeypatch):
+def test_default_lane_skips_logfileparser_and_records_policy_reason(lane_case, monkeypatch):
     from nexus.case.evidence_service import register_evidence
     from nexus.langgraph.tool_lane import run_tool_lane
 
@@ -122,34 +122,27 @@ def test_a_job_that_wrote_its_csvs_through_outputpath_keeps_its_console_log_out(
         "run_id": run_id, "mode": "tools", "case_id": lane_case.name, "status": "running"}), encoding="utf-8")
 
     class Executor:
-        """Writes what LogFileParser writes, and saves its console output as the MCP tool does."""
-
-        def __init__(self, name: str) -> None:
-            self.name = name
+        calls = 0
 
         async def ainvoke(self, args):
-            argv = list(args.get("command") or [])
-            if not argv or argv[0] != "logfileparser":
-                return json.dumps({"success": True, "output": ""})
-            out = Path(next(a for a in argv if a.startswith("/OutputPath:")).split(":", 1)[1])
-            _write(out / "LogFile_2026-10-15_12-00-00" / "LogFile.csv", LOGFILE_CSV)
-            _write(out / "LogFile_2026-10-15_12-00-00" / "debug.log", DEBUG_LOG)
-            saved = out / "20261015T120000_logfileparser_stdout.txt"
-            _write(saved, DEBUG_LOG)
-            return json.dumps({"success": True, "exit_code": 0, "output": DEBUG_LOG,
-                               "output_saved_to": str(saved),
-                               "output_files": [{"path": str(saved), "kind": "stdout"}]})
+            self.calls += 1
+            raise AssertionError(f"default-skipped tool reached executor: {args}")
 
+    executor = Executor()
     lane = asyncio.run(run_tool_lane(
-        tools={"run_windows_command": Executor("run_windows_command"), "run_command": Executor("run_command")},
+        tools={"run_windows_command": executor, "run_command": executor},
         evidence_path=str(volume), case_id=lane_case.name, run_id=run_id,
         parse_result=json.loads, pipeline_mode="tools"))
     ledger = lane.get("tool_run_ledger") if isinstance(lane, dict) else lane
     row = next(r for r in ledger if isinstance(r, dict) and r.get("tool") == "logfileparser")
-    assert row["status"] == "OK", row
-    names = {Path(str(f.get("path") if isinstance(f, dict) else f)).name for f in row.get("output_files") or []}
-    assert "LogFile.csv" in names
-    assert not [n for n in names if n.startswith("logfileparser-") and n.endswith(".txt")], names
+    assert row["status"] == "SKIP", row
+    assert "optional by operator policy" in row["reason"], row
+    assert executor.calls == 0
+    progress = json.loads((run_dir / "extractions" / "_tool_lane_progress.json").read_text(encoding="utf-8"))
+    progress_rows = [r for r in progress["entries"] if r.get("tool") == "logfileparser"]
+    assert len(progress_rows) == 1
+    assert progress_rows[0]["status"] == "SKIP"
+    assert progress_rows[0]["reason"] == row["reason"]
 
 
 def test_logfileparser_run_logs_and_stdout_do_not_count_as_extraction(tmp_path):
@@ -204,31 +197,33 @@ def test_logfileparser_run_logs_and_stdout_do_not_count_as_extraction(tmp_path):
     assert not _should_promote_stdout(job, fresh)
 
 
-def test_progress_rows_keep_durations_for_repeated_tool_jobs(lane_case, monkeypatch):
+def test_progress_rows_keep_durations_for_repeated_supported_tool_jobs(lane_case, monkeypatch):
     from nexus.case.evidence_service import register_evidence
     from nexus.langgraph import tool_lane
+    from nexus.langgraph.pipeline_runs import create_run
     from nexus.langgraph.tool_lane import ToolJob, run_tool_lane
 
     _configure_lane_test(monkeypatch)
     volume = lane_case / "evidence" / "hosts"
-    sources = [volume / host / "C" / "$LogFile" for host in ("host-a", "host-b")]
+    sources = [volume / host / "C" / "$MFT" for host in ("host-a", "host-b")]
     for source in sources:
         source.parent.mkdir(parents=True)
-        source.write_bytes(b"RSTR" + b"\0" * 8188)
+        # Empty path placeholders are sufficient for this timing test; the stubbed executor
+        # fails explicitly and never reads or manufactures MFTECmd output records.
+        source.write_bytes(b"")
     register_evidence(lane_case, str(volume), description="duration fixture", examiner="ownlog_test")
 
     run_id = "R-20261021-000001-duration"
-    run_dir = lane_case / "runs" / run_id
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text(json.dumps({
-        "run_id": run_id, "mode": "tools", "case_id": lane_case.name, "status": "running"}), encoding="utf-8")
-    outputs = [run_dir / "extractions" / "logfileparser" / host for host in ("host-a", "host-b")]
+    run = create_run(lane_case, "tools", run_id=run_id)
+    run_dir = run.path
+    assert run.extractions.is_dir(), "the run bootstrap creates the lane output directory"
+    outputs = [run.extractions / "mftecmd" / host for host in ("host-a", "host-b")]
     jobs = [
         ToolJob(
             host="windows",
-            tool="logfileparser",
-            argv=["logfileparser", f"/LogFileFile:{source}", f"/OutputPath:{out}"],
-            purpose="NTFS $LogFile (transaction journal, LogFileParser)",
+            tool="mftecmd",
+            argv=["mftecmd", "--body", str(source), "--csvf", str(out / "MFT.csv")],
+            purpose="NTFS $MFT file records (MFTECmd)",
             source=str(source),
         )
         for source, out in zip(sources, outputs, strict=True)
@@ -238,27 +233,24 @@ def test_progress_rows_keep_durations_for_repeated_tool_jobs(lane_case, monkeypa
     class Executor:
         async def ainvoke(self, args):
             argv = list(args.get("command") or [])
-            source_arg = next(a for a in argv if a.startswith("/LogFileFile:"))
+            source_arg = next(a for a in argv if a.endswith("$MFT"))
             delay = 0.1 if "host-a" in source_arg else 0.7
             await asyncio.sleep(delay)
-            out = Path(next(a for a in argv if a.startswith("/OutputPath:")).split(":", 1)[1])
-            csv = out / "LogFile.csv"
-            _write(csv, LOGFILE_CSV)
-            return json.dumps({"success": True, "exit_code": 0, "output_files": [
-                {"path": str(csv), "kind": "file"},
-            ]})
+            return json.dumps({"success": False, "exit_code": 1, "error": "simulated executor failure"})
 
     lane = asyncio.run(run_tool_lane(
         tools={"run_windows_command": Executor(), "run_command": Executor()},
         evidence_path=str(volume), case_id=lane_case.name, run_id=run_id,
         parse_result=json.loads, pipeline_mode="tools"))
     ledger = lane.get("tool_run_ledger") if isinstance(lane, dict) else lane
-    rows = [row for row in ledger if isinstance(row, dict) and row.get("tool") == "logfileparser"]
+    rows = [row for row in ledger if isinstance(row, dict) and row.get("tool") == "mftecmd"]
     progress = json.loads((run_dir / "extractions" / "_tool_lane_progress.json").read_text(encoding="utf-8"))
-    progress_rows = [row for row in progress["entries"] if row.get("tool") == "logfileparser"]
+    progress_rows = [row for row in progress["entries"] if row.get("tool") == "mftecmd"]
 
     ledger_durations = sorted(row["duration_s"] for row in rows)
     progress_durations = sorted(row["duration_s"] for row in progress_rows)
     assert len(rows) == len(progress_rows) == 2
+    assert all(row["status"] == "FAIL" for row in rows)
+    assert all(duration > 0 for duration in ledger_durations)
     assert ledger_durations[0] < ledger_durations[1]
     assert progress_durations == ledger_durations

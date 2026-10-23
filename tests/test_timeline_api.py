@@ -632,13 +632,13 @@ def test_the_histogram_never_pairs_auto_with_a_bucket_count(monkeypatch):
     assert agg["bucket_count"] == 500
 
 
-def test_a_context_window_that_does_not_fit_reports_the_truncation(monkeypatch):
-    """A window holding more events than one page must not read as complete."""
+def test_context_window_pages_all_events_without_an_application_cap(monkeypatch):
+    """A large context window must return every event rather than impose a UI-sized cap."""
     import nexus.langgraph.case_index as ci
     from nexus.dashboard.timeline_api import MAX_PAGE
 
-    # MAX_PAGE + 5 events inside the window: the page holds MAX_PAGE, so the
-    # window genuinely does not fit and must say so
+    # MAX_PAGE + 5 events inside the window forces pagination; all rows remain
+    # available and the response must not report an artificial truncation.
     rows = [
         _event("anchor", "2026-09-29T13:00:00Z"),
         *[
@@ -649,6 +649,6 @@ def test_a_context_window_that_does_not_fit_reports_the_truncation(monkeypatch):
     monkeypatch.setattr(ci, "_client", lambda: FakeES(rows))
     out = TimelineStore("CASE-A").context("anchor", seconds=300)
     assert out["total"] == MAX_PAGE + 6
-    assert len(out["rows"]) == MAX_PAGE, "one page, not the whole window"
-    assert out["truncated"] is True
-    assert out["capped"] is True
+    assert len(out["rows"]) == MAX_PAGE + 6
+    assert out["truncated"] is False
+    assert out["capped"] is False

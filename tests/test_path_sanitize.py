@@ -138,21 +138,28 @@ def test_sift_machine_prefixes_are_masked(tmp_path):
     assert sanitize_machine_paths(evidence, tmp_path) == evidence
 
 
-def test_json_escaped_and_short_path_variants_are_masked(tmp_path):
-    """Two real leaks the audit surfaced: JSON-escaped and 8.3 short paths."""
-    from nexus.langgraph.path_sanitize import sanitize_machine_paths
+def test_json_escaped_and_short_path_variants_are_masked(tmp_path, monkeypatch):
+    """Mask escaped long paths and OS-provided short aliases without host paths."""
+    import nexus.langgraph.path_sanitize as path_sanitize
 
-    escaped = (
-        r'{"argv":["-j","C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\Tools\\x.exe"]}'
+    repo = tmp_path / "Long Parent Name" / "DFIR Nexus"
+    repo.mkdir(parents=True)
+    short_repo = r"C:\LONGPA~1\DFIRN~1"
+    monkeypatch.setattr(path_sanitize, "_repo_root", lambda: repo)
+    monkeypatch.setattr(
+        path_sanitize,
+        "_windows_short_path",
+        lambda path: short_repo if path.lower() == str(repo.resolve()).lower() else None,
     )
-    out = sanitize_machine_paths(escaped, tmp_path)
-    assert "STUDY" not in out and "CADRE-Platform" not in out and "<repo>" in out
+    roots = path_sanitize._build_machine_roots(None)
 
-    short = (
-        r"C:\STUDY\Github\CAF47A~1\DFIR-N~1\EVIDEN~1\outputs\x.csv: missing columns"
-    )
-    out2 = sanitize_machine_paths(short, tmp_path)
-    assert "STUDY" not in out2 and "<repo>" in out2
+    escaped = json.dumps({"argv": ["-j", str(repo / "Tools" / "x.exe")]})
+    out = path_sanitize.sanitize_machine_paths(escaped, roots=roots)
+    assert "Long Parent Name" not in out and "DFIR Nexus" not in out and "<repo>" in out
+
+    short = short_repo + r"\EVIDEN~1\outputs\x.csv: missing columns"
+    out2 = path_sanitize.sanitize_machine_paths(short, roots=roots)
+    assert "LONGPA~1" not in out2 and "<repo>" in out2
     assert "x.csv" in out2  # tail preserved
 
 

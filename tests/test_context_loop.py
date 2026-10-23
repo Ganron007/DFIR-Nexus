@@ -543,6 +543,15 @@ def test_es_result_summary_keeps_every_complete_row_and_page_size_is_uncapped():
 def test_aggregate_summary_preserves_each_named_aggregation():
     from nexus.langgraph.context_loop import _append_tool_observation, _result_summary
 
+    large_buckets = [
+        {
+            "key": f"user-{i}",
+            "doc_count": i,
+            "top_event": {"value": f"event-{i}"},
+            "deep_metric": {"level2": {"level3": {"level4": {"level5": {"value": i}}}}},
+        }
+        for i in range(45)
+    ]
     result = {
         "aggregations": {
             "by_user": {"buckets": [
@@ -553,6 +562,7 @@ def test_aggregate_summary_preserves_each_named_aggregation():
                 {"key": "write-object", "doc_count": 6},
                 {"key": "delete-object", "doc_count": 5},
             ]},
+            "by_group": {"buckets": large_buckets},
             "total": {"value": 11},
         },
         "next_after_key": None,
@@ -567,6 +577,10 @@ def test_aggregate_summary_preserves_each_named_aggregation():
         {"key": "write-object", "count": 6},
         {"key": "delete-object", "count": 5},
     ]
+    group_summary = summary["aggregations"]["by_group"]
+    assert group_summary["bucket_count"] == 45
+    assert len(group_summary["buckets"]) == 45
+    assert group_summary["buckets"][-1]["deep_metric"]["level2"]["level3"]["level4"]["level5"]["value"] == 44
     assert summary["aggregations"]["total"]["value"] == 11
 
     tool_calls: list[dict[str, Any]] = []
@@ -577,15 +591,43 @@ def test_aggregate_summary_preserves_each_named_aggregation():
         all_hits=all_hits,
         aggregations=collected,
         name="es_aggregate",
-        args={"aggs": {"by_user": {}, "by_action": {}, "total": {}}},
+        args={"aggs": {"by_user": {}, "by_action": {}, "by_group": {}, "total": {}}},
         why="verify aggregation visibility",
         result=result,
         elapsed_ms=1.0,
     )
-    assert set(record["summary"]["aggregations"]) == {"by_user", "by_action", "total"}
-    assert [item["field"] for item in collected] == ["by_user", "by_action", "total"]
+    assert set(record["summary"]["aggregations"]) == {"by_user", "by_action", "by_group", "total"}
+    assert [item["field"] for item in collected] == ["by_user", "by_action", "by_group", "total"]
     assert collected[1]["top"][0] == {"value": "write-object", "count": 6}
-    assert collected[2]["value"] == 11
+    assert len(collected[2]["top"]) == 45
+    assert collected[3]["value"] == 11
+
+
+def test_run_record_summary_keeps_every_entry():
+    from nexus.langgraph.context_loop import _result_summary
+
+    entries = [
+        {"tool": f"tool-{i}", "status": "OK", "purpose": f"job-{i}"}
+        for i in range(305)
+    ]
+    summary = _result_summary("run_record", {"available": True, "entries": entries, "total": len(entries)})
+
+    assert summary["total"] == 305
+    assert len(summary["entries"]) == 305
+    assert summary["entries"][-1]["tool"] == "tool-304"
+
+
+def test_fresh_observation_is_not_cut_before_the_model_window_budget():
+    import json
+
+    from nexus.langgraph.context_loop import _observations_block
+
+    summary = {"hits": [{"text": "x" * 70_000 + "LAST_EVIDENCE_ROW"}]}
+    observation = {"tool": "es_search", "round": 7, "summary": summary}
+    rendered = _observations_block([observation], fresh_round=7)
+
+    assert rendered.endswith(json.dumps(summary, default=str))
+    assert "LAST_EVIDENCE_ROW" in rendered
 
 
 def test_force_answer_rejects_empty_json():
@@ -652,7 +694,8 @@ def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
     result = evidence_index.do_run_record(case_id="CASE-LEDGER-BIG")
     assert result["counts"]["OK"] == 305
     assert result["counts"]["FAIL"] == 1
-    assert len(result["entries"]) == 300
+    assert len(result["entries"]) == 306
+    assert result["entries"][-1]["tool"] == "late-fail"
 
 
 def test_mode1_chat_stream_emits_tool_events_and_history(tmp_path):

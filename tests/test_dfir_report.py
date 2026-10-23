@@ -228,7 +228,7 @@ def test_finding_evidence_renders_as_table_not_prose_wall():
         evidence=[],
         llm=False,)
     assert "**Evidence**" in md
-    assert "| Time (UTC) | Source | What it shows |" in md
+    assert "| Time (UTC) | Source | Artifact / path | What it shows |" in md
     assert "pecmd" in md
     assert "2020-11-15 09:05:16" in md
     assert r"G:\My Drive" in md
@@ -288,6 +288,7 @@ def test_structured_evidence_wins_over_observation():
     assert "2020-11-14 13:42:33" in md
     assert "amcache" in md
     assert "sdelete.exe" in md
+    assert r"C:\Users\fredr\Downloads\SDelete\sdelete.exe" in md
     assert "ignore this wall" not in md
 
 

@@ -114,6 +114,34 @@ def evidence_sources(case_dir: Path | None) -> list[Path]:
     return out
 
 
+def _windows_short_path(path: str) -> str | None:
+    """Return the filesystem's 8.3 alias for an existing path on Windows.
+
+    Parser diagnostics can contain short aliases even when the configured repo
+    root is stored in its long form. Ask Windows for the alias once while
+    building the cached root set; do not perform filesystem calls per row.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        get_short_path_name = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+        get_short_path_name.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+        get_short_path_name.restype = ctypes.c_uint
+        required = get_short_path_name(path, None, 0)
+        if not required:
+            return None
+        buffer = ctypes.create_unicode_buffer(required)
+        written = get_short_path_name(path, buffer, required)
+        if not written or written >= required:
+            return None
+        short_path = buffer.value.rstrip("\\/")
+        return short_path or None
+    except (AttributeError, OSError, TypeError, ValueError):  # pragma: no cover - Windows API failure
+        return None
+
+
 def _build_machine_roots(case_dir: Path | None) -> list[tuple[str, str]]:
     roots: list[tuple[Path, str]] = []
     if case_dir:
@@ -144,6 +172,15 @@ def _build_machine_roots(case_dir: Path | None) -> list[tuple[str, str]]:
         # genuine evidence paths like C:\Windows\...
         if len(text) >= 4 and ":" not in text[2:] and text.count(":") <= 1:
             pairs.append((text, label))
+            short_text = _windows_short_path(text)
+            if (
+                short_text
+                and short_text.lower() != text.lower()
+                and len(short_text) >= 4
+                and ":" not in short_text[2:]
+                and short_text.count(":") <= 1
+            ):
+                pairs.append((short_text, label))
     pairs.sort(key=lambda item: len(item[0]), reverse=True)
     return pairs
 

@@ -352,8 +352,9 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     fact_rows = facts_path.read_text(encoding="utf-8").splitlines()
     assert fact_rows[0] == "needle,rows,field,class"
     assert any(r.startswith("4624,2,") for r in fact_rows), fact_rows
-    # this scan covered all needles — nothing is marked unscanned; without an index the counts are a
-    # sample's (IC-13), and say so
+    # This scan covered every needle and every available file. With D325's
+    # application caps removed, the local scan is complete and its counts are
+    # exact even though it used the CSV backend rather than Elasticsearch.
     import csv as _csv
 
     records = list(_csv.DictReader(csv_path.read_text(encoding="utf-8").splitlines()))
@@ -362,7 +363,7 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     assert len(scanned) == b["scanned_needles"]
     assert len(scanned) + len(unscanned) == len(records)
     assert all(r["hits"] == "0" for r in unscanned)
-    assert all(r["exact"] == "no" for r in records)
+    assert all(r["exact"] == "yes" for r in records)
 
 
 def test_briefing_artifact_write_failure_is_nonfatal(tmp_path):

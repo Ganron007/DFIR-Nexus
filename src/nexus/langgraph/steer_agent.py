@@ -528,7 +528,7 @@ def _gather_helper_context(question: str, audit: AuditWriter,
         from nexus.langgraph.ti_context import extract_iocs
 
         lines = []
-        iocs = extract_iocs([question], cap=3)
+        iocs = extract_iocs([question])
         values = [
             v for kind in ("sha256", "sha1", "md5", "ipv4", "domain", "url")
             for v in (iocs.get(kind) or [])
@@ -681,7 +681,7 @@ def _fast_plan(question: str) -> list[str] | None:
         return None
     from nexus.langgraph.ti_context import extract_iocs
 
-    iocs = extract_iocs([question], cap=3)
+    iocs = extract_iocs([question])
     ioc_values = [
         v for kind in ("sha256", "sha1", "md5", "ipv4", "domain", "url")
         for v in (iocs.get(kind) or [])

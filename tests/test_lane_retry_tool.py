@@ -68,8 +68,11 @@ def retry_case(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "cases_root", tmp_path)
     case_dir = tmp_path / "CASE-RETRY-0001"
-    extractions = case_dir / "runs" / "RUN-RETRY-1" / "extractions"
-    extractions.mkdir(parents=True)
+    run = pipeline_runs.create_run(case_dir, "tools", run_id="RUN-RETRY-1")
+    extractions = run.extractions
+    manifest = pipeline_runs.load_manifest(run.path)
+    manifest["status"] = "interrupted"
+    (run.path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     rows = [
         _ok_row("hayabusa", "EVTX timeline"),
         {**_ok_row("hayabusa", "EVTX timeline (second)"), "status": "SKIP", "reason": "examiner"},

@@ -37,8 +37,6 @@ from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
-_MAX_PREVIEW_ROWS = 25
-_MAX_PREVIEW_CHARS = 900
 _CALL_CHARS_DEFAULT = 120_000
 
 DEFAULT_SYSTEM = """\
@@ -296,16 +294,20 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
             return {}, f"{tool}: source_ids must be a list of strings"
     if tool == "es_search":
         try:
-            size = int(clean.get("size") or 50)
+            size = int(clean.get("size", 50))
         except (TypeError, ValueError):
             return {}, "es_search: size must be an integer"
-        clean["size"] = max(1, min(size, 200))
+        if size < 1:
+            return {}, "es_search: size must be at least 1"
+        clean["size"] = size
     if tool == "sample_rows":
         try:
-            n = int(clean.get("n") or 12)
+            n = int(clean.get("n", 12))
         except (TypeError, ValueError):
             return {}, "sample_rows: n must be an integer"
-        clean["n"] = max(1, min(n, 60))
+        if n < 1:
+            return {}, "sample_rows: n must be at least 1"
+        clean["n"] = n
     if tool == "rag_search":
         try:
             clean["top_k"] = max(1, min(int(clean.get("top_k") or 8), 50))
@@ -314,26 +316,13 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
     return clean, ""
 
 
-def _preview_rows(rows: list[dict[str, Any]], limit: int = _MAX_PREVIEW_ROWS) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for row in rows[:limit]:
-        if not isinstance(row, dict):
-            continue
-        fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
-        out.append({
-            "family": str(row.get("family") or "")[:80],
-            "file": str(row.get("file") or "")[:200],
-            "line": str(row.get("line") or "")[:16],
-            "ts": str(row.get("ts") or row.get("time") or "")[:40],
-            "host": str(row.get("host") or "")[:80],
-            "text": str(row.get("text") or "")[:_MAX_PREVIEW_CHARS],
-            "fields": {str(k)[:60]: str(v)[:160] for k, v in list(fields.items())[:8]},
-        })
-    return out
+def _preview_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retain every complete returned row; the model-window budget is applied later."""
+    return [row for row in rows if isinstance(row, dict)]
 
 
 def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
-    """Compact, bounded summary of one tool result for the next model round."""
+    """Preserve complete tool results; the model-window budget is applied after packing."""
     if not isinstance(result, dict):
         return {"error": "tool returned a non-dict result"}
     if result.get("error"):
@@ -373,50 +362,36 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
                 summary[key] = result[key]
         return summary
     if name == "es_aggregate":
-        def summarize_aggregation(spec: Any, budget: list[int], depth: int = 0) -> dict[str, Any]:
-            """Keep each named aggregation's bounded result, including nested metrics."""
+        def summarize_aggregation(spec: Any) -> dict[str, Any]:
+            """Keep every bucket and nested metric from a named aggregation."""
             if not isinstance(spec, dict):
                 return {}
-            if depth > 4:
-                return {"truncated": True}
             summary: dict[str, Any] = {}
             buckets = spec.get("buckets")
             if isinstance(buckets, list):
                 summary["bucket_count"] = len(buckets)
                 summary["buckets"] = []
-                for bucket in buckets[:40]:
-                    if budget[0] <= 0:
-                        break
+                for bucket in buckets:
                     if not isinstance(bucket, dict):
                         continue
-                    budget[0] -= 1
-                    item = {
-                        "key": bucket.get("key"),
-                        "count": bucket.get("doc_count"),
-                    }
-                    if "key_as_string" in bucket:
-                        item["key_as_string"] = bucket["key_as_string"]
+                    item: dict[str, Any] = {}
                     for key, value in bucket.items():
-                        if key not in {"key", "key_as_string", "doc_count"} and isinstance(value, dict):
-                            item[key] = summarize_aggregation(value, budget, depth + 1)
+                        if key == "doc_count":
+                            item["count"] = value
+                        elif isinstance(value, dict):
+                            item[key] = summarize_aggregation(value)
+                        else:
+                            item[key] = value
                     summary["buckets"].append(item)
-                if len(summary["buckets"]) < len(buckets):
-                    summary["buckets_truncated"] = True
-            for key in ("value", "value_as_string", "after_key", "sum_other_doc_count",
-                        "doc_count_error_upper_bound"):
-                if key in spec:
-                    summary[key] = spec[key]
             for key, value in spec.items():
-                if key not in {"buckets", "value", "value_as_string", "after_key",
-                               "sum_other_doc_count", "doc_count_error_upper_bound"} and isinstance(value, dict):
-                    summary[key] = summarize_aggregation(value, budget, depth + 1)
+                if key != "buckets":
+                    summary[key] = summarize_aggregation(value) if isinstance(value, dict) else value
             return summary
 
         aggregations = result.get("aggregations") or {}
         raw_named = aggregations if isinstance(aggregations, dict) else {}
-        per_aggregation_budget = max(1, min(40, 400 // max(1, len(raw_named))))
         named = {
-            str(name): summarize_aggregation(spec, [per_aggregation_budget])
+            str(name): summarize_aggregation(spec)
             for name, spec in raw_named.items()
             if isinstance(spec, dict)
         }
@@ -439,7 +414,7 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
             "counts": result.get("counts"),
             "entries": [
                 {k: e.get(k) for k in ("tool", "status", "reason", "purpose", "output", "audit_id")}
-                for e in (result.get("entries") or [])[:40]
+                for e in (result.get("entries") or [])
             ],
             "total": result.get("total"),
         }
@@ -554,7 +529,7 @@ def _append_tool_observation(
                 "distinct": agg_summary.get("bucket_count", len(buckets)),
                 "top": [
                     {"value": b.get("key"), "count": b.get("count")}
-                    for b in buckets[:15] if isinstance(b, dict)
+                    for b in buckets if isinstance(b, dict)
                 ],
                 "audit_id": audit_id,
             }
@@ -619,15 +594,9 @@ def _compact_observation(o: dict[str, Any]) -> str:
 
 def _observations_block(
     observations: list[dict[str, Any]],
-    per_obs_cap: int = 60_000,
     fresh_round: int | None = None,
 ) -> str:
     """Render observations for the next round.
-
-    The per-observation cap is deliberately generous: the full ``es_mappings``
-    catalog can exceed 10k chars, and hiding columns behind a small cap is what
-    made the live model repeat the same tool call. The project-wide context
-    budget still bounds the final packed prompt.
 
     With ``fresh_round`` (D206, operator decision 2026-10-15), a result is shown whole in the
     round after it arrived and as a compact line afterwards. Every round used to re-send every
@@ -638,7 +607,7 @@ def _observations_block(
         return "(no tool calls yet)"
     lines: list[str] = []
     for o in observations:
-        whole = json.dumps(o.get("summary") or {}, default=str)[:per_obs_cap]
+        whole = json.dumps(o.get("summary") or {}, default=str)
         if (fresh_round is not None and o.get("round") is not None
                 and o.get("round") != fresh_round and len(whole) > _COMPACT_ABOVE):
             lines.append(_compact_observation(o))

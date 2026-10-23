@@ -369,8 +369,8 @@ def render_evidence_table(
     sig = rows
     has_audit = any(str(r.get("audit_id") or "").strip() for r in sig)
     has_loc = any(str(r.get("loc") or "").strip() for r in sig)
-    cols = "| Time (UTC) | Source | What it shows |"
-    rule = "|---|---|---|"
+    cols = "| Time (UTC) | Source | Artifact / path | What it shows |"
+    rule = "|---|---|---|---|"
     if has_audit:
         cols += " audit_id |"
         rule += "---|"
@@ -381,7 +381,7 @@ def render_evidence_table(
     for r in sig:
         cells = (
             f"| {_cell(r.get('time'))} | {_cell(_family_of(str(r.get('source') or '')))} "
-            f"| {_cell(r.get('detail'))} |"
+            f"| {_cell(r.get('artifact'))} | {_cell(r.get('detail'))} |"
         )
         if has_audit:
             cells += f" {_cell(r.get('audit_id'))} |"

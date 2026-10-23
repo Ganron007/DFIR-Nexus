@@ -76,11 +76,13 @@ def test_every_row_of_a_file_is_stored_streamed_in_batches(case, tmp_path, monke
     batches: list[int] = []
     real = ingest_base.Importer.ingest
 
-    def small_batches(self, path, on_batch=None, batch_size=5000):
+    def small_batches(self, path, on_batch=None, batch_size=5000, context=None):
         def counted(batch):
             batches.append(len(batch))
             on_batch(batch)
-        return real(self, path, on_batch=counted if on_batch else None, batch_size=2)
+        return real(
+            self, path, on_batch=counted if on_batch else None, batch_size=2, context=context,
+        )
 
     monkeypatch.setattr(ingest_base.Importer, "ingest", small_batches)
     info = ingest_into_case(_write(tmp_path / "ev", "bind.log", BIND), case)
