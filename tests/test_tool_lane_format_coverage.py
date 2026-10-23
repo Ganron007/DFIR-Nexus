@@ -117,10 +117,9 @@ def test_bitsparser_stages_a_staged_copy_for_a_single_database(tmp_path, monkeyp
     assert "staged copy" in bp.purpose and "repaired" not in bp.purpose
     assert Path(called["work"]) == staged.parent
     assert called["log_bases"] == ("edb", "qmgr")
-    assert bp.optional_output is True, (
-        "BitsParser writes nothing when the queue holds no recoverable jobs - "
-        "that is a SKIP with a reason, not a failure"
-    )
+    assert "--carvedb" in bp.argv
+    assert "--carveall" not in bp.argv
+    assert bp.optional_output is False
 
 
 def test_ese_reserve_and_checkpoint_are_skip_not_fail(tmp_path):

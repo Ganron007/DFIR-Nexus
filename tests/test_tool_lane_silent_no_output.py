@@ -152,22 +152,17 @@ def test_dash_out_counts_as_structured_output(tmp_path):
     assert out in _output_dirs_of(job)
 
 
-def test_empty_output_is_fail_by_default_and_skip_when_opted_in():
-    """The silent-no-output guard stays default; parser-class tools opt in.
-
-    BitsParser on a job-less BITS queue writes nothing at all (same result as
-    the W1 reference run) - that is a SKIP with a reason, not a failure.
-    """
+def test_empty_bitsparser_output_is_unparsed_not_an_empty_queue():
+    """BitsParser's silent empty output does not prove the queue was empty."""
     from nexus.langgraph.tool_lane import ToolJob, _empty_output_status
 
     req = ToolJob(host="windows", tool="lecmd", argv=[], purpose="p")
     status, reason = _empty_output_status(req)
     assert status == "FAIL" and "unparsed, not clean" in reason
 
-    opt = ToolJob(host="windows", tool="bitsparser", argv=[], purpose="p")
-    opt.optional_output = True
-    status2, reason2 = _empty_output_status(opt)
-    assert status2 == "SKIP" and "found nothing" in reason2
+    bits = ToolJob(host="windows", tool="bitsparser", argv=[], purpose="BITS queue")
+    status2, reason2 = _empty_output_status(bits)
+    assert status2 == "FAIL" and "unparsed, not clean" in reason2
 
 
 def test_real_header_only_windows10_thumbcache_is_a_warned_empty_result():

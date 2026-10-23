@@ -653,6 +653,7 @@ def test_bitsparser_stages_a_staged_copy_with_its_logs_replayed(tmp_path: Path, 
     assert staged.is_file()
     assert (staged.parent / "edb.log").is_file()
     assert "staged copy" in bp.purpose and "repaired" not in bp.purpose
+    assert "--carvedb" in bp.argv
     assert "--carveall" not in bp.argv
     assert Path(called["work"]) == staged.parent, "the replay runs in the staged copy's folder"
     assert called["log_bases"] == ("edb", "qmgr")

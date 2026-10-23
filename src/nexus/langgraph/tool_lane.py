@@ -1059,12 +1059,10 @@ def _plan_single_artifact(
         add("sqlecmd", ["sqlecmd", "-f", str(evidence), "--csv", str(d)],
             f"Browser SQLite ({evidence.name})", 900)
     elif _artifact_class(evidence) == "bits":
-        # BitsParser returns EMPTY output on a raw, dirty ESE database - 0
-        # bytes both to stdout and to -o (verified 2026-09-29 on qmgr.db). The
-        # host-scan path already stages a copy with the ESE siblings;
-        # the single-file path must do the same. Passing the parent directory
-        # was worse still: the tool walked every file in the folder and wrote
-        # nothing at all.
+        # Stage and replay the ESE copy before parsing. BitsParser defaults to
+        # active records only; --carvedb also searches the queue database for
+        # deleted BITS records. An empty result is ambiguous, so it must remain
+        # a visible failure rather than being reported as an empty queue.
         d = out_dir("bitsparser")
         work = d / f"{_stem(evidence)}-workdir"
         try:
@@ -1072,11 +1070,11 @@ def _plan_single_artifact(
             _esentutl_replay(work, log_bases=("edb", "qmgr"))
             staged = work / evidence.name
             if staged.is_file():
-                add("bitsparser", ["bitsparser", "-i", str(staged),
+                add("bitsparser", ["bitsparser", "-i", str(staged), "--carvedb",
                                    "-o", str(d / f"{_stem(evidence)}.json")],
                     f"BITS job queue ({evidence.name}, staged copy, logs replayed)",
                     timeout_for_bytes(staged.stat().st_size),
-                    optional_output=True, source=str(evidence))
+                    source=str(evidence))
             else:
                 jobs.append(ToolJob(
                     host="windows", tool="bitsparser", argv=[], status="SKIP",
@@ -2801,10 +2799,10 @@ def _plan_gap_parsers(
                     sz = staged.stat().st_size
                     add(
                         "bitsparser",
-                        ["bitsparser", "-i", str(staged), "-o", str(out / "bits.json")],
+                        ["bitsparser", "-i", str(staged), "--carvedb",
+                         "-o", str(out / "bits.json")],
                         f"BITS job queue ({qmgr.name}, staged copy, logs replayed)",
                         timeout_for_bytes(sz),
-                        optional_output=True,
                         source=str(qmgr),
                     )
             except OSError as exc:
