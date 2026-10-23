@@ -84,6 +84,8 @@ T18_CRON = (
     / "log"
     / "cron"
 )
+T18_GW01_CRON = T18_CRON.parents[3] / "gw01" / "var" / "log" / "cron"
+T18_YUM = T18_CRON.parents[3] / "web01" / "var" / "log" / "yum.log"
 
 
 @pytest.mark.skipif(not T18_CRON.is_file(), reason="T18 staged evidence is unavailable")
@@ -92,3 +94,17 @@ def test_t18_syslog_content_is_imported_when_basename_is_not_allowlisted():
 
     assert source == ArtifactSource.SYSLOG
     assert rows, "RFC3164 cron events must be imported even when the file is named 'cron'"
+
+
+@pytest.mark.skipif(not T18_GW01_CRON.is_file(), reason="T18 staged evidence is unavailable")
+def test_t18_cron_process_tag_with_parentheses_is_syslog():
+    source, rows = _import(T18_GW01_CRON)
+
+    assert source == ArtifactSource.SYSLOG
+    assert rows
+    assert any(row.process_name == "run-parts(/etc/cron.hourly)" for row in rows)
+
+
+@pytest.mark.skipif(not T18_YUM.is_file(), reason="T18 staged evidence is unavailable")
+def test_t18_yum_transaction_log_is_not_classified_as_syslog():
+    assert detect_format(T18_YUM) != ArtifactSource.SYSLOG

@@ -393,13 +393,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
                 and ("<Task" in head or "<Exec" in head):
             return ArtifactSource.SCHEDULED_TASKS
 
-        # Syslog/Authlog pattern
-        import re
-        if re.match(r"^\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+", head):
-            auth_filename = any(kw in name_lower for kw in ("auth", "secure"))
-            if auth_filename and any(kw in head for kw in ("sshd", "sudo", "su[", "login", "pam_unix")):
-                return ArtifactSource.AUTHLOG
-            return ArtifactSource.SYSLOG
+        # Syslog classification was already attempted by _syslog_shape above.
+        # Do not classify on timestamp alone: Yum transaction logs also begin
+        # with month/day/time but have no RFC 3164 host/process/message fields.
 
     # Fallback to registry autodetect
     from nexus.ingest.registry import get_registry

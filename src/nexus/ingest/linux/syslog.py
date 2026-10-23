@@ -27,7 +27,7 @@ class SyslogImporter(Importer):
 
     # RFC 3164: "Jan 15 12:34:56 host process[pid]: message"
     RFC3164_RE = re.compile(
-        r"^(?P<ts>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(?P<host>\S+)\s+(?P<proc>[\w\-/]+)(?:\[(?P<pid>\d+)\])?:\s*(?P<msg>.*)$"
+        r"^(?P<ts>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(?P<host>\S+)\s+(?P<proc>[\w./()\-]+)(?:\[(?P<pid>\d+)\])?:\s*(?P<msg>.*)$"
     )
     # RFC 5424: "<165>1 2003-08-24T05:14:15.000003-07:00 host process 1234 ID47 - message"
     RFC5424_RE = re.compile(
