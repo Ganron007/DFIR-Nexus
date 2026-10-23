@@ -153,18 +153,31 @@ _DECIDED = frozenset({"APPROVED", "REJECTED"})
 def _same_claim(existing: dict, finding: dict) -> bool:
     """Whether an existing finding holds the claim being staged (D223).
 
-    The same subject and category, and at least one cited row in common. A re-run words a claim
+    The same subject and category, and sufficient overlap in the cited rows. A re-run words a claim
     differently and cites a different subset of the same rows: the beacon was staged three times
     (034, 039, 046) because the duplicate rule asked for the exact same rows. The category keeps
     apart two claims about one file (its detection, its persistence). A subject that is only the
-    host is the last resort and names no claim: two claims that cite one large call for context and
-    their own rows besides keep the exact rule (D194).
+    host is the last resort and names no claim, so host-level claims also require the same normalized
+    title and one evidence set contained in the other; distinct claims that cite one large call for
+    context and their own rows besides remain separate (D194).
     """
     from nexus.langgraph.subject import subject_key
 
     entity = finding.get("entity") if isinstance(finding.get("entity"), dict) else {}
-    if str(entity.get("type") or "").lower() == "host":
-        return False
+    existing_entity = (
+        existing.get("entity") if isinstance(existing.get("entity"), dict) else {}
+    )
+    host_only = (
+        str(entity.get("type") or "").lower() == "host"
+        or str(existing_entity.get("type") or "").lower() == "host"
+    )
+    if host_only:
+        title = " ".join(str(finding.get("title") or "").split()).lower()
+        existing_title = " ".join(str(existing.get("title") or "").split()).lower()
+        if (str(entity.get("type") or "").lower() != "host"
+                or str(existing_entity.get("type") or "").lower() != "host"
+                or not title or title != existing_title):
+            return False
     key = subject_key(finding.get("entity"), finding.get("category"))
     if not key or key != subject_key(existing.get("entity"), existing.get("category")):
         return False
@@ -175,6 +188,10 @@ def _same_claim(existing: dict, finding: dict) -> bool:
         _evidence_row_identity(e) for e in (existing.get("evidence") or []) if e
     }
     shared = rows & existing_rows
+    if host_only:
+        return bool(rows and existing_rows) and (
+            rows.issubset(existing_rows) or existing_rows.issubset(rows)
+        )
     return bool(shared) and 4 * len(shared) >= len(rows) + len(existing_rows)
 
 
