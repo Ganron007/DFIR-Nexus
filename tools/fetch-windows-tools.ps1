@@ -81,8 +81,21 @@ function Install-PinnedWheel($name, $version, $url, $sha256, $licence) {
     $script:Versions += "$name`t$version`t$url`t$sha256`t$licence"
 }
 
-# WO-TA item 0. Every URL, version and SHA-256 below was checked against the
-# upstream release or the PyPI digest for that exact file.
+function Install-PinnedVcsCommit($name, $repoUrl, $commit, $licence) {
+    if ($commit -notmatch '^[0-9a-f]{40}$') {
+        throw "$name source pin must be a full 40-character commit id"
+    }
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $py) { throw "python not on PATH; cannot install $name" }
+    $source = "git+$repoUrl@$commit"
+    & $py.Source -m pip install --upgrade --force-reinstall --no-deps --disable-pip-version-check $source
+    if ($LASTEXITCODE -ne 0) { throw "pip install $name failed ($LASTEXITCODE)" }
+    Add-Report $name "FETCHED" "official source commit $commit $licence"
+    $script:Versions += "$name`tcommit-$commit`t$source`tcommit:$commit`t$licence"
+}
+
+# WO-TA item 0. Every download hash or source revision below was checked
+# against the upstream release, source repository or PyPI for that artifact.
 function Install-WoTaPins {
     $pin = Join-Path $env:TEMP "nexus-pin"
     New-Item -ItemType Directory -Force -Path $pin | Out-Null
@@ -180,9 +193,10 @@ function Install-WoTaPins {
     Add-Report "yara" "FETCHED" "v4.5.5 win64 (v4.5.8 tag has no Windows asset)"
     $script:Versions += "yara`tv4.5.5`thttps://github.com/VirusTotal/yara/releases/download/v4.5.5/yara-4.5.5-2368-win64.zip`t352396C8A3D9B31B157A4820ABD3B9347FC934A2314CDDA8A4F566A5570163E4`tBSD-3-Clause"
 
-    Install-PinnedWheel "hindsight" "20260600" `
-        "https://files.pythonhosted.org/packages/79/55/c0f8c96000bf66b60c4c3c444c958dc9e0308d6099aa3ef5eb96a7efa3b2/pyhindsight-20260600-py3-none-any.whl" `
-        "2c0e83cd59a9e891746547b28de7a53fa1802f5e679a34305f49a131a1833ccf" "Apache-2.0"
+    # The latest release's Firefox serializer fails when expires_utc is absent.
+    # Pin the official upstream fix by immutable commit until it is released.
+    Install-PinnedVcsCommit "hindsight" "https://github.com/RyanDFIR/hindsight.git" `
+        "065e0958610d3757476c927e5d19f37343998e4d" "Apache-2.0"
 }
 
 if ($PinsOnly) {
@@ -190,7 +204,7 @@ if ($PinsOnly) {
     $verFile = Join-Path $Win "VERSIONS.txt"
     @(
         "DFIR-Nexus Tools/windows — WO-TA pins $(Get-Date -Format o)"
-        "Each row: name, version, url, sha256, licence. Hash checked before install."
+        "Each row: name, version, url, SHA-256 or source commit, licence. Pins are verified before install."
         ""
     ) + $script:Versions + @("", "fetch report:") + @(
         $script:Report | ForEach-Object { "report`t$($_.Name)`t$($_.Status)`t$($_.Detail)" }
@@ -416,7 +430,7 @@ $result
     $script:Versions += "deepbluecli`tmaster`thttps://github.com/sans-blue-team/DeepBlueCLI"
 } catch { Add-Report "deepbluecli" "FAILED" "$_" }
 
-# Hindsight (pyhindsight 20260600) is pinned in Install-WoTaPins.
+# Hindsight is pinned to its official source commit in Install-WoTaPins.
 
 # NTFSLogTracker: upstream (Google Code ntfs-log-tracker) is dead; only unofficial
 # fork mirrors exist. Pruned from the catalog — LogFileParser covers $LogFile and

@@ -139,6 +139,13 @@ def detect_format(path: Path) -> ArtifactSource | None:
 
     name_lower = path.name.lower()
 
+    # Binary login accounting files have no text/CSV signature; identify their
+    # fixed-record structure before decoding the sniff buffer as text.
+    from nexus.ingest.linux.utmp import UtmpImporter
+
+    if UtmpImporter.can_handle(path):
+        return ArtifactSource.UTMP
+
     # --- Extension-based hints (unambiguous formats first) ---
     suffix = path.suffix.lower()
     _EXT_HINTS: dict[str, ArtifactSource] = {
@@ -304,6 +311,12 @@ def detect_format(path: Path) -> ArtifactSource | None:
             cloudtrail = _confirmed_json_source(ArtifactSource.CLOUDTRAIL, path)
             if cloudtrail is not None:
                 return cloudtrail
+        # Bracketed Apache/Anaconda timestamps are not JSON arrays. Confirm
+        # their line grammar before the generic '[' JSON branch can short-circuit.
+        from nexus.ingest.linux.logs import LinuxLogImporter
+
+        if LinuxLogImporter.can_handle(path):
+            return ArtifactSource.LINUX_LOG
         # JSON-based formats (check most-specific first). For NDJSON the
         # whole head is not valid JSON — sniff the first non-empty line.
         stripped = head.lstrip()

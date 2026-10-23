@@ -80,6 +80,8 @@ class ArtifactSource(StrEnum):
     AUDITD = "auditd"
     SYSLOG = "syslog"
     AUTHLOG = "authlog"
+    LINUX_LOG = "linux_log"
+    UTMP = "utmp"
     BASH_HISTORY = "bash_history"
     BROWSER_HISTORY = "browser_history"
     LNK = "lnk"
