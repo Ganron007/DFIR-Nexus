@@ -950,12 +950,21 @@ def _tool_lane_rows(case_dir: Path, run_id: str) -> list[dict[str, Any]]:
     """Read this run's completed deterministic tool ledger, if present."""
     if not run_id:
         return []
-    ledger_path = case_dir / "runs" / run_id / "ledger" / "_tool_lane_ledger.json"
-    try:
-        rows = json.loads(ledger_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return rows if isinstance(rows, list) else []
+    run_dir = case_dir / "runs" / run_id
+    # execute_tool_lane runs immediately after run_tool_lane, which first
+    # persists its completed rows under this run's extractions. The stable
+    # ledger copy is written later by the pipeline finalizer.
+    for ledger_path in (
+        run_dir / "extractions" / "_tool_lane_ledger.json",
+        run_dir / "ledger" / "_tool_lane_ledger.json",
+    ):
+        try:
+            rows = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(rows, list):
+            return rows
+    return []
 
 
 def _successful_hindsight_profiles(rows: list[dict[str, Any]]) -> set[Path]:

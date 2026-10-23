@@ -51,7 +51,7 @@ def test_i1_uses_only_successful_current_run_profile_and_sift_rows(case_dir, tmp
     capture_ok.parent.mkdir(parents=True)
     capture_ok.write_bytes(b"ok")
     capture_fail.write_bytes(b"fail")
-    ledger = case_dir / "runs" / run_id / "ledger" / "_tool_lane_ledger.json"
+    ledger = case_dir / "runs" / run_id / "extractions" / "_tool_lane_ledger.json"
     ledger.parent.mkdir(parents=True)
     ledger.write_text(json.dumps([
         {
