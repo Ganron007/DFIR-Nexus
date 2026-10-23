@@ -145,7 +145,10 @@ export interface LaneGate {
   status?: "blocked" | "clear" | string;
   run_id?: string;
   blocked_count?: number;
+  waiting_count?: number;
+  processed_count?: number;
   unprocessed?: LaneGateItem[];
+  not_applicable?: LaneGateItem[];
   examiner_skips?: LaneGateSkip[];
   jobs?: LaneGateJob[];
   ts?: string;

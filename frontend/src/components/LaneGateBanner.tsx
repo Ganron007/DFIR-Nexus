@@ -36,6 +36,8 @@ export default function LaneGateBanner() {
   const [stages, setStages] = useState<NStage[]>([]);
   const blocked = (gate?.status ?? "") === "blocked";
   const clear = (gate?.status ?? "") === "clear";
+  const waiting = (gate?.status ?? "") === "waiting";
+  const waitingCount = typeof gate?.waiting_count === "number" ? gate.waiting_count : undefined;
 
   useEffect(() => {
     if (!activeCase) {
@@ -55,18 +57,19 @@ export default function LaneGateBanner() {
       }
     };
     load();
-    // While blocked, keep checking so a lane re-run clears the banner without a
-    // reload. Nothing is going to un-clear a clear gate - no polling then.
-    const timer = blocked ? window.setInterval(load, 30_000) : undefined;
+    // Keep checking while lane work is blocked or waiting so a retry or SIFT
+    // completion updates the banner without a reload.
+    const timer = blocked || waiting ? window.setInterval(load, 30_000) : undefined;
     return () => {
       alive = false;
       if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [activeCase, blocked]);
+  }, [activeCase, blocked, waiting]);
 
   if (!activeCase) return null;
 
   const items = gate?.unprocessed ?? [];
+  const notApplicable = gate?.not_applicable ?? [];
   const skips = gate?.examiner_skips ?? [];
   const outstanding = (gate?.jobs ?? []).filter((job) =>
     job.state === "failed" || job.state === "running" || job.state === "unknown",
@@ -74,15 +77,17 @@ export default function LaneGateBanner() {
   const outstandingNames = outstanding
     .map((job) => job.family || job.purpose || job.tool || "")
     .filter(Boolean);
-  const tone = blocked ? "danger" : clear ? "success" : "muted";
+  const tone = blocked ? "danger" : clear ? "success" : waiting ? "warning" : "muted";
   const border = {
     danger: "rgba(248,81,73,0.55)",
     success: "rgba(63,185,80,0.35)",
+    warning: "rgba(210,153,34,0.55)",
     muted: "rgba(139,148,158,0.35)",
   }[tone];
   const background = {
     danger: "rgba(248,81,73,0.10)",
     success: "rgba(63,185,80,0.07)",
+    warning: "rgba(210,153,34,0.08)",
     muted: "rgba(139,148,158,0.06)",
   }[tone];
 
@@ -94,18 +99,44 @@ export default function LaneGateBanner() {
     >
       <div style={{ border: `1px solid ${border}`, background, borderRadius: 6, padding: "8px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <strong style={{ color: blocked ? "var(--danger)" : clear ? "var(--success)" : "var(--text-muted)" }}>
+          <strong
+            style={{
+              color: blocked
+                ? "var(--danger)"
+                : clear
+                  ? "var(--success)"
+                  : waiting
+                    ? "#d29922"
+                    : "var(--text-muted)",
+            }}
+          >
             {blocked
               ? "EVIDENCE GATE BLOCKED"
               : clear
                 ? "Evidence gate: clear"
-                : "Evidence gate: no tool-lane pass recorded yet"}
+                : waiting
+                  ? "EVIDENCE GATE WAITING"
+                  : gate?.status && gate.status !== "absent"
+                    ? `Evidence gate: ${gate.status}`
+                    : "Evidence gate: no tool-lane pass recorded yet"}
           </strong>
           {blocked && (
             <span>
               {gate?.blocked_count ?? items.length} unprocessed artifact(s) - analysis stages are refused until
               the tools lane re-runs them or an examiner records <code>nexus lane skip</code> (password-verified,
               audited).
+            </span>
+          )}
+          {(waiting || (waitingCount ?? 0) > 0) && (
+            <span>
+              {waitingCount !== undefined
+                ? `${waitingCount} lane job(s) are waiting.`
+                : "Lane work is waiting for the remote tool host."}
+            </span>
+          )}
+          {typeof gate?.processed_count === "number" && (
+            <span style={{ color: "var(--text-muted)" }}>
+              {gate.processed_count} item(s) processed
             </span>
           )}
           {clear && skips.length > 0 && (
@@ -134,6 +165,21 @@ export default function LaneGateBanner() {
             ))}
             {items.length > 6 && <li>+{items.length - 6} more</li>}
           </ul>
+        )}
+
+        {notApplicable.length > 0 && (
+          <div data-testid="lane-gate-not-applicable" style={{ marginTop: 6 }}>
+            <strong>Not applicable:</strong>
+            <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>
+              {notApplicable.map((item, i) => (
+                <li key={`${item.tool}-${i}`} style={{ lineHeight: 1.5 }}>
+                  <strong>{item.tool || "artifact"}</strong>
+                  {item.purpose ? ` - ${item.purpose}` : ""}
+                  {item.reason ? `: ${item.reason}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {stages.length > 0 && (

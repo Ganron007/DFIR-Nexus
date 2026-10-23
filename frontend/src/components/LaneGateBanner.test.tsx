@@ -106,6 +106,31 @@ describe("evidence gate banner", () => {
     expect(screen.getByText(/1 examiner skip/)).toBeTruthy();
   });
 
+  it("shows waiting work and its processed and not-applicable counts", async () => {
+    (api.summary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...counts,
+      lane_gate: {
+        status: "blocked",
+        run_id: "RUN-SIFT",
+        blocked_count: 1,
+        waiting_count: 2,
+        processed_count: 3,
+        unprocessed: [{ tool: "nfdump", reason: "remote tool call failed" }],
+        not_applicable: [
+          { tool: "mmls", purpose: "disk partition scan", reason: "no disk image registered" },
+        ],
+      },
+      n_stages: stages,
+    });
+    await renderBanner();
+    expect(await screen.findByText(/EVIDENCE GATE BLOCKED/)).toBeTruthy();
+    expect(screen.getByText(/2 lane job\(s\) are waiting/)).toBeTruthy();
+    expect(screen.getByText(/3 item\(s\) processed/)).toBeTruthy();
+    const notApplicable = screen.getByTestId("lane-gate-not-applicable");
+    expect(notApplicable.textContent).toContain("mmls");
+    expect(notApplicable.textContent).toContain("no disk image registered");
+  });
+
   it("is honest when no tool-lane pass has run yet", async () => {
     (api.summary as ReturnType<typeof vi.fn>).mockResolvedValue({ ...counts, n_stages: stages });
     await renderBanner();
