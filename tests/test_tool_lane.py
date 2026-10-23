@@ -6,7 +6,7 @@ from nexus.langgraph.tool_lane import (
     ToolJob,
     _apply_default_optional_tool_skips,
     _artifact_completeness_for_paths,
-    _mark_sbecmd_dirty_hive_warnings,
+    _mark_dirty_registry_hive_warnings,
     find_windows_root,
     plan_sift_triage,
     plan_windows_triage,
@@ -188,8 +188,9 @@ def test_sbecmd_dirty_hive_without_logs_is_warned_after_output(tmp_path: Path):
     }
 
     job.status = "OK"  # the lane reaches this hook only after a product passed validation
-    ledger = [{"host": job.host, "tool": job.tool, "purpose": job.purpose, "status": "OK"}]
-    warned = _mark_sbecmd_dirty_hive_warnings([job], ledger)
+    ledger = [{"host": job.host, "tool": job.tool, "purpose": job.purpose, "source": job.source,
+               "status": "OK"}]
+    warned = _mark_dirty_registry_hive_warnings([job], ledger)
 
     expected = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
     assert warned == [job]
@@ -657,6 +658,31 @@ def test_bitsparser_stages_a_staged_copy_with_its_logs_replayed(tmp_path: Path, 
     assert "--carveall" not in bp.argv
     assert Path(called["work"]) == staged.parent, "the replay runs in the staged copy's folder"
     assert called["log_bases"] == ("edb", "qmgr")
+
+
+def test_amcacheparser_drive_tree_stages_its_logs_without_ignoring_them(tmp_path: Path):
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    programs = root / "Windows" / "AppCompat" / "Programs"
+    programs.mkdir(parents=True)
+    hive = programs / "Amcache.hve"
+    hive.write_bytes(b"regf" + (7).to_bytes(4, "little") + (6).to_bytes(4, "little"))
+    (programs / "Amcache.hve.lOg1").write_bytes(b"matching log")
+    (programs / "SYSTEM.LOG1").write_bytes(b"different hive log")
+
+    jobs = plan_windows_triage(str(root), tmp_path / "extractions")
+    job = next(j for j in jobs if j.tool == "amcacheparser")
+    staged = Path(job.argv[job.argv.index("-f") + 1])
+
+    assert job.source == str(hive)
+    assert staged != hive and staged.is_file()
+    assert {p.name for p in staged.parent.iterdir()} == {"Amcache.hve", "Amcache.hve.lOg1"}
+    assert "--nl" not in job.argv, "the parser should consume the staged transaction log"
+    assert job.preflight["registry_hive"] == {
+        "dirty": True,
+        "transaction_logs": ["Amcache.hve.lOg1"],
+        "dirty_without_logs": False,
+    }
 
 
 def test_apply_prior_ok_reuses_matching_purpose(tmp_path: Path, monkeypatch):

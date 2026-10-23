@@ -978,10 +978,13 @@ def _plan_single_artifact(
         add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "MFT file system timeline", 1800)
     elif name.startswith("amcache"):
-        d = out_dir("amcache")
-        add("amcacheparser",
-            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
-            "Amcache application execution", 300)
+        jobs.append(_amcacheparser_hive_job(
+            evidence,
+            extractions,
+            output_name=f"{(out_name or _stem(evidence))}.csv",
+            purpose="Amcache application execution",
+            timeout=300,
+        ))
     elif suffix == ".exe":
         # Malware samples / dropped binaries: hash + version + strings. The
         # VirusTotal probe (`-vt`) sends the sample hash to a third party and is
@@ -1959,14 +1962,13 @@ def plan_windows_triage(
         skip("pecmd", f"missing {prefetch}")
 
     if amcache.is_file():
-        d = extractions / "amcache"
-        d.mkdir(parents=True, exist_ok=True)
-        add(
-            "amcacheparser",
-            ["amcacheparser", "-f", str(amcache), "--csv", str(d), "--csvf", "amcache.csv"],
-            "Amcache application execution",
-            300,
-        )
+        jobs.append(_amcacheparser_hive_job(
+            amcache,
+            extractions,
+            output_name="amcache.csv",
+            purpose="Amcache application execution",
+            timeout=300,
+        ))
     else:
         skip("amcacheparser", f"missing {amcache}")
 
@@ -2438,14 +2440,73 @@ def _sbecmd_hive_job(
     )
 
 
-def _mark_sbecmd_dirty_hive_warnings(
+def _amcacheparser_hive_job(
+    hive: Path,
+    extractions: Path,
+    *,
+    output_name: str,
+    purpose: str,
+    timeout: int,
+) -> ToolJob:
+    """Stage an Amcache hive with only its own logs; allow dirty/no-log parsing explicitly."""
+    output_dir = extractions / "amcache"
+    stage = output_dir / f"{_stem(hive)}-workdir"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    transaction_logs = _registry_hive_transaction_logs(hive)
+    staging_errors: list[str] = []
+    try:
+        # The lane workdir is scratch, never examiner evidence. The prefix is
+        # the complete hive filename, so only that hive and its sidecars copy.
+        _copy_ese_siblings(hive.parent, stage, (hive.name,))
+    except OSError as exc:
+        staging_errors.append(str(exc))
+
+    sources = (hive, *transaction_logs)
+    for source in sources:
+        target = stage / source.name
+        try:
+            if not target.is_file() or target.stat().st_size != source.stat().st_size:
+                staging_errors.append(f"staged copy missing or size differs: {source.name}")
+        except OSError as exc:
+            staging_errors.append(f"{source.name}: {exc}")
+
+    dirty = _registry_hive_is_dirty(hive)
+    dirty_without_logs = dirty is True and not transaction_logs
+    preflight = {
+        "registry_hive": {
+            "dirty": dirty,
+            "transaction_logs": [path.name for path in transaction_logs],
+            "dirty_without_logs": dirty_without_logs,
+        }
+    }
+    staged_hive = stage / hive.name
+    argv = [
+        "amcacheparser", "-f", str(staged_hive), "--csv", str(output_dir), "--csvf", output_name,
+    ]
+    if dirty_without_logs:
+        argv.append("--nl")
+
+    if staging_errors:
+        return ToolJob(
+            host="windows", tool="amcacheparser", argv=argv, purpose=purpose,
+            timeout=timeout, status="BLOCKED",
+            reason="AmcacheParser input staging incomplete: " + "; ".join(staging_errors),
+            source=str(hive), preflight=preflight,
+        )
+    return ToolJob(
+        host="windows", tool="amcacheparser", argv=argv, purpose=purpose,
+        timeout=timeout, source=str(hive), preflight=preflight,
+    )
+
+
+def _mark_dirty_registry_hive_warnings(
     jobs: list[ToolJob], ledger: list[dict[str, Any]],
 ) -> list[ToolJob]:
     """Mark successfully parsed dirty hives without logs as WARN in the final ledger."""
     reason = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
     warned: list[ToolJob] = []
     for job in jobs:
-        if job.tool != "sbecmd" or job.status != "OK":
+        if job.tool not in {"sbecmd", "amcacheparser"} or job.status != "OK":
             continue
         details = (job.preflight or {}).get("registry_hive") or {}
         if details.get("dirty_without_logs") is not True:
@@ -2456,7 +2517,7 @@ def _mark_sbecmd_dirty_hive_warnings(
         for row in reversed(ledger):
             if (row.get("host"), row.get("tool"), row.get("purpose")) == (
                 job.host, job.tool, job.purpose,
-            ):
+            ) and row.get("source") == job.source:
                 row["status"] = "WARN"
                 row["reason"] = reason
                 matched = True
@@ -4843,10 +4904,10 @@ async def run_tool_lane(
     coverage_warned = reconcile_process_list_coverage(
         sift_jobs, case_dir, ledger, run_id=run_id
     )
-    warned_sbecmd = _mark_sbecmd_dirty_hive_warnings(jobs, ledger)
-    for job in warned_sbecmd:
+    warned_dirty_hives = _mark_dirty_registry_hive_warnings(jobs, ledger)
+    for job in warned_dirty_hives:
         _emit("WARN", job, job.reason, reason=job.reason)
-    if warned_sbecmd:
+    if warned_dirty_hives:
         _write_progress()
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
