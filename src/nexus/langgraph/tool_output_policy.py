@@ -11,6 +11,7 @@ from pathlib import Path
 
 TOOL_OWN_LOGS: dict[str, frozenset[str]] = {
     "logfileparser": frozenset({"debug.log"}),
+    "sbecmd": frozenset({"!sbecmd_messages.txt"}),
     "suricata": frozenset({"suricata.log", "stats.log"}),
     "zeek": frozenset({"packet_filter.log", "loaded_scripts.log"}),
 }

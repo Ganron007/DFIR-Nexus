@@ -197,6 +197,13 @@ def test_logfileparser_run_logs_and_stdout_do_not_count_as_extraction(tmp_path):
     assert not _should_promote_stdout(job, fresh)
 
 
+def test_sbecmd_messages_log_is_not_a_parser_product():
+    from nexus.langgraph.tool_output_policy import is_tool_own_log_name
+
+    assert is_tool_own_log_name("sbecmd", Path("!SBECmd_Messages.txt"))
+    assert not is_tool_own_log_name("recmd", Path("!SBECmd_Messages.txt"))
+
+
 def test_progress_rows_keep_durations_for_repeated_supported_tool_jobs(lane_case, monkeypatch):
     from nexus.case.evidence_service import register_evidence
     from nexus.langgraph import tool_lane
