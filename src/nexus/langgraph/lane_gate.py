@@ -183,6 +183,7 @@ def _job_state(status: str) -> str:
     mapped = {
         "OK": "processed",
         "PASS": "processed",
+        "WARN": "processed",
         "FAIL": "failed",
         "ERROR": "failed",
         "RUNNING": "running",

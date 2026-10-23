@@ -130,6 +130,21 @@ def test_a_processed_job_clears_without_a_skip(tmp_path: Path):
     assert gate["no_evidence_processed"] is False
 
 
+def test_a_warned_parse_with_a_product_counts_as_processed(tmp_path: Path):
+    gate = write_lane_gate(tmp_path, "RUN-1", [
+        {
+            "tool": "sbecmd",
+            "purpose": "Shellbags (UsrClass.dat)",
+            "status": "WARN",
+            "reason": "dirty hive parsed without its transaction logs: changes held only in the logs are absent",
+        },
+    ])
+    assert gate["status"] == "clear"
+    assert gate["processed_count"] == 1
+    assert gate["jobs"][0]["state"] == "processed"
+    assert gate["unprocessed"] == []
+
+
 # SIFT work that waits: a job planned with its command that the host could not take (D270). A SIFT row skipped at
 # planning, with no command, does not apply and waits for nothing.
 _SIFT_SKIP_ROW = {

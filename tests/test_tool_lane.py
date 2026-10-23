@@ -6,6 +6,7 @@ from nexus.langgraph.tool_lane import (
     ToolJob,
     _apply_default_optional_tool_skips,
     _artifact_completeness_for_paths,
+    _mark_sbecmd_dirty_hive_warnings,
     find_windows_root,
     plan_sift_triage,
     plan_windows_triage,
@@ -171,6 +172,59 @@ def test_plan_sbecmd_for_registered_ntuser_file(tmp_path: Path):
     assert shellbags[0].source == str(ntuser)
     stage = Path(shellbags[0].argv[shellbags[0].argv.index("-d") + 1])
     assert [p.name for p in stage.iterdir()] == ["NTUSER.DAT"]
+    assert shellbags[0].argv[-2:] == ["--nl", "true"]
+
+
+def test_sbecmd_dirty_hive_without_logs_is_warned_after_output(tmp_path: Path):
+    hive = tmp_path / "UsrClass.dat"
+    hive.write_bytes(b"regf" + (7).to_bytes(4, "little") + (6).to_bytes(4, "little"))
+
+    jobs = plan_windows_triage(str(hive), tmp_path / "extractions")
+    job = next(j for j in jobs if j.tool == "sbecmd")
+    assert job.preflight["registry_hive"] == {
+        "dirty": True,
+        "transaction_logs": [],
+        "dirty_without_logs": True,
+    }
+
+    job.status = "OK"  # the lane reaches this hook only after a product passed validation
+    ledger = [{"host": job.host, "tool": job.tool, "purpose": job.purpose, "status": "OK"}]
+    warned = _mark_sbecmd_dirty_hive_warnings([job], ledger)
+
+    expected = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
+    assert warned == [job]
+    assert job.status == "WARN" and job.reason == expected
+    assert ledger[0]["status"] == "WARN" and ledger[0]["reason"] == expected
+
+
+def test_sbecmd_drive_tree_stages_case_insensitive_transaction_logs(tmp_path: Path):
+    root = tmp_path / "image"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    user = root / "Users" / "alice"
+    hive = user / "NTUSER.DAT"
+    hive.parent.mkdir(parents=True)
+    hive.write_bytes(b"regf" + (11).to_bytes(4, "little") + (10).to_bytes(4, "little"))
+    sidecars = {
+        "nTuSeR.dAt.LoG": b"log",
+        "NTUSER.DAT.lOg1": b"log1",
+        "ntuser.dat.LOG2": b"log2",
+    }
+    for name, contents in sidecars.items():
+        (user / name).write_bytes(contents)
+
+    jobs = plan_windows_triage(str(root), tmp_path / "extractions")
+    job = next(j for j in jobs if j.tool == "sbecmd" and "NTUSER.DAT" in j.purpose)
+    stage = Path(job.argv[job.argv.index("-d") + 1])
+
+    assert {path.name for path in stage.iterdir()} == {hive.name, *sidecars}
+    assert {
+        path.name: path.read_bytes() for path in stage.iterdir() if path.name in sidecars
+    } == sidecars
+    assert job.preflight["registry_hive"]["transaction_logs"] == [
+        "nTuSeR.dAt.LoG", "NTUSER.DAT.lOg1", "ntuser.dat.LOG2",
+    ]
+    assert job.preflight["registry_hive"]["dirty_without_logs"] is False
+    assert job.argv[-2:] == ["--nl", "true"]
 
 
 def test_recmd_schedules_machine_and_user_hives_without_software(monkeypatch, tmp_path: Path):

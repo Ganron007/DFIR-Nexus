@@ -973,13 +973,15 @@ def _plan_single_artifact(
         # Shellbags occur in both NTUSER.DAT and UsrClass.dat. SBECmd scans a
         # *directory* of hives (`-d <dir> --csv <dir>`), so isolate this
         # registered hive in the run before passing its directory.
-        d = out_dir("sbecmd")
         stage_name = f"stage-{_stem(evidence)}"
-        stage = d / stage_name
-        _copy_text(extractions, f"sbecmd/{stage_name}/{evidence.name}", evidence)
-        add("sbecmd", ["sbecmd", "-d", str(stage), "--csv", str(d),
-                       "--csvf", f"{(out_name or _stem(evidence))}.csv"],
-            f"Shellbags ({evidence.name})", 900, source=str(evidence))
+        jobs.append(_sbecmd_hive_job(
+            evidence,
+            extractions,
+            stage_name=stage_name,
+            output_name=f"{(out_name or _stem(evidence))}.csv",
+            purpose=f"Shellbags ({evidence.name})",
+            timeout=900,
+        ))
     elif _artifact_class(evidence) == "timeline":
         # WxTCmd does NOT accept --csvf (verified 2026-09-30: it exits 0 with
         # "Unrecognized command or argument '--csvf'" and writes nothing). Two
@@ -2066,29 +2068,25 @@ def plan_windows_triage(
         for hive_kind, hive_path in shellbag_hives:
             if not hive_path.is_file():
                 continue
-            d = extractions / "sbecmd"
-            d.mkdir(parents=True, exist_ok=True)
             # SBECmd takes -d <directory> (no -f). Give each hive its own
             # staged directory so a profile with both hives is parsed once per
-            # registered input, without either job consuming its sibling.
+            # registered input, without either job consuming its sibling. The
+            # shared builder also copies that hive's transaction logs and uses
+            # the same dirty-hive handling as the loose-file route.
             stage_name = f"stage-{uname}" if hive_kind == "usrclass" else f"stage-{uname}-ntuser"
-            stage = d / stage_name
-            _copy_text(extractions, f"sbecmd/{stage_name}/{hive_path.name}", hive_path)
             output_name = (
                 f"{uname}-shellbags.csv"
                 if hive_kind == "usrclass"
                 else f"{uname}-ntuser-shellbags.csv"
             )
-            add(
-                "sbecmd",
-                [
-                    "sbecmd", "-d", str(stage),
-                    "--csv", str(d), "--csvf", output_name,
-                ],
-                f"Shellbags {hive_path.name} ({uname})",
-                600,
-                source=str(hive_path),
-            )
+            jobs.append(_sbecmd_hive_job(
+                hive_path,
+                extractions,
+                stage_name=stage_name,
+                output_name=output_name,
+                purpose=f"Shellbags {hive_path.name} ({uname})",
+                timeout=600,
+            ))
             sbecmd_n += 1
         cdp = user / "AppData/Local/ConnectedDevicesPlatform"
         if cdp.is_dir():
@@ -2298,6 +2296,118 @@ def _copy_text(extractions: Path, rel: str, src: Path) -> None:
             os.chmod(dest, 0o666)
     except OSError as exc:
         log.warning("stage %s failed: %s", dest, exc)
+
+
+def _registry_hive_transaction_logs(hive: Path) -> list[Path]:
+    """Return this hive's adjacent LOG/LOG1/LOG2 companions, case-insensitively."""
+    expected = {
+        f"{hive.name}.log".casefold(): 0,
+        f"{hive.name}.log1".casefold(): 1,
+        f"{hive.name}.log2".casefold(): 2,
+    }
+    try:
+        matches = [
+            path for path in hive.parent.iterdir()
+            if path.name.casefold() in expected and path.is_file()
+        ]
+    except OSError:
+        return []
+    return sorted(matches, key=lambda path: expected[path.name.casefold()])
+
+
+def _registry_hive_is_dirty(hive: Path) -> bool | None:
+    """Read the REGF base-block sequence numbers; ``None`` means not a hive/readable."""
+    try:
+        with hive.open("rb") as stream:
+            header = stream.read(12)
+    except OSError:
+        return None
+    if len(header) < 12 or header[:4] != b"regf":
+        return None
+    return header[4:8] != header[8:12]
+
+
+def _sbecmd_hive_job(
+    hive: Path,
+    extractions: Path,
+    *,
+    stage_name: str,
+    output_name: str,
+    purpose: str,
+    timeout: int,
+) -> ToolJob:
+    """Build one isolated SBECmd job, staging the hive and its own log companions."""
+    output_dir = extractions / "sbecmd"
+    stage = output_dir / stage_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stage.mkdir(parents=True, exist_ok=True)
+    transaction_logs = _registry_hive_transaction_logs(hive)
+    staging_errors: list[str] = []
+    for source in (hive, *transaction_logs):
+        target = stage / source.name
+        try:
+            if not target.is_file():
+                shutil.copy2(source, target)
+            if not target.is_file() or target.stat().st_size != source.stat().st_size:
+                staging_errors.append(f"staged copy missing or size differs: {source.name}")
+            else:
+                with contextlib.suppress(OSError):
+                    os.chmod(target, 0o666)
+        except OSError as exc:
+            staging_errors.append(f"{source.name}: {exc}")
+
+    dirty = _registry_hive_is_dirty(hive)
+    preflight = {
+        "registry_hive": {
+            "dirty": dirty,
+            "transaction_logs": [path.name for path in transaction_logs],
+            "dirty_without_logs": dirty is True and not transaction_logs,
+        }
+    }
+    argv = [
+        "sbecmd", "-d", str(stage), "--csv", str(output_dir),
+        "--csvf", output_name, "--nl", "true",
+    ]
+    if staging_errors:
+        return ToolJob(
+            host="windows", tool="sbecmd", argv=argv, purpose=purpose,
+            timeout=timeout, status="BLOCKED",
+            reason="SBECmd input staging incomplete: " + "; ".join(staging_errors),
+            source=str(hive), preflight=preflight,
+        )
+    return ToolJob(
+        host="windows", tool="sbecmd", argv=argv, purpose=purpose,
+        timeout=timeout, source=str(hive), preflight=preflight,
+    )
+
+
+def _mark_sbecmd_dirty_hive_warnings(
+    jobs: list[ToolJob], ledger: list[dict[str, Any]],
+) -> list[ToolJob]:
+    """Mark successfully parsed dirty hives without logs as WARN in the final ledger."""
+    reason = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
+    warned: list[ToolJob] = []
+    for job in jobs:
+        if job.tool != "sbecmd" or job.status != "OK":
+            continue
+        details = (job.preflight or {}).get("registry_hive") or {}
+        if details.get("dirty_without_logs") is not True:
+            continue
+        job.status = "WARN"
+        job.reason = reason
+        matched = False
+        for row in reversed(ledger):
+            if (row.get("host"), row.get("tool"), row.get("purpose")) == (
+                job.host, job.tool, job.purpose,
+            ):
+                row["status"] = "WARN"
+                row["reason"] = reason
+                matched = True
+                break
+        if not matched:
+            ledger.append(asdict(job))
+        warned.append(job)
+    return warned
 
 
 def _plan_n2_extras(
@@ -4676,11 +4786,17 @@ async def run_tool_lane(
     coverage_warned = reconcile_process_list_coverage(
         sift_jobs, case_dir, ledger, run_id=run_id
     )
+    warned_sbecmd = _mark_sbecmd_dirty_hive_warnings(jobs, ledger)
+    for job in warned_sbecmd:
+        _emit("WARN", job, job.reason, reason=job.reason)
+    if warned_sbecmd:
+        _write_progress()
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
+    warn = sum(1 for j in ledger if j.get("status") == "WARN")
     fail = sum(1 for j in ledger if j.get("status") == "FAIL")
     skip = sum(1 for j in ledger if j.get("status") == "SKIP")
-    summary = f"Tool lane complete: OK={ok} FAIL={fail} SKIP={skip} (case={case_id})"
+    summary = f"Tool lane complete: OK={ok} WARN={warn} FAIL={fail} SKIP={skip} (case={case_id})"
     if coverage_warned:
         summary = (
             f"{summary} - {len(coverage_warned)} process-list plugin(s) WARN: "
