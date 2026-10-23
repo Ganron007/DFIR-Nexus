@@ -1639,7 +1639,7 @@ def _looks_like_browser_profile(d: Path) -> bool:
         names = {p.name.lower() for p in d.iterdir()}
     except OSError:
         return False
-    return len(names & set(_BROWSER_PROFILE_MARKERS)) >= 2
+    return bool(names & set(_BROWSER_PROFILE_MARKERS))
 
 
 def _python_script(tool: str) -> str:
@@ -2308,7 +2308,7 @@ def _plan_n2_extras(
     skip,
     extras: list[str],
 ) -> None:
-    """Examiner-gated parsers. Default lane stays Default-profile / setupapi copy."""
+    """Examiner-gated parsers, including non-default Chrome history profiles."""
     wanted = {e.strip().lower() for e in extras if e.strip()}
     if not wanted:
         return
@@ -2714,29 +2714,45 @@ def _plan_gap_parsers(
             d.mkdir(parents=True, exist_ok=True)
             _copy_text(extractions, f"powershell_history/{user.name}-history.txt", hist)
 
-    # Browser artifacts — Hindsight for Chrome/Chromium
+    # Browser profiles — Hindsight reads a profile directory. A registered
+    # History or places database is enough to identify a profile; requiring a
+    # second marker drops valid partial collections. Chrome's non-default
+    # profiles remain examiner opt-in through _plan_n2_extras.
+    browser_roots = (
+        ("Chrome", Path("AppData/Local/Google/Chrome/User Data")),
+        ("Edge", Path("AppData/Local/Microsoft/Edge/User Data")),
+        ("Firefox", Path("AppData/Roaming/Mozilla/Firefox/Profiles")),
+    )
     for user in users:
-        chrome_ud = user / "AppData/Local/Google/Chrome/User Data"
-        if chrome_ud.is_dir():
-            for prof in chrome_ud.iterdir():
+        for browser, relative_root in browser_roots:
+            profiles_root = user / relative_root
+            if not profiles_root.is_dir():
+                continue
+            try:
+                profiles = sorted(profiles_root.iterdir(), key=lambda p: p.name.casefold())
+            except OSError:
+                continue
+            for prof in profiles:
                 if not prof.is_dir():
                     continue
-                if prof.name.lower() in {"default", "system profile", "guest profile"}:
+                if browser == "Chrome" and prof.name.lower() not in {
+                    "default", "system profile", "guest profile"
+                }:
                     continue
-                hist = prof / "History"
-                if hist.is_file():
-                    d = extractions / "hindsight" / f"{user.name}-{prof.name}"
-                    d.mkdir(parents=True, exist_ok=True)
-                    if _windows_tool_available("hindsight"):
-                        add(
-                            "hindsight",
-                            ["hindsight", "-i", str(prof), "-o", str(d / "hindsight"), "-f", "jsonl"],
-                            f"Hindsight Chrome ({user.name}-{prof.name})",
-                            300,
-                        )
-                    else:
-                        skip("hindsight", "hindsight not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
-                        break
+                if not _looks_like_browser_profile(prof):
+                    continue
+                d = extractions / "hindsight" / f"{user.name}-{browser}-{prof.name}"
+                d.mkdir(parents=True, exist_ok=True)
+                if _windows_tool_available("hindsight"):
+                    add(
+                        "hindsight",
+                        ["hindsight", "-i", str(prof), "-o", str(d / "hindsight"), "-f", "jsonl"],
+                        f"Hindsight {browser} ({user.name}-{prof.name})",
+                        300,
+                    )
+                else:
+                    skip("hindsight", "hindsight not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+                    break
 
     # USBDeview is examiner opt-in. RECmd USBSTOR and setupapi cover USB.
     usbstor = root / "Windows/System32/config/SYSTEM"

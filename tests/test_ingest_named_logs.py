@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nexus.ingest.detect import detect_format
 from nexus.ingest.registry import get_registry
 from nexus.ingest.schemas import ArtifactSource, ArtifactType
@@ -70,3 +72,23 @@ def test_a_bind_query_log_is_read_query_by_query(tmp_path):
 def test_a_csv_with_a_header_is_not_taken_for_syslog(tmp_path):
     csv_lines = ["Time,Host,Message", "Jul 12 09:50:56,services,login"]
     assert detect_format(_write(tmp_path, "export.csv", csv_lines)) != ArtifactSource.SYSLOG
+
+
+T18_CRON = (
+    Path(__file__).resolve().parents[1]
+    / "Evidence-files"
+    / "_tiny"
+    / "T18"
+    / "web01"
+    / "var"
+    / "log"
+    / "cron"
+)
+
+
+@pytest.mark.skipif(not T18_CRON.is_file(), reason="T18 staged evidence is unavailable")
+def test_t18_syslog_content_is_imported_when_basename_is_not_allowlisted():
+    source, rows = _import(T18_CRON)
+
+    assert source == ArtifactSource.SYSLOG
+    assert rows, "RFC3164 cron events must be imported even when the file is named 'cron'"

@@ -40,23 +40,30 @@ class SyslogImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Heuristic: file name suggests syslog, or content matches RFC 3164/5424 pattern."""
+        """Recognize RFC 3164/5424 content regardless of the log's basename."""
         if not path.is_file():
             return False
-        name = path.name.lower()
-        if name in ("syslog", "messages", "daemon.log", "kern.log", "user.log") or name.endswith(".log"):
-            # Look for syslog-shaped content
-            try:
-                with path.open("r", encoding="utf-8", errors="replace") as f:
-                    for _ in range(10):
-                        line = f.readline()
-                        if not line:
-                            break
-                        if cls.RFC3164_RE.match(line) or cls.RFC5424_RE.match(line):
-                            return True
-            except OSError:
-                return False
-        return False
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                lines = []
+                for _ in range(20):
+                    line = f.readline()
+                    if not line:
+                        break
+                    if line.strip():
+                        lines.append(line)
+        except OSError:
+            return False
+        if not lines:
+            return False
+
+        def is_syslog(line: str) -> bool:
+            return bool(cls.RFC3164_RE.match(line) or cls.RFC5424_RE.match(line))
+
+        if not is_syslog(lines[0]):
+            return False
+        shaped = sum(1 for line in lines if is_syslog(line))
+        return shaped * 2 > len(lines)
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per syslog line."""

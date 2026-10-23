@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nexus.langgraph.tool_lane import _plan_single_artifact
 
 
@@ -61,6 +63,31 @@ def test_nested_browser_profiles_dispatch_as_profiles(tmp_path):
         source / "Firefox" / "jyiq7x58.default-release",
     }
     assert not any(j.tool == "sqlecmd" for j in jobs)
+
+
+T03_ROOT = Path(__file__).resolve().parents[1] / "Evidence-files" / "_tiny" / "T03" / "C"
+
+
+@pytest.mark.skipif(
+    not (T03_ROOT / "Windows" / "System32").is_dir(),
+    reason="T03 staged evidence is unavailable",
+)
+def test_t03_drive_tree_schedules_registered_default_and_firefox_profiles(tmp_path, monkeypatch):
+    from nexus.langgraph.tool_lane import plan_windows_triage
+
+    monkeypatch.setattr("nexus.langgraph.tool_lane._windows_tool_available", lambda key: key == "hindsight")
+    jobs = plan_windows_triage(str(T03_ROOT), tmp_path / "extractions")
+    profile_inputs = {
+        Path(job.argv[job.argv.index("-i") + 1])
+        for job in jobs
+        if job.tool == "hindsight" and "-i" in job.argv
+    }
+
+    assert profile_inputs == {
+        T03_ROOT / "Users/fredr/AppData/Local/Google/Chrome/User Data/Default",
+        T03_ROOT / "Users/fredr/AppData/Local/Microsoft/Edge/User Data/Default",
+        T03_ROOT / "Users/fredr/AppData/Roaming/Mozilla/Firefox/Profiles/jyiq7x58.default-release",
+    }
 
 
 def test_thumbcache_folder_uses_the_file_flag(tmp_path):
