@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, ImporterError
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -54,10 +54,32 @@ class AzureImporter(Importer):
         files = [path] if path.is_file() else sorted(path.rglob("*.json"))
         for file in files:
             try:
-                with file.open("r", encoding="utf-8", errors="replace") as f:
-                    data = json.load(f)
-            except (OSError, json.JSONDecodeError):
-                continue
+                with file.open("r", encoding="utf-8-sig", errors="replace") as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError:
+                        # Azure Monitor exports commonly emit one JSON object
+                        # per line. Parse the complete file before yielding so
+                        # a malformed later line cannot leave a partial import
+                        # that the lane might report as successful.
+                        f.seek(0)
+                        line_records: list[dict[str, Any]] = []
+                        for line_number, line in enumerate(f, start=1):
+                            if not line.strip():
+                                continue
+                            try:
+                                line_data = json.loads(line)
+                            except json.JSONDecodeError as exc:
+                                raise ImporterError(
+                                    f"Invalid Azure JSON/NDJSON in {file.name} at line "
+                                    f"{line_number}: {exc.msg}"
+                                ) from exc
+                            line_records.extend(self._extract_records(line_data))
+                        for record in line_records:
+                            yield self._record_to_artifact(record, file)
+                        continue
+            except OSError as exc:
+                raise ImporterError(f"Unable to read Azure export {file.name}: {exc}") from exc
             records = self._extract_records(data)
             for record in records:
                 if isinstance(record, dict):

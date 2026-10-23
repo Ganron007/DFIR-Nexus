@@ -57,6 +57,20 @@ def test_a_staged_artifact_with_no_documents_stays_unprocessed(tmp_path):
     assert any("SetupAPI" in str(u.get("purpose")) for u in read_lane_gate(case).get("unprocessed") or [])
 
 
+def test_scheduled_tasks_with_indexed_documents_become_parsed(tmp_path):
+    case = _case_with_completeness(tmp_path, [_row("Scheduled Tasks", "PRESENT_NO_PARSER")])
+
+    result = reconcile_after_index(
+        case, {"scheduled_tasks/ingest/artifacts.jsonl": {"docs": 60, "deduped": 0}}
+    )
+
+    assert result["changed"] == 1
+    rows = json.loads((case / "runs" / "RUN-20261011T000000Z-tools-gate" / "extractions"
+                       / "_artifact_completeness.json").read_text(encoding="utf-8"))
+    assert rows[0]["status"] == "PARSED"
+    assert "scheduled_tasks" in rows[0]["reason"]
+
+
 def test_an_artifact_no_tool_parses_still_blocks_the_gate(tmp_path):
     case = _case_with_completeness(tmp_path, [
         _row("PowerShell Transcript Logs", "STAGED"),

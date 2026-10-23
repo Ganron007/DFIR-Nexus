@@ -180,6 +180,12 @@ def glob_location(root: Path, path_str: str, users: list[Path] | None = None) ->
     if "*" in rel or "?" in rel:
         parent_rel = rel.rsplit("/", 1)[0] if "/" in rel else ""
         if parent_rel:
+            # A wildcarded parent represents one or more user/profile paths. If
+            # no leaf file matched, those directories are not evidence for the
+            # artifact. Keep terminal-wildcard container semantics for fixed
+            # parents such as Prefetch/*.pf.
+            if "*" in parent_rel or "?" in parent_rel:
+                return []
             try:
                 parents = [p for p in root.glob(parent_rel) if p.is_dir()]
             except (OSError, ValueError):

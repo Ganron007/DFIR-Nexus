@@ -626,6 +626,7 @@ def sift_waiting_message(gate: dict[str, Any]) -> str:
 #: whatever tool row the completeness table names for it.
 STAGED_FAMILY = {
     "PowerShell Transcript Logs": "pstranscript",
+    "Scheduled Tasks": "scheduled_tasks",
     "SetupAPI Device Log": "setupapi",
     "Windows Error Reporting": "wer",
 }

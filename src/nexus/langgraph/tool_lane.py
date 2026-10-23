@@ -805,6 +805,34 @@ def _plan_single_artifact(
                 "Jump Lists (folder)", 300)
             return jobs
 
+        # Registered browser roots commonly contain profiles one level down
+        # (Chrome/Default, Edge/Profile 1, Firefox/Profiles/<name>). Dispatch
+        # each profile as a directory before planning its files individually.
+        profile_dirs: list[Path] = []
+        try:
+            candidates = sorted(
+                (p for p in evidence.rglob("*") if p.is_dir()),
+                key=lambda p: (len(p.parts), str(p).casefold()),
+            )
+        except OSError:
+            candidates = []
+        for candidate in candidates:
+            if not _looks_like_browser_profile(candidate):
+                continue
+            if any(candidate.is_relative_to(parent) for parent in profile_dirs):
+                continue
+            profile_dirs.append(candidate)
+        for profile in profile_dirs:
+            d = out_dir("hindsight")
+            profile_name = profile.relative_to(evidence).as_posix()
+            add(
+                "hindsight",
+                [_python_script("hindsight"), "-i", str(profile),
+                 "-o", str(d / _stem(profile)), "-f", "jsonl"],
+                f"Browser profile ({profile_name})",
+                1800,
+            )
+
         # Sweep R7-R16 (2026-09-30): a folder of one format (jumplists/,
         # thumbcache/, srum/, rdp/, setupapi/, samples/, activitiescache/)
         # matched none of the handlers above and was SKIPped as "no recognized
@@ -816,6 +844,8 @@ def _plan_single_artifact(
         files: list[Path] = []
         for p in evidence.rglob("*"):
             if not p.is_file() or p.name.startswith("."):
+                continue
+            if any(p.is_relative_to(profile) for profile in profile_dirs):
                 continue
             files.append(p)
         if files:
@@ -2105,16 +2135,29 @@ def plan_windows_triage(
             skip("sqlecmd", "no Chrome/Edge/Firefox history databases")
 
     batch = _find_recmd_batch()
-    if batch and config_dir.is_dir() and software_hive.is_file():
+    if not batch:
+        skip("recmd", "RECmd .reb batch not found under tools/windows")
+    else:
         d = extractions / "recmd"
-        d.mkdir(parents=True, exist_ok=True)
-        add(
-            "recmd",
-            ["recmd", "-d", str(config_dir), "--bn", str(batch), "--nl", "true",
-             "--csv", str(d)],
-            f"Registry batch ({batch.name})",
-            900,
-        )
+        machine_hives = [
+            config_dir / name
+            for name in ("SYSTEM", "SOFTWARE", "SAM", "SECURITY")
+            if config_dir.is_dir() and (config_dir / name).is_file()
+        ]
+        scheduled = False
+        if machine_hives:
+            d.mkdir(parents=True, exist_ok=True)
+            add(
+                "recmd",
+                ["recmd", "-d", str(config_dir), "--bn", str(batch), "--nl", "true",
+                 "--csv", str(d)],
+                f"Registry batch ({batch.name})",
+                900,
+            )
+            scheduled = True
+
+        # User hives are independent evidence. A missing SOFTWARE hive must not
+        # suppress NTUSER.DAT or UsrClass.dat parsing.
         user_batch = _find_recmd_user_batch() or batch
         for user in users:
             ntuser = user / "NTUSER.DAT"
@@ -2130,6 +2173,7 @@ def plan_windows_triage(
                     f"NTUSER.DAT ({user.name}, {user_batch.name})",
                     600,
                 )
+                scheduled = True
             # WO-TA item 3: each user's UsrClass.dat takes the same batch as NTUSER.DAT.
             usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
             if usrclass.is_file():
@@ -2144,10 +2188,9 @@ def plan_windows_triage(
                     f"UsrClass.dat ({user.name}, {user_batch.name})",
                     600,
                 )
-    elif not batch:
-        skip("recmd", "RECmd .reb batch not found under tools/windows")
-    else:
-        skip("recmd", f"missing software hive / config dir under {root}")
+                scheduled = True
+        if not scheduled:
+            skip("recmd", f"no supported machine or user hive under {root}")
 
     # RegRipper is examiner opt-in. RECmd/DFIRBatch is the default registry parse.
     regripper_ok = _lane_opted_in("regripper") and _windows_tool_available("regripper")

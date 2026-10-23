@@ -83,6 +83,20 @@ def test_glob_prefetch_dir_counts_as_present(tmp_path: Path):
     assert hits[0].name == "Prefetch"
 
 
+def test_glob_does_not_count_wildcarded_parent_without_matching_file(tmp_path: Path):
+    root = _win_root(tmp_path)
+    recent = root / "Users" / "alice" / "AppData/Roaming/Microsoft/Windows/Recent"
+    recent.mkdir(parents=True)
+
+    hits = glob_location(
+        root,
+        r"C:\Users\{username}\AppData\Roaming\Microsoft\Windows\Recent\*.lnk",
+        user_profile_dirs(root),
+    )
+
+    assert hits == []
+
+
 def test_discover_prefetch_present_schedules_pecmd(tmp_path: Path):
     root = _win_root(tmp_path)
     (root / "Windows" / "Prefetch").mkdir(parents=True)

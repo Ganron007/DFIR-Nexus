@@ -261,15 +261,25 @@ def _sanitize_extra_args(extra_args: list[str], tool_name: str) -> list[str]:
     something benign for a specific tool (SleuthKit `-o` = partition offset)
     are excepted per tool.
     """
-    excepted = _FLAG_EXCEPTIONS_BY_TOOL.get(str(tool_name or "").strip().lower(), set())
+    tool = str(tool_name or "").strip().lower()
+    excepted = _FLAG_EXCEPTIONS_BY_TOOL.get(tool, set())
     safe = []
-    for arg in extra_args:
+    index = 0
+    while index < len(extra_args):
+        arg = extra_args[index]
         if _SHELL_METACHARS.search(arg):
             raise ValueError(f"Argument contains shell metacharacters: {arg}")
         arg_lower = arg.lower()
+        if tool == "nfdump" and arg_lower == "-o":
+            if index + 1 >= len(extra_args) or extra_args[index + 1].strip().lower() != "csv":
+                raise ValueError("nfdump -o is allowed only with the csv output format")
+            safe.extend((arg, extra_args[index + 1]))
+            index += 2
+            continue
         if (arg_lower in _DANGEROUS_FLAGS or arg in _DANGEROUS_FLAGS) and arg_lower not in excepted:
             raise ValueError(f"Dangerous flag blocked: {arg}")
         safe.append(arg)
+        index += 1
     return safe
 
 

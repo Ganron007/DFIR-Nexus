@@ -41,6 +41,25 @@ def test_rdp_folder_deduplicates_to_one_bmc_job(tmp_path):
     assert "-s" in bmc[0].argv  # folder mode
 
 
+def test_nested_browser_profiles_dispatch_as_profiles(tmp_path):
+    jobs, source = _jobs(tmp_path, {
+        "Chrome/Default/History": b"history",
+        "Chrome/Default/Cookies": b"cookies",
+        "Edge/Default/History": b"history",
+        "Edge/Default/Cookies": b"cookies",
+    })
+
+    hindsight = [j for j in jobs if j.tool == "hindsight"]
+    assert len(hindsight) == 2
+    assert all("-i" in j.argv for j in hindsight)
+    assert all("-f" in j.argv and "jsonl" in j.argv for j in hindsight)
+    assert {Path(j.argv[j.argv.index("-i") + 1]) for j in hindsight} == {
+        source / "Chrome" / "Default",
+        source / "Edge" / "Default",
+    }
+    assert not any(j.tool == "sqlecmd" for j in jobs)
+
+
 def test_thumbcache_folder_uses_the_file_flag(tmp_path):
     jobs, _ = _jobs(tmp_path, {"thumbcache_256.db": b"\x01\x02", "thumbcache_32.db": b"\x03\x04"})
     thumb = [j for j in jobs if j.tool == "thumbcache_viewer"]

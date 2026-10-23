@@ -29,6 +29,18 @@ def test_offset_flag_still_blocked_for_other_tools():
         _sanitize_extra_args(["-e", "x"], "fls")
 
 
+def test_nfdump_csv_output_flag_is_narrowly_allowed():
+    from nexus.tools.sift import _sanitize_extra_args
+
+    assert _sanitize_extra_args(["-r", "capture.nfcapd", "-o", "csv"], "nfdump") == [
+        "-r", "capture.nfcapd", "-o", "csv",
+    ]
+    with pytest.raises(ValueError, match="csv output format"):
+        _sanitize_extra_args(["-o", "pipe"], "nfdump")
+    with pytest.raises(ValueError, match="Dangerous flag"):
+        _sanitize_extra_args(["-o", "csv"], "grep")
+
+
 def test_sift_only_run_resolves_for_the_index(tmp_path):
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 

@@ -134,6 +134,35 @@ def test_plan_windows_triage_all_user_profiles(tmp_path: Path):
     assert "Public" not in purposes
 
 
+def test_recmd_schedules_machine_and_user_hives_without_software(monkeypatch, tmp_path: Path):
+    from nexus.langgraph import tool_lane
+
+    root = tmp_path / "image"
+    config = root / "Windows/System32/config"
+    config.mkdir(parents=True)
+    (config / "SYSTEM").write_bytes(b"hive")
+    user_hive = root / "Users/alice/NTUSER.DAT"
+    user_hive.parent.mkdir(parents=True)
+    user_hive.write_bytes(b"hive")
+    monkeypatch.setattr(tool_lane, "_find_recmd_batch", lambda: tmp_path / "machine.reb")
+    monkeypatch.setattr(tool_lane, "_find_recmd_user_batch", lambda: tmp_path / "user.reb")
+
+    jobs = tool_lane.plan_windows_triage(str(root), tmp_path / "extractions")
+    recmd = [j for j in jobs if j.tool == "recmd" and j.status == "PENDING"]
+
+    assert len(recmd) == 2
+    assert any("-d" in j.argv and str(config) in j.argv for j in recmd)
+    assert any("-f" in j.argv and str(user_hive) in j.argv for j in recmd)
+
+
+def test_wmi_parser_is_a_related_tool_for_the_wmi_persistence_artifact():
+    from nexus.knowledge.loader import get_artifacts_for_tool
+
+    artifacts = get_artifacts_for_tool("wmi-parser")
+
+    assert any(artifact["name"] == "WMI Event Subscription Persistence" for artifact in artifacts)
+
+
 def test_plan_sift_requires_root(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_TRIAGE_ROOT", raising=False)
