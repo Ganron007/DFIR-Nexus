@@ -124,7 +124,7 @@ def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setattr(tool_lane.subprocess, "run", record)
-    tool_lane._esentutl_replay(tmp_path, log_bases=("edb", "qmgr"))
+    outcomes = tool_lane._esentutl_replay(tmp_path, log_bases=("edb", "qmgr"))
     # The log, system and database folders are the work copy: the log records the original location.
     folders = [f"/l{tmp_path}", f"/s{tmp_path}", f"/d{tmp_path}"]
     assert calls == [
@@ -132,6 +132,10 @@ def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_
         ["esentutl.exe", "/r", "qmgr", *folders],
     ]
     assert all("/p" not in argv and "/i" not in argv for argv in calls)
+    assert outcomes == [
+        {"log_base": "edb", "returncode": 0, "stdout": "", "stderr": ""},
+        {"log_base": "qmgr", "returncode": 0, "stdout": "", "stderr": ""},
+    ]
 
 
 def test_failed_ese_replay_keeps_return_code_and_diagnostic(caplog, tmp_path, monkeypatch):
@@ -143,11 +147,19 @@ def test_failed_ese_replay_keeps_return_code_and_diagnostic(caplog, tmp_path, mo
         ),
     )
     with caplog.at_level("WARNING", logger="nexus.langgraph.tool_lane"):
-        tool_lane._esentutl_replay(tmp_path, log_bases=("sru",))
+        outcomes = tool_lane._esentutl_replay(tmp_path, log_bases=("sru",))
 
     assert "esentutl replay for log base sru exited 3" in caplog.text
     assert "Recovery started" in caplog.text
     assert "log generation mismatch" in caplog.text
+    assert outcomes == [
+        {
+            "log_base": "sru",
+            "returncode": 3,
+            "stdout": "Recovery started",
+            "stderr": "log generation mismatch",
+        }
+    ]
 
 
 def test_transcripts_are_copied_from_anywhere_under_the_volume(planned):

@@ -90,6 +90,9 @@ class ToolJob:
     queued_s: float = 0.0
     duration_s: float = 0.0
     tool_elapsed_s: float = 0.0
+    # Results from deterministic setup steps that prepare a parser's staged input (e.g. ESE log replay).
+    # They are persisted with the job so a later parser failure can be tied to its exact preflight.
+    preflight: dict[str, Any] = field(default_factory=dict)
 
 
 _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS = {
@@ -302,7 +305,7 @@ def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> 
             os.chmod(dst, 0o666)
 
 
-def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
+def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> list[dict[str, Any]]:
     """Replay the transaction logs in the work copy (esentutl /r), with no repair and no ignored logs.
 
     Operator decision 2026-10-11: the lane does not run ``/p`` (repair, which can discard data) or
@@ -315,6 +318,17 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
     database stays dirty (srumecmd on CASE-C5B04D31). With them the replay completes: tested on copies
     of the SRUM and Windows Search databases (2026-10-11).
     """
+    outcomes: list[dict[str, Any]] = []
+
+    def bounded_text(value: Any) -> str:
+        if isinstance(value, bytes):
+            text = value.decode("utf-8", errors="replace")
+        else:
+            text = str(value or "")
+        text = _ANSI_RE.sub("", text).strip()
+        return text[-2000:]
+
+    base = ",".join(log_bases)
     try:
         for base in log_bases:
             result = subprocess.run(
@@ -325,23 +339,25 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
                 timeout=120,
                 check=False,
             )
-            if result is not None and result.returncode:
-                detail = "\n".join(
-                    part.strip()
-                    for part in (result.stdout or "", result.stderr or "")
-                    if part and part.strip()
-                )
-                detail = _ANSI_RE.sub("", detail).strip()
-                if len(detail) > 2000:
-                    detail = detail[-2000:]
+            outcome = {
+                "log_base": base,
+                "returncode": getattr(result, "returncode", None),
+                "stdout": bounded_text(getattr(result, "stdout", "")),
+                "stderr": bounded_text(getattr(result, "stderr", "")),
+            }
+            outcomes.append(outcome)
+            if outcome["returncode"]:
+                detail = "\n".join(part for part in (outcome["stdout"], outcome["stderr"]) if part)
                 log.warning(
                     "esentutl replay for log base %s exited %s: %s",
                     base,
-                    result.returncode,
+                    outcome["returncode"],
                     detail or "no stdout/stderr",
                 )
     except (OSError, subprocess.TimeoutExpired) as exc:
+        outcomes.append({"log_base": base, "error": str(exc)[:2000]})
         log.warning("esentutl replay skipped for %s: %s", ",".join(log_bases), exc)
+    return outcomes
 
 
 def _ese_state(database: Path) -> str:
@@ -731,10 +747,11 @@ def _plan_single_artifact(
     jobs: list[ToolJob] = []
 
     def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
-            *, optional_output: bool = False, source: str = "") -> None:
+            *, optional_output: bool = False, source: str = "",
+            preflight: dict[str, Any] | None = None) -> None:
         jobs.append(ToolJob(
             host="windows", tool=tool, argv=argv, purpose=purpose, timeout=timeout,
-            optional_output=optional_output, source=source,
+            optional_output=optional_output, source=source, preflight=preflight or {},
         ))
 
     def skip(tool: str, reason: str) -> None:
@@ -1151,7 +1168,7 @@ def _plan_single_artifact(
         try:
             work = extractions / "_staged" / "sru"
             _copy_ese_siblings(evidence.parent, work, ("SRU",))
-            _esentutl_replay(work, log_bases=("sru",))
+            replay = _esentutl_replay(work, log_bases=("sru",))
             candidate = work / evidence.name
             if candidate.is_file():
                 staged = candidate
@@ -1170,7 +1187,8 @@ def _plan_single_artifact(
             ))
             return jobs
         add("srumecmd", ["srumecmd", "-f", str(staged), "--csv", str(d)],
-            "SRUM database", 600, source=str(evidence))
+            "SRUM database", 600, source=str(evidence),
+            preflight={"esentutl_replay": replay})
     elif _hive_kind(evidence) in _NAMED_HIVE_KINDS:
         # The kind, not the name: NTUSER-fredr.DAT and S09's SYSTEM_clean are the
         # same hives as NTUSER.DAT and SYSTEM, and SYSTEM_clean needs the
@@ -1808,7 +1826,8 @@ def plan_windows_triage(
     config_dir = root / "Windows/System32/config"
 
     def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
-            *, optional_output: bool = False, source: str = "") -> None:
+            *, optional_output: bool = False, source: str = "",
+            preflight: dict[str, Any] | None = None) -> None:
         jobs.append(ToolJob(
             host="windows",
             tool=tool,
@@ -1817,6 +1836,7 @@ def plan_windows_triage(
             timeout=timeout,
             optional_output=optional_output,
             source=source,
+            preflight=preflight or {},
         ))
 
     def skip(tool: str, reason: str) -> None:
@@ -1876,12 +1896,13 @@ def plan_windows_triage(
         work = d / "workdir"
         try:
             _copy_ese_siblings(srum.parent, work, ("SRU",))
-            _esentutl_replay(work, log_bases=("sru",))
+            replay = _esentutl_replay(work, log_bases=("sru",))
             srum_target = work / "SRUDB.dat"
             argv = ["srumecmd", "-f", str(srum_target), "--csv", str(d)]
             if software_hive.is_file():
                 argv.extend(["-r", str(software_hive)])
-            add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600, source=str(srum))
+            add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600,
+                source=str(srum), preflight={"esentutl_replay": replay})
         except OSError as exc:
             skip("srumecmd", f"could not stage SRUDB copy: {exc}")
     else:

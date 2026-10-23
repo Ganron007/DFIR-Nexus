@@ -60,18 +60,28 @@ def test_the_retry_plans_srum_over_a_fresh_copy(tmp_path, monkeypatch):
     extractions = tmp_path / "extractions"
 
     files_seen_by_replay: list[list[str]] = []
+    replay_outcome = [{
+        "log_base": "sru",
+        "returncode": 3,
+        "stdout": "",
+        "stderr": "log generation mismatch",
+    }]
 
     def replay(work, *, log_bases):
         if tuple(log_bases) != ("sru",):
-            return
+            return []
         files_seen_by_replay.append(sorted(p.name for p in work.iterdir()))
         (work / "SRU03FBB.log").write_bytes(b"generation written by the replay")  # what esentutl /r leaves
+        return replay_outcome
 
     monkeypatch.setattr(tool_lane, "_esentutl_replay", replay)
-    tool_lane.plan_windows_triage(str(root), extractions)
-    tool_lane.plan_windows_triage(str(root), extractions)  # the retry, in the same run folder
+    first_jobs = tool_lane.plan_windows_triage(str(root), extractions)
+    second_jobs = tool_lane.plan_windows_triage(str(root), extractions)  # the retry, in the same run folder
 
     assert files_seen_by_replay == [["SRU.log", "SRUDB.dat"], ["SRU.log", "SRUDB.dat"]]
+    for jobs in (first_jobs, second_jobs):
+        srum = next(j for j in jobs if j.tool == "srumecmd" and j.status == "PENDING")
+        assert srum.preflight["esentutl_replay"] == replay_outcome
 
 
 def test_staging_copies_are_not_indexed_as_tool_output(tmp_path):
