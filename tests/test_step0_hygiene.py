@@ -139,6 +139,34 @@ def test_delete_case_data_accepts_absent_indexes_as_noop(
     assert result.ok
 
 
+def test_delete_case_data_accepts_deleted_indexes(
+    tmp_path: Path, monkeypatch
+):
+    import nexus.langgraph.case_index as case_index
+    import nexus.langgraph.timeline_events as timeline_events
+    from nexus.case.cleanup import delete_case_data
+
+    monkeypatch.setattr(case_index, "es_url", lambda: "http://es")
+    monkeypatch.setattr(
+        case_index,
+        "delete_index",
+        lambda case_id: {"deleted": True},
+    )
+    monkeypatch.setattr(
+        timeline_events,
+        "delete_events_index",
+        lambda case_id: {"deleted": True},
+    )
+
+    result = delete_case_data(
+        "CASE-X", cases_root=tmp_path, db_path=tmp_path / "cases.db"
+    )
+    es_part = next(part for part in result.parts if part[0] == "es index")
+
+    assert es_part == ("es index", True, "docs=deleted events=deleted")
+    assert result.ok
+
+
 # ---------------------------------------------------------------------------
 # raw_slots / prune guard — a name is not proof
 # ---------------------------------------------------------------------------
