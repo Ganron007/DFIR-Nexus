@@ -946,6 +946,55 @@ def _i1_route(path: str | Path, *, windows_root: Path | None = None) -> str:
     return "importer"
 
 
+def _tool_lane_rows(case_dir: Path, run_id: str) -> list[dict[str, Any]]:
+    """Read this run's completed deterministic tool ledger, if present."""
+    if not run_id:
+        return []
+    ledger_path = case_dir / "runs" / run_id / "ledger" / "_tool_lane_ledger.json"
+    try:
+        rows = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return rows if isinstance(rows, list) else []
+
+
+def _successful_hindsight_profiles(rows: list[dict[str, Any]]) -> set[Path]:
+    """Profile directories consumed successfully by this run's Hindsight jobs."""
+    profiles: set[Path] = set()
+    for row in rows:
+        if row.get("tool") != "hindsight" or row.get("status") != "OK":
+            continue
+        argv = row.get("argv")
+        if not isinstance(argv, list) or "-i" not in argv:
+            continue
+        index = argv.index("-i")
+        if index + 1 < len(argv):
+            profiles.add(Path(str(argv[index + 1])))
+    return profiles
+
+
+def _successful_sift_nfdump_inputs(rows: list[dict[str, Any]]) -> set[Path]:
+    """Exact local input paths parsed by a successful SIFT nfdump job this run."""
+    return {
+        Path(str(row["source"]))
+        for row in rows
+        if row.get("host") == "sift"
+        and row.get("tool") == "nfdump"
+        and row.get("status") == "OK"
+        and str(row.get("source") or "").strip()
+    }
+
+
+def _path_is_under(path: Path, roots: set[Path]) -> bool:
+    """Return whether path is equal to or below one of roots, using host path rules."""
+    path_key = os.path.normcase(os.path.abspath(str(path)))
+    for root in roots:
+        root_key = os.path.normcase(os.path.abspath(str(root))).rstrip(os.sep)
+        if path_key == root_key or path_key.startswith(root_key + os.sep):
+            return True
+    return False
+
+
 async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     """Deterministic MCP triage - all applicable tools run (coverage/tools)."""
     from nexus.langgraph.tool_lane import run_tool_lane
@@ -1000,6 +1049,9 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         evidence_paths=(lane_paths if expansions else state.get("evidence_paths")) or None,
         on_event=_lane_event,
     )
+    current_tool_rows = _tool_lane_rows(case_dir, str(state.get("run_id") or ""))
+    successful_hindsight_profiles = _successful_hindsight_profiles(current_tool_rows)
+    successful_sift_nfdump_inputs = _successful_sift_nfdump_inputs(current_tool_rows)
     if expansions or axiom_rows:
         from nexus.langgraph.lane_gate import record_import_results
 
@@ -1025,6 +1077,8 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     ingest_paths: list[str] = []
     raw_skipped: list[str] = []
     windows_unconfirmed: list[str] = []
+    browser_profile_tree_skipped = False
+    sift_nfdump_files_skipped = 0
     for p in all_paths:
         p_path = Path(p)
         if p_path.is_dir():
@@ -1035,9 +1089,28 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
 
                 windows_root = find_windows_root(p_path)
 
-                for root_dir, _dirs, files in _os.walk(p_path, followlinks=False):
+                for root_dir, dirs, files in _os.walk(p_path, followlinks=False):
+                    root_path = Path(root_dir)
+                    if _path_is_under(root_path, successful_hindsight_profiles):
+                        browser_profile_tree_skipped = True
+                        dirs[:] = []
+                        continue
+                    included_dirs = []
+                    for name in dirs:
+                        if _path_is_under(root_path / name, successful_hindsight_profiles):
+                            browser_profile_tree_skipped = True
+                        else:
+                            included_dirs.append(name)
+                    dirs[:] = included_dirs
                     for fname in files:
                         fp = str(Path(root_dir) / fname)
+                        fp_path = Path(fp)
+                        if _path_is_under(fp_path, successful_hindsight_profiles):
+                            browser_profile_tree_skipped = True
+                            continue
+                        if fp_path in successful_sift_nfdump_inputs:
+                            sift_nfdump_files_skipped += 1
+                            continue
                         if is_expansion_marker(Path(fp)):
                             continue  # D295: lane-generated expansion metadata is not evidence
                         if fp in consumed_archives:
@@ -1062,6 +1135,10 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
             continue
         elif is_raw_container(p_path):
             raw_skipped.append(p_path.name)
+        elif _path_is_under(p_path, successful_hindsight_profiles):
+            browser_profile_tree_skipped = True
+        elif p_path in successful_sift_nfdump_inputs:
+            sift_nfdump_files_skipped += 1
         else:
             route = _i1_route(p)
             if route == "importer":
@@ -1073,6 +1150,14 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         result["_raw_skipped_note"] = (
             "I1 skipped raw container(s) (SIFT/imager lane, not importers): "
             + ", ".join(sorted(set(raw_skipped))[:6])
+        )
+    if browser_profile_tree_skipped:
+        result["_browser_profile_skipped_note"] = (
+            "I1 left browser-profile contents to successful Hindsight profile jobs"
+        )
+    if sift_nfdump_files_skipped:
+        result["_sift_nfdump_skipped_note"] = (
+            f"I1 skipped {sift_nfdump_files_skipped} local import(s) already parsed by successful SIFT nfdump jobs"
         )
     if windows_unconfirmed:
         examples = ", ".join(Path(item).name for item in windows_unconfirmed[:5])
@@ -1199,6 +1284,12 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     raw_note = str(result.pop("_raw_skipped_note", "") or "")
     if raw_note:
         steps.append(raw_note)
+    browser_profile_note = str(result.pop("_browser_profile_skipped_note", "") or "")
+    if browser_profile_note:
+        steps.append(browser_profile_note)
+    nfdump_note = str(result.pop("_sift_nfdump_skipped_note", "") or "")
+    if nfdump_note:
+        steps.append(nfdump_note)
     windows_note = str(result.pop("_windows_unconfirmed_note", "") or "")
     if windows_note:
         steps.append(windows_note)

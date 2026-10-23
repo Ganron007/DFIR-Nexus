@@ -1625,7 +1625,7 @@ def _regripper_profile(hive_name: str) -> str:
     return "all" if (plugins / "all").is_file() else (preferred or "all")
 
 
-_BROWSER_PROFILE_MARKERS = ("history", "cookies", "preferences", "login data",
+_BROWSER_PROFILE_MARKERS = ("history", "cookies", "cookies.sqlite", "preferences", "login data",
                             "places.sqlite", "web data")
 
 

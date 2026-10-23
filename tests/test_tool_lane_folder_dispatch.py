@@ -47,15 +47,18 @@ def test_nested_browser_profiles_dispatch_as_profiles(tmp_path):
         "Chrome/Default/Cookies": b"cookies",
         "Edge/Default/History": b"history",
         "Edge/Default/Cookies": b"cookies",
+        "Firefox/jyiq7x58.default-release/places.sqlite": b"places",
+        "Firefox/jyiq7x58.default-release/cookies.sqlite": b"cookies",
     })
 
     hindsight = [j for j in jobs if j.tool == "hindsight"]
-    assert len(hindsight) == 2
+    assert len(hindsight) == 3
     assert all("-i" in j.argv for j in hindsight)
     assert all("-f" in j.argv and "jsonl" in j.argv for j in hindsight)
     assert {Path(j.argv[j.argv.index("-i") + 1]) for j in hindsight} == {
         source / "Chrome" / "Default",
         source / "Edge" / "Default",
+        source / "Firefox" / "jyiq7x58.default-release",
     }
     assert not any(j.tool == "sqlecmd" for j in jobs)
 

@@ -35,6 +35,54 @@ def case_dir(tmp_path, monkeypatch) -> Path:
     return root
 
 
+def test_i1_uses_only_successful_current_run_profile_and_sift_rows(case_dir, tmp_path):
+    from nexus.langgraph.llm_pipeline import (
+        _path_is_under,
+        _successful_hindsight_profiles,
+        _successful_sift_nfdump_inputs,
+        _tool_lane_rows,
+    )
+
+    run_id = "RUN-I1-COVERAGE-001"
+    profile = tmp_path / "evidence" / "Firefox" / "profile.default"
+    profile.mkdir(parents=True)
+    capture_ok = tmp_path / "evidence" / "netflow" / "nfcapd.ok"
+    capture_fail = tmp_path / "evidence" / "netflow" / "nfcapd.fail"
+    capture_ok.parent.mkdir(parents=True)
+    capture_ok.write_bytes(b"ok")
+    capture_fail.write_bytes(b"fail")
+    ledger = case_dir / "runs" / run_id / "ledger" / "_tool_lane_ledger.json"
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text(json.dumps([
+        {
+            "host": "windows", "tool": "hindsight", "status": "OK",
+            "argv": ["hindsight", "-i", str(profile), "-f", "jsonl"],
+        },
+        {
+            "host": "windows", "tool": "hindsight", "status": "FAIL",
+            "argv": ["hindsight", "-i", str(tmp_path / "failed-profile")],
+        },
+        {
+            "host": "sift", "tool": "nfdump", "status": "OK", "source": str(capture_ok),
+        },
+        {
+            "host": "sift", "tool": "nfdump", "status": "FAIL", "source": str(capture_fail),
+        },
+        {
+            "host": "windows", "tool": "nfdump", "status": "OK", "source": str(capture_fail),
+        },
+    ]), encoding="utf-8")
+
+    rows = _tool_lane_rows(case_dir, run_id)
+    profiles = _successful_hindsight_profiles(rows)
+    nfdump_inputs = _successful_sift_nfdump_inputs(rows)
+
+    assert profiles == {profile}
+    assert _path_is_under(profile / "places.sqlite", profiles)
+    assert not _path_is_under(profile.parent / "unrelated.json", profiles)
+    assert nfdump_inputs == {capture_ok}
+
+
 def test_a_blocked_sidr_job_is_recorded_blocked_and_never_reaches_the_executor(case_dir, monkeypatch):
     from nexus.case.evidence_service import register_evidence
     from nexus.langgraph import case_index

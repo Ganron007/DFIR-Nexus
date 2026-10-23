@@ -175,6 +175,7 @@ def plan_network_triage(
             argv=["nfdump", "-r", rp, "-o", "csv"],
             purpose=f"nfdump every flow row ({Path(p).name})",
             timeout=1800,
+            source=str(p),
         ))
     return jobs
 

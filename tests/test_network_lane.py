@@ -151,6 +151,20 @@ def test_sift_jobs_for_lane_includes_network(tmp_path, monkeypatch):
     assert any(j.tool == "suricata" and j.status == "PENDING" for j in jobs)
 
 
+def test_sift_nfdump_job_keeps_exact_registered_input_path(tmp_path):
+    from nexus.langgraph.network_lane import plan_network_triage
+
+    root = tmp_path / "sift-root"
+    capture = root / "nested" / "nfcapd.20261023"
+    capture.parent.mkdir(parents=True)
+    capture.write_bytes(b"flow capture")
+
+    jobs = plan_network_triage([], [str(capture)], str(root), has_sift_mcp=True)
+    nfdump = next(job for job in jobs if job.tool == "nfdump")
+
+    assert nfdump.source == str(capture)
+
+
 def test_sift_suricata_job_declares_the_folder_it_writes_into(tmp_path, monkeypatch):
     # Suricata refuses a -l folder that does not exist, so the job names it and the lane creates it on SIFT (2026-10-13).
     from nexus.langgraph.tool_lane import sift_jobs_for_lane
