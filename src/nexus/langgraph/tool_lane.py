@@ -317,7 +317,7 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
     """
     try:
         for base in log_bases:
-            subprocess.run(
+            result = subprocess.run(
                 ["esentutl.exe", "/r", base, f"/l{work}", f"/s{work}", f"/d{work}"],
                 cwd=str(work),
                 capture_output=True,
@@ -325,6 +325,21 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> None:
                 timeout=120,
                 check=False,
             )
+            if result is not None and result.returncode:
+                detail = "\n".join(
+                    part.strip()
+                    for part in (result.stdout or "", result.stderr or "")
+                    if part and part.strip()
+                )
+                detail = _ANSI_RE.sub("", detail).strip()
+                if len(detail) > 2000:
+                    detail = detail[-2000:]
+                log.warning(
+                    "esentutl replay for log base %s exited %s: %s",
+                    base,
+                    result.returncode,
+                    detail or "no stdout/stderr",
+                )
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("esentutl replay skipped for %s: %s", ",".join(log_bases), exc)
 

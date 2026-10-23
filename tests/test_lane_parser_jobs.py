@@ -8,6 +8,7 @@ work order), not these tests.
 """
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -117,7 +118,12 @@ def test_sidr_is_not_run_on_a_copy_that_did_not_reach_a_clean_shutdown(planned):
 
 def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_path, monkeypatch):
     calls: list[list[str]] = []
-    monkeypatch.setattr(tool_lane.subprocess, "run", lambda argv, **kw: calls.append(list(argv)))
+
+    def record(argv, **_kwargs):
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(tool_lane.subprocess, "run", record)
     tool_lane._esentutl_replay(tmp_path, log_bases=("edb", "qmgr"))
     # The log, system and database folders are the work copy: the log records the original location.
     folders = [f"/l{tmp_path}", f"/s{tmp_path}", f"/d{tmp_path}"]
@@ -126,6 +132,22 @@ def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_
         ["esentutl.exe", "/r", "qmgr", *folders],
     ]
     assert all("/p" not in argv and "/i" not in argv for argv in calls)
+
+
+def test_failed_ese_replay_keeps_return_code_and_diagnostic(caplog, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        tool_lane.subprocess,
+        "run",
+        lambda argv, **_kwargs: subprocess.CompletedProcess(
+            argv, 3, stdout="Recovery started", stderr="log generation mismatch"
+        ),
+    )
+    with caplog.at_level("WARNING", logger="nexus.langgraph.tool_lane"):
+        tool_lane._esentutl_replay(tmp_path, log_bases=("sru",))
+
+    assert "esentutl replay for log base sru exited 3" in caplog.text
+    assert "Recovery started" in caplog.text
+    assert "log generation mismatch" in caplog.text
 
 
 def test_transcripts_are_copied_from_anywhere_under_the_volume(planned):
