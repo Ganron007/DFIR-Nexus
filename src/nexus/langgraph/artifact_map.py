@@ -328,7 +328,7 @@ def completeness_table(
     scheduled_l = {invokable_tool_key(t) for t in scheduled_tools}
     ran: dict[str, str] = {}
     optional_skip_reasons: dict[str, str] = {}
-    rank = {"OK": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
+    rank = {"OK": 4, "WARN": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
     for row in ledger or []:
         key = invokable_tool_key(str(row.get("tool") or ""))
         st = str(row.get("status") or "").upper()
@@ -348,9 +348,16 @@ def completeness_table(
         if not h.present:
             status = "ABSENT"
             reason = h.reason
-        elif any(s == "OK" for s in ran_hit):
+        elif any(s in {"OK", "WARN"} for s in ran_hit):
             status = "PARSED"
-            reason = h.reason
+            warn_reasons = [
+                str(row.get("reason") or "").strip()
+                for row in ledger or []
+                if invokable_tool_key(str(row.get("tool") or "")) in keys
+                and str(row.get("status") or "").upper() == "WARN"
+                and str(row.get("reason") or "").strip()
+            ]
+            reason = "; ".join(dict.fromkeys([h.reason, *warn_reasons]))
         elif any(s == "FAIL" for s in ran_hit):
             status = "FAIL"
             reason = h.reason
@@ -384,7 +391,7 @@ def apply_ledger_to_completeness(
     ledger: list[dict[str, Any]],
 ) -> list[dict[str, str]]:
     """Upgrade SCHEDULED rows to PARSED/FAIL from a finished ledger (no remount)."""
-    rank = {"OK": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
+    rank = {"OK": 4, "WARN": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
     ran: dict[str, str] = {}
     for row in ledger or []:
         key = invokable_tool_key(str(row.get("tool") or ""))
@@ -396,14 +403,25 @@ def apply_ledger_to_completeness(
     out = []
     for row in rows:
         item = dict(row)
-        if str(item.get("status") or "") in {"ABSENT", "STAGED", "PRESENT_NO_PARSER"}:
+        if str(item.get("status") or "") in {"ABSENT", "STAGED"}:
             out.append(item)
             continue
         tools = [t.strip() for t in str(item.get("tools") or "").split(",") if t.strip()]
         keys = {invokable_tool_key(t) for t in tools}
         ran_hit = [ran[k] for k in keys if k in ran]
-        if any(s == "OK" for s in ran_hit):
+        if any(s in {"OK", "WARN"} for s in ran_hit):
             item["status"] = "PARSED"
+            warn_reasons = [
+                str(entry.get("reason") or "").strip()
+                for entry in ledger or []
+                if invokable_tool_key(str(entry.get("tool") or "")) in keys
+                and str(entry.get("status") or "").upper() == "WARN"
+                and str(entry.get("reason") or "").strip()
+            ]
+            if warn_reasons:
+                item["reason"] = "; ".join(
+                    dict.fromkeys([str(item.get("reason") or "").strip(), *warn_reasons])
+                ).strip("; ")
         elif any(s == "FAIL" for s in ran_hit):
             item["status"] = "FAIL"
         out.append(item)

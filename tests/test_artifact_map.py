@@ -60,6 +60,34 @@ def test_non_policy_skip_does_not_hide_an_unparsed_artifact(tmp_path: Path):
     assert rows[0]["status"] == "PRESENT_NO_PARSER"
 
 
+def test_warn_parse_marks_artifact_parsed_and_preserves_warning_reason(tmp_path: Path):
+    reason = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
+    hit = ArtifactHit(
+        name="ShellBags",
+        slug="shellbags",
+        related_tools=["SBECmd"],
+        present=True,
+        hits=[tmp_path / "NTUSER.DAT"],
+        locations=["NTUSER.DAT"],
+        reason="1 hit(s)",
+    )
+    ledger = [{"tool": "sbecmd", "status": "WARN", "reason": reason}]
+
+    direct = completeness_table([hit], set(), ledger=ledger)
+    assert direct[0]["status"] == "PARSED"
+    assert reason in direct[0]["reason"]
+
+    planned_without_tool = completeness_table([hit], set())
+    assert planned_without_tool[0]["status"] == "PRESENT_NO_PARSER"
+    upgraded = apply_ledger_to_completeness(planned_without_tool, ledger)
+    assert upgraded[0]["status"] == "PARSED"
+    assert reason in upgraded[0]["reason"]
+
+    from nexus.langgraph.lane_gate import _completeness_gaps
+
+    assert _completeness_gaps(upgraded) == []
+
+
 def _win_root(tmp_path: Path) -> Path:
     root = tmp_path / "C"
     (root / "Windows" / "System32").mkdir(parents=True)
