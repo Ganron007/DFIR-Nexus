@@ -44,7 +44,7 @@ if ($Stage -in 'lanes', 'all') {
             $laneArgs += @('-Sift', '-Capture', ($inputs -join ','))
         }
         $start = Get-Date
-        pwsh @args *> (Join-Path $out "lane-$tag.txt")
+        pwsh @laneArgs *> (Join-Path $out "lane-$tag.txt")
         $code = $LASTEXITCODE
         $gate = python devtools/runbook/gate_unread.py $e.case_id 2>&1 | Select-Object -First 1
         Row $t $e.case_id 'lane' $start "exit $code; $gate"
