@@ -134,6 +134,45 @@ def test_plan_windows_triage_all_user_profiles(tmp_path: Path):
     assert "Public" not in purposes
 
 
+def test_plan_sbecmd_for_ntuser_and_usrclass_as_separate_inputs(tmp_path: Path):
+    root = tmp_path / "image"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    user = root / "Users" / "alice"
+    ntuser = user / "NTUSER.DAT"
+    usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
+    ntuser.parent.mkdir(parents=True)
+    usrclass.parent.mkdir(parents=True)
+    ntuser.touch()
+    usrclass.touch()
+
+    extractions = tmp_path / "extractions"
+    jobs = plan_windows_triage(str(root), extractions)
+    shellbags = [j for j in jobs if j.tool == "sbecmd" and j.status == "PENDING"]
+
+    assert len(shellbags) == 2
+    assert {j.source for j in shellbags} == {str(ntuser), str(usrclass)}
+    stages = {Path(j.argv[j.argv.index("-d") + 1]) for j in shellbags}
+    assert len(stages) == 2
+    assert all(stage.is_dir() for stage in stages)
+    assert {p.name for stage in stages for p in stage.iterdir()} == {
+        "NTUSER.DAT", "UsrClass.dat"
+    }
+    assert not any(j.tool == "sbecmd" and j.status == "SKIP" for j in jobs)
+
+
+def test_plan_sbecmd_for_registered_ntuser_file(tmp_path: Path):
+    ntuser = tmp_path / "NTUSER.DAT"
+    ntuser.touch()
+
+    jobs = plan_windows_triage(str(ntuser), tmp_path / "extractions")
+    shellbags = [j for j in jobs if j.tool == "sbecmd" and j.status == "PENDING"]
+
+    assert len(shellbags) == 1
+    assert shellbags[0].source == str(ntuser)
+    stage = Path(shellbags[0].argv[shellbags[0].argv.index("-d") + 1])
+    assert [p.name for p in stage.iterdir()] == ["NTUSER.DAT"]
+
+
 def test_recmd_schedules_machine_and_user_hives_without_software(monkeypatch, tmp_path: Path):
     from nexus.langgraph import tool_lane
 

@@ -969,14 +969,17 @@ def _plan_single_artifact(
             add("thumbcache_viewer",
                 ["thumbcache_viewer_cmd", "-t", str(evidence), "-o", str(reports), "-c"],
                 f"Thumbcache entries ({evidence.name})", 300)
-    elif name.startswith("usrclass") and suffix in (".dat", ""):
-        # Shellbags live in UsrClass.dat. SBECmd scans a *directory* of hives
-        # (`-d <dir> --csv <dir>`, verified from its own usage), so it is pointed
-        # at the hive's folder rather than the file.
+    elif name.startswith(("ntuser", "usrclass")) and suffix in (".dat", ""):
+        # Shellbags occur in both NTUSER.DAT and UsrClass.dat. SBECmd scans a
+        # *directory* of hives (`-d <dir> --csv <dir>`), so isolate this
+        # registered hive in the run before passing its directory.
         d = out_dir("sbecmd")
-        add("sbecmd", ["sbecmd", "-d", str(evidence.parent), "--csv", str(d),
+        stage_name = f"stage-{_stem(evidence)}"
+        stage = d / stage_name
+        _copy_text(extractions, f"sbecmd/{stage_name}/{evidence.name}", evidence)
+        add("sbecmd", ["sbecmd", "-d", str(stage), "--csv", str(d),
                        "--csvf", f"{(out_name or _stem(evidence))}.csv"],
-            f"Shellbags ({evidence.name})", 900)
+            f"Shellbags ({evidence.name})", 900, source=str(evidence))
     elif _artifact_class(evidence) == "timeline":
         # WxTCmd does NOT accept --csvf (verified 2026-09-30: it exits 0 with
         # "Unrecognized command or argument '--csvf'" and writes nothing). Two
@@ -2056,23 +2059,35 @@ def plan_windows_triage(
                 300,
             )
             jlecmd_n += 1
-        usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
-        if usrclass.is_file():
+        shellbag_hives = (
+            ("ntuser", user / "NTUSER.DAT"),
+            ("usrclass", user / "AppData/Local/Microsoft/Windows/UsrClass.dat"),
+        )
+        for hive_kind, hive_path in shellbag_hives:
+            if not hive_path.is_file():
+                continue
             d = extractions / "sbecmd"
             d.mkdir(parents=True, exist_ok=True)
-            # SBECmd takes -d <directory> (no -f); stage the hive in a per-user dir
-            # (W2 finding: -f is rejected by this build).
-            stage = d / f"stage-{uname}"
-            _copy_text(extractions, f"sbecmd/stage-{uname}/UsrClass.dat", usrclass)
+            # SBECmd takes -d <directory> (no -f). Give each hive its own
+            # staged directory so a profile with both hives is parsed once per
+            # registered input, without either job consuming its sibling.
+            stage_name = f"stage-{uname}" if hive_kind == "usrclass" else f"stage-{uname}-ntuser"
+            stage = d / stage_name
+            _copy_text(extractions, f"sbecmd/{stage_name}/{hive_path.name}", hive_path)
+            output_name = (
+                f"{uname}-shellbags.csv"
+                if hive_kind == "usrclass"
+                else f"{uname}-ntuser-shellbags.csv"
+            )
             add(
                 "sbecmd",
                 [
                     "sbecmd", "-d", str(stage),
-                    "--csv", str(d), "--csvf", f"{uname}-shellbags.csv",
+                    "--csv", str(d), "--csvf", output_name,
                 ],
-                f"Shellbags UsrClass.dat ({uname})",
+                f"Shellbags {hive_path.name} ({uname})",
                 600,
-                source=str(usrclass),
+                source=str(hive_path),
             )
             sbecmd_n += 1
         cdp = user / "AppData/Local/ConnectedDevicesPlatform"
@@ -2128,7 +2143,7 @@ def plan_windows_triage(
         if not jlecmd_n:
             skip("jlecmd", "no AutomaticDestinations/CustomDestinations")
         if not sbecmd_n:
-            skip("sbecmd", "no UsrClass.dat")
+            skip("sbecmd", "no NTUSER.DAT or UsrClass.dat")
         if not wxtcmd_n:
             skip("wxtcmd", "no ActivitiesCache.db")
         if not sqlecmd_n:
@@ -5340,6 +5355,29 @@ def _produced_expected_output(job: ToolJob) -> bool:
     is the exact failure class the ledger exists to prevent.
     """
     argv = list(job.argv or ())
+
+    if job.tool.lower() == "hindsight":
+        output_prefix = next(
+            (
+                str(argv[i + 1])
+                for i, arg in enumerate(argv[:-1])
+                if _flag(arg) == "-o"
+            ),
+            "",
+        )
+        output_format = next(
+            (
+                str(argv[i + 1]).strip().lower()
+                for i, arg in enumerate(argv[:-1])
+                if _flag(arg) == "-f"
+            ),
+            "",
+        )
+        if output_prefix and output_format == "jsonl":
+            target = Path(output_prefix)
+            if target.suffix.lower() != ".jsonl":
+                target = Path(f"{target}.jsonl")
+            return _has_nonempty_tool_product(target, job.tool)
 
     # Honour `--csvf`/`--jsonf` first: it normally names the one file this job
     # owns. Per-file jobs share an output directory, so "the directory has

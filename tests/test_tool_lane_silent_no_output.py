@@ -280,3 +280,24 @@ def test_recmd_batch_silent_output_remains_unproduced(tmp_path):
         purpose="Registry hive",
     )
     assert _produced_expected_output(job) is False
+
+
+def test_hindsight_jsonl_appended_extension_is_its_declared_output(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    output_prefix = tmp_path / "Default-fc5995c1"
+    job = ToolJob(
+        host="windows",
+        tool="hindsight",
+        argv=[
+            "hindsight", "-i", "profile", "-o", str(output_prefix),
+            "-f", "jsonl",
+        ],
+        purpose="Browser profile (Chrome/Default)",
+    )
+
+    (tmp_path / "unrelated.jsonl").write_text("{}\n", encoding="utf-8")
+    assert _produced_expected_output(job) is False
+    output = output_prefix.with_name(output_prefix.name + ".jsonl")
+    output.write_text("hindsight output\n", encoding="utf-8")
+    assert _produced_expected_output(job) is True

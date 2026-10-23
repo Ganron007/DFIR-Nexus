@@ -157,6 +157,28 @@ if (-not $VerifyOnly) {
     Write-Host "`n[1/4] remote dir ready: $remoteDir"
 
     foreach ($t in $transfers) {
+        if (-not $t.Archive) {
+            $remoteFile = "$remoteDir/$($t.PlainName)"
+            $existing = Invoke-Ssh "stat -c '%s' '$remoteFile' 2>/dev/null || echo MISSING"
+            if ($existing.Exit -ne 0 -and $existing.Out -ne 'MISSING') {
+                throw "could not inspect existing remote evidence $($t.PlainName): $($existing.Out)"
+            }
+            if ($existing.Out -match '^\d+$') {
+                if ([int64]$existing.Out -ne $t.PlainBytes) {
+                    throw "remote evidence size differs for $($t.PlainName); refusing to overwrite it"
+                }
+                $localHash = Get-LocalSha256 $t.Plain
+                $remoteHash = (Invoke-Ssh "sha256sum '$remoteFile' 2>/dev/null | cut -d' ' -f1").Out
+                if ($remoteHash -and $remoteHash.Trim().ToLower() -eq $localHash) {
+                    Write-Host ("[2/4] {0} already present with matching SHA-256; skipping scp." -f $t.PlainName)
+                    continue
+                }
+                throw "remote evidence hash differs for $($t.PlainName); refusing to overwrite it"
+            }
+            if ($existing.Out -ne 'MISSING') {
+                throw "could not inspect existing remote evidence $($t.PlainName): $($existing.Out)"
+            }
+        }
         Write-Host ("[2/4] scp {0} ({1:N0} bytes)..." -f $t.SendName, $t.SendBytes)
         $scpArgv = @('scp') + $sshOpts + @($t.Send, "${remote}:$remoteDir/")
         & $scpArgv[0] $scpArgv[1..($scpArgv.Count - 1)] | Out-Null
