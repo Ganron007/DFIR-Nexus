@@ -282,11 +282,10 @@ def test_the_manifest_itself_is_never_registered_as_evidence(ev, tmp_path):
 
 def test_score_only_never_runs_a_mode(ev, tmp_path, monkeypatch):
     """Re-scoring an existing case must not perturb it."""
-    case = _case(tmp_path, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
     # tests/conftest.py already redirects settings.cases_root to tmp_path/cases.
     cases_root = Path(ev.cases_root())
     assert cases_root == tmp_path / "cases"
-    (tmp_path / case.name).rename(cases_root / case.name)
+    case = _case(cases_root, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
 
     def _boom(*_a, **_k):
         raise AssertionError("run_mode must not be called by --score-only")
@@ -313,9 +312,8 @@ def test_two_k_runs_both_survive_in_the_report(ev, tmp_path):
     would silently drop the earlier run. The section is regenerated from the
     run records instead.
     """
-    case = _case(tmp_path, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
     cases_root = Path(ev.cases_root())
-    (tmp_path / case.name).rename(cases_root / case.name)
+    case = _case(cases_root, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
 
     manifest = _manifest(tmp_path, [{"sha256": ATTACK, "techniques": ["T1059.001"]}])
     json_out, md_out = tmp_path / "a.json", tmp_path / "A.md"
@@ -413,9 +411,8 @@ def test_a_void_run_says_so_in_the_report(ev, tmp_path):
     The K-runs section is regenerated from the JSON records on every run, so a
     hand-edit to the Markdown is wiped. The banner has to come from the record.
     """
-    case = _case(tmp_path, [_finding("F-1", [], AUDIT_ATTACK)])
     cases_root = Path(ev.cases_root())
-    (tmp_path / case.name).rename(cases_root / case.name)
+    case = _case(cases_root, [_finding("F-1", [], AUDIT_ATTACK)])
     manifest = _manifest(tmp_path, [{"sha256": ATTACK, "techniques": ["T1059.001"]}])
     md_out = tmp_path / "A.md"
 
@@ -730,9 +727,8 @@ def test_a_case_scored_while_its_run_is_in_flight_is_marked_incomplete(ev, tmp_p
 
 def test_the_run_record_names_the_baseline_and_the_knowledge_versions(ev, tmp_path):
     """K-run 0 must be reproducible: HEAD, label and knowledge versions recorded."""
-    case = _case(tmp_path, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
     cases_root = Path(ev.cases_root())
-    (tmp_path / case.name).rename(cases_root / case.name)
+    case = _case(cases_root, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
 
     manifest = _manifest(tmp_path, [{"sha256": ATTACK, "techniques": ["T1059.001"]}])
     rc = ev.main([
