@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from nexus.langgraph.tool_lane import _plan_single_artifact
+from nexus.langgraph.tool_lane import _artifact_class, _plan_single_artifact
+
+T02_EVIDENCE = Path(__file__).resolve().parents[1] / "Evidence-files" / "_tiny" / "T02"
 
 
 def _jobs(root: Path, files: dict[str, bytes | str]):
@@ -34,6 +36,63 @@ def test_jumplists_folder_schedules_jlecmd_per_file(tmp_path):
     assert [j.tool for j in jobs].count("jlecmd") == 2
     csvfs = [j.argv[j.argv.index("--csvf") + 1] for j in jobs if "--csvf" in j.argv]
     assert len(set(csvfs)) == 2, csvfs
+
+
+@pytest.mark.skipif(
+    not (T02_EVIDENCE / "RecycleBin").is_dir(),
+    reason="T02 staged evidence is not present in this checkout",
+)
+def test_real_t02_recycle_bin_batches_all_i_records_before_extension_routing(tmp_path):
+    recycle = T02_EVIDENCE / "RecycleBin"
+    records = sorted(p for p in recycle.iterdir() if p.is_file())
+
+    assert len(records) == 19
+    assert all(_artifact_class(path) == "recycle" for path in records)
+
+    jobs = _plan_single_artifact(recycle, tmp_path / "ex")
+    rbcmd = [job for job in jobs if job.tool == "rbcmd"]
+    assert len(rbcmd) == 1, [job.argv for job in jobs]
+    assert rbcmd[0].argv[rbcmd[0].argv.index("-d") + 1] == str(recycle)
+    assert "--csv" in rbcmd[0].argv
+    assert not [job for job in jobs if job.tool == "lecmd"]
+
+
+@pytest.mark.skipif(
+    not (T02_EVIDENCE / "Recent").is_dir(),
+    reason="T02 staged evidence is not present in this checkout",
+)
+def test_real_t02_recent_folder_keeps_its_lecmd_batch(tmp_path):
+    recent = T02_EVIDENCE / "Recent"
+    shortcuts = [p for p in recent.iterdir() if p.is_file() and p.suffix.lower() == ".lnk"]
+    assert len(shortcuts) == 127
+
+    jobs = _plan_single_artifact(recent, tmp_path / "ex")
+    lecmd = [job for job in jobs if job.tool == "lecmd"]
+    assert len(lecmd) == 1, [job.argv for job in jobs]
+    assert lecmd[0].purpose == "LNK files (folder)"
+    assert lecmd[0].argv[lecmd[0].argv.index("-d") + 1] == str(recent)
+    assert lecmd[0].argv[lecmd[0].argv.index("--csvf") + 1] == "lecmd.csv"
+
+
+def test_prefetch_and_lnk_folder_jobs_keep_other_files_in_the_per_file_plan(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("NEXUS_SIGCHECK_VT", raising=False)
+    jobs, source = _jobs(
+        tmp_path,
+        {
+            "sample.pf": b"prefetch",
+            "shortcut.lnk": b"shortcut",
+            "sample.exe": b"MZ",
+        },
+    )
+
+    pecmd = [job for job in jobs if job.tool == "pecmd"]
+    lecmd = [job for job in jobs if job.tool == "lecmd"]
+    sigcheck = [job for job in jobs if job.tool == "sigcheck"]
+    assert len(pecmd) == 1 and "-d" in pecmd[0].argv
+    assert len(lecmd) == 1 and "-d" in lecmd[0].argv
+    assert len(sigcheck) == 1 and str(source / "sample.exe") in sigcheck[0].argv
 
 
 def test_rdp_folder_deduplicates_to_one_bmc_job(tmp_path):

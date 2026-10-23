@@ -789,21 +789,74 @@ def _plan_single_artifact(
                               "-o", str(d / _stem(evidence)), "-f", "jsonl"],
                 f"Browser profile ({evidence.name})", 1800)
             return jobs
-        if next(evidence.glob("*.pf"), None) is not None:
+        try:
+            top_files = sorted(
+                (p for p in evidence.iterdir() if p.is_file() and not p.name.startswith(".")),
+                key=lambda p: (p.name.casefold(), str(p)),
+            )
+        except OSError:
+            top_files = []
+
+        # Classify names before extensions. A Recycle Bin $I record can have
+        # any original extension (including .lnk or .pf), so folder dispatch
+        # must claim these records before PECmd/LECmd consider the suffix.
+        recycle_files = [p for p in top_files if _artifact_class(p) == "recycle"]
+        handled_files: set[Path] = set()
+        if recycle_files:
+            d = out_dir("rbcmd")
+            add(
+                "rbcmd",
+                ["rbcmd", "-d", str(evidence), "--csv", str(d)],
+                "Recycle Bin records (folder)",
+                300,
+            )
+            handled_files.update(recycle_files)
+
+        prefetch_files = [
+            p for p in top_files
+            if p.suffix.lower() == ".pf" and _artifact_class(p) != "recycle"
+        ]
+        # A directory-mode parser sees every matching suffix in the folder.
+        # If a $I record shares that suffix, leave the real files for the
+        # per-file planner so the $I record cannot leak into PECmd.
+        if prefetch_files and not any(p.suffix.lower() == ".pf" for p in recycle_files):
             d = out_dir("pecmd")
-            add("pecmd", ["pecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "prefetch.csv"],
-                "Prefetch execution evidence (folder)")
-            return jobs
-        if next(evidence.glob("*.lnk"), None) is not None:
+            add(
+                "pecmd",
+                ["pecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "prefetch.csv"],
+                "Prefetch execution evidence (folder)",
+            )
+            handled_files.update(prefetch_files)
+
+        lnk_files = [
+            p for p in top_files
+            if p.suffix.lower() == ".lnk" and _artifact_class(p) != "recycle"
+        ]
+        # LECmd's directory mode also sees $I*.lnk files. Use the folder batch
+        # only when every .lnk in it is a real shortcut; otherwise the true
+        # shortcuts go through the per-file planner and $I records stay with
+        # the single RBCmd folder job above.
+        if lnk_files and not any(p.suffix.lower() == ".lnk" for p in recycle_files):
             d = out_dir("lecmd")
-            add("lecmd", ["lecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "lecmd.csv"],
-                "LNK files (folder)", 300)
-            return jobs
+            add(
+                "lecmd",
+                ["lecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "lecmd.csv"],
+                "LNK files (folder)",
+                300,
+            )
+            handled_files.update(lnk_files)
+
         if evidence.name.lower() in ("automaticdestinations", "customdestinations"):
-            d = out_dir("jlecmd")
-            add("jlecmd", ["jlecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "jlecmd.csv"],
-                "Jump Lists (folder)", 300)
-            return jobs
+            jump_files = [p for p in top_files if _artifact_class(p) == "jumplist"]
+            if jump_files:
+                d = out_dir("jlecmd")
+                add(
+                    "jlecmd",
+                    ["jlecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "jlecmd.csv"],
+                    "Jump Lists (folder)",
+                    300,
+                )
+                handled_files.update(jump_files)
 
         # Registered browser roots commonly contain profiles one level down
         # (Chrome/Default, Edge/Profile 1, Firefox/Profiles/<name>). Dispatch
@@ -845,6 +898,8 @@ def _plan_single_artifact(
         for p in evidence.rglob("*"):
             if not p.is_file() or p.name.startswith("."):
                 continue
+            if p in handled_files:
+                continue
             if any(p.is_relative_to(profile) for profile in profile_dirs):
                 continue
             files.append(p)
@@ -868,7 +923,9 @@ def _plan_single_artifact(
                         seen.add(key)
                     dispatched.append(job)
             if dispatched:
-                return dispatched
+                # Preserve any folder-batch jobs above while adding every
+                # unhandled sibling's per-file plan.
+                return [*jobs, *dispatched]
         return jobs
 
     if not evidence.is_file():
@@ -1338,14 +1395,16 @@ def _artifact_class(path: Path) -> str:
 
     # `$I30` is an NTFS directory-index file, not a Recycle Bin `$I` record.
     # MFTECmd parses it (`-f` lists $MFT|$J|$Boot|$SDS|$I30). The recycle
-    # prefix test below swallowed it, so seven directory-index files went to
+    # earlier loose prefix test swallowed it, so seven directory-index files went to
     # rbcmd, produced header-only CSVs that were recorded OK, and contributed
     # zero indexed rows (CASE-4EFD5EB2, 2026-09-29).
     if name == "$i30":
         return "ntfs_meta"
-    # Recycle Bin: `$I` records carry the original path and deletion time.
-    # `$R` files are the content and are not parsed.
-    if name.startswith("$i") and len(name) >= 3:
+    # Recycle Bin: $I followed by six characters carries original path and
+    # deletion time. Its optional extension is the deleted item's extension.
+    # $R files are the content and are not parsed as Recycle Bin metadata.
+    recycle_stem = name.split(".", 1)[0]
+    if recycle_stem.startswith("$i") and len(recycle_stem) == 8:
         return "recycle"
     if name.startswith("$r"):
         return "recycle_content"
