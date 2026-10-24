@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,8 +24,55 @@ log = logging.getLogger(__name__)
 
 DEFAULT_CONTEXT_WINDOW = 1_000_000
 DEFAULT_FILL_RATIO = 0.7
-CHARS_PER_TOKEN = 4  # conservative fast estimate (English/code mix)
+CHARS_PER_TOKEN = 4  # the starting estimate (English/code mix); see chars_per_token()
 _MAX_PERSISTED_CONTEXTS = 60
+
+# D380 (2026-10-24): characters per token, measured. Four was an assumption. On evidence agnes-3.0-flash counted about
+# 1.9 (T09 Mode 3: a 1,461,571-character prompt was 772,709 tokens), so packing to window x fill x 4 characters sent
+# 516k-803k tokens to a model with a 524,288-token window, and every such seat turn was refused. Each call's real
+# count is recorded (``TokenMeter``, attached to every client by ``llm_pipeline.get_model``, and the provider's own
+# count when it refuses a prompt), and packing uses the densest ratio this process has measured. The window and the
+# fill ratio stay the operator's; only the conversion from tokens to characters is measured instead of assumed.
+_MIN_MEASURED_CHARS = 1_000  # a short call says little about how evidence tokenizes
+_measured_lock = threading.Lock()
+_measured: list[float] = []
+_OVERFLOW_PATTERNS = (
+    re.compile(r"The input \((\d+) tokens\) is longer than the model's context length", re.IGNORECASE),
+    re.compile(r"(\d+) tokens from the input messages", re.IGNORECASE),
+)
+
+
+def chars_per_token() -> float:
+    """Characters per token for packing: the densest ratio measured in this process, never above the start (4)."""
+    with _measured_lock:
+        return min([float(CHARS_PER_TOKEN), *_measured])
+
+
+def record_token_count(chars: int, tokens: int, source: str = "") -> None:
+    """Record one prompt's character count and the provider's token count for it."""
+    if chars < _MIN_MEASURED_CHARS or tokens <= 0:
+        return
+    ratio = max(1.0, chars / tokens)
+    with _measured_lock:
+        _measured.append(ratio)
+        del _measured[:-200]
+    log.info("prompt tokens measured%s: %d chars = %d tokens (%.2f chars/token; packing uses %.2f)",
+             f" ({source})" if source else "", chars, tokens, ratio, chars_per_token())
+
+
+def reset_token_measurements() -> None:
+    """Forget the measured ratios (tests; a new process starts empty anyway)."""
+    with _measured_lock:
+        _measured.clear()
+
+
+def context_overflow_tokens(text: str) -> int | None:
+    """The input-token count a provider names when it refuses a prompt as longer than its window, or None."""
+    for pattern in _OVERFLOW_PATTERNS:
+        match = pattern.search(text or "")
+        if match:
+            return int(match.group(1))
+    return None
 
 
 def context_window() -> int:
@@ -62,14 +110,59 @@ def fill_ratio() -> float:
 
 
 def budget_chars(window: int | None = None, ratio: float | None = None) -> int:
-    """Character budget derived from the window (tokens × CHARS_PER_TOKEN)."""
+    """Character budget derived from the window (tokens × the measured characters per token)."""
     win = window if window is not None else context_window()
     rat = ratio if ratio is not None else fill_ratio()
-    return int(win * rat * CHARS_PER_TOKEN)
+    return int(win * rat * chars_per_token())
 
 
 def estimate_tokens(text: str) -> int:
-    return max(1, len(text) // CHARS_PER_TOKEN) if text else 0
+    return max(1, int(len(text) / chars_per_token())) if text else 0
+
+
+try:
+    from langchain_core.callbacks import BaseCallbackHandler as _CallbackBase
+except ImportError:  # pragma: no cover - the package depends on langchain-core; this keeps the module importable
+    _CallbackBase = object  # type: ignore[assignment,misc]
+
+
+class TokenMeter(_CallbackBase):  # type: ignore[misc,valid-type]
+    """A LangChain callback that records each chat call's characters and the provider's input-token count (D380)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._chars: dict[Any, int] = {}
+
+    def on_chat_model_start(self, serialized: Any, messages: Any, *, run_id: Any = None, **_: Any) -> None:
+        self._chars[run_id] = sum(len(str(getattr(m, "content", m))) for batch in messages for m in batch)
+
+    def on_llm_start(self, serialized: Any, prompts: Any, *, run_id: Any = None, **_: Any) -> None:
+        self._chars[run_id] = sum(len(str(p)) for p in prompts or [])
+
+    def on_llm_end(self, response: Any, *, run_id: Any = None, **_: Any) -> None:
+        chars = self._chars.pop(run_id, 0)
+        record_token_count(chars, _input_tokens(response), "usage")
+
+    def on_llm_error(self, error: BaseException, *, run_id: Any = None, **_: Any) -> None:
+        chars = self._chars.pop(run_id, 0)
+        tokens = context_overflow_tokens(str(error))
+        if tokens:
+            record_token_count(chars, tokens, "refused prompt")
+
+
+def _input_tokens(response: Any) -> int:
+    """The provider's input-token count from an LLMResult (usage block or message usage metadata), or 0."""
+    usage = (getattr(response, "llm_output", None) or {}).get("token_usage") or {}
+    value = usage.get("prompt_tokens") or usage.get("input_tokens")
+    if not value:
+        for generations in getattr(response, "generations", None) or []:
+            for gen in generations:
+                meta = getattr(getattr(gen, "message", None), "usage_metadata", None) or {}
+                value = value or meta.get("input_tokens")
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def retry_budget_chars(chars: int | None = None) -> int:

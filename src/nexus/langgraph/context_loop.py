@@ -624,8 +624,12 @@ def _force_answer(
     observations: list[dict[str, Any]],
     call_chars: int,
     terminal_keys: tuple[str, ...] = (),
+    prompt_chars: int = 0,
 ) -> str:
     """One final answer-only model call when the tool rounds are exhausted.
+
+    ``prompt_chars`` is the packing budget measured now (D380): ``call_chars`` was set when the loop's budget was
+    made, before any prompt was measured, so on its own it let this prompt run past the model's window.
 
     Tool use is disabled for this call: the model must synthesize from the
     observations already collected. This is what turns "more retrieval until
@@ -639,8 +643,9 @@ def _force_answer(
     reporting `completed` (SC1 Mode 3, 2026-10-07).
     """
     obs = _observations_block(observations)
-    if call_chars > 0:
-        obs = obs[:call_chars]
+    limits = [c for c in (call_chars, prompt_chars - len(base_system) - len(question)) if c > 0]
+    if limits:
+        obs = obs[:min(limits)]
     if terminal_keys:
         keys = ", ".join(f'"{k}"' for k in terminal_keys)
         user = (
@@ -921,16 +926,36 @@ def run_context_loop(
 
         _emit({"event": "round", "round": round_no, "max_rounds": budget.rounds})
         t0 = time.monotonic()
-        try:
-            raw = _call_model(model, [
-                {"role": "system", "content": base_system},
-                {"role": "user", "content": _packed_round(round_no) +
-                 "\n\nReturn the next JSON object now."},
-            ])
-        except Exception as exc:  # noqa: BLE001 — one model failure is not fatal
-            log.warning("context loop model call failed: %s", exc)
-            stages.append({"stage": f"round-{round_no}", "status": "error",
-                           "detail": str(exc)[:200]})
+        raw = None
+        for attempt in (1, 2):
+            user = _packed_round(round_no) + "\n\nReturn the next JSON object now."
+            try:
+                raw = _call_model(model, [
+                    {"role": "system", "content": base_system},
+                    {"role": "user", "content": user},
+                ])
+                break
+            except Exception as exc:  # noqa: BLE001 — one model failure is not fatal
+                from nexus.langgraph.prompt_budget import (
+                    context_overflow_tokens,
+                    record_token_count,
+                )
+
+                refused_tokens = context_overflow_tokens(str(exc))
+                if attempt == 1 and refused_tokens:
+                    # D380: the provider named the prompt's real size. Record it, so the next pack uses the measured
+                    # characters per token, and send the round once more, re-packed to the window.
+                    record_token_count(len(base_system) + len(user), refused_tokens, "refused prompt")
+                    log.warning("context loop: the prompt was %d tokens, over the model's window; re-packing "
+                                "round %d with the measured characters per token", refused_tokens, round_no)
+                    stages.append({"stage": f"round-{round_no}", "status": "repacked",
+                                   "detail": f"refused at {refused_tokens} tokens; re-packed and sent again"})
+                    continue
+                log.warning("context loop model call failed: %s", exc)
+                stages.append({"stage": f"round-{round_no}", "status": "error",
+                               "detail": str(exc)[:200]})
+                break
+        if raw is None:
             finish_reason = "model_error"
             break
         stages.append({"stage": f"round-{round_no}", "ms": round((time.monotonic() - t0) * 1000),
@@ -1118,6 +1143,8 @@ def run_context_loop(
             break
 
     if partial and not reply and time.monotonic() < deadline:
+        from nexus.langgraph.prompt_budget import budget_chars, case_window
+
         forced = _force_answer(
             model=model,
             base_system=base_system,
@@ -1125,6 +1152,7 @@ def run_context_loop(
             observations=observations,
             call_chars=budget.call_chars,
             terminal_keys=terminal_keys,
+            prompt_chars=budget_chars(case_window(case_dir)),
         )
         if forced:
             reply = forced

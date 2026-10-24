@@ -415,6 +415,20 @@ def _llm_extra_body() -> dict[str, Any]:
 
 
 def get_model(model_name: str = ""):
+    """The configured chat model, metered (D380): every call's characters and input tokens are recorded, so prompts
+    are packed with the measured characters per token (``prompt_budget.chars_per_token``). See ``_construct_model``.
+    """
+    model = _construct_model(model_name)
+    from nexus.langgraph.prompt_budget import TokenMeter
+
+    try:
+        model.callbacks = [*(getattr(model, "callbacks", None) or []), TokenMeter()]
+    except (AttributeError, TypeError, ValueError) as exc:  # a client that takes no callbacks is still usable
+        log.warning("model %s takes no callbacks; its prompt sizes are not measured: %s", type(model).__name__, exc)
+    return model
+
+
+def _construct_model(model_name: str = ""):
     """Create the LLM instance from the NEXUS_LLM_* configuration.
 
     Contract (.env or environment):
