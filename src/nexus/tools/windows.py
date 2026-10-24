@@ -432,7 +432,7 @@ def _run_extractions_dir(case_dir: Path, run_id: str) -> Path | None:
 
 
 def _case_pipeline_roots(case_id: str = "", run_id: str = "") -> list[Path] | None:
-    """Registered evidence plus this case's extractions, or None with no case.
+    """Registered evidence, the lane's expansion of its archives, and this case's extractions; None with no case.
 
     ``case_id`` names the run's case: its roots are used, never the active case's
     (D41 on the lane path). A case_id that does not resolve gives an empty list, so
@@ -472,6 +472,11 @@ def _case_pipeline_roots(case_id: str = "", run_id: str = "") -> list[Path] | No
         if roots:
             break
     roots.append(case_dir / "extractions")
+    # D382 (2026-10-25): the lane's own expansion of the registered archives (evidence_archives.expand_archives keeps
+    # every member inside evidence/_expanded/<name>-<digest>/ and records it). It is evidence, planned as evidence;
+    # without it a tool whose argv names only an expanded file (vol3 -f <mem.raw>) was refused, and T22's 15
+    # Volatility jobs failed while MemProcFS, which also names an output folder, ran.
+    roots.append(case_dir / "evidence" / "_expanded")
     run_extractions = _run_extractions_dir(case_dir, run_id)
     if run_extractions is not None:
         roots.append(run_extractions)

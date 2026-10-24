@@ -217,3 +217,17 @@ def test_a_run_name_that_is_not_on_disk_keeps_the_case_folder_and_creates_no_run
     tool(command=argv, purpose="no run", case_id="CASE-RUN", run_id="RUN-20261010T000000Z-tools-none")
     assert seen["extractions_root"] is None
     assert not (cases["bound"] / "runs" / "RUN-20261010T000000Z-tools-none").exists()
+
+
+def test_a_file_in_the_cases_own_archive_expansion_is_evidence(cases):
+    """D382 (2026-10-25): T22's 15 `vol3 -f <expanded mem.raw>` jobs were refused, because the guard's roots held the
+    registered paths and the extractions but not the lane's own expansion of the registered archives."""
+    expanded = cases["bound"] / "evidence" / "_expanded" / "mem-be7f9d308d" / "mem.raw"
+    argv = ["vol3", "-f", str(expanded), "-r", "jsonl", "windows.info"]
+    assert windows.case_pipeline_refusal("vol3", argv, windows._case_pipeline_roots("CASE-RUN")) is None
+
+
+def test_another_cases_expansion_is_still_refused(cases):
+    other = cases["active"] / "evidence" / "_expanded" / "mem-be7f9d308d" / "mem.raw"
+    argv = ["vol3", "-f", str(other), "-r", "jsonl", "windows.info"]
+    assert windows.case_pipeline_refusal("vol3", argv, windows._case_pipeline_roots("CASE-RUN"))
