@@ -24,6 +24,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import tzdata
 
+from nexus.case.evidence_roots import EXPANSION_DIRNAME
+
 log = logging.getLogger(__name__)
 
 _CLDR_WINDOWS_ZONES = Path(__file__).resolve().parents[1] / "data" / "timezones" / "windowsZones.xml"
@@ -94,7 +96,7 @@ def windows_path_root(path: str | Path) -> str | None:
 def _host_from_root(root: str) -> str | None:
     parts = [part for part in PureWindowsPath(root).parts if part not in ("\\", "")]
     for index, part in enumerate(parts[:-3]):
-        if part.casefold() == "_expanded":
+        if part.casefold() == EXPANSION_DIRNAME:
             return parts[index + 2]
     return None
 

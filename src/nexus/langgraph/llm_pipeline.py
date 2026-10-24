@@ -1758,21 +1758,12 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
     )
     from nexus.langgraph.tool_lane import CasePipelineTool
 
-    hunt_roots: list[Path] = []
-    for raw_root in (state.get("evidence_paths") or [state.get("evidence_path")]):
-        if raw_root:
-            hunt_roots.append(Path(raw_root))
-    run_id = str(state.get("run_id") or "")
-    if run_id and state.get("case_id"):
-        try:
-            from nexus.config import settings
-            from nexus.langgraph.pipeline_runs import resolve_run
+    # D383: the same roots run_windows_command checks (the case's evidence from case.evidence_roots, and the
+    # extractions); this wrapper used to build its own list and lacked the lane's archive expansion.
+    from nexus.tools.windows import _case_pipeline_roots
 
-            hunt_roots.append(
-                resolve_run(settings.cases_root / state["case_id"], run_id=run_id).extractions
-            )
-        except Exception:  # noqa: BLE001 — the evidence roots still bind the call
-            log.debug("hunt extractions root unavailable", exc_info=True)
+    hunt_roots: list[Path] = _case_pipeline_roots(
+        str(state.get("case_id") or ""), str(state.get("run_id") or "")) or []
     hunt_tools_list = []
     for name in hunt_tool_names:
         t = tools.get(name)

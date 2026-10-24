@@ -137,6 +137,26 @@ def _apply_default_optional_tool_skips(jobs: list[ToolJob]) -> int:
 _TOOLS_WITH_TEMP = frozenset({"amcacheparser", "sqlecmd", "srumecmd", "sumecmd", "wxtcmd"})
 
 
+def _guard_refusals(jobs: list[ToolJob], roots: list[Path] | None) -> list[tuple[ToolJob, str]]:
+    """The planned Windows jobs the case-pipeline guard would refuse, with its reason (D383).
+
+    The lane plans and the guard (``tools.windows.case_pipeline_refusal``) executes, and both read the case's
+    evidence from ``case.evidence_roots``. A job the guard would refuse is a defect of the plan, so the lane reports
+    it before running anything; ``tests/test_d383_plan_passes_guard.py`` asserts this list is empty for every staged
+    tiny case.
+    """
+    from nexus.tools.windows import case_pipeline_refusal
+
+    refused: list[tuple[ToolJob, str]] = []
+    for job in jobs:
+        if job.host != "windows" or job.status != "PENDING" or not job.argv:
+            continue
+        why = case_pipeline_refusal(job.argv[0], job.argv, roots)
+        if why:
+            refused.append((job, why))
+    return refused
+
+
 def _assign_private_temp(jobs: list[ToolJob], extractions: Path) -> None:
     """Give each planned job of a ``_TOOLS_WITH_TEMP`` tool its own ``--temp``, outside the folder the index reads.
 
@@ -4538,6 +4558,16 @@ async def run_tool_lane(
     )
     _hold_examiner_skips(jobs, case_dir)
     _apply_default_optional_tool_skips(jobs)
+    # D383: a job the case-pipeline guard would refuse is a plan defect, reported before anything runs.
+    from nexus.tools.windows import _case_pipeline_roots
+
+    # The one definition of where a case-pipeline command may read: the same roots run_windows_command checks.
+    guard_roots = _case_pipeline_roots(case_id, run_id)
+    for _job, _why in _guard_refusals(jobs, guard_roots):
+        _job.status = "BLOCKED"
+        _job.reason = (f"plan defect (D383): the case-pipeline guard would refuse this command ({_why}); "
+                       "the planner and the guard disagree about the case's evidence")
+        log.error("tool lane plan defect: %s %s - %s", _job.tool, _job.purpose, _why)
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = list(carried_rows)
 
@@ -4644,12 +4674,11 @@ async def run_tool_lane(
         if job.host == "windows":
             # The executor used to run argv with no check that it named
             # registered evidence. That is how schtasks /query saved the
-            # examiner host's tasks into the case. Refuse before RUNNING.
+            # examiner host's tasks into the case. Refuse before RUNNING, with the
+            # same roots run_windows_command uses (D383: this check had its own list).
             from nexus.tools.windows import case_pipeline_refusal
 
-            refusal = case_pipeline_refusal(
-                job.tool, list(job.argv), [Path(p) for p in plan_paths] + [extractions],
-            )
+            refusal = case_pipeline_refusal(job.tool, list(job.argv), guard_roots)
             if refusal:
                 job.reason = refusal
                 job.status = "FAIL"

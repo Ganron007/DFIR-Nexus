@@ -19,7 +19,6 @@ def test_lane_gate_uses_final_policy_skip_completeness(tmp_path: Path, monkeypat
     run_dir = case_dir / "runs" / run_id
     extractions = run_dir / "extractions"
     extractions.mkdir(parents=True)
-    (case_dir / "evidence.json").write_text('{"evidence": []}', encoding="utf-8")
     (run_dir / "manifest.json").write_text(json.dumps({
         "run_id": run_id,
         "case_id": case_id,
@@ -31,6 +30,9 @@ def test_lane_gate_uses_final_policy_skip_completeness(tmp_path: Path, monkeypat
     volume = case_dir / "evidence" / "C"
     (volume / "Windows" / "System32").mkdir(parents=True)
     (volume / "$LogFile").write_bytes(b"RSTR" + b"\0" * 8188)
+    # The lane plans on registered evidence only, and the case-pipeline guard reads the registry (D383), so the
+    # fixture registers its volume as every real case does (it used to register nothing).
+    (case_dir / "evidence.json").write_text(json.dumps({"evidence": [{"path": str(volume)}]}), encoding="utf-8")
 
     initial = [{
         "artifact": "NTFS $LogFile",

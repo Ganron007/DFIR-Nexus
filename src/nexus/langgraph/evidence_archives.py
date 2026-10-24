@@ -24,6 +24,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from nexus.case.evidence_roots import EXPANSION_DIRNAME, expansion_root
+
 log = logging.getLogger(__name__)
 
 ARCHIVE_SUFFIXES = (".7z", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".rar")
@@ -37,7 +39,7 @@ def is_expansion_marker(path: Path) -> bool:
     return (
         path.name.lower() == _MARKER
         and len(parts) >= 4
-        and parts[-3] == "_expanded"
+        and parts[-3] == EXPANSION_DIRNAME
         and parts[-4] == "evidence"
     )
 
@@ -122,7 +124,7 @@ def _evidence_digests(paths: list[str], archives: set[Path]) -> set[tuple[int, s
         p = Path(str(raw))
         files = [p] if p.is_file() else ([f for f in p.rglob("*") if f.is_file()] if p.is_dir() else [])
         for f in files:
-            if f in archives or "_expanded" in f.parts:
+            if f in archives or EXPANSION_DIRNAME in f.parts:
                 continue
             try:
                 out.add((f.stat().st_size, _sha256(f)))
@@ -139,7 +141,7 @@ def expand_archives(paths: list[str], case_dir: Path, exclude: set[Path] | None 
     archives = [a for a in find_archives(paths) if a not in (exclude or set())]
     if not archives:
         return []
-    base = Path(case_dir) / "evidence" / "_expanded"
+    base = expansion_root(case_dir)  # one definition, shared with the case-pipeline guard (D383)
     known: set[tuple[int, str]] | None = None
     records: list[dict[str, Any]] = []
     for archive in archives:
