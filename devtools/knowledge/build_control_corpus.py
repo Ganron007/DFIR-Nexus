@@ -48,6 +48,8 @@ OUTPUTS = REPO / "Evidence-files" / "ES-Mapping" / "outputs"
 HOST_OUTPUTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "mftecmd": ("mftecmd", ("mft.csv",)),
     "mftecmd-usn": ("mftecmd", ("usn.csv",)),
+    # TA-Z (2026-10-24): MFTECmd 2026.10.2's $LogFile output on the staged $LogFile, -m $MFT (RUNS.md).
+    "mftecmd-logfile": ("mftecmd", ("logfile.csv",)),
     "mftecmd-i30": ("mftecmd", ("i30-*.csv",)),
     "pecmd": ("pecmd", ("prefetch.csv",)),
     "rbcmd": ("rbcmd", ("*_RBCmd_Output.csv",)),

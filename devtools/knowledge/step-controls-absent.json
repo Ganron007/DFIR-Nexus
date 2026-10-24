@@ -34,7 +34,6 @@
  "skill:memory_process_analysis/injection_classification": "source present (43,826 rows of families vol, volatility) but no row of the public corpus shows the behaviour; the query is checked against pinned sources only",
  "skill:memory_process_analysis/webshell_exec_chain": "source present (11,229 rows of Sysmon 1; Security 4688) but no row of the public corpus shows the behaviour; the query is checked against pinned sources only",
  "skill:mft_file_activity/logfile_detail": "source absent: the control corpus holds no rows of families logfileparser (LogFileParser's output (535 MB) is not in the control corpus)",
- "skill:network_session_analysis/dns_tunnel_volume": "source present (14,261 rows of families zeek, suricata, wireshark) but no row of the public corpus shows the behaviour; the query is checked against pinned sources only",
  "skill:persistence/dll_hijack": "source present (989,154 rows of Sysmon 7; families mftecmd) but no row of the public corpus shows the behaviour; the query is checked against pinned sources only",
  "skill:powershell_abuse/amsi_bypass": "source present (12,158 rows of Sysmon 1; Security 4688; PowerShell/Operational 4104) but no row of the public corpus shows the behaviour; the query is checked against pinned sources only",
  "skill:registry_artifact_analysis/comdlg32_mru": "source present (6,932 rows of families recmd) but no row of the public corpus shows the behaviour; the query is checked against pinned sources only",

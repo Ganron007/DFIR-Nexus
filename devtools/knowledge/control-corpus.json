@@ -2436,27 +2436,27 @@
   },
   {
    "family": "evtxecmd",
-   "path": "extractions/evtxecmd/DeepBlueCLI/20261016154150_EvtxECmd_Output.csv",
-   "sha256": "bdfbb1a5d584fcb3e26d09395719dbedca200b08daca13833960d08c3f955b0e",
-   "bytes": 31611943
+   "path": "extractions/evtxecmd/DeepBlueCLI/20261024134155_EvtxECmd_Output.csv",
+   "sha256": "8b016935c73b0673ee09e04076ad9d37ec60a8ecefea4434d9201f4dc2753844",
+   "bytes": 31659628
   },
   {
    "family": "evtxecmd",
-   "path": "extractions/evtxecmd/EVTX-ATTACK-SAMPLES/20261016154145_EvtxECmd_Output.csv",
-   "sha256": "1277226704f26a2145aff67a357c33a0098adfb63f555c16d027bd3e78edd81c",
-   "bytes": 11791626
+   "path": "extractions/evtxecmd/EVTX-ATTACK-SAMPLES/20261024134151_EvtxECmd_Output.csv",
+   "sha256": "df2e943a82bb737c2c3b1982366dcdf5d8f06fe80bdb1f7bdb0b2fbb66af48ce",
+   "bytes": 11817262
   },
   {
    "family": "evtxecmd",
-   "path": "extractions/evtxecmd/EVTX-to-MITRE-Attack/20261016154158_EvtxECmd_Output.csv",
-   "sha256": "f22a03bedbc3e9df4f0db762342afbd6f7a7284ff919cda318fca19475915377",
-   "bytes": 24055166
+   "path": "extractions/evtxecmd/EVTX-to-MITRE-Attack/20261024134157_EvtxECmd_Output.csv",
+   "sha256": "17c293db62b4fb20f19aba90d4dbb00d72a730ce494a08ff21b4824af2b2537c",
+   "bytes": 29589406
   },
   {
    "family": "evtxecmd",
-   "path": "extractions/evtxecmd/YamatoSecurity/20261016154149_EvtxECmd_Output.csv",
-   "sha256": "ab77251467e4d656421ec2018458416f260325ded6c23e336022a5d99a662218",
-   "bytes": 296181
+   "path": "extractions/evtxecmd/YamatoSecurity/20261024134154_EvtxECmd_Output.csv",
+   "sha256": "49d328086d36701ecadac698e07cd192486b95c381ca8fa4160e2f417f0de337",
+   "bytes": 300818
   },
   {
    "family": "fls",
@@ -2553,6 +2553,12 @@
    "path": "extractions/mftecmd-i30/i30-6.csv",
    "sha256": "da78f54ee68e87756d684cdbd065be7ac23502099f4b5967dfcc909d0503565d",
    "bytes": 4618
+  },
+  {
+   "family": "mftecmd-logfile",
+   "path": "extractions/mftecmd-logfile/logfile.csv",
+   "sha256": "257188710478cd67ddd8d30c0aed61c55c279829405131daa27accc19b7a2539",
+   "bytes": 43296001
   },
   {
    "family": "mftecmd-usn",
@@ -2749,8 +2755,8 @@
   {
    "family": "ingest",
    "path": "ingest/artifacts.jsonl",
-   "sha256": "0ae743a1ca66e106cfff4e04a33ebd054c78f070724639aba3c6d50dee8ade5a",
-   "bytes": 296616283
+   "sha256": "78dd300873a35071ec06745f16994ce621d285dbad8dcfd6e75d68bb7afe007f",
+   "bytes": 298661355
   }
  ],
  "imported": [
@@ -2824,7 +2830,7 @@
  ],
  "index": {
   "index": "nexus-case-ic6-controls",
-  "docs": 1395906,
+  "docs": 1536323,
   "errors": 0
  }
 }

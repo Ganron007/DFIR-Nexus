@@ -198,15 +198,14 @@ steps:
           minimum_should_match: 1
 - name: timestomp_si_fn
   query: file:mft .exe OR .dll OR .ps1
-  look_for: >-
-    Compare the same record's $SI Created0x10 and $FN Created0x30 values. MFTECmd's SI<FN flag means the $SI
-    creation time precedes the $FN creation time; treat that parser flag as a lead, not a verdict or file-age
-    proof. uSecZeros only checks whether the $SI creation or last-modified Millisecond component is zero, and
-    Copied means $SI ContentModifiedOn precedes $SI CreatedOn. Neither flag alone establishes malicious activity
-    or clears it. Preserve the claimed $SI date separately from independent later observations.
+  look_for: Compare the same record's $SI Created0x10 and $FN Created0x30 values. MFTECmd's SI<FN flag means the
+    $SI creation time precedes the $FN creation time; treat that parser flag as a lead, not a verdict or file-age
+    proof. uSecZeros only checks whether the $SI creation or last-modified Millisecond component is zero, and Copied
+    means $SI ContentModifiedOn precedes $SI CreatedOn. Neither flag alone establishes malicious activity or clears
+    it. Preserve the claimed $SI date separately from independent later observations.
   pivot: FileName
-  corroborate: compare MFT timestamps with USN/$LogFile chronology and independent execution evidence such as
-    AppCompatCache; do not treat a claimed $SI creation date as proof of when the file executed
+  corroborate: compare MFT timestamps with USN/$LogFile chronology and independent execution evidence such as AppCompatCache;
+    do not treat a claimed $SI creation date as proof of when the file executed
   origin: authored
   source_fact_ids:
   - mftecmd.si_fn
@@ -323,8 +322,8 @@ steps:
 - name: logfile_detail
   query: file:logfile
   look_for: $LogFile — lowest-level NTFS transaction log (hours to ~1 day). Fills the gap between USN reasons and
-    raw writes. These are LogFileParser rows, which come only from an examiner's import; the lane's own $LogFile rows
-    are MFTECmd's (step logfile_operations).
+    raw writes. These are LogFileParser rows, which come only from an examiner's import; the lane's own $LogFile
+    rows are MFTECmd's (step logfile_operations).
   pivot: FileName
   requires:
     families:
@@ -359,9 +358,9 @@ steps:
   look_for: 'The $LogFile parsed by MFTECmd, one row per log record ordered by LSN (pinned MFTECmd README at 2919ded,
     "$LogFile"). RedoOperation is the change and UndoOperation what was there before; TransactionFirstLsn tells
     transactions apart. With -m, TargetPath is the path of the file the operation changes. Details holds what was
-    decoded with the previous values from the undo data, including $STANDARD_INFORMATION timestamp updates (such as a
-    time stomp). A log record has no time of its own: CreatedOn..LastAccessedOn are file times the record holds, so
-    order by Lsn, not by those columns.'
+    decoded with the previous values from the undo data, including $STANDARD_INFORMATION timestamp updates (such
+    as a time stomp). A log record has no time of its own: CreatedOn..LastAccessedOn are file times the record holds,
+    so order by Lsn, not by those columns.'
   pivot: TargetPath
   requires:
     families:
@@ -372,9 +371,7 @@ steps:
       - terms:
           family:
           - mftecmd
-      - exists:
-          field: fields.RedoOperation
-  source: families mftecmd ($LogFile rows); pinned MFTECmd README 2919ded
+  source: families mftecmd
   kind: aggregate
   search:
     families:
@@ -388,8 +385,6 @@ steps:
       - terms:
           family:
           - mftecmd
-      - exists:
-          field: fields.RedoOperation
   es_aggs:
     by:
       terms:
