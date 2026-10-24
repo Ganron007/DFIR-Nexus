@@ -20,6 +20,9 @@ export const evidenceApi = {
       error?: string;
     }>("/evidence", { path, case_id: caseId, description }),
   evidence: () => request<EvidenceResponse>("/evidence"),
+  /** The examiner's question for an existing case (TA-9: only the new-case wizard could set it). */
+  saveIntake: (question: string) =>
+    post<{ ok: boolean; intake?: Record<string, string>; error?: string }>("/intake", { question }),
   pairEvidence: (proposal: {
     raw_name: string;
     output_name: string;

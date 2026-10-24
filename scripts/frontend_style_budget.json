@@ -11,8 +11,8 @@
       "colors": 0
     },
     "components/LaneGateBanner.tsx": {
-      "inline": 10,
-      "colors": 6
+      "inline": 0,
+      "colors": 0
     },
     "components/Layout.tsx": {
       "inline": 16,
@@ -23,7 +23,7 @@
       "colors": 0
     },
     "components/MultiAgentBoard.tsx": {
-      "inline": 57,
+      "inline": 56,
       "colors": 0
     },
     "components/RequireCase.tsx": {
@@ -47,6 +47,10 @@
       "colors": 0
     },
     "pages/AgentRun.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "pages/Analysis.tsx": {
       "inline": 0,
       "colors": 0
     },
@@ -87,8 +91,8 @@
       "colors": 0
     },
     "pages/Overview.tsx": {
-      "inline": 52,
-      "colors": 6
+      "inline": 51,
+      "colors": 4
     },
     "pages/Report.tsx": {
       "inline": 0,
@@ -200,7 +204,7 @@
     }
   },
   "totals": {
-    "inline": 678,
-    "colors": 60
+    "inline": 299,
+    "colors": 38
   }
 }

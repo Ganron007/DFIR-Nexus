@@ -68,6 +68,19 @@ export function useCaseIntake(caseId: string | null | undefined) {
   });
 }
 
+/** Set or change the examiner's question on the case (POST /intake), then re-read the case. */
+export function useSaveIntake(caseId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationKey: caseKey(caseId, "intake-save"),
+    mutationFn: async (question) => {
+      const response = await api.saveIntake(question.trim());
+      if (!response.ok) throw new Error(response.error || "the question was not saved");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: caseKey(caseId, "case-details") }),
+  });
+}
+
 /** Parser-lane ledger — which parsers ran, on which evidence. */
 export function usePipelineLedger(caseId: string | null | undefined) {
   return useQuery<{

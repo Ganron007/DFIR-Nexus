@@ -179,6 +179,44 @@ describe("Evidence (migrated)", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("sets the examiner question on an existing case that has none (TA-9)", async () => {
+    withCase("CASE-EVD0011", "2");
+    stubReads({ caseDetails: { intake: { question: "" } } });
+    const save = vi.spyOn(api, "saveIntake").mockResolvedValue({ ok: true } as never);
+    const { fireEvent } = await import("@testing-library/react");
+    renderPage(<Evidence />);
+    const input = await screen.findByLabelText("Question");
+    const button = screen.getByRole("button", { name: "Save question" });
+    expect(button).toBeDisabled(); // nothing to save yet
+    fireEvent.change(input, { target: { value: "  Compromise suspected.  " } });
+    fireEvent.click(button);
+    await waitFor(() => expect(save).toHaveBeenCalledWith("Compromise suspected."));
+  });
+
+  it("changes an existing question and shows a save failure", async () => {
+    withCase("CASE-EVD0012", "3");
+    stubReads();
+    vi.spyOn(api, "saveIntake").mockResolvedValue({ ok: false, error: "case is sealed" } as never);
+    const { fireEvent } = await import("@testing-library/react");
+    renderPage(<Evidence />);
+    const input = await screen.findByDisplayValue("What did the intruder do?");
+    fireEvent.change(input, { target: { value: "Was data taken?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Change question" }));
+    expect(await screen.findByText("case is sealed")).toBeInTheDocument();
+  });
+
+  it("the Mode 2/3 guard points at the question on this page", async () => {
+    withCase("CASE-EVD0013", "2");
+    stubReads({ caseDetails: { intake: { question: "" } } });
+    const { fireEvent } = await import("@testing-library/react");
+    renderPage(<Evidence />);
+    await waitFor(() => expect(screen.getByText("chainsaw")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("▶ Run N2 lane"));
+    await waitFor(() =>
+      expect(screen.getAllByRole("alert").some((a) => /Examiner question on this page/.test(a.textContent || ""))).toBe(true),
+    );
+  });
+
   it("allows the N2 lane for Mode 1 with no question", async () => {
     withCase("CASE-EVD0007", "1");
     stubReads({ caseDetails: { intake: { question: "" } } });

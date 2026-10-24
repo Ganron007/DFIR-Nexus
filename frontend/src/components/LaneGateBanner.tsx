@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import { api, type LaneGate, type NStage } from "../api/client";
 import { useCase } from "../context/CaseContext";
+import styles from "./LaneGateBanner.module.css";
 
 const STAGE_LABELS: Record<string, string> = {
   N1: "Intake",
@@ -24,10 +25,10 @@ const STAGE_LABELS: Record<string, string> = {
   N8: "Export",
 };
 
-function stageColor(status: string): string {
-  if (status === "done") return "var(--success)";
-  if (status === "blocked") return "var(--danger)";
-  return "var(--text-muted)";
+function stageTone(status: string): string {
+  if (status === "done") return styles.success;
+  if (status === "blocked") return styles.danger;
+  return styles.muted;
 }
 
 export default function LaneGateBanner() {
@@ -77,39 +78,17 @@ export default function LaneGateBanner() {
   const outstandingNames = outstanding
     .map((job) => job.family || job.purpose || job.tool || "")
     .filter(Boolean);
-  const tone = blocked ? "danger" : clear ? "success" : waiting ? "warning" : "muted";
-  const border = {
-    danger: "rgba(248,81,73,0.55)",
-    success: "rgba(63,185,80,0.35)",
-    warning: "rgba(210,153,34,0.55)",
-    muted: "rgba(139,148,158,0.35)",
-  }[tone];
-  const background = {
-    danger: "rgba(248,81,73,0.10)",
-    success: "rgba(63,185,80,0.07)",
-    warning: "rgba(210,153,34,0.08)",
-    muted: "rgba(139,148,158,0.06)",
-  }[tone];
+  const tone = blocked ? styles.danger : clear ? styles.success : waiting ? styles.warning : styles.muted;
 
   return (
     <div
       data-testid="lane-gate-banner"
       data-status={gate?.status ?? "not-yet"}
-      style={{ margin: "8px 16px 0", fontSize: 12 }}
+      className={styles.banner}
     >
-      <div style={{ border: `1px solid ${border}`, background, borderRadius: 6, padding: "8px 12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <strong
-            style={{
-              color: blocked
-                ? "var(--danger)"
-                : clear
-                  ? "var(--success)"
-                  : waiting
-                    ? "#d29922"
-                    : "var(--text-muted)",
-            }}
-          >
+      <div className={`${styles.box} ${tone}`}>
+        <div className={styles.headline}>
+          <strong className={styles.status}>
             {blocked
               ? "EVIDENCE GATE BLOCKED"
               : clear
@@ -135,15 +114,15 @@ export default function LaneGateBanner() {
             </span>
           )}
           {typeof gate?.processed_count === "number" && (
-            <span style={{ color: "var(--text-muted)" }}>
+            <span className={styles.meta}>
               {gate.processed_count} item(s) processed
             </span>
           )}
           {clear && skips.length > 0 && (
-            <span style={{ color: "var(--text-muted)" }}>{skips.length} examiner skip(s) recorded</span>
+            <span className={styles.meta}>{skips.length} examiner skip(s) recorded</span>
           )}
           {gate?.run_id && (
-            <span style={{ color: "var(--text-muted)", fontSize: 11 }}>run {gate.run_id}</span>
+            <span className={styles.runId}>run {gate.run_id}</span>
           )}
         </div>
 
@@ -155,9 +134,9 @@ export default function LaneGateBanner() {
         )}
 
         {blocked && items.length > 0 && (
-          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+          <ul className={styles.list}>
             {items.slice(0, 6).map((it, i) => (
-              <li key={`${it.tool}-${i}`} data-testid="lane-gate-item" style={{ lineHeight: 1.5 }}>
+              <li key={`${it.tool}-${i}`} data-testid="lane-gate-item" className={styles.item}>
                 <strong>{it.tool || "artifact"}</strong>
                 {it.purpose ? ` - ${it.purpose}` : ""}
                 {it.reason ? `: ${it.reason}` : ""}
@@ -168,11 +147,11 @@ export default function LaneGateBanner() {
         )}
 
         {notApplicable.length > 0 && (
-          <div data-testid="lane-gate-not-applicable" style={{ marginTop: 6 }}>
+          <div data-testid="lane-gate-not-applicable" className={styles.notApplicable}>
             <strong>Not applicable:</strong>
-            <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>
+            <ul className={styles.listTight}>
               {notApplicable.map((item, i) => (
-                <li key={`${item.tool}-${i}`} style={{ lineHeight: 1.5 }}>
+                <li key={`${item.tool}-${i}`} className={styles.item}>
                   <strong>{item.tool || "artifact"}</strong>
                   {item.purpose ? ` - ${item.purpose}` : ""}
                   {item.reason ? `: ${item.reason}` : ""}
@@ -183,20 +162,13 @@ export default function LaneGateBanner() {
         )}
 
         {stages.length > 0 && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+          <div className={styles.stages}>
             {stages.map((s) => (
               <span
                 key={s.stage}
                 data-testid={`nstage-${s.stage}`}
                 title={s.detail || `${s.stage}: ${STAGE_LABELS[s.stage] ?? ""}`}
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 10,
-                  padding: "1px 6px",
-                  borderRadius: 3,
-                  border: `1px solid ${stageColor(s.status ?? "")}`,
-                  color: stageColor(s.status ?? ""),
-                }}
+                className={`${styles.stage} ${stageTone(s.status ?? "")}`}
               >
                 {s.stage} {STAGE_LABELS[s.stage] ?? ""} · {s.status ?? "?"}
               </span>

@@ -27,6 +27,7 @@ import {
   useEvidenceRegistry,
   usePipelineLedger,
   useRegisterEvidence,
+  useSaveIntake,
   useTsCoverage,
   useVerifyEvidence,
 } from "../api/queries/evidence";
@@ -38,6 +39,8 @@ import {
   CopyableHash,
   CopyablePath,
   EmptyState,
+  Field,
+  Input,
   PageHeader,
   Panel,
   StatusPill,
@@ -65,6 +68,47 @@ const LEDGER_TONES: Record<string, SemanticTone> = {
 
 function ledgerTone(status: string | undefined): SemanticTone | undefined {
   return LEDGER_TONES[(status || "").toUpperCase()];
+}
+
+/**
+ * The examiner's question, set or changed on a case that already exists (TA-9). Only the new-case wizard
+ * could set it before, so a Mode 2/3 case created without one could never run its lane from the UI.
+ */
+function IntakeQuestionPanel({ caseId, question }: { caseId: string; question: string }) {
+  const save = useSaveIntake(caseId);
+  const [draft, setDraft] = useState(question);
+  useEffect(() => setDraft(question), [question]);
+  const changed = draft.trim() !== question.trim();
+  return (
+    <Panel title="Examiner question">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (changed && draft.trim()) save.mutate(draft);
+        }}
+      >
+        <Field
+          label="Question"
+          hint="Mode 2 and Mode 3 reconcile the evidence against this question."
+          error={save.error?.message}
+        >
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              value={draft}
+              placeholder="e.g. Compromise suspected."
+              onChange={(event) => setDraft(event.target.value)}
+            />
+          )}
+        </Field>
+        <Button size="sm" type="submit" disabled={!changed || !draft.trim() || save.isPending}>
+          {save.isPending ? "Saving…" : question ? "Change question" : "Save question"}
+        </Button>
+      </form>
+    </Panel>
+  );
 }
 
 export default function Evidence() {
@@ -192,7 +236,7 @@ export default function Evidence() {
     // guard is behaviour, not decoration.
     if (caseMode !== "1" && !intake.data?.question.trim()) {
       setLocalError(
-        "Mode 2/3 needs an examiner question — add it in Case Setup (N1) first; " +
+        "Mode 2/3 needs an examiner question — set it under Examiner question on this page first; " +
           "the interpretation reconciles evidence against that question.",
       );
       return;
@@ -296,6 +340,10 @@ export default function Evidence() {
         stageCode="N2"
         actions={headerActions}
       />
+
+      {activeCase ? (
+        <IntakeQuestionPanel caseId={activeCase} question={intake.data?.question || ""} />
+      ) : null}
 
       {pairProposals.length > 0 ? (
         <Panel title="Pre-processed output">
