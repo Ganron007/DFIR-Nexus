@@ -93,6 +93,7 @@ def mode_record(folder: Path, mode: str, rid: str) -> dict:
             roles.add(res["role"])
     return {
         "status": rec.get("status"),
+        "reason": str(rec.get("error") or ""),
         "model": (rec.get("model") or {}).get("model") if isinstance(rec.get("model"), dict) else rec.get("model"),
         "skills": sorted({s.get("skill") for s in rec.get("skills_used") or [] if s.get("skill")}),
         "skills_recorded": "skills_used" in rec,
@@ -131,6 +132,18 @@ def case_report(tid: str, entry: dict, rnd: str | None) -> dict:
             rec.update(mode_log(folder / ".trace", tag, mode))
         out["modes"][mode] = rec
     return out
+
+
+def ended_well(mode: str, rec: dict) -> bool:
+    """A mode run that did its job. Mode 1 stops by design at the examiner's approval once it has staged DRAFTs: its
+    record says ``interrupted`` with the reason "awaiting approval at await_approval (N DRAFT finding(s) staged)", and
+    ``nexus pipeline --resume`` continues it after the examiner's decision. That is a finished analysis, not a failure."""
+    if rec.get("exit") != 0:
+        return False
+    if rec.get("status") == "completed":
+        return True
+    return (mode == "mode1" and rec.get("status") in ("interrupted", "awaiting_approval")
+            and rec.get("reason", "").startswith("awaiting approval at await_approval"))
 
 
 def universe_lists() -> dict:
@@ -226,8 +239,8 @@ def build(rnd: str | None) -> dict:
             + [f"playbook {k} ({v['verdict']})" for k, v in playbooks.items() if v["verdict"] != "OK"]
             + [f"role {k}" for k, v in roles.items() if v["verdict"] == "GAP"]
             + [f"{c['case']}: gate {c['gate'].get('status')}" for c in cases if c.get("gate", {}).get("status") != "clear"]
-            + [f"{c['case']}: {m} exit {r.get('exit')} status {r.get('status')}" for c in cases
-               for m, r in (c.get("modes") or {}).items() if r.get("exit") != 0 or r.get("status") not in ("completed",)])
+            + [f"{c['case']}: {m} exit {r.get('exit')} status {r.get('status')} {r.get('reason', '')[:80]}".rstrip()
+               for c in cases for m, r in (c.get("modes") or {}).items() if not ended_well(m, r)])
     return {"cases": cases, "tools": tools, "importers": importers, "skills": skills, "playbooks": playbooks,
             "roles": roles, "gaps": gaps}
 
