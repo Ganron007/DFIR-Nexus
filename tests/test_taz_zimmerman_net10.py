@@ -158,6 +158,30 @@ def test_the_recmd_batches_come_from_the_net10_release():
     assert "net10" in batch.parts
 
 
+T04_SRUM_STDOUT = (REPO / "cases" / "CASE-9C3E4008" / "runs" / "RUN-20261024T115043750453Z-tools-d20bf38a"
+                   / "extractions" / "srumecmd" / "20261024T115050_srumecmd_stdout.txt")
+
+
+@pytest.mark.skipif(not T04_SRUM_STDOUT.is_file(), reason="tiny case T04's R1v lane run is not on this host")
+def test_a_srum_parse_the_tool_repaired_is_held_in_the_tools_own_words():
+    """R1v on T04 (2026-10-24): SrumECmd 2026.10 repaired its copy with esentutl /p and the job read OK.
+
+    The lane's no-repair policy (D347) holds it as BLOCKED until the operator decides (OD-T14)."""
+    def job(**kw) -> tl.ToolJob:
+        return tl.ToolJob(host="windows", tool="srumecmd", argv=["srumecmd"], purpose="SRUM database", **kw)
+
+    repaired = job(status="OK", output_saved_to=str(T04_SRUM_STDOUT))
+    plain = job(status="OK")  # no output that reports a repair
+    other = tl.ToolJob(host="windows", tool="sbecmd", argv=["sbecmd"], purpose="Shellbags", status="OK",
+                       output_saved_to=str(T04_SRUM_STDOUT))
+    ledger = [{"host": "windows", "tool": "srumecmd", "purpose": "SRUM database", "status": "OK", "reason": ""}]
+    held = tl._hold_tool_reported_repairs([repaired, plain, other], ledger)
+    assert held == [repaired]
+    assert repaired.status == "BLOCKED" and ledger[0]["status"] == "BLOCKED"
+    assert "was repaired with esentutl /p" in repaired.reason and "D347" in repaired.reason
+    assert plain.status == "OK" and other.status == "OK"
+
+
 # --- the real path, on T06's staged NTFS files ------------------------------------------------------------------
 
 

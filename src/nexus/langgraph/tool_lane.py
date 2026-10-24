@@ -2483,21 +2483,57 @@ def _mark_sbecmd_dirty_hive_warnings(
         details = (job.preflight or {}).get("registry_hive") or {}
         if details.get("dirty_without_logs") is not True:
             continue
-        job.status = "WARN"
-        job.reason = reason
-        matched = False
-        for row in reversed(ledger):
-            if (row.get("host"), row.get("tool"), row.get("purpose")) == (
-                job.host, job.tool, job.purpose,
-            ):
-                row["status"] = "WARN"
-                row["reason"] = reason
-                matched = True
-                break
-        if not matched:
-            ledger.append(asdict(job))
+        _restate(job, ledger, "WARN", reason)
         warned.append(job)
     return warned
+
+
+def _restate(job: ToolJob, ledger: list[dict[str, Any]], status: str, reason: str) -> None:
+    """Set a finished job's status and reason, and the same on its ledger row."""
+    job.status = status
+    job.reason = reason
+    for row in reversed(ledger):
+        if (row.get("host"), row.get("tool"), row.get("purpose")) == (job.host, job.tool, job.purpose):
+            row["status"] = status
+            row["reason"] = reason
+            return
+    ledger.append(asdict(job))
+
+
+# TA-Z (2026-10-24): SrumECmd and SumECmd 2026.10 open a copy of the ESE database (`--temp`). When its transaction logs
+# cannot bring the copy up to date, the tool repairs the copy with `esentutl /p` and says so on its output, then parses
+# it: on T04, "'SRUDB.dat' was not shut down cleanly and its transaction logs could not bring it up to date, so a copy
+# was repaired with esentutl /p (what only the missing logs had is lost)". The job then read OK while records that only
+# the logs held were gone. The operator's D347 policy for this lane is no repair, so such a parse is held, in the
+# tool's own words, until the operator decides otherwise (Part 11, OD-T14).
+_ESE_REPAIR_TOOLS = frozenset({"srumecmd", "sumecmd"})
+_ESE_REPAIR_MARKER = "repaired with esentutl /p"
+
+
+def _tool_output_text(job: ToolJob) -> str:
+    saved = str(job.output_saved_to or "")
+    if saved:
+        try:
+            return Path(saved).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+    return str((job.result or {}).get("data") or "")
+
+
+def _hold_tool_reported_repairs(jobs: list[ToolJob], ledger: list[dict[str, Any]]) -> list[ToolJob]:
+    """BLOCK a finished ESE parse whose tool reports it repaired its copy of the database (D347 policy)."""
+    held: list[ToolJob] = []
+    for job in jobs:
+        if str(job.tool or "").lower() not in _ESE_REPAIR_TOOLS or job.status not in ("OK", "WARN"):
+            continue
+        said = [line.strip() for line in _tool_output_text(job).splitlines() if _ESE_REPAIR_MARKER in line]
+        if not said:
+            continue
+        _restate(job, ledger, "BLOCKED",
+                 f"the tool repaired its copy of the database, which the lane's no-repair policy (D347) does not "
+                 f"accept until the operator decides (OD-T14): {said[0]}")
+        held.append(job)
+    return held
 
 
 def _plan_n2_extras(
@@ -4876,7 +4912,10 @@ async def run_tool_lane(
     warned_sbecmd = _mark_sbecmd_dirty_hive_warnings(jobs, ledger)
     for job in warned_sbecmd:
         _emit("WARN", job, job.reason, reason=job.reason)
-    if warned_sbecmd:
+    held_repairs = _hold_tool_reported_repairs(jobs, ledger)
+    for job in held_repairs:
+        _emit("BLOCKED", job, job.reason, reason=job.reason)
+    if warned_sbecmd or held_repairs:
         _write_progress()
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
