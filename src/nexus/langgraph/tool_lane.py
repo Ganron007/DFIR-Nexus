@@ -4995,8 +4995,11 @@ async def run_tool_lane(
             await _align_remote_active_case(activate_tool, case_id)
     await _run_bounded(sift_jobs)
     _index_after_batch(sift_jobs)
+    # D384: every memory job of the run, on either host. This was given the SIFT jobs only, written when Volatility
+    # ran there; since memory runs on Windows (D85) a Windows vol list-walk that returned nothing read OK (T22: 11 of
+    # 15 plugins empty while psscan saw 134 processes).
     coverage_warned = reconcile_process_list_coverage(
-        sift_jobs, case_dir, ledger, run_id=run_id
+        jobs, case_dir, ledger, run_id=run_id
     )
     warned_hives = _mark_dirty_hive_warnings(jobs, ledger)
     warned_repairs = _warn_tool_reported_repairs(jobs, ledger)
