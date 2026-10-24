@@ -1156,8 +1156,9 @@ def _plan_single_artifact(
         # cost minutes, not the 30-minute ceiling.
         if name == "$j":
             # A `$J` takes its volume's `$MFT` (`-m`): MFTECmd 2026.10 then names each record's parent as it was when
-            # the record was written, where the `$MFT` alone gives today's location (pinned README, "$J paths").
-            argv, budget = _mftecmd_metafile_job(evidence, d, f"{_stem(evidence)}.csv")
+            # the record was written, where the `$MFT` alone gives today's location (pinned README, "$J paths"). Its
+            # own folder, as on the drive-tree path, keeps the `-m` by-product apart (tool_output_policy).
+            argv, budget = _mftecmd_metafile_job(evidence, out_dir("mftecmd-usn"), f"{_stem(evidence)}.csv")
             add("mftecmd", argv, f"NTFS metadata ({evidence.name})", budget)
         else:
             add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d),

@@ -76,6 +76,20 @@ def test_a_usn_journal_under_extend_takes_the_mft_of_the_volume_root(tmp_path):
     jobs = tl._plan_single_artifact(root / "$Extend" / "$J", tmp_path / "run" / "extractions")
     assert [j.tool for j in jobs] == ["mftecmd"]
     assert _after(jobs[0].argv, "-m") == str(root / "$MFT")
+    assert Path(_after(jobs[0].argv, "--csv")).name == "mftecmd-usn"  # where its -m by-product is recognised
+
+
+def test_the_m_by_product_mft_table_is_left_out_only_in_the_m_job_folders():
+    """With -m, MFTECmd also exports the $MFT under its default name (pinned README); on T06 that was two more
+    byte-identical copies of the run's 303 MB $MFT table. An examiner's default-named output under mftecmd/ stays."""
+    from nexus.langgraph.tool_output_policy import is_tool_own_log_name
+
+    name = "20261024115540_MFTECmd_$MFT_Output.csv"
+    assert is_tool_own_log_name("mftecmd", Path("x") / "mftecmd-logfile" / name)
+    assert is_tool_own_log_name("mftecmd", Path("x") / "mftecmd-usn" / name)
+    assert not is_tool_own_log_name("mftecmd", Path("x") / "mftecmd" / name)
+    assert not is_tool_own_log_name("mftecmd", Path("x") / "mftecmd-logfile" / "LogFile-07aeb1fa.csv")
+    assert not is_tool_own_log_name("recmd", Path("x") / "mftecmd-usn" / name)
 
 
 def test_the_drive_tree_plans_mftecmd_for_logfile_and_usn_and_never_logfileparser(tmp_path, monkeypatch):
@@ -207,6 +221,16 @@ def t06_outputs(tmp_path_factory):
         subprocess.run([exe, *argv[1:]], check=True, capture_output=True, timeout=jobs[0].timeout)
         produced[name] = Path(_after(argv, "--csv")) / _after(argv, "--csvf")
     return produced
+
+
+def test_t06_m_jobs_write_only_their_own_table_into_the_index(t06_outputs):
+    from nexus.langgraph.query_pack import is_tool_own_log
+
+    root = t06_outputs["$LogFile"].parents[1]
+    by_products = sorted(root.rglob("*_MFTECmd_$MFT_Output.csv"))
+    assert by_products, "MFTECmd 2026.10 exports the -m $MFT beside its output"
+    assert all(is_tool_own_log(p, root) for p in by_products)
+    assert not any(is_tool_own_log(t06_outputs[k], root) for k in ("$LogFile", "$J"))
 
 
 def test_t06_logfile_rows_are_written_fingerprinted_and_left_untimed(t06_outputs):
