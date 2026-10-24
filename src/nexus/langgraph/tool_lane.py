@@ -4260,6 +4260,51 @@ def _one_engine_per_plugin(jobs: list[ToolJob]) -> None:
             job.reason = "same plugin runs on Windows (one engine per plugin per image): not run again on SIFT"
 
 
+def _is_lane_memory_image(path: Path) -> bool:
+    """The lane's one rule for planning memory jobs: a memory suffix and at least 512 MiB.
+
+    Not ``memory_image_kind``: its header list also names disk formats (EWF, qcow2, VMDK, VHD/VHDX), which must not
+    be given Volatility jobs.
+    """
+    try:
+        return (path.is_file() and path.suffix.lower() in _MEMORY_SUFFIXES
+                and path.stat().st_size >= _MEMORY_MIN_BYTES)
+    except OSError:
+        return False
+
+
+def _memory_images(evidence_paths: list[str]) -> list[Path]:
+    """Every memory image in the lane's paths: a registered image file, or one inside a registered folder or an
+    archive's expansion (D381).
+
+    The lane's paths are folders as often as files: a registered folder (tiny case T22 registers ``memory/``) and
+    each archive expansion root (``llm_pipeline.py`` passes ``evidence/_expanded/<name>-<digest>/``). Planning only
+    the paths that were themselves image files left T22's 3 GB ``mem.raw``, inside ``memory/mem.zip``, with no memory
+    job. A file reached twice (registered and inside a registered folder) is planned once.
+    """
+    found: list[Path] = []
+    seen: set[str] = set()
+
+    def take(candidate: Path) -> None:
+        if not _is_lane_memory_image(candidate):
+            return
+        key = os.path.normcase(str(candidate.resolve()))
+        if key not in seen:
+            seen.add(key)
+            found.append(candidate)
+
+    for raw in evidence_paths:
+        path = Path(str(raw))
+        if path.is_dir():
+            for root, dirs, files in os.walk(path, followlinks=False):
+                dirs.sort()
+                for name in sorted(files):
+                    take(Path(root) / name)
+        else:
+            take(path)
+    return found
+
+
 def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[ToolJob]:
     """Volatility 3 2.28.2 on each registered Windows memory image, run on the Windows host.
 
@@ -4268,11 +4313,7 @@ def _memory_vol3_jobs(evidence_paths: list[str], extractions: Path) -> list[Tool
     ``vol`` family the index reads. The image is read in place, never copied.
     """
     jobs: list[ToolJob] = []
-    for raw in evidence_paths:
-        img = Path(raw)
-        if not (img.is_file() and img.suffix.lower() in _MEMORY_SUFFIXES
-                and img.stat().st_size >= _MEMORY_MIN_BYTES):
-            continue
+    for img in _memory_images(evidence_paths):
         if not _windows_tool_available("vol3"):
             jobs.append(ToolJob(
                 host="windows", tool="vol", argv=[], purpose="", status="SKIP",
@@ -4306,11 +4347,7 @@ def _memory_image_jobs(evidence_paths: list[str], extractions: Path) -> list[Too
     (`_MEMORY_SUFFIXES`, `_MEMORY_MIN_BYTES`), so a file is memory in one place only.
     """
     jobs: list[ToolJob] = []
-    for raw in evidence_paths:
-        img = Path(raw)
-        if not (img.is_file() and img.suffix.lower() in _MEMORY_SUFFIXES
-                and img.stat().st_size >= _MEMORY_MIN_BYTES):
-            continue
+    for img in _memory_images(evidence_paths):
         out = extractions / "memprocfs" / _unique_name(img)
         if _windows_tool_available("memprocfs"):
             jobs.append(ToolJob(
