@@ -6,7 +6,7 @@ This folder is **local-only**. Binaries under `windows/` and `linux/` are gitign
 Default Windows layout (what `run_windows_command` searches):
 
 ```
-Tools/windows/zimmerman/     Eric Zimmerman (Get-ZimmermanTools, latest net9)
+Tools/windows/zimmerman/     Eric Zimmerman, official .NET 10 builds in net10/ (pinned: devtools/runbook/zimmerman-net10.json)
 Tools/windows/sysinternals/  Sysinternals Suite (Stage 0 live: autorunsc, handle, tcpvcon, listdlls, pslist, psloggedon, logonsessions, pipelist)
 Tools/windows/hayabusa/      Hayabusa — N2 EVTX parser (not Stage 0)
 Tools/windows/suzaku/        Suzaku — N2 EVTX parser (not Stage 0)

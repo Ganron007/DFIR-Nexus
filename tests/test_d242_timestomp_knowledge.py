@@ -53,9 +53,10 @@ def test_mode3_skill_seat_gets_pinned_timestomp_facts_and_citations():
     # $SI CreatedOn; keep both attribute scopes in this rendered-path check.
     assert "$SI ContentModifiedOn < $SI CreatedOn" in block
     assert "USN_REASON_BASIC_INFO_CHANGE" in block
-    # The shipped parser is MFTECmd 2026.5.0, pinned to its matching source
-    # snapshot; newer upstream commits describe a different product version.
-    assert "b76bfecdf8bafd94c41f0799388a67c703510f67" in block
+    # The shipped parser is pinned to its matching source snapshot; newer upstream
+    # commits describe a different product version. Since TA-Z (2026-10-24) the lane
+    # runs MFTECmd 2026.10.2 (.NET 10), whose source is 2919ded.
+    assert "2919ded0738d1533c8ab6b627a5aed2c9f67859c" in block
     assert "656e9656bfaef34dd29cd7ee9e1146aec17e924c" in block
     assert "source_sha256" in block
 

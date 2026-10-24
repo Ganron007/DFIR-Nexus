@@ -186,23 +186,21 @@ def test_recycle_i_records_still_route_to_rbcmd(tmp_path):
     assert [j.tool for j in jobs] == ["rbcmd"]
 
 
-def test_logfile_gets_a_real_job_not_a_skip(tmp_path, monkeypatch):
-    """LogFileParser runs headless - the old "GUI-only" skip was wrong.
+def test_logfile_gets_a_real_job_not_a_skip(tmp_path):
+    """A registered $LogFile gets a parse job, never a skip.
 
-    Its readme documents the switches and the validated W1 run used them
-    (/LogFileFile: /OutputPath: -> 139,496-row LogFile.csv). No-arg launches
-    the GUI; that is what the earlier conclusion mistook.
+    Since TA-Z (operator OD-T13, 2026-10-24) the parser is MFTECmd 2026.10 (`-f $LogFile --csv --csvf`, pinned README
+    at 2919ded); it replaced LogFileParser, whose job this test used to expect. Without the volume's $MFT beside it the
+    job has no `-m`.
     """
-    from nexus.langgraph import tool_lane as tl
-
-    monkeypatch.setattr(tl, "_windows_tool_available", lambda key: True)
     f = _make(tmp_path, "$LogFile", b"RSTR" + b"\x01" * 4096)
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
-    assert [j.tool for j in jobs] == ["logfileparser"]
+    assert [j.tool for j in jobs] == ["mftecmd"]
     argv = jobs[0].argv
-    assert any(a.startswith("/LogFileFile:") for a in argv)
-    assert any(a.startswith("/OutputPath:") for a in argv)
-    assert jobs[0].optional_output is True
+    assert argv[argv.index("-f") + 1] == str(f)
+    assert Path(argv[argv.index("--csv") + 1]).name == "mftecmd-logfile"
+    assert "-m" not in argv
+    assert jobs[0].optional_output is False
 
 
 def test_all_zero_artifact_is_skipped_without_running_a_tool(tmp_path):

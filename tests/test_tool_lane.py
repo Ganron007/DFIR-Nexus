@@ -373,15 +373,12 @@ def test_gap_parsers_are_practical(tmp_path: Path, monkeypatch):
     assert (extractions / "setupapi" / "setupapi.dev.log").is_file()
     # Unverified CLIs are not forced.
     assert "thumbcache_viewer" not in pending
-    # LogFileParser runs headless (/LogFileFile: /OutputPath:, verified
-    # 2026-09-29) - $LogFile must get a real job row, never a silent skip.
-    lfp = [j for j in jobs if j.tool == "logfileparser"]
-    assert lfp, "$LogFile must always get a logfileparser row"
-    assert all(j.status in ("PENDING", "SKIP") for j in lfp)
-    # Headroom rule (2026-09-29): a real 41 MB $LogFile took 400 s unloaded but
-    # >1830 s under I/O contention - the job must never be planned with a
-    # timeout so tight that contention turns a working parser into a FAIL.
-    assert all(j.timeout >= 900 or j.status == "SKIP" for j in lfp)
+    # $LogFile must always get a row, never a silent skip. Since TA-Z (OD-T13, 2026-10-24) MFTECmd parses it; this
+    # 3-byte one is too small to hold a log, so its row is the visible SKIP that says so.
+    assert not [j for j in jobs if j.tool == "logfileparser"]
+    lf = [j for j in jobs if j.tool == "mftecmd-logfile" or (j.tool == "mftecmd" and "$LogFile" in j.purpose)]
+    assert lf, "$LogFile must always get a row"
+    assert all(j.status in ("PENDING", "SKIP") for j in lf)
     # Live acq is silent on an image.
     assert "winpmem" not in pending
     assert not any(j.tool == "winpmem" for j in jobs)
@@ -846,9 +843,10 @@ def test_default_optional_tools_are_explicit_skips():
         ToolJob(host="windows", tool="logfileparser", argv=[], purpose="missing", status="SKIP", reason="missing artifact"),
     ]
 
-    assert _apply_default_optional_tool_skips(jobs) == 3
-    assert [job.status for job in jobs] == ["SKIP", "SKIP", "PENDING", "SKIP", "SKIP"]
-    assert "run manually" in jobs[0].reason
+    # TA-Z (operator OD-T13, 2026-10-24): LogFileParser left the default-skip policy; MFTECmd parses $LogFile and
+    # the lane no longer plans LogFileParser, so the policy leaves a LogFileParser row as it is.
+    assert _apply_default_optional_tool_skips(jobs) == 2
+    assert [job.status for job in jobs] == ["PENDING", "SKIP", "PENDING", "SKIP", "SKIP"]
     assert "long channel scans" in jobs[1].reason
     assert jobs[4].reason == "missing artifact"
     assert jobs[3].audit_id == ""

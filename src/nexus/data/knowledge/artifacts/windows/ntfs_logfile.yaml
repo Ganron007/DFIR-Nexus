@@ -30,7 +30,7 @@ common_misinterpretations:
   - claim: "$LogFile records file content changes"
     correction: "$LogFile records only NTFS metadata transactions (MFT entry modifications), not file data content."
   - claim: "$LogFile cannot be parsed on Linux"
-    correction: "Tools like NTFS Log Tracker and LogFileParser can parse $LogFile entries extracted from forensic images."
+    correction: "MFTECmd (2026.10 and later), LogFileParser and NTFS Log Tracker parse a $LogFile extracted from a forensic image."
   - claim: "Timestomping cannot be detected via $LogFile"
     correction: "$LogFile records the MFT entry modifications that occur during timestomping, potentially revealing the original and modified timestamps in the transaction records."
 
@@ -39,7 +39,9 @@ corroborate_with:
   for_presence: [mft, usn_journal, ntfs_i30]
   for_timeline: [usn_journal, mft]
 
-related_tools: [LogFileParser]
+# MFTECmd is the lane's parser since TA-Z (operator OD-T13, 2026-10-24): `-f $LogFile`, with `-m $MFT` for paths
+# (pinned README at 2919ded). LogFileParser stays for an examiner who brings its CSV.
+related_tools: [MFTECmd, LogFileParser]
 
 cross_mcp_checks:
   - mcp: "windows-triage"
@@ -54,9 +56,9 @@ cross_mcp_checks:
 
 known_gaps:
   - artifact: "$LogFile"
-    status: "Cataloged; not auto-run until CLI is verified on a fetched binary"
-    tools: "LogFileParser (Windows catalog). NTFS Log Tracker GUI is not wired."
-    note: "On a live NTFS volume the journal is not a normal file. KAPE/image extraction required. Circular 64MB buffer. Do not guess argv."
+    status: "Parsed by the lane with MFTECmd 2026.10 (-f $LogFile, -m $MFT when the volume's $MFT is registered beside it)"
+    tools: "MFTECmd (lane). LogFileParser output is recognised when an examiner registers it. NTFS Log Tracker GUI is not wired."
+    note: "On a live NTFS volume the journal is not a normal file. KAPE/image extraction required. Circular 64MB buffer. A log record has no time of its own: the rows are indexed untimed, ordered by LSN."
 
 references:
   - "SANS FOR508 - Advanced Incident Response"

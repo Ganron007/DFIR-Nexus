@@ -2,7 +2,7 @@ name: SumECmd
 category: zimmerman
 description: "Parse the Windows User Access Logging (UAL) database (the SUM folder) on Windows Server"
 platform: [windows]
-platform_notes: "Zimmerman tool, 2026.5.0.0 (installed in Tools/windows/zimmerman/net9). The UAL database exists only on Windows Server."
+platform_notes: "Zimmerman tool, 2026.10.0.0 (.NET 10, installed in Tools/windows/zimmerman/net10 and pinned in devtools/runbook/zimmerman-net10.json). The UAL database exists only on Windows Server."
 artifacts_parsed: [user_access_logging]
 
 caveats:

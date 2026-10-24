@@ -717,7 +717,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "bits": ["BitsParser.py"],
             "ual": ["KStrike.py"],
             "rdp": ["bmc-tools.py", "EvtxECmd", "Hayabusa"],
-            "logfile": ["LogFileParser64", "MFTECmd"],
+            "logfile": ["MFTECmd", "LogFileParser64"],  # MFTECmd 2026.10 parses $LogFile (TA-Z)
         }
         at = artifact_type.lower().strip()
         tool_names = suggestions.get(at, [])

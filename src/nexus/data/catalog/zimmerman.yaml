@@ -68,7 +68,7 @@ tools:
     output_format: csv
     timeout_seconds: 1200
     interactive: false
-    description: "Parse $MFT and $UsnJrnl"
+    description: "Parse $MFT, $UsnJrnl ($J), $LogFile, $Boot, $SDS and $I30 (2026.10)"
     fk_tool_name: MFTECmd
     common_flags:
       - flag: "--csv"

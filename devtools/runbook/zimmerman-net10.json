@@ -1,0 +1,136 @@
+{
+  "comment": "TIER1-WORK-ORDERS 11.12 TA-Z: the official Zimmerman .NET 10 command-line builds, pinned. Downloaded 2026-10-24 from the vendor URL below; versions read from each executable. devtools/runbook/zimmerman_net10.ps1 installs and verifies them; run_lane.ps1 refuses to run the lane unless every lane tool matches.",
+  "install_root": "tools/windows/zimmerman/net10",
+  "runtime": "Microsoft.NETCore.App 10.0 (every runtimeconfig.json names tfm net10.0)",
+  "downloaded": "2026-10-24",
+  "tools": {
+    "AmcacheParser": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/AmcacheParser.zip",
+      "zip_sha256": "DD3A5768241033A9FCCF2F2E8542E8A7E81950EEC2F49B3BEBF0468EC10726A4",
+      "exe": "AmcacheParser/AmcacheParser.exe",
+      "exe_sha256": "5739077785C230DA5DD1CDABF67E9C0C608796EFF87A21C3F907799079576416",
+      "lane": true
+    },
+    "AppCompatCacheParser": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/AppCompatCacheParser.zip",
+      "zip_sha256": "3CAD3F5D971DDFDB45567553FDD66C56B794049391C75674C13C4792BEDC0E09",
+      "exe": "AppCompatCacheParser/AppCompatCacheParser.exe",
+      "exe_sha256": "FD98A153E66D6E8540633DEF0C57DDA24513788A649E55D3E0C5C3806DDFDE03",
+      "lane": true
+    },
+    "bstrings": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/bstrings.zip",
+      "zip_sha256": "4DCB0D7B8DBD1C8D9F031384CDF27466522F768CC1E1ADDAC8FED214E05F47DB",
+      "exe": "bstrings/bstrings.exe",
+      "exe_sha256": "2065E39FDA9C5259843F122EDB95FF276220332BC5366084B463F99E835E7AE1",
+      "lane": false
+    },
+    "EvtxECmd": {
+      "version": "2026.10.1.0",
+      "url": "https://download.ericzimmermanstools.com/net/EvtxECmd.zip",
+      "zip_sha256": "3751655B2DC2C7B69B476B57E83DB511F12A3B9C8557166ED33E6E2B86FE70AC",
+      "exe": "EvtxECmd/EvtxECmd.exe",
+      "exe_sha256": "100547A81D3E09F7F85F352AAB287F1390DF701123F7839D14192DFD564786ED",
+      "lane": true
+    },
+    "JLECmd": {
+      "version": "2026.10.3.0",
+      "url": "https://download.ericzimmermanstools.com/net/JLECmd.zip",
+      "zip_sha256": "01FA7AA748DE850E2573C5446B5735B7C44FC10BB2BF0DD05DF0024A5129D6D9",
+      "exe": "JLECmd/JLECmd.exe",
+      "exe_sha256": "2326E8AD80385D548D0FFB7A705FB35174D71C202D0B93365880192997E33B63",
+      "lane": true
+    },
+    "LECmd": {
+      "version": "2026.10.2.0",
+      "url": "https://download.ericzimmermanstools.com/net/LECmd.zip",
+      "zip_sha256": "61536EF7F175F3A34B8044E8B5AD9168FE9B148A1658B6DEE9050F46CA306103",
+      "exe": "LECmd/LECmd.exe",
+      "exe_sha256": "E1E168F52767AFB9D790096E47F2D75C142F88DB7B01B8A6B5F77D683C473444",
+      "lane": true
+    },
+    "MFTECmd": {
+      "version": "2026.10.2.0",
+      "url": "https://download.ericzimmermanstools.com/net/MFTECmd.zip",
+      "zip_sha256": "900D839DA0B1ACDFD854D3962C4BB3A1B0843F7666E68989FEEFB9105EABD979",
+      "exe": "MFTECmd/MFTECmd.exe",
+      "exe_sha256": "6699D91E963622AD40B3DA0D74064FF26142EB2527773F75EC04D9A57E5307AC",
+      "lane": true
+    },
+    "PECmd": {
+      "version": "2026.10.2.0",
+      "url": "https://download.ericzimmermanstools.com/net/PECmd.zip",
+      "zip_sha256": "4C016DDF0359C9F9F8FA28996A534275E33E8A6DE55970FE8B98B8E9586623A1",
+      "exe": "PECmd/PECmd.exe",
+      "exe_sha256": "F1BBF2E98205415342B1911A6AFD747E687D1F6368E24E07E4A86AFCF065D2EE",
+      "lane": true
+    },
+    "RBCmd": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/RBCmd.zip",
+      "zip_sha256": "29865F7812077307A90D7B448CC91B9FEA950DEDD2C6774F0EF5895F2898EAF0",
+      "exe": "RBCmd/RBCmd.exe",
+      "exe_sha256": "905843BA3DDCA940E74FFFAFB315EB86234E90354C2DAE5B795CD39FD389193A",
+      "lane": true
+    },
+    "RecentFileCacheParser": {
+      "version": "2026.10.1.0",
+      "url": "https://download.ericzimmermanstools.com/net/RecentFileCacheParser.zip",
+      "zip_sha256": "2D095138746A3A1AFEA5E70317CC92D84497D0B6FE93D22C00574E86C1DC0290",
+      "exe": "RecentFileCacheParser/RecentFileCacheParser.exe",
+      "exe_sha256": "B783C2444D9BAB281B2971FED814161AB79B18BCDB9538E5E7FD0F4DDF000BC1",
+      "lane": false
+    },
+    "RECmd": {
+      "version": "2026.10.1.0",
+      "url": "https://download.ericzimmermanstools.com/net/RECmd.zip",
+      "zip_sha256": "6C0576F03784728EA4D9453A2CE413D883E0DB5F88EB880DC3848717316077F5",
+      "exe": "RECmd/RECmd.exe",
+      "exe_sha256": "0C45BB9799D06B2B7F7AC2EB0D5E0926896521F907A0D67D236EDD501AD6F7D8",
+      "lane": true
+    },
+    "SBECmd": {
+      "version": "2026.10.1.0",
+      "url": "https://download.ericzimmermanstools.com/net/SBECmd.zip",
+      "zip_sha256": "B30CC6644D558AC4DDD276A9CF4F23E7C08008BB062DB2D64032CDF195EB7829",
+      "exe": "SBECmd/SBECmd.exe",
+      "exe_sha256": "84CA21FF2CB24C40A666EB3860C62D8208B6292EA6111FA390E8D0D3FB7271B3",
+      "lane": true
+    },
+    "SQLECmd": {
+      "version": "2026.10.1.0",
+      "url": "https://download.ericzimmermanstools.com/net/SQLECmd.zip",
+      "zip_sha256": "07CE01D7A6BECE7FC76089BE2E4B4117E93D505EF4F1FC48A6838C5F82DE0D31",
+      "exe": "SQLECmd/SQLECmd.exe",
+      "exe_sha256": "6C6408E85607C7C61E3CBCC5C085AFF174D118113F0FBA865A42972620E3762A",
+      "lane": true
+    },
+    "SrumECmd": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/SrumECmd.zip",
+      "zip_sha256": "817CAD8A6BB00E99C036E90AC7E50CF31D367A2607361FD271E465BB781D40F1",
+      "exe": "SrumECmd/SrumECmd.exe",
+      "exe_sha256": "6D697F4D79C6AD7DA8053A08D9661E17294CB8A3591CAFA9ED7EECC3BE2F118E",
+      "lane": true
+    },
+    "SumECmd": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/SumECmd.zip",
+      "zip_sha256": "68A7DDEE33BD2194EC5A2B60E75DFDECBBBF3AB18D2C8CE1ED43A74194DDCAF1",
+      "exe": "SumECmd/SumECmd.exe",
+      "exe_sha256": "3EFB2BB886F5F847AC8818D1D31D4863B75F38193BBCF398D147182D509975E0",
+      "lane": true
+    },
+    "WxTCmd": {
+      "version": "2026.10.0.0",
+      "url": "https://download.ericzimmermanstools.com/net/WxTCmd.zip",
+      "zip_sha256": "55E9E03D5C3EBB212AB0BD9BEA72863075900D3828E66661C5200E7DA547B8DF",
+      "exe": "WxTCmd/WxTCmd.exe",
+      "exe_sha256": "D50E6B76922083CD5D06F1C2FDED9AFD74AC0A759B9F8FA96BC033B3DB7F1553",
+      "lane": true
+    }
+  }
+}

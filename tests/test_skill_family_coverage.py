@@ -28,7 +28,8 @@ DECLARED = {
     "windows_event_log_analysis": ["deepbluecli", "zircolite", "evtxecmd", "hayabusa"],
     "registry_artifact_analysis": ["sbecmd"],
     "browser_artifact_analysis": ["hindsight", "sqlecmd", "thumbcache"],
-    "mft_file_activity": ["mftecmd-i30", "mftecmd-usn"],
+    # mftecmd-logfile (TA-Z, 2026-10-24): MFTECmd's $LogFile rows, read by the logfile_operations step.
+    "mft_file_activity": ["mftecmd-i30", "mftecmd-usn", "mftecmd-logfile"],
     "timeline_construction": ["mactime"],
     "network_session_analysis": ["nfdump", "tshark-flows"],
     "malware_analysis_triage": ["capa", "densityscout", "yara"],

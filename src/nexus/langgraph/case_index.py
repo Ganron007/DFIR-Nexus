@@ -528,6 +528,7 @@ def iter_indexable_rows(
                     "reason": reason,
                 })
 
+        untimed = _untimed_csv(path, header)
         first = True
         for start, raw, cells in iter_record_rows(
             fh, delimiter=delim, on_fallback=_on_fallback
@@ -538,11 +539,11 @@ def iter_indexable_rows(
             if cells is None:  # WO-22 fallback row: no reliable columns
                 if not raw.strip():
                     continue
-                yield start, raw, _no_time_if_yara_csv(path, _row_fields(raw, header))
+                yield start, raw, _no_time_if(untimed, _row_fields(raw, header))
                 continue
             if not any(str(c).strip() for c in cells):
                 continue
-            yield start, raw, _no_time_if_yara_csv(path, _fields_from_values(header, cells))
+            yield start, raw, _no_time_if(untimed, _fields_from_values(header, cells))
         return
     json_records = _is_json_records(path)
     for i, line in enumerate(fh, start=1):
@@ -560,9 +561,25 @@ def iter_indexable_rows(
         yield i, line, row
 
 
-def _no_time_if_yara_csv(path: Path, fields: dict[str, str]) -> dict[str, str]:
-    """A YARA CSV row names no match time: its dates are the rule's and the process's (D120, 2026-10-13)."""
+# TA-Z (2026-10-24): MFTECmd 2026.10's `$LogFile` CSV, one row per log record (pinned README at 2919ded, "$LogFile").
+# A log record carries no time of its own; CreatedOn..LastAccessedOn are the file times its data holds (19,761 of
+# T06's 138,736 rows), so the free-text fallback must not read one of them as the record's time.
+_LOGFILE_RECORD_COLUMNS = frozenset({"lsn", "transactionid", "transactionfirstlsn", "redooperation", "undooperation"})
+
+
+def _untimed_csv(path: Path, header: list[str] | None) -> bool:
+    """True for a CSV whose rows name no event time of their own.
+
+    A YARA CSV's dates are the rule's and the process's (D120, 2026-10-13); a `$LogFile` record's are the file's.
+    """
     if path.name.lower() == "yara.csv":
+        return True
+    columns = {str(c).strip().lstrip("﻿").lower() for c in header or ()}
+    return columns >= _LOGFILE_RECORD_COLUMNS
+
+
+def _no_time_if(untimed: bool, fields: dict[str, str]) -> dict[str, str]:
+    if untimed:
         fields[NO_EVENT_TIME_FIELD] = "true"
     return fields
 

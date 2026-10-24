@@ -13,6 +13,7 @@ trigger:
   - plaso
   - mftecmd-i30
   - mftecmd-usn
+  - mftecmd-logfile
   keywords:
   - mft
   - usn
@@ -322,7 +323,8 @@ steps:
 - name: logfile_detail
   query: file:logfile
   look_for: $LogFile — lowest-level NTFS transaction log (hours to ~1 day). Fills the gap between USN reasons and
-    raw writes; NTFS Log Tracker parses create/write/rename operations MFTEcmd does not.
+    raw writes. These are LogFileParser rows, which come only from an examiner's import; the lane's own $LogFile rows
+    are MFTECmd's (step logfile_operations).
   pivot: FileName
   requires:
     families:
@@ -351,6 +353,47 @@ steps:
     by:
       terms:
         field: fields.lf_RedoOperation.kw
+        size: 30
+- name: logfile_operations
+  query: file:mftecmd RedoOperation
+  look_for: 'The $LogFile parsed by MFTECmd, one row per log record ordered by LSN (pinned MFTECmd README at 2919ded,
+    "$LogFile"). RedoOperation is the change and UndoOperation what was there before; TransactionFirstLsn tells
+    transactions apart. With -m, TargetPath is the path of the file the operation changes. Details holds what was
+    decoded with the previous values from the undo data, including $STANDARD_INFORMATION timestamp updates (such as a
+    time stomp). A log record has no time of its own: CreatedOn..LastAccessedOn are file times the record holds, so
+    order by Lsn, not by those columns.'
+  pivot: TargetPath
+  requires:
+    families:
+    - mftecmd
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - exists:
+          field: fields.RedoOperation
+  source: families mftecmd ($LogFile rows); pinned MFTECmd README 2919ded
+  kind: aggregate
+  search:
+    families:
+    - mftecmd
+  aggregate:
+    field: fields.RedoOperation
+    size: 30
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - mftecmd
+      - exists:
+          field: fields.RedoOperation
+  es_aggs:
+    by:
+      terms:
+        field: fields.RedoOperation.kw
         size: 30
 - name: deleted_metafiles
   query: file:mft .pf OR .evtx OR .lnk

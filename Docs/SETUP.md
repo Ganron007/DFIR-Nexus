@@ -452,8 +452,8 @@ sudo ln -s /opt/hayabusa/hayabusa /usr/local/bin/hayabusa
 ### 3c. How DFIR-Nexus Resolves Executables
 
 DFIR-Nexus resolves binaries when you call `run_command` (Linux) or `run_windows_command` (Windows):
-1. **Windows:** `NEXUS_TOOL_PATHS` / `tool_paths` in `~/.nexus/config.yaml`, then the repo folder `Tools/windows/` (including Zimmerman `net9/` and versioned Hayabusa/Suzaku names). System `PATH` is **not** searched — personal copies of PECmd/EvtxECmd elsewhere are ignored.
-   For the RB-A8 Windows lane, EvtxECmd must be version 2026.10.0.0 at `Tools/windows/zimmerman/net10/EvtxECmd`, with SHA-256 `5A179DEBEB9157A0712F2512136C75D1402CD63A24A22D7A9EAD5AC9CE1B04E1`. The `run_lane.ps1` preflight verifies the selected path, version, and hash before evidence processing. This binary is a separately provisioned, gitignored local tool dependency; older Chocolatey or standalone copies are refused by the preflight.
+1. **Windows:** `NEXUS_TOOL_PATHS` / `tool_paths` in `~/.nexus/config.yaml`, then the repo folder `Tools/windows/` (including Zimmerman `net10/` and versioned Hayabusa/Suzaku names). System `PATH` is **not** searched — personal copies of PECmd/EvtxECmd elsewhere are ignored.
+   The Zimmerman tools are the official .NET 10 builds (2026.10), one folder per tool under `Tools/windows/zimmerman/net10/`, each pinned by URL, version and SHA-256 in `devtools/runbook/zimmerman-net10.json`. Install or check them with `pwsh -NoProfile -File devtools/runbook/zimmerman_net10.ps1 -Install` (or `-Verify`); `tools/fetch-windows-tools.ps1` calls the same installer. The `run_lane.ps1` preflight refuses the lane unless every lane tool matches its pin and the resolver selects that exact file. They need the .NET 10 runtime (`dotnet --list-runtimes` shows `Microsoft.NETCore.App 10.x`). NTFS `$LogFile` is parsed by MFTECmd; LogFileParser is no longer run by the lane.
 2. **Linux/SIFT:** `PATH` (`shutil.which`), then `NEXUS_TOOL_PATHS` / `tool_paths`.
 3. Specialized checks occur for variables like `NEXUS_HAYABUSA_DIR` (defaults to `/opt/hayabusa` on Linux).
 

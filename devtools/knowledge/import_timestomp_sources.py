@@ -17,13 +17,16 @@ REPO = HERE.parents[1]
 SNAPSHOT_ROOT = HERE / "pinned" / "timestomp"
 OUT = REPO / "src" / "nexus" / "data" / "knowledge" / "sources" / "timestomp.yaml"
 
-MFTE_VERSION = "b76bfecdf8bafd94c41f0799388a67c703510f67"
+# TA-Z (2026-10-24): the source of the MFTECmd release the lane runs, 2026.10.2 (.NET 10, pinned in
+# devtools/runbook/zimmerman-net10.json). The earlier pin, b76bfec (2026.5.0), stays under pinned/ for its history.
+MFTE_VERSION = "2919ded0738d1533c8ab6b627a5aed2c9f67859c"
+MFTE_PRODUCT = "2026.10.2"
 MS_VERSION = "656e9656bfaef34dd29cd7ee9e1146aec17e924c"
 MFTE_FILES = {
-    "README.md": "19c6f36f0e324c6fc881d35067b2d6fa9796f9b342b7731d63c8607691888051",
-    "MFTECmd/MFTRecordOut.cs": "d9f6826d1695fcc30d1fa45a4c943f880c14f687e9f02b9ebe0145e926fd6bcd",
-    "MFTECmd/Program.cs": "f1679b4070e4cf7b0279d8ca6611ed12c07d3e0e92521ea4ebcb818ea62dd1c6",
-    "MFTECmd/MFTECmd.csproj": "ddefe3ad3289472c0f35937149dcd92dfb847db7e23d92b1beb2706921f74d63",
+    "README.md": "f514338e24f9b16d4448c9fd1ecdfc2861ba7a76a4b8fbc871b1a8c931c778a6",
+    "MFTECmd/MFTRecordOut.cs": "cc0d23c73668225f2630cd9c94f2d02de7be36378e60c16f5541872a0cd7eaf6",
+    "MFTECmd/Program.cs": "20121c4e82e58dd8a572f4645544d0f698a36e940be2d4d10be27bca14345869",
+    "MFTECmd/MFTECmd.csproj": "e8a859efdab2038757fef9a8f3200ae43f021888fc6b7b704c290794c5e7b659",
 }
 MS_FILE = "winioctl/ns-winioctl-usn_record_v2.md"
 MS_SHA256 = "e677d73106d449fc11666bb668bc029871a63d54a5e52b508433396cce31fdb0"
@@ -67,9 +70,16 @@ def build() -> dict[str, Any]:
     program = mfte["MFTECmd/Program.cs"][1]
     project = mfte["MFTECmd/MFTECmd.csproj"][1]
     version = ET.fromstring(project).findtext(".//Version") or ""
-    if version != "2026.5.0":
-        raise ValueError(f"pinned MFTECmd source version changed: expected 2026.5.0, got {version!r}")
-    _need(readme, "MFT parser for NTFS file systems", "MFTECmd README identity")
+    if version != MFTE_PRODUCT:
+        raise ValueError(f"pinned MFTECmd source version changed: expected {MFTE_PRODUCT}, got {version!r}")
+    _need(readme, "Parses the NTFS metadata files `$MFT`, `$J` (`$UsnJrnl:$J`), `$LogFile`", "MFTECmd README identity")
+    readme_flat = " ".join(readme.split())  # the README wraps its sentences at 120 columns
+    _need(readme_flat, "`-f $LogFile` exports one row per log record (CSV and/or JSON), ordered by LSN",
+          "MFTECmd $LogFile rows")
+    _need(readme_flat, "With `-m`, `TargetPath` is the target's path in that $MFT", "MFTECmd $LogFile -m paths")
+    _need(readme_flat, "With `-f $J -m $MFT`, the `ParentPath` of each $J record is the path its parent directory had "
+                       "when the record was written", "MFTECmd $J -m paths")
+    _need(readme_flat, "Without `-m`, `ParentPath` is empty", "MFTECmd $J without -m")
     _need(record_out, "public bool Timestomped { get; set; }", "MFTECmd Timestomped output")
     _need(record_out, "public bool uSecZeros { get; set; }", "MFTECmd uSecZeros output")
     _need(record_out, "public bool Copied { get; set; }", "MFTECmd Copied output")
@@ -88,6 +98,7 @@ def build() -> dict[str, Any]:
           "Microsoft USN reason accumulation")
 
     mfte_program = f"https://github.com/EricZimmerman/MFTECmd/blob/{MFTE_VERSION}/MFTECmd/Program.cs"
+    mfte_readme = f"https://github.com/EricZimmerman/MFTECmd/blob/{MFTE_VERSION}/README.md"
     ms_url = (f"https://github.com/MicrosoftDocs/sdk-api/blob/{MS_VERSION}/"
               "sdk-api-src/content/winioctl/ns-winioctl-usn_record_v2.md")
 
@@ -142,6 +153,12 @@ def build() -> dict[str, Any]:
             fact("usn.reason_accumulates",
                  "Microsoft documents USN reason flags as accumulated changes in a file or directory journal record since that file or directory was opened.",
                  ms_url, MS_VERSION, f"{MS_FILE}#field-Reason", _sha256(ms_path)),
+            fact("mftecmd.logfile_rows",
+                 "MFTECmd -f $LogFile exports one row per $LogFile log record, ordered by LSN; with -m, TargetPath is the target's path in that $MFT.",
+                 mfte_readme, MFTE_VERSION, "README.md#$LogFile", MFTE_FILES["README.md"], version),
+            fact("mftecmd.usn_parent_when_written",
+                 "With MFTECmd -f $J -m $MFT, a $J record's ParentPath is the path its parent directory had when the record was written; without -m, ParentPath is empty.",
+                 mfte_readme, MFTE_VERSION, "README.md#$J paths with an $MFT (-m)", MFTE_FILES["README.md"], version),
         ],
     }
 

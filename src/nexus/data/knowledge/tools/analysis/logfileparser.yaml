@@ -7,6 +7,7 @@ caveats:
   - "Circular 64MB buffer — hours to days of history, not a full volume history"
   - "Needs $LogFile extracted as a file (KAPE / image mount). Not the same as MFTECmd $MFT parse"
   - "Confirm CLI flags against the fetched binary if a run FAILs"
+  - "Not run by the lane since TA-Z (operator OD-T13, 2026-10-24): MFTECmd 2026.10 parses $LogFile. Its CSV is still recognised when an examiner registers it"
 quick_start: "LogFileParser64.exe -f $LogFile -o logfile.csv"
 advisories:
   - "Use with USN $J and $MFT for timestomp / recent delete reconstruction"

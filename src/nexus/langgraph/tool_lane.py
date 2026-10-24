@@ -3,8 +3,9 @@
 Every host-triage tool whose artifact is **present on this evidence** is
 scheduled, executed via MCP (``run_windows_command`` / ``run_command``),
 and recorded in a ledger (OK / FAIL / SKIP + reason). The operator-designated
-optional ``logfileparser`` and ``deepbluecli`` jobs are recorded as SKIP by
-default; their evidence remains available for examiner-run manual processing.
+optional ``deepbluecli`` job is recorded as SKIP by default; its evidence remains
+available for examiner-run manual processing. NTFS ``$LogFile`` is parsed by
+MFTECmd (TA-Z, 2026-10-24); LogFileParser is no longer planned.
 
 Presence comes from knowledge YAML locations
 (``src/nexus/data/knowledge/artifacts/windows/*.yaml``) plus well-known
@@ -95,11 +96,9 @@ class ToolJob:
     preflight: dict[str, Any] = field(default_factory=dict)
 
 
+# TA-Z (operator OD-T13, 2026-10-24): LogFileParser left this policy when MFTECmd 2026.10 took over `$LogFile`. It is
+# no longer planned at all; an examiner's LogFileParser CSV is still recognised by the importer path.
 _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS = {
-    "logfileparser": (
-        "optional by operator policy; LogFileParser is excluded from the default lane "
-        "and may be run manually by the examiner when needed"
-    ),
     "deepbluecli": (
         "optional by operator policy; DeepBlueCLI is excluded from the default lane "
         "to avoid long channel scans"
@@ -130,6 +129,26 @@ def _apply_default_optional_tool_skips(jobs: list[ToolJob]) -> int:
         job.tool_elapsed_s = 0.0
         skipped += 1
     return skipped
+
+
+# TA-Z (2026-10-24): the 2026.10 builds of these tools copy each database (with its transaction logs) into `--temp`,
+# open the copy, and delete that folder when done (each tool's --help). The default is one `Temp` folder beside the
+# tool, so two lane jobs of one tool would share it and one would delete it under the other.
+_TOOLS_WITH_TEMP = frozenset({"amcacheparser", "sqlecmd", "srumecmd", "sumecmd", "wxtcmd"})
+
+
+def _assign_private_temp(jobs: list[ToolJob], extractions: Path) -> None:
+    """Give each planned job of a ``_TOOLS_WITH_TEMP`` tool its own ``--temp``, outside the folder the index reads.
+
+    The folder is named from the job's own argv, so planning the same job again names the same folder.
+    """
+    base = Path(extractions).parent / "tool-temp"
+    for job in jobs:
+        if (job.host != "windows" or not job.argv or "--temp" in job.argv
+                or str(job.tool or "").strip().lower() not in _TOOLS_WITH_TEMP):
+            continue
+        digest = hashlib.sha256("\0".join(job.argv).encode("utf-8")).hexdigest()[:12]
+        job.argv = [*job.argv, "--temp", str(base / f"{job.tool}-{digest}")]
 
 
 class CasePipelineTool:
@@ -187,20 +206,54 @@ def timeout_for_bytes(
     return min(cap, max(base, base + mb * per_mb))
 
 
-def _logfileparser_timeout(logfile: Path) -> int:
-    """LogFileParser's budget for a $LogFile, on every path that schedules it (D288).
+def _mftecmd_timeout(nbytes: int) -> int:
+    """MFTECmd's budget for the bytes it reads, the same on the drive-tree and the single-file paths (D288).
 
-    The drive-tree plan gave it a fixed 600 s while a registered $LogFile got this; sample S08's 57 MB $LogFile ran
-    past 600 s on three of its fifteen hosts and each was killed. A later S08
-    run showed that a 3,600 s ceiling can clip the size-scaled budget for a
-    57,360,384-byte input, so the ceiling is two hours while the actual budget
-    remains proportional to the input size.
+    D288 found two paths giving one parser different budgets, and a fixed one killing it on large inputs. A `$LogFile`
+    or `$J` job reads its `-m` `$MFT` too, so the caller counts both. The short base is the `$I30` hang rule (one 4 KB
+    `$I30` looped MFTECmd 2026.5.0 at 100% CPU, CASE-4EFD5EB2): a hang costs minutes. Measured on T06 (2026-10-24):
+    a 43 MB `$LogFile` with its 491 MB `$MFT` took 22 s with MFTECmd 2026.10.2.
     """
+    return timeout_for_bytes(nbytes, base=240, per_mb=30, cap=1800)
+
+
+def _bytes_of(*paths: Path | None) -> int:
+    total = 0
+    for path in paths:
+        if path is None:
+            continue
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _volume_mft(path: Path) -> Path | None:
+    """The `$MFT` of the volume an NTFS metadata file came from, when it sits where NTFS keeps it.
+
+    `$LogFile` and `$MFT` are in the volume root; `$J` is in `$Extend`. MFTECmd resolves a `$LogFile`'s or a `$J`'s
+    paths from that `$MFT` with `-m` (pinned README at 2919ded: "Use the $MFT and $J of the same volume, collected at
+    the same time"). A `$MFT` anywhere else belongs to another volume or collection and is not used.
+    """
+    parent = path.parent
+    root = parent.parent if parent.name.lower() == "$extend" else parent
     try:
-        nbytes = logfile.stat().st_size
+        for child in root.iterdir():
+            if child.name.lower() == "$mft" and child.is_file() and child.stat().st_size > 0:
+                return child
     except OSError:
-        nbytes = 0
-    return timeout_for_bytes(nbytes, base=900, per_mb=60, cap=7200)
+        return None
+    return None
+
+
+def _mftecmd_metafile_job(metafile: Path, out: Path, csv_name: str) -> tuple[list[str], int]:
+    """MFTECmd's argv and budget for a `$LogFile` or `$J`, with `-m` when its volume's `$MFT` is beside it."""
+    argv = ["mftecmd", "-f", str(metafile)]
+    mft = _volume_mft(metafile)
+    if mft is not None:
+        argv += ["-m", str(mft)]
+    return argv + ["--csv", str(out), "--csvf", csv_name], _mftecmd_timeout(_bytes_of(metafile, mft))
 
 
 def _evtxecmd_timeout_for_bytes(nbytes: int) -> int:
@@ -1088,34 +1141,12 @@ def _plan_single_artifact(
                 reason=f"could not stage {evidence.name}: {exc}",
             ))
     elif _artifact_class(evidence) == "logfile":
-        # LogFileParser (jschicht) DOES run headless. Its readme documents the
-        # CLI switches, and the validated W1 run used them: /LogFileFile: +
-        # /OutputPath: -> rc=0, 430 s, LogFile_<ts>/LogFile.csv (139,496 rows)
-        # plus 32 sibling outputs. Running it with NO arguments launches the
-        # GUI - that is what the earlier "GUI-only" conclusion mistook, and it
-        # is why this evidence was skipped when a working tool sat in the tree.
-        # The tool does NOT create the output dir; out_dir() does that above.
-        # Timing headroom: 400 s unloaded, but one lane run reached only ~55%
-        # of its output by the old 1830 s bound under I/O contention and was
-        # killed. A spurious FAIL on a non-skippable artifact blocks every
-        # analysis stage until the examiner re-runs it, so this deep parser
-        # gets a generous ceiling instead.
-        if not _windows_tool_available("logfileparser"):
-            jobs.append(ToolJob(
-                host="windows", tool="logfileparser", argv=[], status="SKIP",
-                purpose=f"NTFS $LogFile ({evidence.name})",
-                reason=("logfileparser not installed - run "
-                        "tools/fetch-windows-tools.ps1 then nexus doctor"),
-            ))
-        else:
-            d = out_dir("logfileparser")
-            add("logfileparser",
-                ["logfileparser",
-                 f"/LogFileFile:{evidence}",
-                 f"/OutputPath:{d}"],
-                f"NTFS $LogFile ({evidence.name})",
-                _logfileparser_timeout(evidence),
-                optional_output=True)
+        # TA-Z (operator OD-T13, 2026-10-24): MFTECmd 2026.10 parses `$LogFile`, one row per log record ordered by
+        # LSN, and with `-m` names each operation's target path from the volume's `$MFT` (pinned README at 2919ded,
+        # "$LogFile"). Its own folder keeps these rows apart from the `$MFT` table; the family is MFTECmd's.
+        argv, budget = _mftecmd_metafile_job(evidence, out_dir("mftecmd-logfile"),
+                                             f"{(out_name or _stem(evidence))}.csv")
+        add("mftecmd", argv, f"NTFS $LogFile ({evidence.name})", budget)
     elif _artifact_class(evidence) == "ntfs_meta":
         d = out_dir("mftecmd")
         # Timeout scales with size but starts short: one specific 4 KB $I30
@@ -1123,11 +1154,16 @@ def _plan_single_artifact(
         # an infinite loop at 100% CPU while its identically-sized sibling
         # parses in under a second (CASE-4EFD5EB2, 2026-09-29). A hang must
         # cost minutes, not the 30-minute ceiling.
-        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d),
-                        "--csvf", f"{_stem(evidence)}.csv"],
-            f"NTFS metadata ({evidence.name})",
-            timeout_for_bytes(evidence.stat().st_size, base=240, per_mb=30,
-                              cap=1800))
+        if name == "$j":
+            # A `$J` takes its volume's `$MFT` (`-m`): MFTECmd 2026.10 then names each record's parent as it was when
+            # the record was written, where the `$MFT` alone gives today's location (pinned README, "$J paths").
+            argv, budget = _mftecmd_metafile_job(evidence, d, f"{_stem(evidence)}.csv")
+            add("mftecmd", argv, f"NTFS metadata ({evidence.name})", budget)
+        else:
+            add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d),
+                            "--csvf", f"{_stem(evidence)}.csv"],
+                f"NTFS metadata ({evidence.name})",
+                _mftecmd_timeout(evidence.stat().st_size))
     elif (
         _artifact_class(evidence) == "registry_hive"
         # SYSTEM/SOFTWARE/SAM/SECURITY are handled by the branch above, which
@@ -2062,12 +2098,9 @@ def plan_windows_triage(
     if usn is not None and usn.is_file() and not quick:
         d = extractions / "mftecmd-usn"
         d.mkdir(parents=True, exist_ok=True)
-        add(
-            "mftecmd",
-            ["mftecmd", "-f", str(usn), "--csv", str(d), "--csvf", "usn.csv"],
-            "USN Journal ($J)",
-            1800,
-        )
+        # `-m` with the volume's `$MFT`, as on the single-file path (TA-Z): the parents as they were when written.
+        argv, budget = _mftecmd_metafile_job(usn, d, "usn.csv")
+        add("mftecmd", argv, "USN Journal ($J)", budget)
     elif quick:
         skip("mftecmd-usn", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
     else:
@@ -2711,8 +2744,8 @@ def _plan_gap_parsers(
 
     _plan_defender_and_search(root, extractions, add_installed, skip, blocked or skip)
 
-    # Known CLIs only. Thumbcache Viewer CMD and LogFileParser stay
-    # cataloged until their argv is verified on a real binary.
+    # Known CLIs only. Thumbcache Viewer CMD stays cataloged until its argv is
+    # verified on a real binary.
     bmc_jobs: list[tuple[Path, Path, list[Path]]] = []
     for user in users:
         cache = user / "AppData/Local/Microsoft/Terminal Server Client/Cache"
@@ -2840,21 +2873,17 @@ def _plan_gap_parsers(
     # KAPE-better: additional parsers for coverage parity + correlation
     # -----------------------------------------------------------------------
 
-    # $LogFile — NTFS change journal (LogFileParser; NTFSLogTracker upstream is dead)
+    # $LogFile — the NTFS transaction log, parsed by MFTECmd 2026.10 with the volume's $MFT (TA-Z, operator OD-T13)
     logfile = root / "$LogFile"
     if logfile.is_file() and logfile.stat().st_size >= 4096 and not quick:
-        d = extractions / "logfileparser"
+        d = extractions / "mftecmd-logfile"
         d.mkdir(parents=True, exist_ok=True)
-        add(
-            "logfileparser",
-            ["logfileparser", f"/LogFileFile:{logfile}", f"/OutputPath:{d}"],
-            "NTFS $LogFile (transaction journal, LogFileParser)",
-            _logfileparser_timeout(logfile),
-        )
+        argv, budget = _mftecmd_metafile_job(logfile, d, "logfile.csv")
+        add("mftecmd", argv, "NTFS $LogFile (transaction journal, MFTECmd)", budget)
     elif logfile.is_file() and quick:
-        skip("logfileparser", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
+        skip("mftecmd-logfile", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
     else:
-        skip("logfileparser", f"missing or too small {logfile}")
+        skip("mftecmd-logfile", f"missing or too small {logfile}")
 
     # Scheduled tasks — offline XML only. A live `schtasks /query` reads the
     # examiner host, not the image (WO-TA item 1). Stage 0 collects live tasks
@@ -4355,6 +4384,7 @@ async def run_tool_lane(
             jobs.append(_job)
     jobs.extend(_memory_image_jobs(plan_paths, extractions))
     jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
+    _assign_private_temp(jobs, extractions)
     # These parsers are examiner-run optional work. Apply the policy before
     # prior-result reuse so a previous OK cannot bypass the default skip.
     _apply_default_optional_tool_skips(jobs)
@@ -5277,10 +5307,10 @@ def _find_recmd_batch() -> Path | None:
     """
     root = _repo_root()
     for rel in (
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/Kroll_Batch.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/RECmd_Batch_MC.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/BasicSystemInfo.reb",
+        "tools/windows/zimmerman/net10/RECmd/BatchExamples/DFIRBatch.reb",
+        "tools/windows/zimmerman/net10/RECmd/BatchExamples/Kroll_Batch.reb",
+        "tools/windows/zimmerman/net10/RECmd/BatchExamples/RECmd_Batch_MC.reb",
+        "tools/windows/zimmerman/net10/RECmd/BatchExamples/BasicSystemInfo.reb",
     ):
         p = root / rel
         if p.is_file():
@@ -5310,7 +5340,7 @@ def _find_recmd_dfir_batch() -> Path | None:
     """
     root = _repo_root()
     for rel in (
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
+        "tools/windows/zimmerman/net10/RECmd/BatchExamples/DFIRBatch.reb",
     ):
         p = root / rel
         if p.is_file():

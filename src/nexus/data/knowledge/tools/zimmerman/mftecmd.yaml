@@ -1,9 +1,11 @@
 name: MFTECmd
 category: zimmerman
-description: "Parse NTFS $MFT, $UsnJrnl, $J, $Boot, and $SDS files"
+# TA-Z (2026-10-24): the lane runs MFTECmd 2026.10.2 (.NET 10, devtools/runbook/zimmerman-net10.json). The 2026.10
+# lines below are from its pinned README (devtools/knowledge/pinned/timestomp/mftecmd/2919ded.../README.md).
+description: "Parse the NTFS metadata files $MFT, $J ($UsnJrnl:$J), $LogFile, $Boot, $Secure:$SDS and $I30"
 platform: [windows, linux, macos]
-platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
-artifacts_parsed: [mft, usn_journal, ntfs_i30, ntfs_resident_data, alternate_data_streams]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS. The lane runs 2026.10.2 (.NET 10) from Tools/windows/zimmerman/net10."
+artifacts_parsed: [mft, usn_journal, ntfs_logfile, ntfs_i30, ntfs_resident_data, alternate_data_streams]
 
 caveats:
   - "The $MFT only reflects the CURRENT state of files; deleted file records may be overwritten"
@@ -18,8 +20,8 @@ output_notes:
   key_fields: [EntryNumber, SequenceNumber, ParentPath, FileName, Created0x10, Modified0x10, Created0x30, Modified0x30, InUse, IsDirectory, FileSize]
 
 exit_code_hints:
-  0: "success"
-  1: "error or no data found"
+  0: "Success. Damaged, empty or unknown files are reported but are not a failure"
+  1: "The tool failed: invalid arguments, a missing file, a file it can't read, or output that can't be written"
 
 advisories:
   - "Compare $STANDARD_INFORMATION (0x10) and $FILE_NAME (0x30) timestamps — large discrepancies suggest TIMESTOMPING"
@@ -28,6 +30,9 @@ advisories:
   - "Use --csv for MFT analysis and --csvf for USN Journal output"
   - "ParentPath reconstruction requires the full $MFT; orphaned entries may show incomplete paths"
   - "The --de flag can dump details for a specific MFT entry number"
+  - "-m <$MFT> with -f $J: the ParentPath of each $J record is the path its parent directory had when the record was written. Use the $MFT and $J of the same volume, collected at the same time. Without -m, ParentPath is empty"
+  - "-f $LogFile exports one row per log record, ordered by LSN; with -m, TargetPath is the target's path in that $MFT"
+  - "The $MFT CSV ends with ParseErrors: the problems in that FILE record (damaged attributes, fixups) that were skipped"
 
 quick_start: "MFTECmd.exe -f '$MFT' --csv output/"
 
@@ -57,3 +62,12 @@ field_meanings:
   LastModified0x30: "$FILE_NAME last modification timestamp (reliable)"
   InUse: "Whether the MFT entry is currently allocated (active file)"
   ReferenceCount: "Number of hard links to this file"
+  ParseErrors: "$MFT CSV: the problems in that FILE record (damaged attributes, fixups) that were skipped"
+  # $LogFile CSV (pinned README, "$LogFile")
+  Lsn: "$LogFile: the record's log sequence number; rows are ordered by LSN"
+  RedoOperation: "$LogFile: what the record does - redo data is the change"
+  UndoOperation: "$LogFile: undo data is what was there before"
+  TransactionFirstLsn: "$LogFile: the transaction's first record; transaction ids are reused, this tells transactions apart"
+  TargetPath: "$LogFile: with -m, the path in that $MFT of the file the operation changes"
+  Details: "$LogFile: what was decoded, with the previous values from the undo data"
+  TargetInferred: "$LogFile: true when the target comes from across missing log data"

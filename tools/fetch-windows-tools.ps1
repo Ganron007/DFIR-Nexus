@@ -216,11 +216,13 @@ if ($PinsOnly) {
     return
 }
 
-Write-Host "==> Zimmerman (Get-ZimmermanTools, net9 — latest from ericzimmerman.github.io)"
-$gz = Join-Path $env:TEMP "Get-ZimmermanTools.ps1"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/EricZimmerman/Get-ZimmermanTools/master/Get-ZimmermanTools.ps1" -OutFile $gz
-& powershell -NoProfile -ExecutionPolicy Bypass -File $gz -Dest $Zim
-$script:Versions += "zimmerman`tGet-ZimmermanTools.ps1 net9`thttps://ericzimmerman.github.io/"
+# TA-Z (2026-10-24): the official .NET 10 builds, each zip checked against its SHA-256 pin in
+# devtools/runbook/zimmerman-net10.json. Get-ZimmermanTools.ps1 offers runtimes up to .NET 9 only, which the lane
+# preflight refuses.
+Write-Host "==> Zimmerman (.NET 10, pinned: devtools/runbook/zimmerman-net10.json)"
+& pwsh -NoProfile -File (Join-Path (Split-Path -Parent $Root) "devtools\runbook\zimmerman_net10.ps1") -Install
+if ($LASTEXITCODE -ne 0) { throw "Zimmerman .NET 10 install failed its pins" }
+$script:Versions += "zimmerman`tnet10 (pinned zimmerman-net10.json)`thttps://download.ericzimmermanstools.com/net/"
 
 Write-Host "==> Sysinternals Suite (live zip)"
 $sysZip = Join-Path $env:TEMP "SysinternalsSuite.zip"

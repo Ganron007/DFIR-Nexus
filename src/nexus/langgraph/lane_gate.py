@@ -366,8 +366,8 @@ def write_lane_gate(
     #
     # A SKIP from any other lane is a tool that does not apply to this evidence
     # (Suzaku 2.x is cloud-log only; prefetch is absent; Plaso is opt-in), or an
-    # operator-designated optional parser excluded by default (LogFileParser and
-    # DeepBlueCLI). That is not evidence being skipped, so it must not block - it
+    # operator-designated optional parser excluded by default (DeepBlueCLI; LogFileParser
+    # until TA-Z moved $LogFile to MFTECmd). That is not evidence being skipped, so it must not block - it
     # stays visible in `jobs`/`not_applicable`. What guards "evidence was skipped" is a pass that processed
     # *nothing*, which `_recompute` blocks.
     unprocessed: list[dict[str, Any]] = []

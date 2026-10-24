@@ -3,11 +3,11 @@ version: 1
 generator: devtools/knowledge/import_timestomp_sources.py
 description: Source-checked NTFS timestamp field semantics; regenerate from the pinned snapshots.
 source_manifest:
-- source: https://github.com/EricZimmerman/MFTECmd/blob/b76bfecdf8bafd94c41f0799388a67c703510f67/README.md
-  source_version: b76bfecdf8bafd94c41f0799388a67c703510f67
+- source: https://github.com/EricZimmerman/MFTECmd/blob/2919ded0738d1533c8ab6b627a5aed2c9f67859c/README.md
+  source_version: 2919ded0738d1533c8ab6b627a5aed2c9f67859c
   source_key: README.md
-  source_sha256: 19c6f36f0e324c6fc881d35067b2d6fa9796f9b342b7731d63c8607691888051
-  product_version: 2026.5.0
+  source_sha256: f514338e24f9b16d4448c9fd1ecdfc2861ba7a76a4b8fbc871b1a8c931c778a6
+  product_version: 2026.10.2
 - source: https://github.com/MicrosoftDocs/sdk-api/blob/656e9656bfaef34dd29cd7ee9e1146aec17e924c/sdk-api-src/content/winioctl/ns-winioctl-usn_record_v2.md
   source_version: 656e9656bfaef34dd29cd7ee9e1146aec17e924c
   source_key: winioctl/ns-winioctl-usn_record_v2.md
@@ -17,27 +17,27 @@ facts:
   origin: external
   claim: MFTECmd exports SI<FN as its Timestomped flag and sets it when the same record's $SI Created0x10 UTC ticks
     precede $FN Created0x30 UTC ticks.
-  source: https://github.com/EricZimmerman/MFTECmd/blob/b76bfecdf8bafd94c41f0799388a67c703510f67/MFTECmd/Program.cs
-  source_version: b76bfecdf8bafd94c41f0799388a67c703510f67
+  source: https://github.com/EricZimmerman/MFTECmd/blob/2919ded0738d1533c8ab6b627a5aed2c9f67859c/MFTECmd/Program.cs
+  source_version: 2919ded0738d1533c8ab6b627a5aed2c9f67859c
   source_key: MFTECmd/Program.cs#SI<FN
-  source_sha256: f1679b4070e4cf7b0279d8ca6611ed12c07d3e0e92521ea4ebcb818ea62dd1c6
-  product_version: 2026.5.0
+  source_sha256: 20121c4e82e58dd8a572f4645544d0f698a36e940be2d4d10be27bca14345869
+  product_version: 2026.10.2
 - id: mftecmd.usec_zeros
   origin: external
   claim: MFTECmd sets uSecZeros when $SI Created0x10 or LastModified0x10 Millisecond == 0.
-  source: https://github.com/EricZimmerman/MFTECmd/blob/b76bfecdf8bafd94c41f0799388a67c703510f67/MFTECmd/Program.cs
-  source_version: b76bfecdf8bafd94c41f0799388a67c703510f67
+  source: https://github.com/EricZimmerman/MFTECmd/blob/2919ded0738d1533c8ab6b627a5aed2c9f67859c/MFTECmd/Program.cs
+  source_version: 2919ded0738d1533c8ab6b627a5aed2c9f67859c
   source_key: MFTECmd/Program.cs#uSecZeros
-  source_sha256: f1679b4070e4cf7b0279d8ca6611ed12c07d3e0e92521ea4ebcb818ea62dd1c6
-  product_version: 2026.5.0
+  source_sha256: 20121c4e82e58dd8a572f4645544d0f698a36e940be2d4d10be27bca14345869
+  product_version: 2026.10.2
 - id: mftecmd.copied
   origin: external
   claim: MFTECmd sets Copied when $SI ContentModifiedOn < $SI CreatedOn.
-  source: https://github.com/EricZimmerman/MFTECmd/blob/b76bfecdf8bafd94c41f0799388a67c703510f67/MFTECmd/Program.cs
-  source_version: b76bfecdf8bafd94c41f0799388a67c703510f67
+  source: https://github.com/EricZimmerman/MFTECmd/blob/2919ded0738d1533c8ab6b627a5aed2c9f67859c/MFTECmd/Program.cs
+  source_version: 2919ded0738d1533c8ab6b627a5aed2c9f67859c
   source_key: MFTECmd/Program.cs#Copied
-  source_sha256: f1679b4070e4cf7b0279d8ca6611ed12c07d3e0e92521ea4ebcb818ea62dd1c6
-  product_version: 2026.5.0
+  source_sha256: 20121c4e82e58dd8a572f4645544d0f698a36e940be2d4d10be27bca14345869
+  product_version: 2026.10.2
 - id: usn.basic_info_change
   origin: external
   claim: Microsoft defines USN_REASON_BASIC_INFO_CHANGE as a change to one or more file or directory attributes
@@ -54,3 +54,21 @@ facts:
   source_version: 656e9656bfaef34dd29cd7ee9e1146aec17e924c
   source_key: winioctl/ns-winioctl-usn_record_v2.md#field-Reason
   source_sha256: e677d73106d449fc11666bb668bc029871a63d54a5e52b508433396cce31fdb0
+- id: mftecmd.logfile_rows
+  origin: external
+  claim: MFTECmd -f $LogFile exports one row per $LogFile log record, ordered by LSN; with -m, TargetPath is the
+    target's path in that $MFT.
+  source: https://github.com/EricZimmerman/MFTECmd/blob/2919ded0738d1533c8ab6b627a5aed2c9f67859c/README.md
+  source_version: 2919ded0738d1533c8ab6b627a5aed2c9f67859c
+  source_key: README.md#$LogFile
+  source_sha256: f514338e24f9b16d4448c9fd1ecdfc2861ba7a76a4b8fbc871b1a8c931c778a6
+  product_version: 2026.10.2
+- id: mftecmd.usn_parent_when_written
+  origin: external
+  claim: With MFTECmd -f $J -m $MFT, a $J record's ParentPath is the path its parent directory had when the record
+    was written; without -m, ParentPath is empty.
+  source: https://github.com/EricZimmerman/MFTECmd/blob/2919ded0738d1533c8ab6b627a5aed2c9f67859c/README.md
+  source_version: 2919ded0738d1533c8ab6b627a5aed2c9f67859c
+  source_key: README.md#$J paths with an $MFT (-m)
+  source_sha256: f514338e24f9b16d4448c9fd1ecdfc2861ba7a76a4b8fbc871b1a8c931c778a6
+  product_version: 2026.10.2

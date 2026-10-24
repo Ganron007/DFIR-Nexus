@@ -42,28 +42,37 @@ if (-not (Test-Path -LiteralPath $toolRoot -PathType Container)) {
     throw "Shared Windows tool root is missing at '$toolRoot'; refusing to run the lane."
 }
 $env:NEXUS_TOOL_PATHS = $toolRoot
-$resolvedEvtxECmd = & python -c "from nexus.tools.windows import _find_binary; print(_find_binary('evtxecmd') or '')" 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $resolvedEvtxECmd) {
-    $message = 'EvtxECmd resolver preflight could not find a binary; refusing to run the lane.'
+# TA-Z: every Zimmerman tool the lane runs is the pinned .NET 10 build (zimmerman-net10.json), and the
+# resolver picks exactly that file. A missing tool, another version or another hash refuses the lane.
+$pinCheck = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'zimmerman_net10.ps1') -Verify -LaneOnly 2>&1
+$pinExit = $LASTEXITCODE
+$pinCheck | Tee-Object -FilePath $log -Append | Out-Null
+if ($pinExit -ne 0) {
+    $message = "Zimmerman pin preflight failed: $(($pinCheck | Where-Object { $_ -like 'FAIL*' }) -join '; '). Refusing to process evidence."
     $message | Tee-Object -FilePath $log -Append
     throw $message
 }
-$resolvedEvtxECmd = $resolvedEvtxECmd.Trim()
-if (-not (Test-Path -LiteralPath $resolvedEvtxECmd -PathType Leaf)) {
-    $message = "EvtxECmd resolver returned a missing path '$resolvedEvtxECmd'; refusing to run the lane."
+$pins = Get-Content -Raw (Join-Path $PSScriptRoot 'zimmerman-net10.json') | ConvertFrom-Json
+$laneTools = @($pins.tools.PSObject.Properties | Where-Object { $_.Value.lane } | ForEach-Object { $_.Name })
+$resolved = & python -c "import sys; from nexus.tools.windows import _find_binary; [print(n + '|' + (_find_binary(n.lower()) or '')) for n in sys.argv[1:]]" @laneTools 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $resolved) {
+    $message = 'Zimmerman resolver preflight could not run; refusing to run the lane.'
     $message | Tee-Object -FilePath $log -Append
     throw $message
 }
-$evtxVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedEvtxECmd).FileVersion
-$evtxSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedEvtxECmd).Hash.ToUpperInvariant()
-$expectedEvtxSha256 = '5A179DEBEB9157A0712F2512136C75D1402CD63A24A22D7A9EAD5AC9CE1B04E1'
-$preflight = "EvtxECmd preflight: path=$resolvedEvtxECmd version=$evtxVersion sha256=$evtxSha256"
+$wrong = @()
+foreach ($line in $resolved) {
+    $name, $path = $line.Trim().Split('|', 2)
+    $pinned = [IO.Path]::GetFullPath((Join-Path (Join-Path $mainRepo $pins.install_root) $pins.tools.$name.exe))
+    if (-not $path -or [IO.Path]::GetFullPath($path) -ne $pinned) { $wrong += "$name resolves to '$path', pinned '$pinned'" }
+}
+if ($wrong) {
+    $message = "Zimmerman resolver preflight: $($wrong -join '; '). Refusing to process evidence."
+    $message | Tee-Object -FilePath $log -Append
+    throw $message
+}
+$preflight = "Zimmerman preflight: $($laneTools.Count) lane tools pinned and resolved under $($pins.install_root)"
 $preflight | Tee-Object -FilePath $log -Append
-if ($evtxVersion -ne '2026.10.0.0' -or $evtxSha256 -ne $expectedEvtxSha256) {
-    $message = "EvtxECmd preflight rejected version '$evtxVersion' / SHA-256 '$evtxSha256'; expected 2026.10.0.0 / $expectedEvtxSha256. Refusing to process evidence."
-    $message | Tee-Object -FilePath $log -Append
-    throw $message
-}
 if ($PreflightOnly) {
     Write-Output $preflight
     exit 0

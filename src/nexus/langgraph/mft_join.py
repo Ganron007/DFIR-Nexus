@@ -5,6 +5,11 @@ MFTECmd writes the USN journal with the file's name (``Name``) and its parent's 
 entry that the row's ``ParentEntryNumber`` and ``ParentSequenceNumber`` name. The join is exact where that entry is
 in the MFT of the same run. Where it is not (the directory was deleted or never recorded), the row keeps no path:
 the path is not guessed from the name.
+
+TA-Z (2026-10-24): since MFTECmd 2026.10 the lane passes the volume's `$MFT` with `-m`, and MFTECmd fills
+``ParentPath`` itself with the path the parent had when each record was written (pinned README at 2919ded, "$J paths
+with an $MFT (-m)"; all 385,368 rows of tiny case T06). That path is the better one: the join below gives today's
+location. A row that already has it keeps it; the join applies only to a journal parsed without `-m`.
 """
 from __future__ import annotations
 
@@ -17,6 +22,8 @@ _USN_NAME = "usn.csv"
 _USN_FOLDER = "mftecmd-usn"
 _MFT_FOLDER = "mftecmd"
 PARENT_SOURCE = "MFT join (same run): ParentEntryNumber and ParentSequenceNumber"
+TOOL_PARENT_SOURCE = "MFTECmd -m: the parent's path when the record was written"
+_USN_COLUMNS = ("Name", "UpdateSequenceNumber", "UpdateReasons")
 
 
 def usn_mft_csv(path: Path) -> Path | None:
@@ -52,6 +59,10 @@ def resolve_usn_row(path: Path, fields: dict[str, Any]) -> dict[str, Any]:
     """
     if not fields:
         return fields
+    name = str(fields.get("Name") or "").strip()
+    if name and str(fields.get("ParentPath") or "").strip() and all(c in fields for c in _USN_COLUMNS):
+        # MFTECmd resolved the parent itself (-m); only the file name is set, so the family's join makes the path.
+        return {**fields, "FileName": name, "ParentPathSource": TOOL_PARENT_SOURCE}
     mft = usn_mft_csv(path)
     if mft is None:
         return fields
@@ -62,7 +73,6 @@ def resolve_usn_row(path: Path, fields: dict[str, Any]) -> dict[str, Any]:
     if not key[0]:
         return fields
     parent = mft_parent_paths(str(mft)).get(key)
-    name = str(fields.get("Name") or "").strip()
     if not parent or not name:
         return fields
     # The file name takes the MFT's FileName column, so the family's own join makes the full path.

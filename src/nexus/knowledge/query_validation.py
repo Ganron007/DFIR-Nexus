@@ -81,9 +81,10 @@ FAMILY_EXPANSIONS: dict[str, set[str]] = {
     "prefetch": {"prefetch", "pecmd", "ingest-kape"},
     "pecmd": {"prefetch", "pecmd", "ingest-kape"},
     "amcache": {"amcache", "ingest-amcache", "ingest-kape"},
-    "mft": {"mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "fls", "ingest-kape", "ntfs"},
-    "mftecmd": {"mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "fls", "ingest-kape", "ntfs"},
-    "ntfs": {"ntfs", "mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "fls", "ingest-kape"},
+    # mftecmd-logfile: MFTECmd 2026.10's $LogFile output (TA-Z), indexed in the mftecmd family like -i30 and -usn.
+    "mft": {"mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "mftecmd-logfile", "fls", "ingest-kape", "ntfs"},
+    "mftecmd": {"mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "mftecmd-logfile", "fls", "ingest-kape", "ntfs"},
+    "ntfs": {"ntfs", "mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "mftecmd-logfile", "fls", "ingest-kape"},
     "registry": {"registry", "recmd", "ingest-windows_registry", "ingest-kape", "ntuser"},
     "recmd": {"registry", "recmd", "ingest-windows_registry", "ingest-kape", "ntuser"},
     "ntuser": {"ntuser", "registry", "recmd", "ingest-windows_registry"},

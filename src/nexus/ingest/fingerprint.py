@@ -1,8 +1,8 @@
 """Recognize a pre-processed forensic CSV from its header.
 
 The tool lane normally parses raw evidence. When the examiner already has
-EvtxECmd, MFTECmd, or LogFileParser output, the header is enough to name the
-family. A generic spreadsheet stays unrecognized.
+EvtxECmd, MFTECmd (including its `$LogFile` CSV), or LogFileParser output, the
+header is enough to name the family. A generic spreadsheet stays unrecognized.
 """
 from __future__ import annotations
 
@@ -30,6 +30,10 @@ def family_for_csv_header(header: str) -> str | None:
     if {"recordnumber", "eventrecordid", "mapdescription", "payloaddata1"} <= cols:
         return "evtxecmd"
     if {"entrynumber", "inuse", "parententrynumber", "filename"} <= cols:
+        return "mftecmd"
+    # TA-Z (2026-10-24): MFTECmd 2026.10's `$LogFile` CSV (one row per log record; header kept verbatim in
+    # tests/fixtures/mftecmd_2026_10_logfile_header.csv). It is MFTECmd's output, so it is MFTECmd's family.
+    if {"lsn", "transactionid", "transactionfirstlsn", "redooperation", "undooperation"} <= cols:
         return "mftecmd"
     if {"lsn", "redoop", "undoop"} <= cols or (
         "logfile" in cols and "currentlsn" in cols

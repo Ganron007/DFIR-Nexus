@@ -106,11 +106,26 @@ def lane_case(tmp_path, monkeypatch) -> Path:
     return root
 
 
-def test_default_lane_skips_logfileparser_and_records_policy_reason(lane_case, monkeypatch):
+def test_default_lane_sends_logfile_to_mftecmd_and_plans_no_logfileparser_row(lane_case, monkeypatch):
+    """TA-Z (operator OD-T13, 2026-10-24): the default lane's $LogFile job is MFTECmd's, run through the executor.
+
+    This replaced the test of the LogFileParser default-skip policy, which OD-T13 retired. The stub executor fails
+    explicitly; it never reads the placeholder or writes MFTECmd output.
+    """
+    from nexus.analysis import freshness
     from nexus.case.evidence_service import register_evidence
+    from nexus.langgraph import case_index, tool_lane
     from nexus.langgraph.tool_lane import run_tool_lane
 
-    _configure_lane_test(monkeypatch)
+    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    monkeypatch.setattr(freshness, "capture_freshness", lambda *_a, **_k: {"items": [], "result": "unknown"})
+    monkeypatch.setattr(tool_lane, "sift_jobs_for_lane", lambda *_a, **_k: [])
+    real_plan = tool_lane.plan_windows_triage
+
+    def logfile_only(*args, **kwargs):
+        return [j for j in real_plan(*args, **kwargs) if "$LogFile" in j.purpose or j.tool == "logfileparser"]
+
+    monkeypatch.setattr(tool_lane, "plan_windows_triage", logfile_only)
     volume = lane_case / "evidence" / "C"
     (volume / "Windows" / "System32").mkdir(parents=True)
     (volume / "$LogFile").write_bytes(b"RSTR" + b"\0" * 8188)
@@ -122,11 +137,11 @@ def test_default_lane_skips_logfileparser_and_records_policy_reason(lane_case, m
         "run_id": run_id, "mode": "tools", "case_id": lane_case.name, "status": "running"}), encoding="utf-8")
 
     class Executor:
-        calls = 0
+        commands: list[list[str]] = []
 
         async def ainvoke(self, args):
-            self.calls += 1
-            raise AssertionError(f"default-skipped tool reached executor: {args}")
+            self.commands.append(list(args.get("command") or []))
+            return json.dumps({"success": False, "exit_code": 1, "error": "simulated executor failure"})
 
     executor = Executor()
     lane = asyncio.run(run_tool_lane(
@@ -134,15 +149,11 @@ def test_default_lane_skips_logfileparser_and_records_policy_reason(lane_case, m
         evidence_path=str(volume), case_id=lane_case.name, run_id=run_id,
         parse_result=json.loads, pipeline_mode="tools"))
     ledger = lane.get("tool_run_ledger") if isinstance(lane, dict) else lane
-    row = next(r for r in ledger if isinstance(r, dict) and r.get("tool") == "logfileparser")
-    assert row["status"] == "SKIP", row
-    assert "optional by operator policy" in row["reason"], row
-    assert executor.calls == 0
-    progress = json.loads((run_dir / "extractions" / "_tool_lane_progress.json").read_text(encoding="utf-8"))
-    progress_rows = [r for r in progress["entries"] if r.get("tool") == "logfileparser"]
-    assert len(progress_rows) == 1
-    assert progress_rows[0]["status"] == "SKIP"
-    assert progress_rows[0]["reason"] == row["reason"]
+    assert not [r for r in ledger if isinstance(r, dict) and r.get("tool") == "logfileparser"]
+    rows = [r for r in ledger if isinstance(r, dict) and "$LogFile" in str(r.get("purpose") or "")]
+    assert [r["tool"] for r in rows] == ["mftecmd"]
+    assert executor.commands and executor.commands[0][0] == "mftecmd"
+    assert executor.commands[0][executor.commands[0].index("-f") + 1] == str(volume / "$LogFile")
 
 
 def test_logfileparser_run_logs_and_stdout_do_not_count_as_extraction(tmp_path):
