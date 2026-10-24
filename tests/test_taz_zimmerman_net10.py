@@ -177,10 +177,10 @@ T04_SRUM_STDOUT = (REPO / "cases" / "CASE-9C3E4008" / "runs" / "RUN-20261024T115
 
 
 @pytest.mark.skipif(not T04_SRUM_STDOUT.is_file(), reason="tiny case T04's R1v lane run is not on this host")
-def test_a_srum_parse_the_tool_repaired_is_held_in_the_tools_own_words():
+def test_a_srum_parse_the_tool_repaired_is_a_warn_in_the_tools_own_words():
     """R1v on T04 (2026-10-24): SrumECmd 2026.10 repaired its copy with esentutl /p and the job read OK.
 
-    The lane's no-repair policy (D347) holds it as BLOCKED until the operator decides (OD-T14)."""
+    D377 held it as BLOCKED under D347; the operator accepted it as a WARN with the tool's sentence (OD-T14)."""
     def job(**kw) -> tl.ToolJob:
         return tl.ToolJob(host="windows", tool="srumecmd", argv=["srumecmd"], purpose="SRUM database", **kw)
 
@@ -189,11 +189,57 @@ def test_a_srum_parse_the_tool_repaired_is_held_in_the_tools_own_words():
     other = tl.ToolJob(host="windows", tool="sbecmd", argv=["sbecmd"], purpose="Shellbags", status="OK",
                        output_saved_to=str(T04_SRUM_STDOUT))
     ledger = [{"host": "windows", "tool": "srumecmd", "purpose": "SRUM database", "status": "OK", "reason": ""}]
-    held = tl._hold_tool_reported_repairs([repaired, plain, other], ledger)
-    assert held == [repaired]
-    assert repaired.status == "BLOCKED" and ledger[0]["status"] == "BLOCKED"
-    assert "was repaired with esentutl /p" in repaired.reason and "D347" in repaired.reason
+    warned = tl._warn_tool_reported_repairs([repaired, plain, other], ledger)
+    assert warned == [repaired]
+    assert repaired.status == "WARN" and ledger[0]["status"] == "WARN"
+    assert "was repaired with esentutl /p" in repaired.reason and "evidence is unchanged" in repaired.reason
     assert plain.status == "OK" and other.status == "OK"
+
+
+T01_AMCACHE = REPO / "Evidence-files" / "_tiny" / "T01" / "C" / "Windows" / "AppCompat" / "Programs" / "Amcache.hve"
+T01_SYSTEM = REPO / "Evidence-files" / "_tiny" / "T01" / "C" / "Windows" / "System32" / "config" / "SYSTEM"
+
+
+@pytest.mark.skipif(not T01_AMCACHE.is_file(), reason="tiny case T01 is not staged on this host")
+def test_amcacheparser_gets_nl_only_for_a_dirty_hive_without_its_logs(tmp_path):
+    """OD-T14 (D379): T01's Amcache.hve is dirty and has no logs beside it, so `--nl true` and a WARN; a hive whose
+    logs are present (T01's SYSTEM, with SYSTEM.LOG1 and .LOG2) gets no `--nl`, so the tool replays them."""
+    argv, preflight = tl._amcacheparser_job(T01_AMCACHE, tmp_path, "amcache.csv")
+    assert preflight["registry_hive"] == {"dirty": True, "transaction_logs": [], "dirty_without_logs": True}
+    assert argv[-2:] == ["--nl", "true"]
+    argv, preflight = tl._amcacheparser_job(T01_SYSTEM, tmp_path, "x.csv")
+    assert preflight["registry_hive"]["transaction_logs"] and "--nl" not in argv
+
+    jobs = tl.plan_windows_triage(str(REPO / "Evidence-files" / "_tiny" / "T01" / "C"), tmp_path / "run" / "extractions")
+    job = next(j for j in jobs if j.tool == "amcacheparser")
+    assert "--nl" in job.argv and job.preflight["registry_hive"]["dirty_without_logs"] is True
+    job.status = "OK"
+    ledger = [{"host": job.host, "tool": job.tool, "purpose": job.purpose, "status": "OK"}]
+    assert tl._mark_dirty_hive_warnings([job], ledger) == [job] and ledger[0]["status"] == "WARN"
+
+
+T05_EVTX_STDOUT = (REPO / "cases" / "CASE-0574DC80" / "runs" / "RUN-20261024T115221097953Z-tools-4a6107c1"
+                   / "extractions" / "evtxecmd" / "20261024T115230_evtxecmd_stdout.txt")
+T11_EVTX_STDOUT = (REPO / "cases" / "CASE-59D05B27" / "runs" / "RUN-20261024T124508169733Z-tools-7859171d"
+                   / "extractions" / "evtxecmd" / "20261024T124516_evtxecmd_stdout.txt")
+
+
+@pytest.mark.skipif(not T05_EVTX_STDOUT.is_file(), reason="tiny case T05's R1v lane run is not on this host")
+def test_evtx_record_errors_with_nothing_dropped_are_a_warn_and_a_missed_input_still_fails():
+    """OD-T15 (D379), on EvtxECmd 2026.10.1's own output for T05: 3 record errors in Security.evtx, 0 dropped."""
+    def job(n: int) -> tl.ToolJob:
+        return tl.ToolJob(host="windows", tool="evtxecmd", argv=["evtxecmd"],
+                          purpose=f"Parse all EVTX winevt ({n} logs)")
+
+    result = {"output_saved_to": str(T05_EVTX_STDOUT)}
+    failure, limitation = tl._evtxecmd_review(job(5), result)
+    assert failure == ""
+    assert "(3 record error(s)) in Security.evtx 3" in limitation and "0 dropped" in limitation
+    assert "OD-T15" in limitation
+    failure, limitation = tl._evtxecmd_review(job(6), result)  # the plan named a sixth log the tool never read
+    assert "of 6 planned EVTX inputs" in failure and "(3 record error(s))" in failure and limitation == ""
+    if T11_EVTX_STDOUT.is_file():  # T11's 361 logs parsed with no record error: neither
+        assert tl._evtxecmd_review(job(361), {"output_saved_to": str(T11_EVTX_STDOUT)}) == ("", "")
 
 
 # --- the real path, on T06's staged NTFS files ------------------------------------------------------------------

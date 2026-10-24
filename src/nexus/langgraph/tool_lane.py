@@ -1031,10 +1031,8 @@ def _plan_single_artifact(
         add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "MFT file system timeline", 1800)
     elif name.startswith("amcache"):
-        d = out_dir("amcache")
-        add("amcacheparser",
-            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
-            "Amcache application execution", 300)
+        argv, preflight = _amcacheparser_job(evidence, out_dir("amcache"), f"{(out_name or _stem(evidence))}.csv")
+        add("amcacheparser", argv, "Amcache application execution", 300, preflight=preflight)
     elif suffix == ".exe":
         # Malware samples / dropped binaries: hash + version + strings. The
         # VirusTotal probe (`-vt`) sends the sample hash to a third party and is
@@ -1998,12 +1996,8 @@ def plan_windows_triage(
     if amcache.is_file():
         d = extractions / "amcache"
         d.mkdir(parents=True, exist_ok=True)
-        add(
-            "amcacheparser",
-            ["amcacheparser", "-f", str(amcache), "--csv", str(d), "--csvf", "amcache.csv"],
-            "Amcache application execution",
-            300,
-        )
+        argv, preflight = _amcacheparser_job(amcache, d, "amcache.csv")
+        add("amcacheparser", argv, "Amcache application execution", 300, preflight=preflight)
     else:
         skip("amcacheparser", f"missing {amcache}")
 
@@ -2418,6 +2412,34 @@ def _registry_hive_is_dirty(hive: Path) -> bool | None:
     return header[4:8] != header[8:12]
 
 
+def _registry_hive_preflight(hive: Path, transaction_logs: list[Path] | None = None) -> dict[str, Any]:
+    """The hive's dirty state and log companions, recorded on its job so a WARN can be tied to them."""
+    logs = _registry_hive_transaction_logs(hive) if transaction_logs is None else transaction_logs
+    dirty = _registry_hive_is_dirty(hive)
+    return {
+        "registry_hive": {
+            "dirty": dirty,
+            "transaction_logs": [path.name for path in logs],
+            "dirty_without_logs": dirty is True and not logs,
+        }
+    }
+
+
+def _amcacheparser_job(hive: Path, out: Path, csv_name: str) -> tuple[list[str], dict[str, Any]]:
+    """AmcacheParser's argv and preflight; `--nl true` only for a dirty hive with no transaction logs beside it.
+
+    AmcacheParser 2026.10 aborts on such a hive ("Registry hive is dirty and no transaction logs were found ...
+    Aborting!!", T01 R1v); with `--nl true` it parses it and says data may be missing (T01, 2026-10-24: six CSVs).
+    The operator accepted that parse as a WARN (OD-T14), as OD-T10 did for SBECmd. A hive whose logs are present
+    gets no `--nl`, so the tool replays them.
+    """
+    preflight = _registry_hive_preflight(hive)
+    argv = ["amcacheparser", "-f", str(hive), "--csv", str(out), "--csvf", csv_name]
+    if preflight["registry_hive"]["dirty_without_logs"]:
+        argv += ["--nl", "true"]
+    return argv, preflight
+
+
 def _sbecmd_hive_job(
     hive: Path,
     extractions: Path,
@@ -2447,14 +2469,7 @@ def _sbecmd_hive_job(
         except OSError as exc:
             staging_errors.append(f"{source.name}: {exc}")
 
-    dirty = _registry_hive_is_dirty(hive)
-    preflight = {
-        "registry_hive": {
-            "dirty": dirty,
-            "transaction_logs": [path.name for path in transaction_logs],
-            "dirty_without_logs": dirty is True and not transaction_logs,
-        }
-    }
+    preflight = _registry_hive_preflight(hive, transaction_logs)
     argv = [
         "sbecmd", "-d", str(stage), "--csv", str(output_dir),
         "--csvf", output_name, "--nl", "true",
@@ -2472,14 +2487,19 @@ def _sbecmd_hive_job(
     )
 
 
-def _mark_sbecmd_dirty_hive_warnings(
+#: The hive parsers that are given `--nl true` for a dirty hive with no transaction logs (OD-T10 for SBECmd, D370;
+#: OD-T14 for AmcacheParser, D379), so their parse is a WARN that states what the logs held.
+_DIRTY_HIVE_TOOLS = frozenset({"sbecmd", "amcacheparser"})
+
+
+def _mark_dirty_hive_warnings(
     jobs: list[ToolJob], ledger: list[dict[str, Any]],
 ) -> list[ToolJob]:
     """Mark successfully parsed dirty hives without logs as WARN in the final ledger."""
     reason = "dirty hive parsed without its transaction logs: changes held only in the logs are absent"
     warned: list[ToolJob] = []
     for job in jobs:
-        if job.tool != "sbecmd" or job.status != "OK":
+        if job.tool not in _DIRTY_HIVE_TOOLS or job.status != "OK":
             continue
         details = (job.preflight or {}).get("registry_hive") or {}
         if details.get("dirty_without_logs") is not True:
@@ -2505,8 +2525,8 @@ def _restate(job: ToolJob, ledger: list[dict[str, Any]], status: str, reason: st
 # cannot bring the copy up to date, the tool repairs the copy with `esentutl /p` and says so on its output, then parses
 # it: on T04, "'SRUDB.dat' was not shut down cleanly and its transaction logs could not bring it up to date, so a copy
 # was repaired with esentutl /p (what only the missing logs had is lost)". The job then read OK while records that only
-# the logs held were gone. The operator's D347 policy for this lane is no repair, so such a parse is held, in the
-# tool's own words, until the operator decides otherwise (Part 11, OD-T14).
+# the logs held were gone. D377 held such a parse as BLOCKED under the D347 no-repair policy; the operator then accepted
+# it as a WARN (OD-T14, 2026-10-24): the evidence is not changed, and the reason is the tool's own sentence.
 _ESE_REPAIR_TOOLS = frozenset({"srumecmd", "sumecmd"})
 _ESE_REPAIR_MARKER = "repaired with esentutl /p"
 
@@ -2521,20 +2541,20 @@ def _tool_output_text(job: ToolJob) -> str:
     return str((job.result or {}).get("data") or "")
 
 
-def _hold_tool_reported_repairs(jobs: list[ToolJob], ledger: list[dict[str, Any]]) -> list[ToolJob]:
-    """BLOCK a finished ESE parse whose tool reports it repaired its copy of the database (D347 policy)."""
-    held: list[ToolJob] = []
+def _warn_tool_reported_repairs(jobs: list[ToolJob], ledger: list[dict[str, Any]]) -> list[ToolJob]:
+    """WARN a finished ESE parse whose tool reports it repaired its copy of the database, in the tool's words."""
+    warned: list[ToolJob] = []
     for job in jobs:
         if str(job.tool or "").lower() not in _ESE_REPAIR_TOOLS or job.status not in ("OK", "WARN"):
             continue
         said = [line.strip() for line in _tool_output_text(job).splitlines() if _ESE_REPAIR_MARKER in line]
         if not said:
             continue
-        _restate(job, ledger, "BLOCKED",
-                 f"the tool repaired its copy of the database, which the lane's no-repair policy (D347) does not "
-                 f"accept until the operator decides (OD-T14): {said[0]}")
-        held.append(job)
-    return held
+        _restate(job, ledger, "WARN",
+                 f"the tool repaired its own copy of the database; the evidence is unchanged (operator OD-T14): "
+                 f"{said[0]}")
+        warned.append(job)
+    return warned
 
 
 def _plan_n2_extras(
@@ -4764,9 +4784,11 @@ async def run_tool_lane(
                 status, job.reason = _empty_output_status(job, result)
                 detail += " (no output produced)" if status == "FAIL" else " (no findings)"
             if status == "OK" and job.tool == "evtxecmd":
-                quality_failure = _evtxecmd_incomplete_reason(job, result)
+                quality_failure, limitation = _evtxecmd_review(job, result)
                 if quality_failure:
                     status, job.reason = "FAIL", quality_failure
+                elif limitation:
+                    status, job.reason = "WARN", limitation
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
         if aid:
@@ -4910,13 +4932,11 @@ async def run_tool_lane(
     coverage_warned = reconcile_process_list_coverage(
         sift_jobs, case_dir, ledger, run_id=run_id
     )
-    warned_sbecmd = _mark_sbecmd_dirty_hive_warnings(jobs, ledger)
-    for job in warned_sbecmd:
+    warned_hives = _mark_dirty_hive_warnings(jobs, ledger)
+    warned_repairs = _warn_tool_reported_repairs(jobs, ledger)
+    for job in (*warned_hives, *warned_repairs):
         _emit("WARN", job, job.reason, reason=job.reason)
-    held_repairs = _hold_tool_reported_repairs(jobs, ledger)
-    for job in held_repairs:
-        _emit("BLOCKED", job, job.reason, reason=job.reason)
-    if warned_sbecmd or held_repairs:
+    if warned_hives or warned_repairs:
         _write_progress()
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
@@ -5144,16 +5164,42 @@ def _evtxecmd_incomplete_reason(job: ToolJob, result: dict[str, Any]) -> str:
 
 
 def _evtxecmd_incomplete_reason_from_lines(job: ToolJob, lines: Iterable[str]) -> str:
-    """Reconcile the aggregate EVTX run while streaming its saved output."""
-    issues: list[str] = []
+    """Reconcile the aggregate EVTX run while streaming its saved output: the failure only."""
+    return _evtxecmd_review_lines(job, lines)[0]
 
+
+def _evtxecmd_review(job: ToolJob, result: dict[str, Any]) -> tuple[str, str]:
+    """``(failure, limitation)`` of a finished EvtxECmd pass; see ``_evtxecmd_review_lines``."""
+    if job.tool != "evtxecmd":
+        return "", ""
+    saved = str(result.get("output_saved_to") or "")
+    if saved and Path(saved).is_file():
+        with contextlib.suppress(OSError), Path(saved).open("r", encoding="utf-8", errors="replace") as stream:
+            return _evtxecmd_review_lines(job, stream)
+    return _evtxecmd_review_lines(job, (
+        line
+        for key in ("stdout", "stderr", "preview", "message", "error")
+        for line in str(result.get(key) or "").splitlines()
+    ))
+
+
+def _evtxecmd_review_lines(job: ToolJob, lines: Iterable[str]) -> tuple[str, str]:
+    """``(failure, limitation)``: what makes the pass FAIL, and what it leaves out that a WARN must state.
+
+    A missed input, a missing final count or a dropped event FAILs the pass. Record errors alone, with every input
+    processed and no event dropped, are a stated limitation (operator OD-T15, 2026-10-24): T05's Security.evtx had
+    31,091 records included and 0 dropped, and 3 errors at damaged offsets (record #0, #1227675 and #8552997 of a log
+    that holds 31,091). The errors stay listed in the tool's output and in the reason.
+    """
+    issues: list[str] = []
     expected_match = re.search(r"\((\d[\d,]*)\s+logs?\)", job.purpose, re.IGNORECASE)
     expected = int(expected_match.group(1).replace(",", "")) if expected_match else None
     starts = 0
     processed: int | None = None
-    error_counts: list[int] = []
+    error_files: list[tuple[str, int]] = []
     record_error_lines = 0
     dropped_total = 0
+    included_total = 0
     for raw_line in lines:
         line = raw_line.rstrip("\r\n")
         if line.startswith("Processing ") and line.endswith("..."):
@@ -5163,14 +5209,18 @@ def _evtxecmd_incomplete_reason_from_lines(job: ToolJob, lines: Iterable[str]) -
         )
         if processed_match:
             processed = int(processed_match.group(1).replace(",", ""))
-        error_match = re.search(r"(?i)\berror count:\s*(\d[\d,]*)\s*$", line)
+        error_match = re.search(r"(?i)^(.*?)\s*\berror count:\s*(\d[\d,]*)\s*$", line)
         if error_match:
-            error_counts.append(int(error_match.group(1).replace(",", "")))
+            error_files.append((Path(error_match.group(1).strip()).name,
+                                int(error_match.group(2).replace(",", ""))))
         if re.match(r"(?i)^Record\s+#\d+:\s*Error:", line):
             record_error_lines += 1
         dropped_match = re.search(r"(?i)Events dropped:\s*(\d[\d,]*)", line)
         if dropped_match:
             dropped_total += int(dropped_match.group(1).replace(",", ""))
+        included_match = re.search(r"(?i)Records included:\s*(\d[\d,]*)", line)
+        if included_match:
+            included_total += int(included_match.group(1).replace(",", ""))
 
     if expected is not None and starts != expected:
         issues.append(f"started {starts} of {expected} planned EVTX inputs")
@@ -5179,18 +5229,23 @@ def _evtxecmd_incomplete_reason_from_lines(job: ToolJob, lines: Iterable[str]) -
     else:
         if expected is not None and processed != expected:
             issues.append(f"processed {processed} of {expected} planned EVTX inputs")
-
-    if error_counts:
-        issues.append(
-            f"reported record errors in {len(error_counts)} EVTX file(s) "
-            f"({sum(error_counts)} record error(s))"
-        )
-    elif record_error_lines:
-        issues.append(f"emitted {record_error_lines} record parse error(s)")
     if dropped_total:
         issues.append(f"reported {dropped_total} dropped event(s)")
 
-    return "; ".join(issues)
+    record_errors = ""
+    if error_files:
+        named = ", ".join(f"{name} {count}" for name, count in error_files)
+        record_errors = (f"reported record errors in {len(error_files)} EVTX file(s) "
+                         f"({sum(c for _, c in error_files)} record error(s)) in {named}")
+    elif record_error_lines:
+        record_errors = f"emitted {record_error_lines} record parse error(s)"
+
+    if issues:
+        return "; ".join([*issues, *([record_errors] if record_errors else [])]), ""
+    if record_errors:
+        return "", (f"{record_errors}; {included_total:,} records included, 0 dropped "
+                    f"(damaged records the tool could not decode; operator OD-T15)")
+    return "", ""
 
 
 # Output-target flags, matched case-insensitively: DeepBlueCLI names its target
