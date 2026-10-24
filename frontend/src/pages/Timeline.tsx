@@ -83,6 +83,9 @@ export default function Timeline() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rebuilding, setRebuilding] = useState(false);
+  const [buildingEventStore, setBuildingEventStore] = useState(false);
+  const [eventStoreMessage, setEventStoreMessage] = useState("");
+  const [eventStoreError, setEventStoreError] = useState("");
   const [tab, setTab] = useState<"lanes" | "events">("lanes");
 
   // The brush is an instant range - the same thing for every lane.
@@ -372,6 +375,26 @@ export default function Timeline() {
     }
   };
 
+  const buildEventStore = async () => {
+    if (!caseKey || buildingEventStore) return;
+    setBuildingEventStore(true);
+    setEventStoreMessage("");
+    setEventStoreError("");
+    try {
+      const result = await api.timeline.build(caseKey);
+      if (result.built) {
+        const count = typeof result.events === "number" ? ` (${result.events.toLocaleString()} events)` : "";
+        setEventStoreMessage(`Timeline event store built${count}.`);
+      } else {
+        setEventStoreMessage(result.reason || "The timeline event store did not need a rebuild.");
+      }
+    } catch (exc) {
+      setEventStoreError((exc as Error).message);
+    } finally {
+      setBuildingEventStore(false);
+    }
+  };
+
   return (
     <div className={styles.page}>
       <PageHeader
@@ -384,12 +407,26 @@ export default function Timeline() {
         stageCode="N7"
         actions={
           <div className={styles.eventBar}>
+            <Button size="sm" onClick={buildEventStore} disabled={!caseKey || buildingEventStore}>
+              {buildingEventStore ? "Building event store…" : "Build event store"}
+            </Button>
             <Button size="sm" onClick={rebuildTimeline} disabled={rebuilding}>
               {rebuilding ? "Rebuilding…" : "Rebuild timeline.json"}
             </Button>
           </div>
         }
       />
+
+      {eventStoreMessage ? (
+        <p className={styles.note} role="status" data-testid="timeline-build-status">
+          {eventStoreMessage}
+        </p>
+      ) : null}
+      {eventStoreError ? (
+        <div className="error-banner" role="alert" data-testid="timeline-build-error">
+          {eventStoreError}
+        </div>
+      ) : null}
 
       <nav className={styles.tabs} role="tablist" aria-label="Timeline view">
         <button

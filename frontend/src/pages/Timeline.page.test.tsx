@@ -7,7 +7,7 @@
  * lines up vertically and one brush means one instant range for the stack.
  */
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -182,6 +182,59 @@ describe("Timeline lanes (migrated)", () => {
       expect(screen.getByTestId("timeline-events")).toBeInTheDocument(),
     );
     expect(screen.queryByTestId("time-lanes")).not.toBeInTheDocument();
+  });
+
+  it("builds the Elasticsearch event store for the active case and shows the result", async () => {
+    withCase("CASE-TL0009");
+    stubReads();
+    const build = vi.spyOn(api.timeline, "build").mockResolvedValue({
+      built: true,
+      events: 45,
+      index: "nexus-timeline-case-tl0009",
+    });
+    renderPage(<Timeline />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Build event store" }));
+    });
+
+    expect(build).toHaveBeenCalledWith("CASE-TL0009");
+    expect(await screen.findByTestId("timeline-build-status")).toHaveTextContent(
+      "Timeline event store built (45 events).",
+    );
+  });
+
+  it("shows why the event store was not rebuilt", async () => {
+    withCase("CASE-TL0010");
+    stubReads();
+    vi.spyOn(api.timeline, "build").mockResolvedValue({
+      built: false,
+      reason: "schema v3 already built",
+    });
+    renderPage(<Timeline />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Build event store" }));
+    });
+
+    expect(await screen.findByTestId("timeline-build-status")).toHaveTextContent(
+      "schema v3 already built",
+    );
+  });
+
+  it("surfaces event-store build errors", async () => {
+    withCase("CASE-TL0011");
+    stubReads();
+    vi.spyOn(api.timeline, "build").mockRejectedValue(new Error("Elasticsearch unavailable"));
+    renderPage(<Timeline />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Build event store" }));
+    });
+
+    expect(await screen.findByTestId("timeline-build-error")).toHaveTextContent(
+      "Elasticsearch unavailable",
+    );
   });
 
   it("surfaces a failed lane read", async () => {
