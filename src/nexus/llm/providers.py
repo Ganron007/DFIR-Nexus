@@ -59,6 +59,26 @@ def llm_timeout() -> float:
     return max(10.0, value)
 
 
+#: Retries of one model call when NEXUS_LLM_MAX_RETRIES is not set (Docs/SETUP.md).
+DEFAULT_LLM_MAX_RETRIES = 10
+
+
+def llm_max_retries() -> int:
+    """How many times a model client retries a transient failure before the call fails (NEXUS_LLM_MAX_RETRIES).
+
+    The one retry policy for every client the factory builds (D385: one HTTP 500 "Failed to reach upstream, please
+    retry later" ended a Mode 1 run on the SDK default of 2 retries, about 1.5 s). The provider SDKs retry 408, 409,
+    429, 5xx and connection errors with exponential backoff (0.5 s doubling, 8 s cap; about 55 s over 10 retries) and
+    honour Retry-After; any other 4xx fails at once. A timed-out call is retried too, so a fully stalled provider
+    costs up to (retries + 1) x NEXUS_LLM_TIMEOUT before the run is told: slow, never stuck.
+    """
+    try:
+        value = int(os.environ.get("NEXUS_LLM_MAX_RETRIES", "") or DEFAULT_LLM_MAX_RETRIES)
+    except ValueError:
+        value = DEFAULT_LLM_MAX_RETRIES
+    return max(0, value)
+
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers.
 

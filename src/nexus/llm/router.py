@@ -6,7 +6,6 @@ No vendor lock-in — any service implementing this standard works.
 
 from __future__ import annotations
 
-import asyncio
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -239,31 +238,6 @@ class LLMRouter:
             response.content = restore_text(response.content, case_dir)
             response.tool_calls = restore_tool_calls(response.tool_calls, case_dir)
         return response
-
-    async def chat_with_retry(
-        self,
-        messages: list[ChatMessage] | list[dict[str, Any]],
-        provider: str | None = None,
-        model: str | None = None,
-        max_retries: int = 3,
-        **kwargs: Any,
-    ) -> ChatResponse:
-        """Chat with exponential-backoff retry on rate limits."""
-        last_error: Exception | None = None
-        for attempt in range(max_retries):
-            try:
-                return await self.chat(
-                    messages=messages,
-                    provider=provider,
-                    model=model,
-                    **kwargs,
-                )
-            except ProviderRateLimitError as e:
-                last_error = e
-                if attempt < max_retries - 1:
-                    wait = 2 ** attempt
-                    await asyncio.sleep(wait)
-        raise last_error  # type: ignore[misc]
 
     async def close(self) -> None:
         """Close all provider clients."""

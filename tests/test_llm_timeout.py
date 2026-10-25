@@ -10,7 +10,8 @@ from __future__ import annotations
 import pytest
 
 _LLM_KEYS = ("NEXUS_LLM_MODEL", "NEXUS_LLM_BASE_URL", "NEXUS_LLM_API_KEY", "NEXUS_LLM_PROVIDER",
-             "NEXUS_LLM_REASONING", "NEXUS_LLM_EXTRA_BODY", "NEXUS_LLM_TIMEOUT", "NEXUS_MODEL")
+             "NEXUS_LLM_REASONING", "NEXUS_LLM_EXTRA_BODY", "NEXUS_LLM_TIMEOUT", "NEXUS_LLM_MAX_RETRIES",
+             "NEXUS_MODEL")
 
 
 def _model(monkeypatch, **env: str):

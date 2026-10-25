@@ -445,7 +445,7 @@ def _construct_model(model_name: str = ""):
     ``built_model_record()`` always names what was actually constructed.
     """
     _load_dotenv()
-    from nexus.llm.providers import llm_timeout
+    from nexus.llm.providers import llm_max_retries, llm_timeout
 
     model = model_name or os.environ.get("NEXUS_LLM_MODEL", "")
     base_url = os.environ.get("NEXUS_LLM_BASE_URL", "")
@@ -455,6 +455,8 @@ def _construct_model(model_name: str = ""):
     # Every client gets the call timeout: a slow model makes a run slow, a stalled one must never hold it.
     # Only the OpenAI-compatible client had one, so a local Ollama model or Anthropic could hang a run (D228).
     timeout = llm_timeout()
+    # One retry policy for every hosted client: a transient provider error is retried, not a failed run (D385).
+    retries = llm_max_retries()
 
     if not model:
         # Legacy prefix form: "openai/gpt-4o", "ollama/qwen...", anthropic name
@@ -463,7 +465,7 @@ def _construct_model(model_name: str = ""):
             from langchain_openai import ChatOpenAI
             built = legacy[len("openai/"):] or "gpt-4o"
             _record_built_model("openai", built)
-            return ChatOpenAI(model=built, timeout=timeout)
+            return ChatOpenAI(model=built, timeout=timeout, max_retries=retries)
         if legacy.startswith("ollama/"):
             try:
                 from langchain_ollama import ChatOllama
@@ -477,7 +479,7 @@ def _construct_model(model_name: str = ""):
         if legacy:
             from langchain_anthropic import ChatAnthropic
             _record_built_model("anthropic", legacy)
-            return ChatAnthropic(model=legacy, timeout=timeout)
+            return ChatAnthropic(model=legacy, timeout=timeout, max_retries=retries)
         # No model configured. The run record must not claim one ran (D48).
         _record_built_model("none", "none")
         raise RuntimeError(
@@ -488,7 +490,7 @@ def _construct_model(model_name: str = ""):
 
     if provider == "anthropic" and not base_url:
         from langchain_anthropic import ChatAnthropic
-        kwargs: dict[str, Any] = {"timeout": timeout}
+        kwargs: dict[str, Any] = {"timeout": timeout, "max_retries": retries}
         if api_key:
             kwargs["api_key"] = api_key
         _record_built_model("anthropic", model)
@@ -513,6 +515,7 @@ def _construct_model(model_name: str = ""):
     # Explicit client timeout — a stalled provider must never hang a turn
     # (the 4j.33 latency budget depends on this).
     kwargs["timeout"] = timeout
+    kwargs["max_retries"] = retries
     # reasoning_effort is an OpenAI-only param. Compatible hosts (e.g.
     # StepFun) reject it as "no active step plan subscription".
     if reasoning:
