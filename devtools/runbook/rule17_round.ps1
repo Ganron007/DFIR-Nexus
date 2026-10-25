@@ -1,10 +1,12 @@
 # A mode round under Part 11 rule 17: one mode run at a time, each checked before the next starts. A non-zero exit, a
 # refused or failed tool call, a failed model call or any traceback stops the round at that point, so the defect is
 # fixed before the next run; rerun with the remaining steps. Nothing is excused by name.
-#   pwsh -NoProfile -File devtools/runbook/rule17_round.ps1 -Round R1z3b -Steps 'T21|3','T05|1','T12|1 2 3'
+#   pwsh -NoProfile -File devtools/runbook/rule17_round.ps1 -Round R1z3b -Steps "T21|3;T05|1;T12|123"
+# One string, steps split on ';', each `<case>|<modes as digits>`: `pwsh -File` does not pass an array whose items hold
+# spaces, so the first form ('T12|1 2 3') never started.
 param(
     [Parameter(Mandatory)] [string] $Round,
-    [Parameter(Mandatory)] [string[]] $Steps
+    [Parameter(Mandatory)] [string] $Steps
 )
 $ErrorActionPreference = 'Continue'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -27,8 +29,10 @@ function Flagged([string] $log) {
     return , $hits
 }
 
-foreach ($step in $Steps) {
-    $t, $modes = $step -split '\|'
+foreach ($step in ($Steps -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+    $t, $digits = $step -split '\|'
+    if ($digits -notmatch '^[123]+$') { throw "step '$step': modes are digits 1-3, e.g. T12|123" }
+    $modes = ($digits.ToCharArray() | ForEach-Object { [string]$_ }) -join ' '
     $cid = $manifest.$t.case_id
     if (-not $cid) { throw "no case id for $t" }
     $trace = Join-Path $repo "cases\$cid\.trace"
