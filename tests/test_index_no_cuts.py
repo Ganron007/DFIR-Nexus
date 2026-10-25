@@ -132,10 +132,13 @@ def test_a_tab_separated_log_names_its_columns_and_drops_no_row(run_case):
 def test_host_and_user_keyword_copies_are_bounded_in_the_mapping():
     """A long host or user value must not reject its document (Lucene term limit)."""
     from nexus.langgraph.case_index import _mapping_body
+    from nexus.langgraph.field_registry import KEYWORD_IGNORE_ABOVE
 
     props = _mapping_body()["mappings"]["properties"]
-    assert props["host"]["ignore_above"] == 1024
-    assert props["user"]["ignore_above"] == 1024
+    # D403: one keyword limit for the whole mapping, still under Lucene's 32,766-byte term (4 bytes per character).
+    assert props["host"]["ignore_above"] == KEYWORD_IGNORE_ABOVE
+    assert props["user"]["ignore_above"] == KEYWORD_IGNORE_ABOVE
+    assert KEYWORD_IGNORE_ABOVE * 4 <= 32766
 
 
 def test_the_wildcard_subfields_have_no_length_cap():
