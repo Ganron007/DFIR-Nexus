@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 log = logging.getLogger(__name__)
 
 from nexus.langgraph.ecs_normalize import normalize
-from nexus.langgraph.field_registry import field_text
+from nexus.langgraph.field_registry import KEYWORD_IGNORE_ABOVE, field_text
 from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.mft_join import resolve_usn_row
 from nexus.langgraph.path_sanitize import (
@@ -130,7 +130,11 @@ _FORENSIC_TEXT_ANALYSIS = {
 # rebuilt.
 # v18 (2026-10-18, D250): an imported capture's DNS packets carry their query name (`dns_query`,
 # `ecs.dns.question.name`). An index built before it must be rebuilt.
-INDEX_SCHEMA_VERSION = 18
+# v19 (2026-10-26, D399/D402/D403): `fields.*` types are those the field registry checked on populated values (a
+# contradicted type is text), the date formats read what the tools write, flags are `true`/`false`, `ts_raw` is the
+# time as written, nfdump's summary is its own record, and keyword sub-fields hold up to 8,191 characters. An index
+# built before it silently left values out of typed and keyword fields and must be rebuilt.
+INDEX_SCHEMA_VERSION = 19
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -485,6 +489,21 @@ def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
     return _fields_from_values(header, _split_row(line))
 
 
+def _nfdump_summary(records):
+    """nfdump's ``Summary`` block as one record under its own header, with no event time (D402)."""
+    summary_header: list[str] | None = None
+    for start, raw, cells in records:
+        if cells is None or not any(str(c).strip() for c in cells):
+            continue
+        if summary_header is None:
+            summary_header = [str(c).strip() for c in cells]
+            continue
+        fields = _fields_from_values(summary_header, cells)
+        fields[NO_EVENT_TIME_FIELD] = "true"
+        yield start, raw, fields
+        return
+
+
 def iter_indexable_rows(
     path: Path,
     fh,
@@ -529,14 +548,23 @@ def iter_indexable_rows(
                     "reason": reason,
                 })
 
+        from nexus.ingest.network.nfdump import (
+            is_nfdump_summary_marker,
+            looks_like_nfdump_csv_header,
+        )
+
         untimed = _untimed_csv(path, header)
+        nfdump = looks_like_nfdump_csv_header(header)
+        records = iter(iter_record_rows(fh, delimiter=delim, on_fallback=_on_fallback))
         first = True
-        for start, raw, cells in iter_record_rows(
-            fh, delimiter=delim, on_fallback=_on_fallback
-        ):
+        for start, raw, cells in records:
             if first:
                 first = False  # the header record
                 continue
+            if nfdump and cells is not None and is_nfdump_summary_marker(cells):
+                # D402: nfdump's flows end here; the totals that follow have their own header.
+                yield from _nfdump_summary(records)
+                return
             if cells is None:  # WO-22 fallback row: no reliable columns
                 if not raw.strip():
                     continue
@@ -1203,7 +1231,7 @@ def _mapping_body() -> dict[str, Any]:
                         "match_mapping_type": "string",
                         "mapping": {
                             "type": "text",
-                            "fields": {"kw": {"type": "keyword", "ignore_above": 1024}},
+                            "fields": {"kw": {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE}},
                         },
                     }
                 },
@@ -1215,7 +1243,7 @@ def _mapping_body() -> dict[str, Any]:
                         "match_mapping_type": "string",
                         "mapping": {
                             "type": "keyword",
-                            "ignore_above": 4096,
+                            "ignore_above": KEYWORD_IGNORE_ABOVE,
                             "fields": {"wc": _wildcard_mapping()},
                         },
                     }
@@ -1229,7 +1257,7 @@ def _mapping_body() -> dict[str, Any]:
                         "match_mapping_type": "string",
                         "mapping": {
                             "type": "keyword",
-                            "ignore_above": 4096,
+                            "ignore_above": KEYWORD_IGNORE_ABOVE,
                             "fields": {
                                 "wc": _wildcard_mapping(),
                                 "text": {"type": "text"},
@@ -1243,8 +1271,8 @@ def _mapping_body() -> dict[str, Any]:
                 "family": {"type": "keyword"},
                 "file": {"type": "keyword"},
                 "line": {"type": "integer"},
-                "host": {"type": "keyword", "ignore_above": 1024},
-                "user": {"type": "keyword", "ignore_above": 1024},
+                "host": {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE},
+                "user": {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE},
                 "event_id": {"type": "keyword"},
                 "text": {
                     "type": "text",
@@ -1799,11 +1827,12 @@ def _source_extractions_text(case_dir: Path, run_id: str = "") -> str:
         return ""
 
 
-def unindexed_field_values(client: Any, name: str) -> dict[str, int]:
-    """Documents per field whose value the field's type could not hold (`_ignored`), largest first.
+def unindexed_field_values(client: Any, name: str) -> dict[str, dict[str, Any]]:
+    """Per field, the documents whose value the field could not hold (`_ignored`), with the field's mapped type.
 
     `index.mapping.ignore_malformed` keeps such a document whole and leaves only that value out of the field index,
-    without a word (D399: 32,146 NetFlow rows had no queryable source or destination address). This is the count.
+    without a word (D399: 32,146 NetFlow rows had no queryable source or destination address); a keyword field leaves
+    out a value longer than its `ignore_above` (D403). This is the count, and the type says which of the two it was.
     """
     body = {"size": 0, "aggs": {"ignored": {"terms": {"field": "_ignored", "size": 500}}}}
     try:
@@ -1811,7 +1840,17 @@ def unindexed_field_values(client: Any, name: str) -> dict[str, int]:
         buckets = ((resp.json().get("aggregations") or {}).get("ignored") or {}).get("buckets") or []
     except Exception:  # noqa: BLE001 - the count is a report; the index stands without it
         return {}
-    return {str(b.get("key")): int(b.get("doc_count") or 0) for b in buckets}
+    counts = {str(b.get("key")): int(b.get("doc_count") or 0) for b in buckets}
+    types: dict[str, str] = {}
+    if counts:
+        try:
+            mapped = client.get(f"/{name}/_mapping/field/{','.join(counts)}").json()
+            for spec in ((mapped.get(name) or {}).get("mappings") or {}).values():
+                for full, body_ in (spec.get("mapping") or {}).items():
+                    types[str(spec.get("full_name") or full)] = str((body_ or {}).get("type") or "")
+        except Exception:  # noqa: BLE001
+            types = {}
+    return {field: {"docs": docs, "type": types.get(field, "")} for field, docs in counts.items()}
 
 
 def write_index_state(

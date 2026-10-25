@@ -34,6 +34,17 @@ GENERIC = ("PayloadData1", "PayloadData2", "PayloadData3", "PayloadData4",
            "PayloadData5", "PayloadData6", "ExecutableInfo", "UserName",
            "RemoteHost")
 SAMPLES_PER_COLUMN = 3
+#: D404: for the field registry's type proof, one value per distinct SHAPE of a column (digits, letters and runs
+#: collapsed), up to this many. Three samples missed MemProcFS's hex `Size` ("0x1b000") because the first three
+#: files wrote it decimal; a type fails on a form, so every form a column takes must reach the proof.
+TYPE_SHAPES_PER_COLUMN = 25
+_SHAPE_DIGITS = __import__("re").compile(r"\d+")
+_SHAPE_LETTERS = __import__("re").compile(r"[A-Za-z]+")
+
+
+def _shape(value: str) -> str:
+    """`0x1b000` -> `9a9a9`, `3477488` -> `9`, `2020-11-01 22:15:47.5539615` -> `9-9-9 9:9:9.9`."""
+    return _SHAPE_LETTERS.sub("a", _SHAPE_DIGITS.sub("9", value))
 
 
 def _sanitize(value: Any) -> str:
@@ -221,7 +232,7 @@ def profile(case_dir: Path, stats: dict[str, Any] | None = None) -> dict[str, An
     from nexus.langgraph.case_index import iter_index_docs
 
     per_family: dict[str, dict[str, dict[str, Any]]] = defaultdict(lambda: defaultdict(
-        lambda: {"rows": 0, "filled": 0, "distinct": set(), "samples": []}))
+        lambda: {"rows": 0, "filled": 0, "distinct": set(), "samples": [], "shapes": {}}))
     totals = Counter()
     family_docs: dict[str, int] = Counter()
 
@@ -249,6 +260,14 @@ def profile(case_dir: Path, stats: dict[str, Any] | None = None) -> dict[str, An
                 sample = _sanitize(value)
                 if sample and sample not in bucket["samples"]:
                     bucket["samples"].append(sample)
+            shapes = bucket["shapes"]
+            if len(shapes) < TYPE_SHAPES_PER_COLUMN:
+                text_value = str(value)
+                form = _shape(text_value)
+                if form not in shapes:
+                    sample = _sanitize(text_value)
+                    if sample:
+                        shapes[form] = sample
         # WO-CS1: measure the common `ecs.*` fields too, flattened to dotted names
         # so a stored query's concept routing can be checked against real population.
         ecs = doc.get("ecs") if isinstance(doc.get("ecs"), dict) else None
@@ -282,6 +301,7 @@ def profile(case_dir: Path, stats: dict[str, Any] | None = None) -> dict[str, An
                 "filled": c["filled"],
                 "distinct": len(c["distinct"]),
                 "samples": c["samples"],
+                **({"type_samples": list(c["shapes"].values())} if c["shapes"] else {}),
             }
         families[fam] = {"docs": docs, "columns": cols}
     return {"docs": dict(totals), "families": families,

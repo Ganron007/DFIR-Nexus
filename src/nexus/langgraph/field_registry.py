@@ -39,6 +39,13 @@ DATE_FORMATS = (
 _EMPTY: dict = {"version": 0, "columns": {}, "families": {}, "conflicts": []}
 
 
+#: Longest value a keyword sub-field holds, in characters (D403). Lucene refuses a term over 32,766 bytes, and a
+#: character is at most 4 bytes in UTF-8, so 8,191 is the largest safe value. At 1,024, 215 of T05's EVTX `Payload`
+#: script blocks were not in `Payload.kw`, where the query normalizer sends a field's wildcard and term search. A
+#: longer value stays in the text field and the row text, and the index build counts it (`index_warnings`).
+KEYWORD_IGNORE_ABOVE = 8191
+
+
 def field_text(value: object) -> str:
     """How one importer value is written into a `fields.*` column.
 
@@ -95,10 +102,10 @@ def es_property(spec: dict) -> dict:
     if t == "date":
         return {"type": "date", "format": DATE_FORMATS}
     if t == "keyword":
-        return {"type": "keyword", "ignore_above": 1024}
+        return {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE}
     # text (also keyword+text conflicts): searchable with a keyword subfield so
     # exact DSL operators (in/eq) keep working.
-    return {"type": "text", "fields": {"kw": {"type": "keyword", "ignore_above": 1024}}}
+    return {"type": "text", "fields": {"kw": {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE}}}
 
 
 def field_properties() -> dict[str, dict]:

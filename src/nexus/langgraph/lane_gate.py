@@ -334,13 +334,21 @@ def _completeness_gaps(
     return gaps
 
 
-def _index_warnings(unindexed_field_values: dict[str, int]) -> list[dict[str, Any]]:
-    """The gate's `index_warnings` rows, largest first (D399)."""
-    return [
-        {"field": field, "docs": docs,
-         "reason": "values this field's type cannot hold; a query on the field misses them (the row text has them)"}
-        for field, docs in sorted(unindexed_field_values.items(), key=lambda kv: -kv[1])
-    ]
+def _index_warnings(unindexed_field_values: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """The gate's `index_warnings` rows, largest first (D399, D403)."""
+    from nexus.langgraph.field_registry import KEYWORD_IGNORE_ABOVE
+
+    rows = []
+    for field, entry in unindexed_field_values.items():
+        kind = str(entry.get("type") or "")
+        if kind == "keyword":
+            reason = (f"values longer than {KEYWORD_IGNORE_ABOVE:,} characters (the keyword limit); an exact or "
+                      "wildcard query on this field misses them (the text field and the row text have them)")
+        else:
+            reason = (f"values this field's type{f' ({kind})' if kind else ''} cannot hold; a query on the field "
+                      "misses them (the row text has them)")
+        rows.append({"field": field, "docs": int(entry.get("docs") or 0), "type": kind, "reason": reason})
+    return sorted(rows, key=lambda row: -row["docs"])
 
 
 def write_lane_gate(
@@ -351,7 +359,7 @@ def write_lane_gate(
     ts: str | None = None,
     registered_evidence: list[dict[str, Any]] | None = None,
     completeness: list[dict[str, Any]] | None = None,
-    unindexed_field_values: dict[str, int] | None = None,
+    unindexed_field_values: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Persist the gate after a tool-lane pass. Unprocessed = FAIL rows.
 
@@ -662,7 +670,7 @@ def reconcile_after_index(
     case_dir: Path | str,
     file_counts: dict[str, Any],
     run_id: str = "",
-    unindexed_field_values: dict[str, int] | None = None,
+    unindexed_field_values: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Re-derive the gate from what the index now holds (WO-TA item 9).
 

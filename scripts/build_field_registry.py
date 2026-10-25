@@ -351,7 +351,10 @@ _NOT_A_VALUE = ("<redacted-path>",)
 
 
 def load_samples() -> dict[str, list[tuple[str, str]]]:
-    """column -> (family, value) for every populated sample in the population profile (all families)."""
+    """column -> (family, value) for every populated sample in the population profile (all families).
+
+    `type_samples` (one value per distinct shape of the column, D404) when the profile has them, else `samples`.
+    """
     import json
 
     prof = SRC_DIR / "_population.json"
@@ -361,7 +364,7 @@ def load_samples() -> dict[str, list[tuple[str, str]]]:
     out: dict[str, list[tuple[str, str]]] = {}
     for family, body in (data.get("families") or {}).items():
         for column, info in ((body or {}).get("columns") or {}).items():
-            for value in (info or {}).get("samples") or []:
+            for value in (info or {}).get("type_samples") or (info or {}).get("samples") or []:
                 text = str(value)
                 if not text or text in _NOT_A_VALUE or text.endswith("..."):
                     continue

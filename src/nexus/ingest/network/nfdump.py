@@ -50,6 +50,18 @@ def looks_like_nfdump_csv_header(header: list[str]) -> bool:
     return len(low & _CSV_HINTS) >= 4 and "ts" in low and ("sa" in low or "da" in low)
 
 
+def is_nfdump_summary_marker(cells: list[str]) -> bool:
+    """True for the line that ends nfdump's flow rows in ``-o csv`` output.
+
+    nfdump writes the flows, then a line ``Summary``, then the summary's own header
+    (``flows,bytes,packets,avg_bps,avg_pps,avg_bpp``) and one values row. Read past the
+    marker, those land on the flow columns as two false flows per file (D402). The one
+    definition of where nfdump's flow rows end, for the importer and the index.
+    """
+    filled = [str(c).strip() for c in cells if str(c).strip()]
+    return len(filled) == 1 and filled[0].lower() == "summary"
+
+
 def parse_nfdump_csv(text: str) -> list[dict[str, str]]:
     """Parse nfdump ``-o csv`` text into row dicts (no type coercion)."""
     if not text.strip():
@@ -62,6 +74,8 @@ def parse_nfdump_csv(text: str) -> list[dict[str, str]]:
     names = [h.strip().lower().lstrip("\ufeff") for h in header]
     rows: list[dict[str, str]] = []
     for raw in reader:
+        if is_nfdump_summary_marker(raw):
+            break  # the summary is nfdump's totals, not a flow
         if not raw or len(raw) < 2:
             continue
         rows.append({

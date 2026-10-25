@@ -113,21 +113,71 @@ class _Resp:
 class _Client:
     def post(self, path, json=None):
         return _Resp({"aggregations": {"ignored": {"buckets": [
-            {"key": "fields.sa", "doc_count": 32146}, {"key": "ts_raw", "doc_count": 7}]}}})
+            {"key": "fields.sa", "doc_count": 32146}, {"key": "fields.Payload.kw", "doc_count": 7}]}}})
+
+    def get(self, path):
+        return _Resp({"nexus-case-x": {"mappings": {
+            "fields.sa": {"full_name": "fields.sa", "mapping": {"sa": {"type": "double"}}},
+            "fields.Payload.kw": {"full_name": "fields.Payload.kw", "mapping": {"kw": {"type": "keyword"}}}}}})
 
 
-def test_unindexed_values_are_counted_per_field():
-    assert unindexed_field_values(_Client(), "nexus-case-x") == {"fields.sa": 32146, "ts_raw": 7}
+def test_unindexed_values_are_counted_per_field_with_the_field_type():
+    assert unindexed_field_values(_Client(), "nexus-case-x") == {
+        "fields.sa": {"docs": 32146, "type": "double"}, "fields.Payload.kw": {"docs": 7, "type": "keyword"}}
 
 
 def test_the_gate_shows_unindexed_values_even_when_reconcile_returns_early(tmp_path):
     case = tmp_path / "CASE-X"
     (case / "analysis").mkdir(parents=True)
     lane_gate._atomic_write(lane_gate.gate_path(case), {"schema": 1, "run_id": "RUN-1", "status": "clear"})
-    lane_gate.reconcile_after_index(case, {}, run_id="RUN-1", unindexed_field_values={"fields.sa": 32146})
+    lane_gate.reconcile_after_index(case, {}, run_id="RUN-1", unindexed_field_values={
+        "fields.sa": {"docs": 32146, "type": "double"}, "fields.Payload.kw": {"docs": 7, "type": "keyword"}})
     gate = lane_gate.read_lane_gate(case)
     assert gate["status"] == "clear", "a warning never blocks"
-    assert gate["index_warnings"][0]["field"] == "fields.sa" and gate["index_warnings"][0]["docs"] == 32146
+    first, second = gate["index_warnings"]
+    assert (first["field"], first["docs"]) == ("fields.sa", 32146) and "(double) cannot hold" in first["reason"]
+    assert second["field"] == "fields.Payload.kw" and "8,191 characters" in second["reason"]
+
+
+def test_d402_nfdump_flows_end_at_the_summary_line(tmp_path):
+    from nexus.ingest.network.nfdump import parse_nfdump_csv
+    from nexus.langgraph.case_index import _index_header, _open_text_auto, iter_indexable_rows
+
+    # the shape of a real nfdump -o csv file (T18): flows, then Summary, its header and its values
+    header = "ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt"
+    flow = "2013-08-29 16:43:46,2013-08-29 16:43:46,0.000,172.16.62.42,172.16.62.1,8321,53,UDP,........,0,0,1,74"
+    path = tmp_path / "20261023T145008_nfdump_out.csv"
+    path.write_text("\n".join([header, flow, flow, "Summary", "flows,bytes,packets,avg_bps,avg_pps,avg_bpp",
+                               "2,148,2,0,0,74", ""]), encoding="utf-8")
+    with _open_text_auto(path) as fh:
+        rows = list(iter_indexable_rows(path, fh, _index_header(path)))
+    assert [r[2].get("sa") for r in rows[:2]] == ["172.16.62.42", "172.16.62.42"]
+    assert len(rows) == 3 and rows[2][2]["flows"] == "2" and rows[2][2]["ts_none"] == "true"
+    assert "sa" not in rows[2][2]
+    assert len(parse_nfdump_csv(path.read_text(encoding="utf-8"))) == 2
+
+
+def test_d403_every_keyword_sub_field_holds_the_one_limit():
+    from nexus.langgraph.case_index import _mapping_body
+    from nexus.langgraph.field_registry import KEYWORD_IGNORE_ABOVE, es_property
+
+    assert KEYWORD_IGNORE_ABOVE * 4 <= 32766, "a term must stay under Lucene's byte limit"
+    assert es_property({"type": "text"})["fields"]["kw"]["ignore_above"] == KEYWORD_IGNORE_ABOVE
+    body = _mapping_body()
+    limits = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("type") == "keyword" and "ignore_above" in node:
+                limits.append(node["ignore_above"])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(body["mappings"])
+    assert limits and set(limits) <= {KEYWORD_IGNORE_ABOVE, 64}, sorted(set(limits))  # 64: ts_raw, a time token
 
 
 def test_windows_tools_run_under_the_invariant_culture(tmp_path, monkeypatch):
