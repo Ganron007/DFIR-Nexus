@@ -26,11 +26,18 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from typing import Any
 
 # The validator's own tables (one definition each, rule 16): what this surface rewrites is exactly what it accepts.
 # `es_native` imports only the standard library at module level, so this stays a pure module.
-from nexus.langgraph.es_native import _AGG_TYPES, _QUERY_KEYS, FIELD_CLAUSE_OPTIONS, VALUE_CLAUSES
+from nexus.langgraph.es_native import (
+    _AGG_TYPES,
+    _QUERY_KEYS,
+    DOC_VALUE_AGGS,
+    FIELD_CLAUSE_OPTIONS,
+    VALUE_CLAUSES,
+)
 
 log = logging.getLogger(__name__)
 
@@ -246,9 +253,17 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
     if isinstance(node, list):
         out_list = []
         for item in node:
-            fixed, sub = _normalize_node(item, types, depth=depth + 1)
-            out_list.append(fixed)
-            notes.extend(sub)
+            # One list item holding several clauses is several clauses (D393, T01 Mode 3:
+            # `{"wildcard": {...}, "term": {...}}` as one `must` entry).
+            if isinstance(item, dict) and len(item) > 1 and all(k in _QUERY_KEYS for k in item):
+                notes.append(f"split a list item holding {len(item)} clauses into {len(item)} clauses")
+                parts: list[Any] = [{k: v} for k, v in item.items()]
+            else:
+                parts = [item]
+            for part in parts:
+                fixed, sub = _normalize_node(part, types, depth=depth + 1)
+                out_list.append(fixed)
+                notes.extend(sub)
         return out_list, notes
     if not isinstance(node, dict):
         return node, notes
@@ -258,6 +273,21 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
         spec = {k: v for k, v in node["exists"].items() if k == "field"}
         notes.append("dropped unsupported exists options ['missing']")
         return {"exists": spec}, notes
+    # `{"exists": {"fields.ValueData": {}}}`: the field named as the key (D392, T04 Mode 2).
+    exists = node.get("exists") if set(node) == {"exists"} else None
+    if isinstance(exists, dict) and "field" not in exists and len(exists) == 1:
+        (named,) = exists
+        notes.append(f"rewrote `exists` naming `{named}` as its key to {{field: `{named}`}}")
+        return {"exists": {"field": _alias_field(str(named), types)}}, notes
+    # `{"family": "evtxecmd"}` as a clause: a mapped field with a value means `term` (D394, T05 Mode 2).
+    if len(node) == 1 and types:
+        ((bare, bare_value),) = node.items()
+        target = _alias_field(str(bare), types)
+        if (bare not in _QUERY_KEYS and bare not in _ENVELOPE_KEYS and target in types
+                and isinstance(bare_value, (str, int, float, bool))):
+            clause = "match" if _is_text(types.get(target)) else "term"
+            notes.append(f"`{bare}` used as a clause with a value; matched it as {clause} {{{target}: {bare_value!r}}}")
+            return {clause: {target: bare_value}}, notes
 
     out: dict[str, Any] = {}
     for key, value in node.items():
@@ -632,6 +662,9 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
             if _is_text(types.get(field)) and field + _KW_SUFFIX in types:
                 field = field + _KW_SUFFIX
                 notes.append(f"sorted on `{field}` (keyword sub-field of a text field)")
+            elif _is_text(types.get(field)):
+                notes.append(f"`{field}` is analysed text and cannot be sorted; sorted on `ts` instead")
+                field = "ts"
             elif types and field not in types:
                 notes.append(
                     f"`{field}` is not mapped in this index; sorted on `ts` instead"
@@ -651,6 +684,10 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
             if _is_text(types.get(target)) and target + _KW_SUFFIX in types:
                 target = target + _KW_SUFFIX
                 notes.append(f"sorted on `{target}` (keyword sub-field of a text field)")
+            elif _is_text(types.get(target)):
+                # D391: `sort: [{"text": "asc"}]` came back as a raw fielddata 400 (T01, T10).
+                notes.append(f"`{target}` is analysed text and cannot be sorted; sorted on `ts` instead")
+                target = "ts"
             elif types and target not in types:
                 # Sorting on a field this index does not map is a shard 400. Fall
                 # back to the timestamp, which every row has, and say so.
@@ -662,6 +699,85 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
         else:
             notes.append(f"dropped unusable sort entry {entry!r}")
     return out[:4], notes
+
+
+#: date_histogram intervals that are calendar units; anything else is a fixed interval.
+_CALENDAR_INTERVALS = {"minute", "1m", "hour", "1h", "day", "1d", "week", "1w", "month", "1M", "quarter", "1q",
+                       "year", "1y"}
+_ISO_DURATION = re.compile(r"P(?:(\d+)([DW]))|PT(\d+)([HMS])")
+
+
+def _query_clause_as_filter_agg(name: str, spec: Any, notes: list[str]) -> Any:
+    """A query clause written as a named aggregation is a `filter` aggregation (D389).
+
+    Measured on T01 Mode 3: `{"by_run_match": {"bool": {"filter": [...]}}}`. A `range`/`terms` body that names a
+    `field` (or `ranges`/`sources`) is a real aggregation and stays one; `query` is the request query (D387).
+    """
+    if name == "query" or not isinstance(spec, dict):
+        return spec
+    clauses = [k for k in spec if k not in ("aggs", "aggregations")]
+    if len(clauses) != 1:
+        return spec
+    clause = clauses[0]
+    body = spec[clause]
+    is_agg = clause in _AGG_TYPES and isinstance(body, dict) and bool({"field", "ranges", "sources"} & set(body))
+    if clause not in _QUERY_KEYS or is_agg or clause == "filter":
+        return spec
+    notes.append(f"`{name}` is a query clause (`{clause}`); used it as a `filter` aggregation")
+    rest = {k: v for k, v in spec.items() if k in ("aggs", "aggregations")}
+    return {"filter": {clause: body}, **rest}
+
+
+def _normalize_date_histogram(body: dict[str, Any], notes: list[str]) -> dict[str, Any]:
+    """The date_histogram shapes models write that ES 8 rejects (D390, T01 and T04 Mode 2/3)."""
+    body = dict(body)
+    if "interval" in body and not {"calendar_interval", "fixed_interval"} & set(body):
+        value = str(body.pop("interval"))
+        key = "calendar_interval" if value in _CALENDAR_INTERVALS else "fixed_interval"
+        body[key] = value
+        notes.append(f"renamed date_histogram `interval` to `{key}` (ES 8 removed `interval`)")
+    for key in ("fixed_interval", "calendar_interval"):
+        value = body.get(key)
+        match = _ISO_DURATION.fullmatch(str(value).upper()) if isinstance(value, str) else None
+        if match:
+            n, unit = (match.group(1), match.group(2)) if match.group(1) else (match.group(3), match.group(4))
+            converted = f"{int(n) * 7}d" if unit == "W" else f"{n}{unit.lower()}"
+            body[key] = converted
+            notes.append(f"converted the ISO-8601 `{key}` {value!r} to {converted!r}")
+    if "target_bounds" in body and "extended_bounds" not in body:
+        bounds = body.pop("target_bounds")
+        if isinstance(bounds, dict):
+            extended = {"min": bounds.get("gte", bounds.get("min")), "max": bounds.get("lte", bounds.get("max"))}
+            body["extended_bounds"] = {k: v for k, v in extended.items() if v is not None}
+            notes.append("used `target_bounds` as `extended_bounds` (the date_histogram option for empty buckets)")
+    for key in ("size", "target", "target_bounds"):
+        if key in body:
+            body.pop(key)
+            notes.append(f"dropped `{key}`: not a date_histogram option")
+    order = body.get("order")
+    if isinstance(order, dict) and not set(order) <= {"_key", "_count"}:
+        body.pop("order")
+        notes.append("dropped a date_histogram `order` that is not {_key|_count: asc|desc}")
+    return body
+
+
+def _drop_open_range_bounds(kind: str, body: dict[str, Any], notes: list[str]) -> dict[str, Any]:
+    """`{"from": "*", "to": "*"}` means unbounded; ES wants the bound left out (D397: a raw date-parse 400)."""
+    ranges = body.get("ranges")
+    if not isinstance(ranges, list):
+        return body
+    cleaned = []
+    dropped = False
+    for item in ranges:
+        if isinstance(item, dict):
+            kept = {k: v for k, v in item.items() if not (k in ("from", "to") and v in ("*", None, ""))}
+            dropped |= len(kept) != len(item)
+            cleaned.append(kept)
+        else:
+            cleaned.append(item)
+    if dropped:
+        notes.append(f"left out `*` bounds in the {kind} ranges (an open bound is written by omitting it)")
+    return {**body, "ranges": cleaned}
 
 
 def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict[str, Any], list[str]]:
@@ -687,9 +803,17 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
             return node
         out: dict[str, Any] = {}
         for name, spec in node.items():
+            spec = _query_clause_as_filter_agg(name, spec, notes)
             if isinstance(spec, dict) and any(k in spec for k in _AGG_TYPES):
                 agg_type = next(k for k in spec if k in _AGG_TYPES)
                 agg_body = spec.get(agg_type)
+                if agg_type == "filter":
+                    # A filter aggregation's body is a query: the query surface normalizes it.
+                    fixed, sub_notes = normalize_query(agg_body, field_types=types)
+                    notes.extend(sub_notes)
+                    inner = spec.get("aggs") if isinstance(spec.get("aggs"), dict) else spec.get("aggregations")
+                    out[name] = {"filter": fixed, **({"aggs": walk(inner, depth + 1)} if isinstance(inner, dict) else {})}
+                    continue
                 # Sub-aggregations belong BESIDE the agg type (`{"terms": {...}, "aggs": {...}}`). They were
                 # moved inside the body with the stray options, which ES and validate_aggs reject: every
                 # nested aggregation failed (6 of CASE-C5B04D31's 282 es_aggregate calls, D246). One written
@@ -707,13 +831,20 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                     notes.append(f"moved {sorted(strag)} inside the `{agg_type}` body")
                 if isinstance(agg_body, dict):
                     patched = dict(agg_body)
-                    # ES wants numbers for these; a model writes "100".
+                    # ES wants numbers for these; a model writes "100", or `true` for min_doc_count (D390).
                     for num_key in ("size", "shard_size", "min_doc_count",
                                     "precision_threshold"):
                         raw = patched.get(num_key)
-                        if isinstance(raw, str) and raw.strip().isdigit():
+                        if isinstance(raw, bool):
+                            patched[num_key] = int(raw)
+                            notes.append(f"coerced `{num_key}` from a boolean to {int(raw)}")
+                        elif isinstance(raw, str) and raw.strip().isdigit():
                             patched[num_key] = int(raw.strip())
                             notes.append(f"coerced `{num_key}` from a string to a number")
+                    if agg_type == "date_histogram":
+                        patched = _normalize_date_histogram(patched, notes)
+                    if agg_type in ("range", "date_range"):
+                        patched = _drop_open_range_bounds(agg_type, patched, notes)
                     field = patched.get("field")
                     if isinstance(field, str):
                         target = _alias_field(field, types)
@@ -723,7 +854,9 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                             notes.append(f"`{target}` is not mapped; no agg field change")
                         if target != field:
                             notes.append(f"aliased agg field `{field}` → `{target}`")
-                        if agg_type == "terms" and _is_text(types.get(target)):
+                        # Every doc-value aggregation needs the keyword sub-field of a text field (D391: a
+                        # `cardinality` on text `fields.Executed` came back as a raw 400; only `terms` had it).
+                        if agg_type in DOC_VALUE_AGGS and _is_text(types.get(target)):
                             kw = target + _KW_SUFFIX
                             if kw in types:
                                 notes.append(

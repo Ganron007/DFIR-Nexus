@@ -34,7 +34,11 @@ _RANGE_BODY_KEYS = {"gte", "gt", "lte", "lt", "format", "boost", "time_zone"}
 _AGG_TYPES = {
     "terms", "date_histogram", "cardinality", "composite", "min", "max",
     "avg", "sum", "value_count", "histogram", "range",
+    # D389: the model counts a condition with `filter` and buckets time with `date_range` (T01, T04).
+    "filter", "date_range",
 }
+#: Aggregations that read a field's doc values: a `text` field needs its `.kw` keyword sub-field (D391).
+DOC_VALUE_AGGS = frozenset({"terms", "cardinality", "value_count"})
 _COMPOSITE_SOURCES = {"terms", "date_histogram", "histogram"}
 # Strict per-type body allowlists: anything else (script!) is rejected.
 _AGG_BODY_KEYS = {
@@ -42,7 +46,8 @@ _AGG_BODY_KEYS = {
               "shard_size", "include", "exclude"},
     "date_histogram": {"field", "calendar_interval", "fixed_interval",
                        "time_zone", "format", "min_doc_count", "missing",
-                       "order", "offset"},
+                       "order", "offset", "extended_bounds", "hard_bounds"},
+    "date_range": {"field", "ranges", "format", "time_zone", "keyed", "missing"},
     "histogram": {"field", "interval", "min_doc_count", "missing", "order",
                   "offset"},
     "range": {"field", "ranges", "keyed", "missing"},
@@ -179,7 +184,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
 _MAPPING_TYPES_TTL = 60.0
 _mapping_types_cache: dict[str, tuple[float, dict[str, str]]] = {}
 
-_CLAUSE_FIELD_KEYS = ("term", "match", "match_phrase", "prefix", "wildcard", "regexp", "range")
+_CLAUSE_FIELD_KEYS = ("term", "terms", "match", "match_phrase", "prefix", "wildcard", "regexp", "range")
 _NUMERIC_ES = {
     "long", "integer", "short", "byte", "double", "float", "half_float", "scaled_float",
 }
@@ -266,7 +271,10 @@ def _check_ref(
         values: list[Any] = []
         if isinstance(spec, dict):
             values = [v for k, v in spec.items() if k in {"value", "gte", "lte", "gt", "lt"}]
-        elif spec is not None and not isinstance(spec, dict):
+        elif isinstance(spec, list):
+            # A `terms` list: ES fails the whole query on one value the field cannot hold (D396).
+            values = list(spec)
+        elif spec is not None:
             values = [spec]
         entry = {}
         for v in values:
@@ -433,6 +441,23 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
             raise ESQueryError(f"{agg_type} body must be an object")
         if "script" in body or "scripted_metric" in spec:
             raise ESQueryError("aggregation scripts are not allowed")
+        if agg_type == "filter":
+            # A `filter` aggregation's body is a query clause: the query allowlist applies to it.
+            validate_query(body)
+            sub = spec.get("aggs")
+            if sub is not None:
+                validate_aggs(sub, depth + 1)
+            continue
+        if agg_type != "composite" and not body.get("field"):
+            # ES answers a field-less metric with a raw 400 (D395: `{"value_count": {}}` to count rows).
+            raise ESQueryError(
+                f"{agg_type} needs a `field`: to count the rows a query matches, read `total` in the "
+                "es_aggregate result (exact)")
+        if agg_type in ("range", "date_range") and not (isinstance(body.get("ranges"), list) and body["ranges"]):
+            # T01 Mode 3 asked `date_range` with no ranges for the time span: ES answers with a raw 400.
+            raise ESQueryError(
+                f"{agg_type} needs a non-empty `ranges` list; for the earliest and latest time use "
+                '{"first": {"min": {"field": "ts"}}, "last": {"max": {"field": "ts"}}}')
         meta = body.get("field")
         if isinstance(meta, str) and meta.startswith("_"):
             # ES refuses fielddata on `_id` and the other metadata fields; the model reaches for
@@ -1084,6 +1109,23 @@ def _field_refs(query: dict[str, Any]) -> list[str]:
     return sorted(out)
 
 
+def _text_fields_without_keyword(aggs: Any, types: dict[str, str], depth: int = 0) -> list[str]:
+    """Doc-value aggregation fields that are analysed text with no `.kw` (ES answers those with a raw 400, D391)."""
+    found: list[str] = []
+    if depth > 6 or not isinstance(aggs, dict) or not types:
+        return found
+    for spec in aggs.values():
+        if not isinstance(spec, dict):
+            continue
+        for agg_type in DOC_VALUE_AGGS & set(spec):
+            field = (spec.get(agg_type) or {}).get("field") if isinstance(spec.get(agg_type), dict) else None
+            kind = str(types.get(field) or "") if isinstance(field, str) else ""
+            if kind == "text" and f"{field}.kw" not in types:
+                found.append(field)
+        found.extend(_text_fields_without_keyword(spec.get("aggs"), types, depth + 1))
+    return found
+
+
 def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | None = None,
                  *, size: int = 0) -> dict[str, Any]:
     """ES-native aggregation with composite paging support.
@@ -1108,6 +1150,11 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         query, q_notes = normalize_query(query, field_types=types)
         notes.extend(q_notes)
     validate_aggs(aggs)
+    unaggregatable = _text_fields_without_keyword(aggs, types)
+    if unaggregatable:
+        raise ESQueryError(
+            f"cannot aggregate analysed text field(s) {unaggregatable}: they have no keyword sub-field. "
+            "Aggregate a keyword field (es_fields lists them), or find values with es_search")
     if query is not None:
         validate_query(query)
         failed = failed_field_refs(case_id, query)
@@ -1135,6 +1182,11 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
     client, name = _client_and_index(case_id)
     with client() as c:
         r = c.post(f"/{name}/_search", json=body)
+        if r.status_code >= 400 and "too_many_buckets_exception" in r.text:
+            # A valid request that is too fine for this data's time span (T01: 1h over years). Say what to change.
+            raise ESQueryError(
+                "the aggregation makes more than 65,536 buckets over the rows it matched: use a coarser "
+                "interval (e.g. 1d or a calendar month), a smaller `size`, or narrow the query with a `ts` range")
         if r.status_code >= 400:
             raise ESQueryError(f"ES aggregation failed: {r.status_code} {r.text[:300]}")
         data = r.json()
