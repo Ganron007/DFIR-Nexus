@@ -148,6 +148,8 @@ export interface LaneGate {
   waiting_count?: number;
   processed_count?: number;
   unprocessed?: LaneGateItem[];
+  /** Jobs waiting on the remote tool host; an examiner may skip these too. */
+  waiting_sift?: LaneGateItem[];
   not_applicable?: LaneGateItem[];
   examiner_skips?: LaneGateSkip[];
   jobs?: LaneGateJob[];

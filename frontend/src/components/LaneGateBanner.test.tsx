@@ -65,6 +65,7 @@ describe("evidence gate banner", () => {
     expect(item.textContent).toContain("mftecmd");
     expect(item.textContent).toContain("Command timed out");
     expect(screen.getByText(/nexus lane skip/)).toBeTruthy();
+    expect(screen.getByTestId("lane-skip-open")).toBeTruthy();
     expect(screen.getByTestId("nstage-N2").textContent).toContain("blocked");
   });
 

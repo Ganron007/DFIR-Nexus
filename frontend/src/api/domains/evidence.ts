@@ -6,6 +6,7 @@ import { post, request } from "../transport";
 import type {
   EvidenceResponse,
   IocsResponse,
+  LaneGate,
   TodosResponse,
 } from "../client";
 
@@ -23,6 +24,14 @@ export const evidenceApi = {
   /** The examiner's question for an existing case (TA-9: only the new-case wizard could set it). */
   saveIntake: (question: string) =>
     post<{ ok: boolean; intake?: Record<string, string>; error?: string }>("/intake", { question }),
+  /** The examiner's audited lane skip (TA-9: CLI only before). Signed with the approval challenge; the password
+   *  never leaves the browser. Omitting `items` skips every unprocessed item. */
+  laneSkip: (params: {
+    challenge_id: string;
+    response: string;
+    reason: string;
+    items?: { tool?: string; purpose?: string }[];
+  }) => post<{ ok: boolean; added?: number; lane_gate?: LaneGate; error?: string }>("/lane/skip", params),
   pairEvidence: (proposal: {
     raw_name: string;
     output_name: string;

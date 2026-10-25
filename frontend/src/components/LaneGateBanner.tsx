@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import { api, type LaneGate, type NStage } from "../api/client";
 import { useCase } from "../context/CaseContext";
+import LaneSkipForm from "./LaneSkipForm";
 import styles from "./LaneGateBanner.module.css";
 
 const STAGE_LABELS: Record<string, string> = {
@@ -102,8 +103,8 @@ export default function LaneGateBanner() {
           {blocked && (
             <span>
               {gate?.blocked_count ?? items.length} unprocessed artifact(s) - analysis stages are refused until
-              the tools lane re-runs them or an examiner records <code>nexus lane skip</code> (password-verified,
-              audited).
+              the tools lane re-runs them or an examiner records a skip below (or <code>nexus lane skip</code>;
+              password-verified, audited).
             </span>
           )}
           {(waiting || (waitingCount ?? 0) > 0) && (
@@ -145,6 +146,8 @@ export default function LaneGateBanner() {
             {items.length > 6 && <li>+{items.length - 6} more</li>}
           </ul>
         )}
+
+        {gate && (blocked || waiting) && <LaneSkipForm key={gate.run_id ?? ""} gate={gate} onSkipped={setGate} />}
 
         {notApplicable.length > 0 && (
           <div data-testid="lane-gate-not-applicable" className={styles.notApplicable}>
