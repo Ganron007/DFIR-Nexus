@@ -1,7 +1,6 @@
 # A mode round under Part 11 rule 17: one mode run at a time, each checked before the next starts. A non-zero exit, a
-# refused or failed tool call, a failed model call or a traceback stops the round at that point, so the defect is fixed
-# before the next run; rerun with the remaining steps. Asyncio's "unclosed transport" warning at interpreter exit
-# (D398) is not a run failure and is not counted.
+# refused or failed tool call, a failed model call or any traceback stops the round at that point, so the defect is
+# fixed before the next run; rerun with the remaining steps. Nothing is excused by name.
 #   pwsh -NoProfile -File devtools/runbook/rule17_round.ps1 -Round R1z3b -Steps 'T21|3','T05|1','T12|1 2 3'
 param(
     [Parameter(Mandatory)] [string] $Round,
@@ -22,9 +21,7 @@ $manifest = python -c "import json,yaml; print(json.dumps(yaml.safe_load(open('D
 function Flagged([string] $log) {
     $lines = Get-Content $log
     $hits = @()
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        if ($line -match 'Traceback \(most recent call last\)' -and $i -gt 0 -and $lines[$i - 1] -match 'Exception ignored while calling deallocator') { continue }
+    foreach ($line in $lines) {
         if ($line -match ' failed: |model call failed|Traceback \(most recent call last\)|status=failed') { $hits += $line.Trim() }
     }
     return , $hits
