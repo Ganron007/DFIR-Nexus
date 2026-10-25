@@ -42,12 +42,19 @@ def test_malfind_columns_are_registry_typed_for_the_vol_family():
     columns = merged_columns()
     for name, kind in (
         ("Protection", "text"),
-        ("CommitCharge", "long"),
-        ("Start VPN", "long"),
-        ("End VPN", "long"),
         ("Tag", "text"),
         ("Hexdump", "text"),
         ("Disasm", "text"),
     ):
         assert columns[name]["type"] == kind, name
         assert "vol" in {str(f).lower() for f in columns[name]["families"]}, name
+    # D399: a numeric type is kept only when populated values prove it. No real malfind row is in the population
+    # corpus (T22's malfind output is empty), so these are text until one is; the proof says so, never silently.
+    for name in ("CommitCharge", "Start VPN", "End VPN"):
+        col = columns[name]
+        assert "vol" in {str(f).lower() for f in col["families"]}, name
+        if col["type"] == "long":
+            assert col["type_proof"]["verdict"] == "proven", name
+        else:
+            assert col["type"] == "text" and col["declared_type"] == "long", name
+            assert col["type_proof"]["verdict"] == "unproven", name

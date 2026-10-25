@@ -35,9 +35,11 @@ def test_conflict_policy_resolutions():
     # GUID-ish ids stay searchable everywhere -> text
     assert cols["AppId"]["type"] == "text"
     # temporal names resolve to date even when one catalog said text
-    assert cols["Date"]["type"] == "date"
     assert cols["timestamp"]["type"] == "date"
     assert cols["CreatedOn"]["type"] == "date"
+    # ... unless the populated values contradict it (D399): mactime writes `Date` as "Fri Jan 02 1970 00:00:00",
+    # which no date format reads, so a date column would silently drop every mactime value.
+    assert cols["Date"]["type"] == "text" and cols["Date"]["type_proof"]["verdict"] == "contradicted"
 
 
 def test_es_property_shapes():

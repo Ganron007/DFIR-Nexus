@@ -114,7 +114,8 @@ def test_naive_registration_date_uses_recorded_system_zone_and_dst(tmp_path, mon
     doc = next(d for d in iter_index_docs(case) if d.get("family") == "scheduled_tasks")
     assert doc["ts"] == "2017-08-05T16:13:18Z"
     assert "ts_tz_assumed" not in doc
-    assert doc["fields"]["ts_tz_assumed"] == "False"
+    # D399: a flag is written in the form a `boolean` column holds (`str()` wrote "False", which it rejects).
+    assert doc["fields"]["ts_tz_assumed"] == "false"
     assert doc["fields"]["task_timezone_key_name"] == "Eastern Standard Time"
     assert doc["fields"]["task_timezone_iana"] == "America/New_York"
 
@@ -157,8 +158,8 @@ def test_naive_registration_without_matching_zone_stays_flagged(tmp_path, monkey
     doc = next(d for d in iter_index_docs(case) if d.get("family") == "scheduled_tasks")
     assert doc["ts"] == "2017-08-05T12:13:18Z"
     assert doc["ts_tz_assumed"] is True
-    assert doc["fields"]["ts_tz_assumed"] == "True"
-    assert doc["fields"]["task_timezone_assumed"] == "True"
+    assert doc["fields"]["ts_tz_assumed"] == "true"
+    assert doc["fields"]["task_timezone_assumed"] == "true"
 
 
 def test_com_handler_class_id_and_typed_triggers():
