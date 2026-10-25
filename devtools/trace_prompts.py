@@ -152,6 +152,10 @@ def _cli_for(mode: str, case_id: str, question: str, extra: list[str]) -> list[s
     return [*commands[mode], "--case", case_id, *asked, *extra]
 
 
+#: Exit code of a mode the case's HOLD file kept from starting (EX_TEMPFAIL: not run, try again after the fix).
+HOLD_EXIT = 75
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="KA1 prompt tracer (design-time)")
     parser.add_argument("--case", required=True, help="Case id to trace")
@@ -165,6 +169,12 @@ def main(argv: list[str] | None = None) -> int:
     case_dir = settings.cases_root / args.case
     if not case_dir.is_dir():
         raise SystemExit(f"case not found: {case_dir}")
+    # The fix-before-next-run hold (operator 2026-10-25): a defect found mid-round is fixed before the next mode run
+    # starts, so the runner's next mode refuses to start while the case holds one.
+    hold = case_dir / ".trace" / "HOLD"
+    if hold.is_file():
+        print(f"[trace] mode {args.mode} not started: {hold} is set ({hold.read_text(encoding='utf-8').strip()})")
+        return HOLD_EXIT
 
     tracer = install(case_dir)
     print(f"[trace] recording model calls -> {tracer.path}")
