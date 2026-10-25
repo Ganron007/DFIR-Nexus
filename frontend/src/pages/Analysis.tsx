@@ -24,6 +24,7 @@ import {
   type ModeRow,
   type ModeRunAdapter,
 } from "./analysis/sequence";
+import { mode1Progress, mode2Progress, mode3Progress } from "./analysis/progress";
 import styles from "./Analysis.module.css";
 
 const STATE_TONE: Record<ModeRow["state"], SemanticTone | undefined> = {
@@ -69,9 +70,16 @@ function runAdapter(caseId: string): ModeRunAdapter {
       return { runId: r.run_id };
     },
     async status(mode: AnalysisMode, runId: string) {
-      if (mode === "1") return (await api.pipelineStatus(runId)).status;
-      if (mode === "2") return (await api.mode2RunStatus(runId)).status ?? "";
-      return (await api.mode3RunStatus(runId)).status ?? "";
+      if (mode === "1") {
+        const r = await api.pipelineStatus(runId);
+        return { status: r.status, progress: mode1Progress(r) };
+      }
+      if (mode === "2") {
+        const r = await api.mode2RunStatus(runId);
+        return { status: r.status ?? "", progress: mode2Progress(r) };
+      }
+      const r = await api.mode3RunStatus(runId);
+      return { status: r.status ?? "", progress: mode3Progress(r) };
     },
   };
 }
@@ -205,6 +213,11 @@ export default function Analysis() {
                 <Badge tone={STATE_TONE[row.state]}>{STATE_WORD[row.state]}</Badge>
                 {row.runId ? <code className={styles.runId}>{row.runId}</code> : null}
                 {row.status ? <span className={styles.rowStatus}>server status: {row.status}</span> : null}
+                {row.progress ? (
+                  <span className={styles.rowStatus} data-testid={`analysis-progress-${row.mode}`}>
+                    {row.progress}
+                  </span>
+                ) : null}
                 {row.message ? <span className={styles.rowMessage}>{row.message}</span> : null}
               </li>
             ))}

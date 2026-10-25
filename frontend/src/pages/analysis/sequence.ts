@@ -16,8 +16,13 @@ export type ContextPolicy = "independent" | "informed";
 export interface ModeRunAdapter {
   /** Start the run. Throws with the server's reason when the start is refused. */
   start(mode: AnalysisMode, policy: ContextPolicy): Promise<{ runId: string }>;
-  /** The run's current status word, as the server reports it. */
-  status(mode: AnalysisMode, runId: string): Promise<string>;
+  /** The run's current status word, as the server reports it, with an optional one-line progress summary. */
+  status(mode: AnalysisMode, runId: string): Promise<string | RunReading>;
+}
+
+export interface RunReading {
+  status: string;
+  progress?: string;
 }
 
 export type RowState = "waiting" | "running" | "done" | "failed" | "refused" | "left-running";
@@ -27,6 +32,8 @@ export interface ModeRow {
   state: RowState;
   runId?: string;
   status?: string;
+  /** What the run is doing, from its last status read. */
+  progress?: string;
   message?: string;
 }
 
@@ -90,7 +97,7 @@ export async function runModeSequence(opts: RunSequenceOptions): Promise<ModeRow
     row.runId = runId;
     emit();
 
-    const terminal = await followRun(row, opts, pollMs);
+    const terminal = await followRun(row, opts, pollMs, emit);
     emit();
     if (terminal === "done") continue;
     stopAfter(rows, i);
@@ -105,6 +112,7 @@ async function followRun(
   row: ModeRow,
   opts: RunSequenceOptions,
   pollMs: number,
+  emit: () => void,
 ): Promise<"done" | "failed" | "left-running"> {
   const term = TERMINAL[row.mode];
   for (;;) {
@@ -115,7 +123,9 @@ async function followRun(
     }
     let status: string;
     try {
-      status = await opts.adapter.status(row.mode, row.runId ?? "");
+      const reading = await opts.adapter.status(row.mode, row.runId ?? "");
+      status = typeof reading === "string" ? reading : reading.status;
+      if (typeof reading !== "string" && reading.progress) row.progress = reading.progress;
     } catch (exc) {
       row.state = "failed";
       row.message = `Could not read the run's status: ${exc instanceof Error ? exc.message : String(exc)}`;
@@ -131,6 +141,7 @@ async function followRun(
       row.message = `The run ended as "${status}".`;
       return "failed";
     }
+    emit();
     await opts.sleep(pollMs);
   }
 }
