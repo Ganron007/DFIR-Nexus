@@ -51,23 +51,28 @@ def test_a_type_is_kept_only_when_every_populated_sample_fits():
     assert columns["pid"]["type"] == "long" and columns["pid"]["type_proof"]["verdict"] == "proven"
     assert columns["sa"]["type"] == "text" and columns["sa"]["declared_type"] == "double"
     assert columns["sa"]["type_proof"]["rejected"] == ["nfdump: 205.203.131.117"]
-    assert columns["StartAddress"]["type"] == "text" and columns["StartAddress"]["type_proof"]["verdict"] == "unproven"
+    # no populated sample: the declared type stands, marked, and the index's _ignored count would name a misfit
+    assert columns["StartAddress"]["type"] == "long" and columns["StartAddress"]["type_proof"]["verdict"] == "unproven"
     assert columns["registration_date"]["type"] == "date"
     assert "type_proof" not in columns["ecs.source.ip"] and "type_proof" not in columns["Name"]
     assert tally == {"proven": 1, "contradicted": 1, "unproven": 1, "supplement": 1}
 
 
-def test_the_shipped_registry_types_only_proven_columns():
-    """The agreement test: every typed column the index maps was proven on populated values (or is the product's)."""
+def test_the_shipped_registry_never_types_a_column_its_values_contradict():
+    """The agreement test: every typed column the index maps was checked; none is typed against its real values."""
     columns = (yaml.safe_load(REGISTRY.read_text(encoding="utf-8")) or {}).get("columns") or {}
     typed = {n: c for n, c in columns.items() if c.get("type") in {"long", "double", "boolean", "date"}
              and not c.get("ecs")}
     assert typed, "the registry types nothing"
     for name, col in typed.items():
         proof = col.get("type_proof") or {}
-        assert proof.get("verdict") in {"proven", "declared by the product supplement"}, (name, col)
+        assert proof.get("verdict") in {"proven", "unproven", "declared by the product supplement"}, (name, col)
         if proof.get("verdict") == "proven":
             assert proof.get("samples", 0) > 0, name
+        if proof.get("verdict") == "unproven":
+            assert proof.get("samples") == 0, name
+    contradicted = [n for n, c in columns.items() if (c.get("type_proof") or {}).get("verdict") == "contradicted"]
+    assert contradicted and all(columns[n]["type"] == "text" for n in contradicted)
     # the D399 columns
     for name in ("sa", "da", "ValueData", "StartAddress", "FileOffset", "Wow64"):
         if name in columns:

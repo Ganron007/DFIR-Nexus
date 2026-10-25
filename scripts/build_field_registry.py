@@ -380,9 +380,12 @@ def prove_types(
     The registry used to type a column from a catalog's declared `es_type`, unified by name across families, and
     `ignore_malformed` then left every value that did not fit out of the field index without a word: nfdump's IP
     addresses typed `double`, MemProcFS hex typed `long`, EvtxECmd's seven-digit fractions not in the date formats.
-    Now a type is a claim shown on populated values (forbidden item 11): `accepts(kind, values)` returns the values
-    the index would reject. Rejected or unsampled -> text (searchable, keyword sub-field). A product supplement
-    column keeps its declared type: its values are written by this product's own importers.
+    Now a type is checked on populated values (forbidden item 11): `accepts(kind, values)` returns the values the
+    index would reject. A rejected value makes the column text (searchable, keyword sub-field): the real output
+    proved the type wrong. A column with no populated sample keeps its declared type, marked `unproven` (operator
+    2026-10-25, option (a)): nothing shows it wrong, and if a value does not fit, the index build's `_ignored` count
+    and the lane gate's `index_warnings` name it, so it is never silent. A product supplement column keeps its
+    declared type: its values are written by this product's own importers.
     """
     tally = {"proven": 0, "contradicted": 0, "unproven": 0, "supplement": 0}
     for name, entry in columns.items():
@@ -395,7 +398,7 @@ def prove_types(
             continue
         values = samples.get(name) or []
         if not values:
-            entry.update(declared_type=kind, type="text", type_proof={"verdict": "unproven", "samples": 0})
+            entry["type_proof"] = {"verdict": "unproven", "samples": 0}
             tally["unproven"] += 1
             continue
         rejected = set(accepts(kind, [v for _, v in values]))
@@ -567,9 +570,10 @@ def main() -> int:
         "policy": (
             "one case index holds all families: int-only->long; int+double->double; "
             "numeric/date win over text only for ports/process-ids/temporal names; any other "
-            "mix->text so the column stays searchable everywhere. D399: a typed column keeps its "
-            "type only where Elasticsearch accepts every populated sample under it (type_proof); "
-            "contradicted or unsampled -> text with a keyword sub-field"
+            "mix->text so the column stays searchable everywhere. D399: a typed column whose populated "
+            "samples Elasticsearch rejects under the type -> text with a keyword sub-field; one with no "
+            "populated sample keeps its declared type as unproven, and the index's _ignored count shows "
+            "any value it cannot hold (type_proof per column)"
         ),
         "counts": {
             "families": len(families),
