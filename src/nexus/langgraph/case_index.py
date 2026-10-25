@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 log = logging.getLogger(__name__)
 
 from nexus.langgraph.ecs_normalize import normalize
+from nexus.langgraph.field_registry import field_text
 from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.mft_join import resolve_usn_row
 from nexus.langgraph.path_sanitize import (
@@ -1051,7 +1052,7 @@ def iter_index_doc_batches(
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):
-                    art_fields[key_name] = str(value)
+                    art_fields[key_name] = field_text(value)
             # D34 (WO-KM1 item 1): the importer's normalized columns. They were
             # computed by the importer and stored in ``raw``, but only the
             # envelope above reached the index - so an artifact's process,
@@ -1071,7 +1072,7 @@ def iter_index_doc_batches(
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):
-                    art_fields[key_name] = str(value)
+                    art_fields[key_name] = field_text(value)
             # WO-8: task definitions carry typed fields inside ``raw``; project
             # the ones the field registry types (keyword / date / boolean) so a
             # scheduled-task investigation can filter instead of substring-search.
@@ -1104,8 +1105,8 @@ def iter_index_doc_batches(
                     ("dns_query", raw.get("dns_query")),
                 ):
                     if value not in (None, "", []):
-                        art_fields[key_name] = str(value)
-            family_key = (fam.replace("/", "_").replace("\\", "_") or "ingest")
+                        art_fields[key_name] = field_text(value)
+            family_key =(fam.replace("/", "_").replace("\\", "_") or "ingest")
             _add(ingest_store, case_dir, fam, n, text, art_fields or None,
                  count_key=f"{family_key}/artifacts.jsonl", importer=True)
             if len(out) >= batch:
@@ -1602,11 +1603,14 @@ def index_case(
         elif errors:
             for rel in changed:
                 baseline_digests.pop(rel, None)
+        with _client() as client:
+            unindexed = unindexed_field_values(client, name)
         meta = {
             "index": name,
             "docs": docs_total,
             "errors": errors,
             "rejected": rejected,
+            "unindexed_field_values": unindexed,
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": True,
@@ -1676,11 +1680,15 @@ def index_case(
                     raise RuntimeError(
                         f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
                     )
+            unindexed = unindexed_field_values(client, name)
         meta = {
             "index": name,
             "docs": docs_total,
             "errors": errors,
             "rejected": rejected,
+            # D399: values a typed column could not hold, per field. They stay in `_source` and `text`, but a query
+            # on that field cannot match them; the gate shows this instead of letting it pass silently.
+            "unindexed_field_values": unindexed,
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": False,
@@ -1713,7 +1721,8 @@ def index_case(
         from nexus.langgraph.lane_gate import reconcile_after_index
 
         reconcile_after_index(
-            case_dir, meta.get("file_counts") or {}, run_id=run_id
+            case_dir, meta.get("file_counts") or {}, run_id=run_id,
+            unindexed_field_values=meta.get("unindexed_field_values"),
         )
     except Exception as exc:  # noqa: BLE001
         log.warning("gate reconciliation after indexing failed: %s", exc)
@@ -1788,6 +1797,21 @@ def _source_extractions_text(case_dir: Path, run_id: str = "") -> str:
         return str(resolve_tools_extractions(case_dir, run_id))
     except Exception:  # noqa: BLE001 - an unresolvable case records no source
         return ""
+
+
+def unindexed_field_values(client: Any, name: str) -> dict[str, int]:
+    """Documents per field whose value the field's type could not hold (`_ignored`), largest first.
+
+    `index.mapping.ignore_malformed` keeps such a document whole and leaves only that value out of the field index,
+    without a word (D399: 32,146 NetFlow rows had no queryable source or destination address). This is the count.
+    """
+    body = {"size": 0, "aggs": {"ignored": {"terms": {"field": "_ignored", "size": 500}}}}
+    try:
+        resp = client.post(f"/{name}/_search", json=body)
+        buckets = ((resp.json().get("aggregations") or {}).get("ignored") or {}).get("buckets") or []
+    except Exception:  # noqa: BLE001 - the count is a report; the index stands without it
+        return {}
+    return {str(b.get("key")): int(b.get("doc_count") or 0) for b in buckets}
 
 
 def write_index_state(

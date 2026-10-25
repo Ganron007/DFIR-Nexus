@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from datetime import UTC, datetime
@@ -343,6 +344,117 @@ def merge(
     return out, conflicts
 
 
+#: Types a column holds only when proven on populated values (D399); everything else is text with a keyword.
+TYPED = {"long", "double", "boolean", "date"}
+#: Profile samples that are not real values: a redacted path, or a value cut at 117 characters.
+_NOT_A_VALUE = ("<redacted-path>",)
+
+
+def load_samples() -> dict[str, list[tuple[str, str]]]:
+    """column -> (family, value) for every populated sample in the population profile (all families)."""
+    import json
+
+    prof = SRC_DIR / "_population.json"
+    if not prof.is_file():
+        return {}
+    data = json.loads(prof.read_text(encoding="utf-8")) or {}
+    out: dict[str, list[tuple[str, str]]] = {}
+    for family, body in (data.get("families") or {}).items():
+        for column, info in ((body or {}).get("columns") or {}).items():
+            for value in (info or {}).get("samples") or []:
+                text = str(value)
+                if not text or text in _NOT_A_VALUE or text.endswith("..."):
+                    continue
+                out.setdefault(str(column), []).append((str(family), text))
+    return out
+
+
+def prove_types(
+    columns: dict[str, dict],
+    samples: dict[str, list[tuple[str, str]]],
+    accepts,
+    product_declared: set[str] | frozenset[str] = frozenset(),
+) -> dict[str, int]:
+    """Keep a typed column only where Elasticsearch accepts every populated sample under that type (D399).
+
+    The registry used to type a column from a catalog's declared `es_type`, unified by name across families, and
+    `ignore_malformed` then left every value that did not fit out of the field index without a word: nfdump's IP
+    addresses typed `double`, MemProcFS hex typed `long`, EvtxECmd's seven-digit fractions not in the date formats.
+    Now a type is a claim shown on populated values (forbidden item 11): `accepts(kind, values)` returns the values
+    the index would reject. Rejected or unsampled -> text (searchable, keyword sub-field). A product supplement
+    column keeps its declared type: its values are written by this product's own importers.
+    """
+    tally = {"proven": 0, "contradicted": 0, "unproven": 0, "supplement": 0}
+    for name, entry in columns.items():
+        kind = str(entry.get("type") or "")
+        if kind not in TYPED or entry.get("ecs"):
+            continue
+        if name in product_declared:
+            entry["type_proof"] = {"verdict": "declared by the product supplement"}
+            tally["supplement"] += 1
+            continue
+        values = samples.get(name) or []
+        if not values:
+            entry.update(declared_type=kind, type="text", type_proof={"verdict": "unproven", "samples": 0})
+            tally["unproven"] += 1
+            continue
+        rejected = set(accepts(kind, [v for _, v in values]))
+        if rejected:
+            bad = [(fam, v) for fam, v in values if v in rejected][:3]
+            entry.update(declared_type=kind, type="text", type_proof={
+                "verdict": "contradicted", "samples": len(values),
+                "rejected": [f"{fam}: {v}" for fam, v in bad]})
+            tally["contradicted"] += 1
+        else:
+            entry["type_proof"] = {"verdict": "proven", "samples": len(values),
+                                   "families": sorted({fam for fam, _ in values})}
+            tally["proven"] += 1
+    return tally
+
+
+class ElasticsearchProof:
+    """`accepts(kind, values)` on a live Elasticsearch: each value indexed under the product's own mapping for the type
+    (`es_property`, `DATE_FORMATS`), with `ignore_malformed` off so a value that does not fit is an error."""
+
+    def __init__(self, url: str) -> None:
+        import httpx
+
+        sys.path.insert(0, str(REPO / "src"))
+        from nexus.langgraph.field_registry import es_property
+
+        self._es_property = es_property
+        self._client = httpx.Client(base_url=url, timeout=60)
+        self._indexes: dict[str, str] = {}
+        self._client.get("/").raise_for_status()
+
+    def _index(self, kind: str) -> str:
+        if kind not in self._indexes:
+            name = f"nexus-scratch-registry-proof-{kind}"
+            self._client.delete(f"/{name}")
+            created = self._client.put(f"/{name}", json={
+                "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+                "mappings": {"properties": {"v": self._es_property({"type": kind})}}})
+            created.raise_for_status()
+            self._indexes[kind] = name
+        return self._indexes[kind]
+
+    def accepts(self, kind: str, values: list[str]) -> list[str]:
+        import json
+
+        name = self._index(kind)
+        lines = "".join(json.dumps({"index": {}}) + "\n" + json.dumps({"v": v}) + "\n" for v in values)
+        resp = self._client.post(f"/{name}/_bulk", content=lines,
+                                 headers={"Content-Type": "application/x-ndjson"})
+        resp.raise_for_status()
+        items = resp.json().get("items") or []
+        return [values[i] for i, item in enumerate(items) if (item.get("index") or {}).get("error")]
+
+    def close(self) -> None:
+        for name in self._indexes.values():
+            self._client.delete(f"/{name}")
+        self._client.close()
+
+
 def _add_ecs_columns(columns: dict[str, dict], populated: dict[str, set[str]]) -> None:
     """Add every populated `ecs.*` field as a registry entry (WO-CS1 item 7).
 
@@ -381,6 +493,19 @@ def main() -> int:
     # the real-run corpus), so a stored query's concept routing can be checked. They
     # are a separate namespace, added after the registry merge.
     _add_ecs_columns(columns, populated)
+    # D399: a typed column is a claim proven on populated values, by the Elasticsearch the index runs on.
+    url = os.environ.get("NEXUS_ES_URL") or "http://127.0.0.1:9200"
+    try:
+        proof = ElasticsearchProof(url)
+    except Exception as exc:  # noqa: BLE001
+        print(f"BUILD FAILED: the type proof needs Elasticsearch at {url} ({exc}); no type is written unproven.",
+              file=sys.stderr)
+        return 4
+    try:
+        tally = prove_types(columns, load_samples(), proof.accepts, set(supplement))
+    finally:
+        proof.close()
+    print(f"type proof: {tally}")
 
     # WO-R0F item 8: a regeneration that REMOVES a column or a required family
     # fails, unless the removal is listed with a reason. The check compares the
@@ -441,9 +566,10 @@ def main() -> int:
         "source": "Evidence-files/ES-Mapping/es_mappings (validated tool-run catalog)",
         "policy": (
             "one case index holds all families: int-only->long; int+double->double; "
-            "numeric/date win over text only for ports/process-ids/temporal names "
-            "(malformed values dropped from the index, still in _source); any other "
-            "mix->text so the column stays searchable everywhere"
+            "numeric/date win over text only for ports/process-ids/temporal names; any other "
+            "mix->text so the column stays searchable everywhere. D399: a typed column keeps its "
+            "type only where Elasticsearch accepts every populated sample under it (type_proof); "
+            "contradicted or unsampled -> text with a keyword sub-field"
         ),
         "counts": {
             "families": len(families),
@@ -451,6 +577,7 @@ def main() -> int:
             "conflicts": len(conflicts),
             "columns_with_role": with_role,
             "columns_populated": with_pop,
+            "type_proof": tally,
         },
         "columns": columns,
         "conflicts": conflicts,

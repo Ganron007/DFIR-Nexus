@@ -32,12 +32,15 @@ _ISO_RE = re.compile(
     r"(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})"
     r"(?:[ T](?P<H>\d{2}):(?P<M>\d{2})(?::(?P<S>\d{2}))?"
     r"(?:\.(?P<frac>\d{1,9}))?"
-    r"\s*(?P<tz>Z|[+-]\d{2}(?::?\d{2})?)?)?"
+    r"\s*(?P<tz>Z|UTC\b|[+-]\d{2}(?::?\d{2})?)?)?"
 )
+# D399: .NET under the invariant culture writes a DateTimeOffset as "09/27/2020 14:33:42 +00:00"; the offset is the
+# event's own and is honoured, so the time is not flagged as assumed.
 _US_RE = re.compile(
     r"\b(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4})"
     r"(?:[ T](?P<H>\d{1,2}):(?P<M>\d{2})(?::(?P<S>\d{2}))?"
-    r"\s*(?P<ampm>AM|PM|am|pm)?)?"
+    r"\s*(?P<ampm>AM|PM|am|pm)?"
+    r"(?:\s*(?P<tz>Z|UTC\b|[+-]\d{2}(?::?\d{2})?))?)?"
 )
 _SYSLOG_RE = re.compile(
     r"\b(?P<mon>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
@@ -79,6 +82,17 @@ def _precision(frac: str) -> str:
     return "ms" if len(frac) <= 3 else "us" if len(frac) <= 6 else "ns"
 
 
+def _with_offset(dt: datetime, tz: str) -> datetime:
+    """A naive wall time with its written zone applied, as UTC. No zone: UTC by policy (the caller flags it)."""
+    if not tz or tz in ("Z", "UTC"):
+        return dt.replace(tzinfo=UTC)
+    offset = tz.replace(":", "")
+    sign = 1 if offset.startswith("+") else -1
+    hours = int(offset[1:3])
+    minutes = int(offset[3:5]) if len(offset) > 3 else 0
+    return dt.replace(tzinfo=UTC) - timedelta(hours=sign * hours, minutes=sign * minutes)
+
+
 def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
     frac = m.group("frac") or ""
     tz = (m.group("tz") or "").strip()
@@ -93,20 +107,7 @@ def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
             )
     except ValueError:
         return None
-    if tz:
-        if tz == "Z":
-            dt = dt.replace(tzinfo=UTC)
-        else:
-            offset = tz.replace(":", "")
-            sign = 1 if offset.startswith("+") else -1
-            hours = int(offset[1:3])
-            minutes = int(offset[3:5]) if len(offset) > 3 else 0
-            dt = dt.replace(tzinfo=UTC) - timedelta(
-                hours=sign * hours, minutes=sign * minutes
-            )
-    else:
-        # Policy: naive timestamps are UTC, flagged by the caller.
-        dt = dt.replace(tzinfo=UTC)
+    dt = _with_offset(dt, tz)
     if not _plausible(dt):
         return None
     if m.group("H") is None:
@@ -132,7 +133,8 @@ def _parse_us(m: re.Match[str]) -> datetime | None:
     except ValueError:
         return None
     # Policy: a naive time is UTC, flagged by the caller. Left naive, astimezone() would read it as the machine's zone.
-    return dt.replace(tzinfo=UTC) if _plausible(dt) else None
+    dt = _with_offset(dt, (m.group("tz") or "").strip())
+    return dt if _plausible(dt) else None
 
 
 def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
@@ -179,13 +181,15 @@ def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
     text = str(raw or "").strip()
     if not text:
         return None
+    # `raw` is the time as written, the matched span: the whole text was stored, so a MemProcFS or PECmd row kept its
+    # entire line as `ts_raw` (D399; 55,778 T22 rows over the field's 64-character index limit).
     m = _ISO_RE.search(text)
     if m and m.group("y"):
         got = _iso_from_match(m)
         if got:
             dt, precision, tz_assumed = got
             return {
-                "dt": dt, "raw": text, "precision": precision,
+                "dt": dt, "raw": m.group(0).strip(), "precision": precision,
                 "tz_assumed": tz_assumed, "year_assumed": False,
             }
     m = _US_RE.search(text)
@@ -193,9 +197,9 @@ def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
         dt = _parse_us(m)
         if dt:
             return {
-                "dt": dt, "raw": text,
+                "dt": dt, "raw": m.group(0).strip(),
                 "precision": "s" if m.group("H") else "d",
-                "tz_assumed": True, "year_assumed": False,
+                "tz_assumed": not (m.group("tz") or "").strip(), "year_assumed": False,
             }
     m = _SYSLOG_RE.search(text)
     if m:
@@ -210,7 +214,7 @@ def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
             dt = None
         if dt and _plausible(dt):
             return {
-                "dt": dt, "raw": text, "precision": "s",
+                "dt": dt, "raw": m.group(0).strip(), "precision": "s",
                 "tz_assumed": True, "year_assumed": True,
             }
     return None

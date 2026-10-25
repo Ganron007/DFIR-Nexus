@@ -23,13 +23,32 @@ _DEFAULT_PATH = Path(__file__).resolve().parents[1] / "data" / "schema" / "field
 
 # Every typed date column shares one format list: lane outputs are ISO, but the
 # tool CSVs also carry "yyyy-MM-dd HH:mm:ss" (SRUM/mactime), US-format dates
-# (plaso l2tcsv) and epoch millis (vol).
+# (plaso l2tcsv) and epoch millis (vol). D399: and the fractions and offsets the tools write - Zimmerman's seven-digit
+# ticks ("2020-11-01 22:15:47.5539615"), Hayabusa's "2020-11-05 07:42:09.504 +05:30", Python's
+# "2026-10-07 05:33:36.158276+00:00" and .NET's invariant DateTimeOffset "09/27/2020 14:33:42 +00:00". Without them
+# every EvtxECmd `TimeCreated` was left out of the field index. scripts/build_field_registry.py proves a date column
+# against this list on Elasticsearch itself, so a format missing here makes the column text, never a silent drop.
 DATE_FORMATS = (
     "strict_date_optional_time||epoch_millis||yyyy-MM-dd HH:mm:ss"
-    "||MM/dd/yyyy HH:mm:ss||yyyy/MM/dd HH:mm:ss"
+    "||yyyy-MM-dd HH:mm:ss.SSS||yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss.SSSSSSS"
+    "||yyyy-MM-dd HH:mm:ss XXX||yyyy-MM-dd HH:mm:ss.SSS XXX||yyyy-MM-dd HH:mm:ssXXX"
+    "||yyyy-MM-dd HH:mm:ss.SSSSSSXXX"
+    "||MM/dd/yyyy HH:mm:ss||MM/dd/yyyy HH:mm:ss XXX||yyyy/MM/dd HH:mm:ss"
 )
 
 _EMPTY: dict = {"version": 0, "columns": {}, "families": {}, "conflicts": []}
+
+
+def field_text(value: object) -> str:
+    """How one importer value is written into a `fields.*` column.
+
+    A boolean is `true`/`false`, the form Elasticsearch's `boolean` and every reader of these flags accept; `str()`
+    wrote `True`/`False`, which a `boolean` column rejects, so `ts_synthesized` and `ts_year_assumed` were dropped
+    from the field index on every imported row (D399).
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def registry_path() -> Path:

@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.field_registry import field_text
 from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.path_sanitize import (
     machine_roots,
@@ -1296,7 +1297,7 @@ def attach_hit_fields(
                 ):
                     value = record.get(key)
                     if value not in (None, "", []):
-                        fields[key] = str(value)
+                        fields[key] = field_text(value)
                 for list_key in ("technique_ids", "iocs"):
                     values = record.get(list_key)
                     if values:

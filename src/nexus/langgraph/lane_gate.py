@@ -334,6 +334,15 @@ def _completeness_gaps(
     return gaps
 
 
+def _index_warnings(unindexed_field_values: dict[str, int]) -> list[dict[str, Any]]:
+    """The gate's `index_warnings` rows, largest first (D399)."""
+    return [
+        {"field": field, "docs": docs,
+         "reason": "values this field's type cannot hold; a query on the field misses them (the row text has them)"}
+        for field, docs in sorted(unindexed_field_values.items(), key=lambda kv: -kv[1])
+    ]
+
+
 def write_lane_gate(
     case_dir: Path | str,
     run_id: str,
@@ -342,8 +351,12 @@ def write_lane_gate(
     ts: str | None = None,
     registered_evidence: list[dict[str, Any]] | None = None,
     completeness: list[dict[str, Any]] | None = None,
+    unindexed_field_values: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Persist the gate after a tool-lane pass. Unprocessed = FAIL rows.
+
+    ``unindexed_field_values`` (from the index build, D399) becomes ``index_warnings``: values a typed column could
+    not hold. They do not block (the rows are whole and searchable as text) but are never silent.
 
     Examiner skips from the previous gate survive here only for items that are
     *still* unprocessed; an item that now parses simply disappears from the
@@ -419,6 +432,10 @@ def write_lane_gate(
         "examiner_skips": skips,
         "jobs": jobs,
     }
+    if unindexed_field_values is not None:
+        gate["index_warnings"] = _index_warnings(unindexed_field_values)
+    elif prior.get("run_id") == str(run_id or "") and prior.get("index_warnings") is not None:
+        gate["index_warnings"] = prior["index_warnings"]
     _recompute(gate)
     _atomic_write(gate_path(case_dir), gate)
     _announce_processed(case_dir, jobs)
@@ -645,6 +662,7 @@ def reconcile_after_index(
     case_dir: Path | str,
     file_counts: dict[str, Any],
     run_id: str = "",
+    unindexed_field_values: dict[str, int] | None = None,
 ) -> dict[str, int]:
     """Re-derive the gate from what the index now holds (WO-TA item 9).
 
@@ -657,6 +675,10 @@ def reconcile_after_index(
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
     case_dir = Path(case_dir)
+    # D399: recorded first, so a pass that returns early below (no completeness rows) still shows them.
+    current = read_lane_gate(case_dir)
+    if unindexed_field_values is not None and current:
+        _atomic_write(gate_path(case_dir), {**current, "index_warnings": _index_warnings(unindexed_field_values)})
     try:
         extractions = resolve_tools_extractions(case_dir, run_id=run_id)
     except ValueError:
@@ -697,6 +719,7 @@ def reconcile_after_index(
     write_lane_gate(
         case_dir, run_id or extractions.parent.name, ledger,
         registered_evidence=evidence, completeness=rows,
+        unindexed_field_values=unindexed_field_values,
     )
     return {"changed": changed}
 

@@ -896,6 +896,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         run_env = None
         run_cwd = None
+        if resolved_path.suffix.lower() != ".py":
+            # .NET tools (all of Zimmerman's) format a date with the host's culture where they do not name a format:
+            # RECmd's plugin CSVs wrote "27-09-2020 02:33:42 PM +00:00" on an en-IN host, which no reader parses and
+            # the index rejects (D399). Invariant globalization gives one fixed form on every host
+            # ("09/27/2020 14:33:42 +00:00"); a tool that is not .NET ignores the variable.
+            run_env = os.environ.copy()
+            run_env["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
         if resolved_path.suffix.lower() == ".py":
             run_cwd = str(resolved_path.parent)
             run_env = os.environ.copy()
