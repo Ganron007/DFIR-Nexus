@@ -26,11 +26,13 @@ fi
 unset NEXUS_SIFT_MCP_URL NEXUS_WINDOWS_MCP_URL NEXUS_SIFT_EVIDENCE_ROOT NEXUS_SIFT_ZEEK
 export PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
 RUNS="$TRACE/runs-$TAG.ids"
-if [ -e "$RUNS" ]; then
+# RUNBOOK_APPEND=1 adds this call's modes to the tag's run ids: a case's modes run one call at a time, so each can be
+# checked before the next starts (Part 11 rule 17), and keep one tag.
+if [ -e "$RUNS" ] && [ -z "${RUNBOOK_APPEND:-}" ]; then
   printf 'Run-id file already exists for tag %s; choose a new tag\n' "$TAG" >&2
   exit 2
 fi
-: > "$RUNS"
+[ -n "${RUNBOOK_APPEND:-}" ] || : > "$RUNS"
 
 interpret_runs() { ls -d "$RUNS_DIR"/RUN-*-interpret-* 2>/dev/null | xargs -r -n1 basename | sort; }
 
