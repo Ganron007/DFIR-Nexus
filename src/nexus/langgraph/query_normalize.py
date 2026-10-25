@@ -28,6 +28,10 @@ import json
 import logging
 from typing import Any
 
+# The validator's own tables (one definition each, rule 16): what this surface rewrites is exactly what it accepts.
+# `es_native` imports only the standard library at module level, so this stays a pure module.
+from nexus.langgraph.es_native import _AGG_TYPES, _QUERY_KEYS, FIELD_CLAUSE_OPTIONS, VALUE_CLAUSES
+
 log = logging.getLogger(__name__)
 
 #: ES keys that belong to the request envelope, not the query. Lifted out of
@@ -306,6 +310,8 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
             if not isinstance(value, dict):
                 out[key] = value
                 continue
+            # First, before any rule counts the fields: an option beside the one field is not a field.
+            value = _fold_beside_options(key, value, notes)
             # `match` written as `{query: {field: …}}` or `{field: {query: …}}`.
             if key == "match":
                 value, sub = _normalize_match_body(value, notes)
@@ -489,6 +495,31 @@ def _normalize_match_body(value: dict[str, Any], notes: list[str]) -> tuple[Any,
         notes.append("lifted `query` out of the `match` body")
         value = {**value, **lifted}
     return {k: v for k, v in value.items() if k != "type"}, notes
+
+
+def _fold_beside_options(key: str, value: dict[str, Any], notes: list[str]) -> dict[str, Any]:
+    """Options written BESIDE a clause's one field, ES's short form plus options (D386).
+
+    `{"wildcard": {"text": "*x*", "case_insensitive": true}}`: ES and the validator read the option as a second field,
+    and the multi-field `term` split read it as one more field to match; every such call in T10's and T21's Mode 2 was
+    refused. The option belongs in the field's object (an option already there wins); match/match_phrase are analysed,
+    so a case option beside them is dropped with a note. Two real fields are left alone.
+    """
+    options = FIELD_CLAUSE_OPTIONS.get(key)
+    if not options:
+        return value
+    beside = {k: v for k, v in value.items() if k in options}
+    named = [k for k in value if k not in options]
+    if not beside or len(named) != 1:
+        return value
+    field = named[0]
+    spec = value[field]
+    if key in VALUE_CLAUSES:
+        spec = {**beside, **spec} if isinstance(spec, dict) else {"value": spec, **beside}
+        notes.append(f"moved {sorted(beside)} inside the `{field}` {key} object (options belong there)")
+    else:
+        notes.append(f"dropped {sorted(beside)} beside `{field}`: {key} is analysed, so already case-insensitive")
+    return {field: spec}
 
 
 def _normalize_field_clause(
@@ -717,6 +748,24 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
     return walk(body, 0), notes
 
 
+def lift_aggs_query(aggs: Any) -> tuple[Any, dict[str, Any] | None, list[str]]:
+    """The request's `query` written among the named aggs (D387) is the request query, not an aggregation.
+
+    Measured on T21 Mode 2: `{"by_hash": {"terms": ...}, "query": {"match_all": {}}}` was refused as an aggregation
+    called "query". It is lifted out when its body is a query clause; a real aggregation that happens to be named
+    "query" (an agg body names its `field` or `sources`) stays where it is.
+    """
+    spec = aggs.get("query") if isinstance(aggs, dict) else None
+    if not isinstance(spec, dict) or len(spec) != 1:
+        return aggs, None, []
+    ((clause, body),) = spec.items()
+    is_agg = clause in _AGG_TYPES and isinstance(body, dict) and ("field" in body or "sources" in body)
+    if clause not in _QUERY_KEYS or is_agg:
+        return aggs, None, []
+    rest = {name: value for name, value in aggs.items() if name != "query"}
+    return rest, spec, ["moved `query` out of `aggs`: it is the request's query, not an aggregation"]
+
+
 #: The three rules the model must follow, stated plainly (WO-R1F item 2b).
 QUERY_RULES = (
     "query is a JSON OBJECT, sort is a LIST, and there is ONE top-level clause "
@@ -726,12 +775,6 @@ QUERY_RULES = (
 )
 
 
-#: Aggregation types this surface rewrites. Mirrors `es_native._AGG_TYPES` so the
-#: normalizer can find the inner body without importing the validator.
-_AGG_TYPES = {
-    "terms", "date_histogram", "cardinality", "composite", "min", "max",
-    "avg", "sum", "value_count", "histogram", "range",
-}
 
 
 def corrected_example(reason: str) -> str:

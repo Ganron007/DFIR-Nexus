@@ -21,7 +21,15 @@ _QUERY_KEYS = {
     "wildcard", "exists", "prefix", "match_all", "match_none", "ids", "regexp",
 }
 _BOOL_KEYS = {"must", "should", "must_not", "filter", "minimum_should_match"}
-_TERM_BODY_KEYS = {"value", "boost", "case_insensitive"}
+#: The options each single-field clause takes beside its `value`, in the field's object
+#: (`{"wildcard": {"f": {"value": "*x*", "case_insensitive": true}}}`). One definition: the validator allows exactly
+#: these and the normalizer moves exactly these when a model writes them beside the field (D386).
+FIELD_CLAUSE_OPTIONS: dict[str, frozenset[str]] = {
+    **dict.fromkeys(("term", "match", "match_phrase", "prefix", "wildcard"), frozenset({"boost", "case_insensitive"})),
+    "regexp": frozenset({"case_insensitive", "flags"}),
+}
+#: Clauses whose field object holds the pattern under `value` (match/match_phrase take `query`).
+VALUE_CLAUSES = frozenset({"term", "prefix", "wildcard", "regexp"})
 _RANGE_BODY_KEYS = {"gte", "gt", "lte", "lt", "format", "boost", "time_zone"}
 _AGG_TYPES = {
     "terms", "date_histogram", "cardinality", "composite", "min", "max",
@@ -96,7 +104,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
         if low_field in ("script", "_script") or low_field.startswith(("script.", "_script.")) or low_field.endswith((".script", "._script")):
             raise ESQueryError("field names cannot contain scripts")
         if isinstance(spec, dict):
-            unknown = set(spec) - _TERM_BODY_KEYS
+            unknown = set(spec) - {"value"} - FIELD_CLAUSE_OPTIONS[key]
             unknown |= {k for k in spec if k == "script"}
             if unknown:
                 raise ESQueryError(f"unsupported {key} options: {sorted(unknown)}")
@@ -147,7 +155,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
         (field, spec), = value.items()
         if not isinstance(spec, dict) or "value" not in spec:
             raise ESQueryError("regexp requires {field: {value: pattern}}")
-        unknown = set(spec) - {"value", "case_insensitive", "flags"}
+        unknown = set(spec) - {"value"} - FIELD_CLAUSE_OPTIONS["regexp"]
         if unknown:
             raise ESQueryError(f"unsupported regexp options: {sorted(unknown)}")
         pattern = str(spec.get("value") or "")
@@ -425,6 +433,13 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
             raise ESQueryError(f"{agg_type} body must be an object")
         if "script" in body or "scripted_metric" in spec:
             raise ESQueryError("aggregation scripts are not allowed")
+        meta = body.get("field")
+        if isinstance(meta, str) and meta.startswith("_"):
+            # ES refuses fielddata on `_id` and the other metadata fields; the model reaches for
+            # `cardinality(_id)` to count rows (D388), which `total` in every es_aggregate result gives.
+            raise ESQueryError(
+                f"aggregation on metadata field `{meta}` is not allowed: to count the rows a query matches, "
+                "read `total` in the es_aggregate result (exact); aggregate a data field otherwise")
         unknown_body = set(body) - _AGG_BODY_KEYS[agg_type]
         if unknown_body:
             raise ESQueryError(
@@ -1077,13 +1092,18 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
     name or a `text` field without its `.kw` are all shapes an LLM writes and ES
     rejects.
     """
-    from nexus.langgraph.query_normalize import normalize_aggs, normalize_query
+    from nexus.langgraph.query_normalize import lift_aggs_query, normalize_aggs, normalize_query
 
     if not case_id:
         raise ESQueryError("case_id is required")
     types = _field_types(case_id)
     aggs, a_notes = normalize_aggs(aggs, types)
     notes = list(a_notes)
+    # The request's `query` written among the named aggs (D387) is the request query, not an agg.
+    aggs, lifted, l_notes = lift_aggs_query(aggs)
+    notes.extend(l_notes)
+    if lifted is not None:
+        query = lifted if query is None else {"bool": {"must": [query, lifted]}}
     if query is not None:
         query, q_notes = normalize_query(query, field_types=types)
         notes.extend(q_notes)
@@ -1128,6 +1148,8 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         "case_id": case_id,
         "backend": "elasticsearch",
         "took_ms": data.get("took"),
+        # The exact count of rows the query matched (`track_total_hits`), so a row count never needs an agg (D388).
+        "total": ((data.get("hits") or {}).get("total") or {}).get("value"),
         "aggregations": out,
         "next_after_key": next_key,
         **({"normalized": notes} if notes else {}),
