@@ -39,13 +39,21 @@ foreach ($step in ($Steps -split ';' | ForEach-Object { $_.Trim() } | Where-Obje
     $tag = "$t-$Round"
     foreach ($m in ($modes -split ' ')) {
         if (Test-Path (Join-Path $trace 'HOLD')) { "$t HOLD is set: $(Get-Content (Join-Path $trace 'HOLD'))"; exit 3 }
-        $env:RUNBOOK_APPEND = if (Test-Path (Join-Path $trace "runs-$tag.ids")) { '1' } else { '' }
+        # The tag's later modes append to its run ids; passed as an argument (WSL's bash sees no Windows variable).
+        $append = if (Test-Path (Join-Path $trace "runs-$tag.ids")) { 'append' } else { '' }
         $start = Get-Date
-        bash devtools/runbook/sample_runs.sh $cid $tag $m *> (Join-Path $out "modes-$t-mode$m.txt")
+        bash devtools/runbook/sample_runs.sh $cid $tag $m $append *> (Join-Path $out "modes-$t-mode$m.txt")
         $code = $LASTEXITCODE
         $log = Join-Path $trace "run-$tag-mode$m.log"
-        $hits = Flagged $log
-        $status = (Select-String $log -Pattern 'status=\S+|  completed  |  settled  ' | Select-Object -Last 1).Line
+        $hits = @()
+        $status = ''
+        if (Test-Path $log) {
+            $hits = Flagged $log
+            $status = (Select-String $log -Pattern 'status=\S+|  completed  |  settled  ' | Select-Object -Last 1).Line
+        } else {
+            # No log: the runner refused before the mode started; its own output says why.
+            $hits = @("the mode did not start: $((Get-Content (Join-Path $out "modes-$t-mode$m.txt") -ErrorAction SilentlyContinue) -join ' ')")
+        }
         $min = [math]::Round(((Get-Date) - $start).TotalMinutes, 1)
         "$t`t$cid`tmode $m`t$($start.ToString('o'))`t$min`texit $code; $($hits.Count) flagged; $status" | Out-File $table -Append -Encoding utf8
         "$(Get-Date -Format HH:mm) $t mode $m exit $code in $min min; $($hits.Count) flagged; $status"

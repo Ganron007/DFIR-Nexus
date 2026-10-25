@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Fresh, independent Mode 1, 2 and 3 runs on one case, one after the other (TIER1-WORK-ORDERS Part 10, P3).
 # Each run's model calls are traced (devtools/trace_prompts.py) and kept under its run id; nothing is approved here.
-#   bash devtools/runbook/sample_runs.sh CASE-ID TAG [MODES]      e.g.  ... CASE-0D525078 S01 "1 2 3"
+#   bash devtools/runbook/sample_runs.sh CASE-ID TAG [MODES] [append]      e.g.  ... CASE-0D525078 S01 "1 2 3"
 # Logs:   cases/<CASE>/.trace/run-<TAG>-mode<N>.log      Run ids: cases/<CASE>/.trace/runs-<TAG>.ids
 # Traces: cases/<CASE>/.trace/model_calls-<RUN_ID>.jsonl
 set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-CASE="$1"; TAG="$2"; MODES="${3:-1 2 3}"
+CASE="$1"; TAG="$2"; MODES="${3:-1 2 3}"; APPEND="${4:-}"
 TRACE="$REPO/cases/$CASE/.trace"
 RUNS_DIR="$REPO/cases/$CASE/runs"
 cd "$REPO" || exit 1
@@ -26,13 +26,14 @@ fi
 unset NEXUS_SIFT_MCP_URL NEXUS_WINDOWS_MCP_URL NEXUS_SIFT_EVIDENCE_ROOT NEXUS_SIFT_ZEEK
 export PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
 RUNS="$TRACE/runs-$TAG.ids"
-# RUNBOOK_APPEND=1 adds this call's modes to the tag's run ids: a case's modes run one call at a time, so each can be
-# checked before the next starts (Part 11 rule 17), and keep one tag.
-if [ -e "$RUNS" ] && [ -z "${RUNBOOK_APPEND:-}" ]; then
+# A 4th argument `append` adds this call's modes to the tag's run ids: a case's modes run one call at a time, so each
+# can be checked before the next starts (Part 11 rule 17), and keep one tag. It is an argument, not an environment
+# variable: this bash is WSL's, and a Windows variable reaches it only through WSLENV, so RUNBOOK_APPEND never arrived.
+if [ -e "$RUNS" ] && [ "$APPEND" != "append" ]; then
   printf 'Run-id file already exists for tag %s; choose a new tag\n' "$TAG" >&2
   exit 2
 fi
-[ -n "${RUNBOOK_APPEND:-}" ] || : > "$RUNS"
+[ "$APPEND" = "append" ] || : > "$RUNS"
 
 interpret_runs() { ls -d "$RUNS_DIR"/RUN-*-interpret-* 2>/dev/null | xargs -r -n1 basename | sort; }
 
