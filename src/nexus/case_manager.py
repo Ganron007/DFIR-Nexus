@@ -338,19 +338,19 @@ def _global_unique_finding_id(candidate: str, case_id: str) -> str:
     try:
         from nexus.case.compat import get_sqlite_manager
 
-        mgr = get_sqlite_manager()
-        match = re.match(r"^(F-.+-)(\d{3,})$", candidate)
-        if not match:
-            return candidate
-        base = match.group(1)
-        seq = int(match.group(2))
-        for _ in range(1000):
-            existing = mgr.store.get_finding(candidate)
-            if existing is None or existing.case_id == case_id:
+        with contextlib.closing(get_sqlite_manager()) as mgr:
+            match = re.match(r"^(F-.+-)(\d{3,})$", candidate)
+            if not match:
                 return candidate
-            seq += 1
-            candidate = f"{base}{seq:03d}"
-        return candidate
+            base = match.group(1)
+            seq = int(match.group(2))
+            for _ in range(1000):
+                existing = mgr.store.get_finding(candidate)
+                if existing is None or existing.case_id == case_id:
+                    return candidate
+                seq += 1
+                candidate = f"{base}{seq:03d}"
+            return candidate
     except Exception:  # noqa: BLE001 — uniqueness best-effort; store guard backstops
         logger.debug("global finding-id check unavailable", exc_info=True)
         return candidate
@@ -966,24 +966,24 @@ class CaseManager:
         # SQLite dual-write (populates case stack for CLI and push server)
         try:
             from nexus.case.compat import dict_to_case, dict_to_finding, get_sqlite_manager
-            sql_mgr = get_sqlite_manager()
-            if sql_mgr.get_case(case_dir.name) is None:
-                case_dict = {"id": case_dir.name, "case_id": case_dir.name,
-                             "name": case_dir.name, "status": "open"}
-                meta_path = case_dir / "CASE.yaml"
-                if meta_path.exists():
-                    import yaml as _yaml
-                    try:
-                        meta = _yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
-                        case_dict.update(meta)
-                    except Exception:
-                        pass
-                case_obj = dict_to_case(case_dict)
-                sql_mgr.store.save_case(case_obj)
-            finding_dict = dict(entry)
-            finding_dict["case_id"] = case_dir.name
-            finding_obj = dict_to_finding(finding_dict)
-            sql_mgr.store.save_finding(finding_obj)
+            with contextlib.closing(get_sqlite_manager()) as sql_mgr:
+                if sql_mgr.get_case(case_dir.name) is None:
+                    case_dict = {"id": case_dir.name, "case_id": case_dir.name,
+                                 "name": case_dir.name, "status": "open"}
+                    meta_path = case_dir / "CASE.yaml"
+                    if meta_path.exists():
+                        import yaml as _yaml
+                        try:
+                            meta = _yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+                            case_dict.update(meta)
+                        except Exception:
+                            pass
+                    case_obj = dict_to_case(case_dict)
+                    sql_mgr.store.save_case(case_obj)
+                finding_dict = dict(entry)
+                finding_dict["case_id"] = case_dir.name
+                finding_obj = dict_to_finding(finding_dict)
+                sql_mgr.store.save_finding(finding_obj)
         except ValueError as exc:
             # EH-4: a cross-case id collision — the store refused to clobber
             # the other case's finding. The flat finding stays; log loudly.
