@@ -32,10 +32,12 @@ from typing import Any
 # The validator's own tables (one definition each, rule 16): what this surface rewrites is exactly what it accepts.
 # `es_native` imports only the standard library at module level, so this stays a pure module.
 from nexus.langgraph.es_native import (
+    _AGG_BODY_KEYS,
     _AGG_TYPES,
     _QUERY_KEYS,
     DOC_VALUE_AGGS,
     FIELD_CLAUSE_OPTIONS,
+    TERMS_OPTIONS,
     VALUE_CLAUSES,
 )
 
@@ -253,6 +255,14 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
     if isinstance(node, list):
         out_list = []
         for item in node:
+            # An aggregation written inside a query item (D405, T12 Mode 3: `{"wildcard": {...}, "cardinality":
+            # {...}}`) is not a filter: it is dropped, said, and the query clause it sat beside stays.
+            if isinstance(item, dict) and len(item) > 1:
+                aggs_here = [k for k in item if k in _AGG_TYPES and k not in _QUERY_KEYS]
+                if aggs_here and any(k in _QUERY_KEYS for k in item):
+                    notes.append(f"dropped {sorted(aggs_here)} from the query: an aggregation goes in es_aggregate's "
+                                 "aggs, not in a query clause")
+                    item = {k: v for k, v in item.items() if k not in aggs_here}
             # One list item holding several clauses is several clauses (D393, T01 Mode 3:
             # `{"wildcard": {...}, "term": {...}}` as one `must` entry).
             if isinstance(item, dict) and len(item) > 1 and all(k in _QUERY_KEYS for k in item):
@@ -342,6 +352,12 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
                 continue
             # First, before any rule counts the fields: an option beside the one field is not a field.
             value = _fold_beside_options(key, value, notes)
+            exact = _pattern_without_wildcards_on_non_string(key, value, types)
+            if exact is not None:
+                field, pattern = exact
+                notes.append(f"`{field}` is {types.get(field)}: the {key} `{pattern}` has no wildcard, so it is a term")
+                out["term"] = {field: pattern}
+                continue
             # `match` written as `{query: {field: …}}` or `{field: {query: …}}`.
             if key == "match":
                 value, sub = _normalize_match_body(value, notes)
@@ -353,7 +369,8 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
                     continue
             # `terms` with several fields is not valid ES (it takes exactly one);
             # it means "any of these", which is bool.should of term clauses.
-            if key == "terms" and len(value) > 1:
+            # `boost` beside the one field is a terms option, not a second field (D405, T13 Mode 3).
+            if key == "terms" and len([k for k in value if k not in TERMS_OPTIONS]) > 1:
                 # `{"terms": {"fields": [..], "query_texts": [..]}}` is a
                 # multi-field text search, not a terms list. Treat the string
                 # list as the pattern over each named field.
@@ -370,12 +387,13 @@ def _normalize_node(node: Any, types: dict[str, str], *, depth: int) -> tuple[An
                         )
                         out["bool"] = {"should": should}
                         continue
+                # A list value stays `terms`: a `term` with a list is a raw ES 400 (D405).
                 should = [
-                    {"term": {_alias_field(str(field), types): spec}}
-                    for field, spec in value.items()
+                    {("terms" if isinstance(spec, list) else "term"): {_alias_field(str(field), types): spec}}
+                    for field, spec in value.items() if field not in TERMS_OPTIONS
                 ]
                 notes.append(
-                    f"split a {len(value)}-field `terms` into bool.should "
+                    f"split a {len(should)}-field `terms` into bool.should "
                     "(ES takes one field per terms clause)"
                 )
                 out["bool"] = {"should": should}
@@ -489,6 +507,10 @@ def _alias_field(field: str, types: dict[str, str]) -> str:
     # Already-looking ECS path that the index carries as-is.
     if f"ecs.{name}" in types:
         return f"ecs.{name}"
+    # A tool column written bare (`sa`, `ibyt`, `action`): the index holds it as `fields.<name>` (D405: T18's Mode 2
+    # spent calls on `sa`/`da` answered "this index has fields.sa"). Exact name only; anything looser is below.
+    if f"fields.{name}" in types:
+        return f"fields.{name}"
     # The one field the name means, written in another case or with underscores (`fields.task_name`
     # for `fields.TaskName`, D218). Only a single match is taken; two or more stay an unknown field.
     loose = _loose_key(name)
@@ -525,6 +547,27 @@ def _normalize_match_body(value: dict[str, Any], notes: list[str]) -> tuple[Any,
         notes.append("lifted `query` out of the `match` body")
         value = {**value, **lifted}
     return {k: v for k, v in value.items() if k != "type"}, notes
+
+
+def _pattern_without_wildcards_on_non_string(
+    key: str, value: dict[str, Any], types: dict[str, str]
+) -> tuple[str, str] | None:
+    """(field, value) when a wildcard/prefix on a number, date, boolean or IP field holds no wildcard character.
+
+    D405 (T13 Mode 3): `{"wildcard": {"fields.source_port.kw": "49208"}}` on the `long` port answered a raw 400. With
+    no `*` or `?` it means equals, a term. A real pattern on such a field stays and is refused with a pointer.
+    """
+    if key not in ("wildcard", "prefix") or len(value) != 1 or not types:
+        return None
+    ((field, spec),) = value.items()
+    target = _alias_field(str(field), types)
+    kind = str(types.get(target) or "")
+    if not kind or kind in ("text", "keyword", "wildcard"):
+        return None
+    pattern = spec.get("value") if isinstance(spec, dict) else spec
+    if not isinstance(pattern, (str, int, float)) or any(ch in str(pattern) for ch in "*?"):
+        return None
+    return target, str(pattern)
 
 
 def _fold_beside_options(key: str, value: dict[str, Any], notes: list[str]) -> dict[str, Any]:
@@ -744,6 +787,16 @@ def _normalize_date_histogram(body: dict[str, Any], notes: list[str]) -> dict[st
             converted = f"{int(n) * 7}d" if unit == "W" else f"{n}{unit.lower()}"
             body[key] = converted
             notes.append(f"converted the ISO-8601 `{key}` {value!r} to {converted!r}")
+    # A calendar interval is ONE unit (1m, 1h, 1d, 1w, 1M, 1q, 1y); `10m` is a fixed interval (D405, T21 Mode 3: a raw
+    # 400 "failed to parse field [calendar_interval]"). Weeks become days; a multiple of months, quarters or years has
+    # no fixed equivalent and is left for the validator to answer.
+    calendar = body.get("calendar_interval")
+    multiple = re.fullmatch(r"(\d+)([smhdw])", calendar) if isinstance(calendar, str) else None
+    if multiple and int(multiple.group(1)) != 1 and "fixed_interval" not in body:
+        n, unit = int(multiple.group(1)), multiple.group(2)
+        body.pop("calendar_interval")
+        body["fixed_interval"] = f"{n * 7}d" if unit == "w" else f"{n}{unit}"
+        notes.append(f"`calendar_interval` {calendar!r} is a multiple, so a fixed interval: {body['fixed_interval']!r}")
     if "target_bounds" in body and "extended_bounds" not in body:
         bounds = body.pop("target_bounds")
         if isinstance(bounds, dict):
@@ -814,6 +867,17 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                     inner = spec.get("aggs") if isinstance(spec.get("aggs"), dict) else spec.get("aggregations")
                     out[name] = {"filter": fixed, **({"aggs": walk(inner, depth + 1)} if isinstance(inner, dict) else {})}
                     continue
+                if agg_type == "filters" and isinstance(agg_body, dict) and isinstance(agg_body.get("filters"), dict):
+                    # D405: each named condition of a `filters` aggregation is a query.
+                    named = {}
+                    for label, clause in agg_body["filters"].items():
+                        fixed, sub_notes = normalize_query(clause, field_types=types)
+                        notes.extend(sub_notes)
+                        named[label] = fixed
+                    inner = spec.get("aggs") if isinstance(spec.get("aggs"), dict) else spec.get("aggregations")
+                    out[name] = {"filters": {**agg_body, "filters": named},
+                                 **({"aggs": walk(inner, depth + 1)} if isinstance(inner, dict) else {})}
+                    continue
                 # Sub-aggregations belong BESIDE the agg type (`{"terms": {...}, "aggs": {...}}`). They were
                 # moved inside the body with the stray options, which ES and validate_aggs reject: every
                 # nested aggregation failed (6 of CASE-C5B04D31's 282 es_aggregate calls, D246). One written
@@ -823,9 +887,29 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                     sub = agg_body["aggs"]
                     agg_body = {k: v for k, v in agg_body.items() if k != "aggs"}
                     notes.append(f"moved `aggs` out of the `{agg_type}` body (sub-aggregations sit beside it)")
+                # Named sub-aggregations written straight into the body (D405, T21 Mode 3: `first_ts: {min: ...}`
+                # inside a `terms` body, refused as "unsupported terms options"). An entry that is itself an
+                # aggregation and not one of the type's own options is a sub-aggregation.
+                if isinstance(agg_body, dict):
+                    own = _AGG_BODY_KEYS.get(agg_type, set())
+                    nested = {k: v for k, v in agg_body.items() if k not in own and isinstance(v, dict)
+                              and any(t in v for t in _AGG_TYPES)}
+                    if nested:
+                        agg_body = {k: v for k, v in agg_body.items() if k not in nested}
+                        sub = {**(sub if isinstance(sub, dict) else {}), **nested}
+                        notes.append(f"moved {sorted(nested)} out of the `{agg_type}` body: they are sub-aggregations")
                 # Options written BESIDE the agg type, not inside it:
                 # `{"terms": {...}, "shard_size": 200}`. Move them in.
-                strag = {k: v for k, v in spec.items() if k not in (agg_type, "aggs", "aggregations")}
+                # An entry beside the type that is itself an aggregation is a named sub-aggregation (D405, T21 -518:
+                # `by_dtype`/`first_ts`/`last_ts` beside `terms`, moved into its body as options and refused).
+                beside_aggs = {k: v for k, v in spec.items() if k not in (agg_type, "aggs", "aggregations")
+                               and isinstance(v, dict) and any(t in v for t in _AGG_TYPES)}
+                if beside_aggs:
+                    sub = {**(sub if isinstance(sub, dict) else {}), **beside_aggs}
+                    notes.append(f"moved {sorted(beside_aggs)} into `aggs`: they are sub-aggregations, not "
+                                 f"`{agg_type}` options")
+                strag = {k: v for k, v in spec.items()
+                         if k not in (agg_type, "aggs", "aggregations") and k not in beside_aggs}
                 if strag and isinstance(agg_body, dict):
                     agg_body = {**agg_body, **strag}
                     notes.append(f"moved {sorted(strag)} inside the `{agg_type}` body")
@@ -888,15 +972,20 @@ def lift_aggs_query(aggs: Any) -> tuple[Any, dict[str, Any] | None, list[str]]:
     called "query". It is lifted out when its body is a query clause; a real aggregation that happens to be named
     "query" (an agg body names its `field` or `sources`) stays where it is.
     """
+    notes: list[str] = []
+    if isinstance(aggs, dict) and "size" in aggs and not isinstance(aggs["size"], dict):
+        # `size` among the named aggs (D405, T13 Mode 3) is a request option, refused as "agg 'size' must be an object".
+        aggs = {name: value for name, value in aggs.items() if name != "size"}
+        notes.append("dropped `size` from `aggs`: it is a request option (es_aggregate's size), not an aggregation")
     spec = aggs.get("query") if isinstance(aggs, dict) else None
     if not isinstance(spec, dict) or len(spec) != 1:
-        return aggs, None, []
+        return aggs, None, notes
     ((clause, body),) = spec.items()
     is_agg = clause in _AGG_TYPES and isinstance(body, dict) and ("field" in body or "sources" in body)
     if clause not in _QUERY_KEYS or is_agg:
-        return aggs, None, []
+        return aggs, None, notes
     rest = {name: value for name, value in aggs.items() if name != "query"}
-    return rest, spec, ["moved `query` out of `aggs`: it is the request's query, not an aggregation"]
+    return rest, spec, [*notes, "moved `query` out of `aggs`: it is the request's query, not an aggregation"]
 
 
 #: The three rules the model must follow, stated plainly (WO-R1F item 2b).

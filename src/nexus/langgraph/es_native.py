@@ -36,9 +36,18 @@ _AGG_TYPES = {
     "avg", "sum", "value_count", "histogram", "range",
     # D389: the model counts a condition with `filter` and buckets time with `date_range` (T01, T04).
     "filter", "date_range",
+    # D405: a time span is `stats` on `ts`, several named conditions are `filters`, example rows per bucket are
+    # `top_hits` (T21 Mode 3: eight calls refused).
+    "stats", "filters", "top_hits",
 }
 #: Aggregations that read a field's doc values: a `text` field needs its `.kw` keyword sub-field (D391).
 DOC_VALUE_AGGS = frozenset({"terms", "cardinality", "value_count"})
+#: Aggregations that compute on numbers or dates: a `text` field cannot be their input (D405: `sum` on text `bytes`).
+NUMERIC_AGGS = frozenset({"sum", "avg", "min", "max", "stats", "histogram", "range"})
+#: Options a `terms` query takes beside its one field (`{"terms": {"f": [..], "boost": 2}}` is valid ES; D405).
+TERMS_OPTIONS = frozenset({"boost"})
+#: Most example rows a `top_hits` bucket may return.
+TOP_HITS_MAX = 20
 _COMPOSITE_SOURCES = {"terms", "date_histogram", "histogram"}
 # Strict per-type body allowlists: anything else (script!) is rejected.
 _AGG_BODY_KEYS = {
@@ -58,6 +67,9 @@ _AGG_BODY_KEYS = {
     "sum": {"field", "missing", "format"},
     "value_count": {"field", "missing"},
     "composite": {"sources", "size", "after"},
+    "stats": {"field", "missing", "format"},
+    "filters": {"filters", "other_bucket", "other_bucket_key"},
+    "top_hits": {"size", "_source", "sort"},
 }
 _COMPOSITE_SOURCE_KEYS = {
     # missing_bucket keeps the documents a source field is absent from (a task registration names no
@@ -114,9 +126,10 @@ def validate_query(body: Any, depth: int = 0) -> None:
             if unknown:
                 raise ESQueryError(f"unsupported {key} options: {sorted(unknown)}")
     elif key == "terms":
-        if not isinstance(value, dict) or len(value) != 1:
+        named = {k: v for k, v in value.items() if k not in TERMS_OPTIONS} if isinstance(value, dict) else {}
+        if not isinstance(value, dict) or len(named) != 1:
             raise ESQueryError("terms takes exactly one field")
-        (field, values), = value.items()
+        (field, values), = named.items()
         if not isinstance(values, list) or not values:
             raise ESQueryError("terms values must be a non-empty list")
         if len(values) > 5000:
@@ -250,7 +263,18 @@ def _coercible(kind: str, value: Any) -> bool:
             return False
     if kind in _DATE_ES:
         s = str(value)
-        return bool(s[:4].isdigit() and ("-" in s or s.isdigit()))
+        if not (s[:4].isdigit() and ("-" in s or s.isdigit())):
+            return False
+        # D405: the calendar date must exist: `2021-13-01` passed the shape check and ES answered a raw 400.
+        parts = s[:10].split("-")
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            try:
+                from datetime import date
+
+                date(int(parts[0]), int(parts[1]), int(parts[2]))
+            except ValueError:
+                return False
+        return True
     if kind in _BOOL_ES:
         return str(value).lower() in {"true", "false", "0", "1"}
     return True
@@ -321,6 +345,8 @@ def _collect_failed(
             continue
         if key in _CLAUSE_FIELD_KEYS and isinstance(value, dict):
             for field, spec in value.items():
+                if key == "terms" and field in TERMS_OPTIONS:
+                    continue
                 _check_ref(str(field), spec, types, context, fatal, optional, seen)
             continue
         if key == "exists" and isinstance(value, dict) and value.get("field"):
@@ -441,12 +467,34 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
             raise ESQueryError(f"{agg_type} body must be an object")
         if "script" in body or "scripted_metric" in spec:
             raise ESQueryError("aggregation scripts are not allowed")
-        if agg_type == "filter":
-            # A `filter` aggregation's body is a query clause: the query allowlist applies to it.
-            validate_query(body)
+        if agg_type in ("filter", "filters"):
+            # A `filter` aggregation's body is a query clause, a `filters` one names several: the query allowlist
+            # applies to each.
+            if agg_type == "filter":
+                validate_query(body)
+            else:
+                named = body.get("filters")
+                queries = list(named.values()) if isinstance(named, dict) else named
+                if not isinstance(queries, list) or not queries:
+                    raise ESQueryError("filters needs `filters`: an object of named query clauses")
+                unknown_body = set(body) - _AGG_BODY_KEYS["filters"]
+                if unknown_body:
+                    raise ESQueryError(f"unsupported filters options: {sorted(unknown_body)}")
+                for query in queries:
+                    validate_query(query)
             sub = spec.get("aggs")
             if sub is not None:
                 validate_aggs(sub, depth + 1)
+            continue
+        if agg_type == "top_hits":
+            unknown_body = set(body) - _AGG_BODY_KEYS["top_hits"]
+            if unknown_body:
+                raise ESQueryError(f"unsupported top_hits options: {sorted(unknown_body)}")
+            try:
+                if not 1 <= int(body.get("size", 3)) <= TOP_HITS_MAX:
+                    raise ESQueryError(f"top_hits size must be 1..{TOP_HITS_MAX}")
+            except (TypeError, ValueError):
+                raise ESQueryError("top_hits size must be an integer") from None
             continue
         if agg_type != "composite" and not body.get("field"):
             # ES answers a field-less metric with a raw 400 (D395: `{"value_count": {}}` to count rows).
@@ -743,6 +791,9 @@ def es_search(
     sort, s_notes = normalize_sort(sort, types)
     notes = [*q_notes, *s_notes]
     validate_query(query)
+    patterns = _patterns_on_non_strings(query, types)
+    if patterns:
+        raise ESQueryError("cannot search: " + "; ".join(patterns))
     fatal, optional_failed = failed_field_refs_detail(case_id, query)
     if fatal:
         # P1: a query that cannot match must never read as "0 hits on real
@@ -1109,20 +1160,50 @@ def _field_refs(query: dict[str, Any]) -> list[str]:
     return sorted(out)
 
 
-def _text_fields_without_keyword(aggs: Any, types: dict[str, str], depth: int = 0) -> list[str]:
-    """Doc-value aggregation fields that are analysed text with no `.kw` (ES answers those with a raw 400, D391)."""
+def _aggregation_field_problems(aggs: Any, types: dict[str, str], depth: int = 0) -> list[str]:
+    """Aggregations whose field cannot feed them; ES answers each with a raw 400.
+
+    A doc-value aggregation on analysed text with no `.kw` (D391), and a numeric one on a text or keyword field
+    (D405: `sum` on T13's text `fields.bytes`).
+    """
     found: list[str] = []
     if depth > 6 or not isinstance(aggs, dict) or not types:
         return found
     for spec in aggs.values():
         if not isinstance(spec, dict):
             continue
-        for agg_type in DOC_VALUE_AGGS & set(spec):
+        for agg_type in (DOC_VALUE_AGGS | NUMERIC_AGGS) & set(spec):
             field = (spec.get(agg_type) or {}).get("field") if isinstance(spec.get(agg_type), dict) else None
             kind = str(types.get(field) or "") if isinstance(field, str) else ""
-            if kind == "text" and f"{field}.kw" not in types:
-                found.append(field)
-        found.extend(_text_fields_without_keyword(spec.get("aggs"), types, depth + 1))
+            if agg_type in DOC_VALUE_AGGS and kind == "text" and f"{field}.kw" not in types:
+                found.append(f"`{field}` is analysed text with no keyword sub-field, which {agg_type} cannot read; "
+                             "aggregate a keyword field (es_fields lists them) or find values with es_search")
+            elif agg_type in NUMERIC_AGGS and kind in ("text", "keyword", "wildcard"):
+                found.append(f"`{field}` is {kind} in this index, and {agg_type} needs a number or a date; "
+                             "es_fields lists the numeric and date fields")
+        found.extend(_aggregation_field_problems(spec.get("aggs"), types, depth + 1))
+    return found
+
+
+def _patterns_on_non_strings(query: Any, types: dict[str, str], depth: int = 0) -> list[str]:
+    """Pattern clauses (wildcard, prefix, regexp) on a number, date, boolean or IP field: ES answers a raw 400."""
+    found: list[str] = []
+    if depth > 8 or not types:
+        return found
+    if isinstance(query, list):
+        for item in query:
+            found.extend(_patterns_on_non_strings(item, types, depth + 1))
+        return found
+    if not isinstance(query, dict):
+        return found
+    for key, value in query.items():
+        if key in ("wildcard", "prefix", "regexp") and isinstance(value, dict):
+            for field in value:
+                kind = str(types.get(field) or "")
+                if kind and kind not in ("text", "keyword", "wildcard"):
+                    found.append(f"`{field}` is {kind}: a {key} pattern applies to text; use term, terms or range")
+        else:
+            found.extend(_patterns_on_non_strings(value, types, depth + 1))
     return found
 
 
@@ -1150,11 +1231,11 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         query, q_notes = normalize_query(query, field_types=types)
         notes.extend(q_notes)
     validate_aggs(aggs)
-    unaggregatable = _text_fields_without_keyword(aggs, types)
-    if unaggregatable:
-        raise ESQueryError(
-            f"cannot aggregate analysed text field(s) {unaggregatable}: they have no keyword sub-field. "
-            "Aggregate a keyword field (es_fields lists them), or find values with es_search")
+    problems = _aggregation_field_problems(aggs, types)
+    if query is not None:
+        problems.extend(_patterns_on_non_strings(query, types))
+    if problems:
+        raise ESQueryError("cannot aggregate: " + "; ".join(problems))
     if query is not None:
         validate_query(query)
         failed = failed_field_refs(case_id, query)
