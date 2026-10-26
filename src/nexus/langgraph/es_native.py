@@ -8,6 +8,7 @@ Read-only, case-index-pinned, ES-required (no CSV pretence).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ DEFAULT_SIZE = 200
 PAGE_SIZE = 1000
 MAX_AGGS = 40
 AGG_PREVIEW_MAX = 10
+FIXED_DURATION = re.compile(r"[1-9][0-9]*(?:ms|[smhd])")
 _READ_SIZE_MINIMUM = {"es_search": 1, "es_aggregate": 0}
 
 _QUERY_KEYS = {
@@ -49,7 +51,11 @@ NUMERIC_AGGS = frozenset({"sum", "avg", "min", "max", "stats", "histogram", "ran
 #: Options a `terms` query takes beside its one field (`{"terms": {"f": [..], "boost": 2}}` is valid ES; D405).
 TERMS_OPTIONS = frozenset({"boost"})
 #: Most example rows a `top_hits` bucket may return.
+TOP_HITS_MIN = 1
 TOP_HITS_MAX = 20
+COMPOSITE_SIZE_MIN = 1
+COMPOSITE_SIZE_MAX = 1000
+AGG_RANGE_BOUND_KEYS = frozenset({"from", "to", "key"})
 _COMPOSITE_SOURCES = {"terms", "date_histogram", "histogram"}
 # Strict per-type body allowlists: anything else (script!) is rejected.
 _AGG_BODY_KEYS = {
@@ -82,6 +88,16 @@ _COMPOSITE_SOURCE_KEYS = {
     "date_histogram": {"field", "calendar_interval", "fixed_interval",
                        "time_zone", "format", "order", "offset", "missing_bucket"},
     "histogram": {"field", "interval", "order", "offset", "missing_bucket"},
+}
+
+
+# Required canonical keys are shared by the validator and model producer.
+AGG_REQUIRED_KEYS = {
+    kind: (["sources"] if kind == "composite" else
+           ["filters"] if kind == "filters" else
+           [] if kind in ("filter", "top_hits") else
+           ["field", "ranges"] if kind in ("range", "date_range") else ["field"])
+    for kind in _AGG_TYPES
 }
 
 
@@ -502,6 +518,13 @@ def failed_field_refs(case_id: str, query: Any) -> list[dict[str, str]]:
     return failed_field_refs_detail(case_id, query)[0]
 
 
+def aggregation_range_requirement(agg_type: str) -> str:
+    """Tell producer and consumer the same range/span distinction."""
+    return (f"{agg_type} needs a non-empty `ranges` list of explicitly known bounds; "
+            "never invent bounds to satisfy this shape. For the earliest and latest time use "
+            '{"first": {"min": {"field": "ts"}}, "last": {"max": {"field": "ts"}}}')
+
+
 def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
     """Allowlist aggregation trees (terms/date_histogram/composite/…)."""
     if not isinstance(aggs, dict) or not aggs:
@@ -548,21 +571,27 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
             if unknown_body:
                 raise ESQueryError(f"unsupported top_hits options: {sorted(unknown_body)}")
             try:
-                if not 1 <= int(body.get("size", 3)) <= TOP_HITS_MAX:
-                    raise ESQueryError(f"top_hits size must be 1..{TOP_HITS_MAX}")
+                if not TOP_HITS_MIN <= int(body.get("size", 3)) <= TOP_HITS_MAX:
+                    raise ESQueryError(f"top_hits size must be {TOP_HITS_MIN}..{TOP_HITS_MAX}")
             except (TypeError, ValueError):
                 raise ESQueryError("top_hits size must be an integer") from None
             continue
-        if agg_type != "composite" and not body.get("field"):
+        if "field" in AGG_REQUIRED_KEYS[agg_type] and not body.get("field"):
             # ES answers a field-less metric with a raw 400 (D395: `{"value_count": {}}` to count rows).
             raise ESQueryError(
                 f"{agg_type} needs a `field`: to count the rows a query matches, read `total` in the "
                 "es_aggregate result (exact)")
-        if agg_type in ("range", "date_range") and not (isinstance(body.get("ranges"), list) and body["ranges"]):
+        if "ranges" in AGG_REQUIRED_KEYS[agg_type] and not (isinstance(body.get("ranges"), list) and body["ranges"]):
             # T01 Mode 3 asked `date_range` with no ranges for the time span: ES answers with a raw 400.
-            raise ESQueryError(
-                f"{agg_type} needs a non-empty `ranges` list; for the earliest and latest time use "
-                '{"first": {"min": {"field": "ts"}}, "last": {"max": {"field": "ts"}}}')
+            raise ESQueryError(aggregation_range_requirement(agg_type))
+        if agg_type in ("range", "date_range"):
+            for bounds in body["ranges"]:
+                if not isinstance(bounds, dict) or set(bounds) - AGG_RANGE_BOUND_KEYS:
+                    raise ESQueryError("unsupported range bound: use from (inclusive), to (exclusive), and optional key")
+        if agg_type == "date_histogram" and "fixed_interval" in body:
+            interval = body["fixed_interval"]
+            if not isinstance(interval, str) or not FIXED_DURATION.fullmatch(interval):
+                raise ESQueryError("fixed_interval needs a positive fixed duration, such as 1h; calendar months have no fixed duration")
         unknown_body = set(body) - _AGG_BODY_KEYS[agg_type]
         if unknown_body:
             raise ESQueryError(
@@ -593,8 +622,8 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
                         )
             if "size" in body:
                 try:
-                    if not 1 <= int(body["size"]) <= 1000:
-                        raise ESQueryError("composite size must be 1..1000")
+                    if not COMPOSITE_SIZE_MIN <= int(body["size"]) <= COMPOSITE_SIZE_MAX:
+                        raise ESQueryError(f"composite size must be {COMPOSITE_SIZE_MIN}..{COMPOSITE_SIZE_MAX}")
                 except (TypeError, ValueError):
                     raise ESQueryError("composite size must be an integer") from None
             after = body.get("after")
@@ -1236,6 +1265,18 @@ def _field_refs(query: dict[str, Any]) -> list[str]:
     return sorted(out)
 
 
+def aggregation_field_problem(agg_type: str, field: str, types: dict[str, str]) -> str:
+    """One field eligibility decision for the producer and ES consumer."""
+    if not isinstance(field, str):
+        return ""
+    kind = str(types.get(field) or "")
+    if agg_type in DOC_VALUE_AGGS and kind == "text" and f"{field}.kw" not in types:
+        return "analysed_text"
+    if agg_type in NUMERIC_AGGS and kind in ("text", "keyword", "wildcard"):
+        return "not_numeric"
+    return ""
+
+
 def _aggregation_field_problems(aggs: Any, types: dict[str, str], depth: int = 0) -> list[str]:
     """Aggregations whose field cannot feed them; ES answers each with a raw 400.
 
@@ -1251,10 +1292,10 @@ def _aggregation_field_problems(aggs: Any, types: dict[str, str], depth: int = 0
         for agg_type in (DOC_VALUE_AGGS | NUMERIC_AGGS) & set(spec):
             field = (spec.get(agg_type) or {}).get("field") if isinstance(spec.get(agg_type), dict) else None
             kind = str(types.get(field) or "") if isinstance(field, str) else ""
-            if agg_type in DOC_VALUE_AGGS and kind == "text" and f"{field}.kw" not in types:
+            if aggregation_field_problem(agg_type, field, types) == "analysed_text":
                 found.append(f"`{field}` is analysed text with no keyword sub-field, which {agg_type} cannot read; "
                              "aggregate a keyword field (es_fields lists them) or find values with es_search")
-            elif agg_type in NUMERIC_AGGS and kind in ("text", "keyword", "wildcard"):
+            elif aggregation_field_problem(agg_type, field, types) == "not_numeric":
                 found.append(f"`{field}` is {kind} in this index, and {agg_type} needs a number or a date; "
                              "es_fields lists the numeric and date fields")
         # D406: a composite's sources read doc values too (T18 Mode 3 grouped by the analysed `text`).
@@ -1263,7 +1304,7 @@ def _aggregation_field_problems(aggs: Any, types: dict[str, str], depth: int = 0
             for inner in (source.values() if isinstance(source, dict) else []):
                 terms = (inner or {}).get("terms") if isinstance(inner, dict) else None
                 field = terms.get("field") if isinstance(terms, dict) else None
-                if isinstance(field, str) and str(types.get(field) or "") == "text" and f"{field}.kw" not in types:
+                if isinstance(field, str) and aggregation_field_problem("terms", field, types) == "analysed_text":
                     found.append(f"`{field}` is analysed text with no keyword sub-field, which a composite source "
                                  "cannot read; group by a keyword field (es_fields lists them)")
         found.extend(_aggregation_field_problems(spec.get("aggs"), types, depth + 1))
@@ -1499,15 +1540,17 @@ def es_sample(
     }
 
 
+READ_TOOL_FUNCTIONS = {"es_mappings": es_fields, "es_search": es_search,
+                       "es_aggregate": es_aggregate, "sample_rows": es_sample}
+
+
 def _read_tool_contracts():
     """Derive the prompt/loop argument contracts from the native functions."""
     from inspect import Parameter, signature
 
-    functions = {"es_mappings": es_fields, "es_search": es_search,
-                 "es_aggregate": es_aggregate, "sample_rows": es_sample}
     parameters = {}
     required = {}
-    for name, function in functions.items():
+    for name, function in READ_TOOL_FUNCTIONS.items():
         specs = signature(function).parameters
         parameters[name] = tuple(key for key in specs if key != "case_id")
         required[name] = tuple(key for key, spec in specs.items()

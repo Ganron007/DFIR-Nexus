@@ -143,12 +143,18 @@ def load_loop_budget(rounds: int = 0) -> LoopBudget:
     return budget
 
 
-def _call_model(model: Any, messages: list[dict[str, str]]) -> str:
+def _call_model(model: Any, messages: list[dict[str, str]], *, response_format=None) -> str:
     try:
-        response = model.invoke(messages)
+        client = model.bind(response_format=response_format) if response_format else model
+        response = client.invoke(messages)
     except AttributeError:
         raise
-    return str(getattr(response, "content", response))
+    text = str(getattr(response, "content", response))
+    if response_format:
+        from jsonschema import Draft202012Validator
+
+        Draft202012Validator(response_format["json_schema"]["schema"]).validate(json.loads(text))
+    return text
 
 
 def _parse_loop_json(text: str) -> dict[str, Any] | None:
@@ -910,6 +916,20 @@ def run_context_loop(
         "whole catalog. If you have enough evidence, answer."
     )
 
+    from nexus.langgraph.tool_generation import (
+        generation_format,
+        response_schema,
+        supports_generation_schema,
+    )
+
+    response_format = None
+    if supports_generation_schema(model):
+        schema = response_schema(case_id, _TOOL_ARGS, _REQUIRED_ARGS, _STRING_FIELDS_BY_TOOL,
+                                 allowed_tools=allowed_tools)
+        response_format = generation_format(model, schema)
+        protocol += "\nFor a final object include \"tool_calls\": [] alongside the task's final keys."
+    format_text = json.dumps(response_format, ensure_ascii=False, separators=(",", ":")) if response_format else ""
+
     def _round_nudge(round_no: int) -> str:
         """Keep the loop from spending every round on more retrieval."""
         remaining = budget.rounds - round_no
@@ -928,6 +948,7 @@ def run_context_loop(
 
     def _packed_round(round_no: int) -> str:
         from nexus.langgraph.prompt_budget import (
+            budget_chars,
             case_window,
             log_usage,
             pack_sections,
@@ -951,12 +972,20 @@ def run_context_loop(
             (4, "round", _round_nudge(round_no).strip()),
         ]
         window = case_window(case_dir)
-        packed, report = pack_sections(sections, window=window)
+        # Schema options consume the same context window as messages; never raise it.
+        overhead = len(base_system) + len(format_text)
+        available = budget_chars(window=window) - overhead
+        if available <= 0:
+            raise ValueError("read generation contract exceeds the case context budget")
+        packed, report = pack_sections(sections, window=window, chars=available)
+        report["generation_contract_chars"] = len(format_text)
+        report["system_chars"] = len(base_system)
         # The record holds both messages the model received (D174: it held the user message only).
         persist_context(
             case_dir, f"context-loop-{task}-round-{round_no}",
             "## SYSTEM MESSAGE\n\n" + base_system + "\n\n## USER MESSAGE\n\n" + packed, report,
-            meta={"case_id": case_id, "turn_id": turn_id, "question": question[:160]},
+            meta={"case_id": case_id, "turn_id": turn_id, "question": question[:160],
+                  "response_format": response_format},
         )
         log_usage(f"context-loop-{task}", report)
         return packed
@@ -980,7 +1009,7 @@ def run_context_loop(
                 raw = _call_model(model, [
                     {"role": "system", "content": base_system},
                     {"role": "user", "content": user},
-                ])
+                ], **({"response_format": response_format} if response_format else {}))
                 break
             except Exception as exc:  # noqa: BLE001 — one model failure is not fatal
                 from nexus.langgraph.prompt_budget import (

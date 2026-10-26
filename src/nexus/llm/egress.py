@@ -134,13 +134,25 @@ def _write_tokens(path: Path, mapping: dict[str, str]) -> None:
 
 def anonymize_text(text: str, case_dir: Path | None, allowlist: set[str] | None = None) -> str:
     """Tokenize *text* and persist any new tokens for this case."""
+    return anonymize_texts([text], case_dir, allowlist)[0]
+
+
+def anonymize_texts(texts: list[str], case_dir: Path | None,
+                    allowlist: set[str] | None = None) -> list[str]:
+    """One case-identity lookup and one engine for a batch of schema field names."""
     from nexus.llm.victim_identifiers import case_engine
 
+    if not texts:
+        return []
     victim = case_engine(case_dir)
     if victim is not None:
-        return victim.anonymize(text)
+        return victim.anonymize_many(texts)
     engine = load_anonymizer(case_dir, allowlist)
-    rewritten, mapping = engine.anonymize(text, reset=False)
+    rewritten = []
+    mapping = {}
+    for text in texts:
+        result, mapping = engine.anonymize(text, reset=False)
+        rewritten.append(result)
     path = _token_path(case_dir)
     if path is not None and mapping:
         with _TOKEN_LOCK:
@@ -461,6 +473,26 @@ def _restore_result(result, case_dir: Path | None) -> None:
                 chunk.text = restore_text(text, case_dir)
 
 
+def _anonymize_generation_options(options, case):
+    """Only case-derived schema enums are identifiers, never schema keywords."""
+    from copy import deepcopy
+
+    response_format = options.get("response_format")
+    if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
+        return options
+    from nexus.langgraph.tool_generation import CASE_FIELD_PREFIX
+
+    safe = deepcopy(options)
+    schema = (safe["response_format"].get("json_schema") or {}).get("schema") or {}
+    field_definitions = [definition for name, definition in schema.get("$defs", {}).items()
+                         if name.startswith(CASE_FIELD_PREFIX) and isinstance(definition.get("enum"), list)]
+    names = list(dict.fromkeys(value for definition in field_definitions for value in definition["enum"]))
+    fields = dict(zip(names, anonymize_texts(names, case), strict=True))
+    for definition in field_definitions:
+        definition["enum"] = [fields[value] for value in definition["enum"]]
+    return safe
+
+
 def attach_egress(model):
     """Tokenize every outbound message and restore every returned one.
 
@@ -485,7 +517,7 @@ def attach_egress(model):
         with _call_scope(case):
             result = original_generate(
                 _anonymize_messages(messages, case), stop=stop,
-                run_manager=run_manager, **kwargs,
+                run_manager=run_manager, **_anonymize_generation_options(kwargs, case),
             )
             _restore_result(result, case)
         return result
@@ -495,7 +527,7 @@ def attach_egress(model):
         with _call_scope(case):
             result = await original_agenerate(
                 _anonymize_messages(messages, case), stop=stop,
-                run_manager=run_manager, **kwargs,
+                run_manager=run_manager, **_anonymize_generation_options(kwargs, case),
             )
             _restore_result(result, case)
         return result
@@ -508,7 +540,7 @@ def attach_egress(model):
             last = None
             for chunk in original_stream(
                 _anonymize_messages(messages, case), stop=stop,
-                run_manager=run_manager, **kwargs,
+                run_manager=run_manager, **_anonymize_generation_options(kwargs, case),
             ):
                 last = chunk
                 if held.absorb(chunk):
@@ -533,7 +565,7 @@ def attach_egress(model):
             last = None
             async for chunk in original_astream(
                 _anonymize_messages(messages, case), stop=stop,
-                run_manager=run_manager, **kwargs,
+                run_manager=run_manager, **_anonymize_generation_options(kwargs, case),
             ):
                 last = chunk
                 if held.absorb(chunk):

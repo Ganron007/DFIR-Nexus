@@ -267,11 +267,14 @@ class CaseEgress:
         self.known = known
 
     def anonymize(self, text: str) -> str:
+        return self.anonymize_many([text])[0]
+
+    def anonymize_many(self, texts: list[str]) -> list[str]:
         with _LOCK:
             data = _load(self.case_dir)
             tokens = dict(data.get("tokens") or {})
             engine = _engine(self.known, tokens)
-            out = engine.apply(text)
+            out = [engine.apply(text) for text in texts]
             issued = engine.tokens()
             if issued != tokens:
                 data["tokens"] = issued

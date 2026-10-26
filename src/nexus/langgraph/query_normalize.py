@@ -37,6 +37,7 @@ from nexus.langgraph.es_native import (
     _QUERY_KEYS,
     DOC_VALUE_AGGS,
     FIELD_CLAUSE_OPTIONS,
+    FIXED_DURATION,
     TERMS_OPTIONS,
     VALUE_CLAUSES,
 )
@@ -748,6 +749,8 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
 _CALENDAR_INTERVALS = {"minute", "1m", "hour", "1h", "day", "1d", "week", "1w", "month", "1M", "quarter", "1q",
                        "year", "1y"}
 _ISO_DURATION = re.compile(r"P(?:(\d+)([DW]))|PT(\d+)([HMS])")
+_FIXED_UNIT_NAMES = {"millisecond": "1ms", "second": "1s", "minute": "1m",
+                     "hour": "1h", "day": "1d", "week": "7d"}
 
 
 def _query_clause_as_filter_agg(name: str, spec: Any, notes: list[str]) -> Any:
@@ -787,6 +790,10 @@ def _normalize_date_histogram(body: dict[str, Any], notes: list[str]) -> dict[st
             converted = f"{int(n) * 7}d" if unit == "W" else f"{n}{unit.lower()}"
             body[key] = converted
             notes.append(f"converted the ISO-8601 `{key}` {value!r} to {converted!r}")
+    fixed = body.get("fixed_interval")
+    if isinstance(fixed, str) and fixed in _FIXED_UNIT_NAMES:
+        body["fixed_interval"] = _FIXED_UNIT_NAMES[fixed]
+        notes.append(f"compiled fixed_interval {fixed!r} to duration {body['fixed_interval']!r}")
     # A calendar interval is ONE unit (1m, 1h, 1d, 1w, 1M, 1q, 1y); `10m` is a fixed interval (D405, T21 Mode 3: a raw
     # 400 "failed to parse field [calendar_interval]"). Weeks become days; a multiple of months, quarters or years has
     # no fixed equivalent and is left for the validator to answer.
@@ -844,8 +851,8 @@ def _composite_source_options(body: dict[str, Any], notes: list[str]) -> dict[st
     return {**body, "sources": sources}
 
 
-def _drop_open_range_bounds(kind: str, body: dict[str, Any], notes: list[str]) -> dict[str, Any]:
-    """`{"from": "*", "to": "*"}` means unbounded; ES wants the bound left out (D397: a raw date-parse 400)."""
+def _normalize_range_bounds(kind: str, body: dict[str, Any], notes: list[str]) -> dict[str, Any]:
+    """Compile equivalent gte/lt bounds, and explicit open from/to bounds (D397)."""
     ranges = body.get("ranges")
     if not isinstance(ranges, list):
         return body
@@ -853,6 +860,13 @@ def _drop_open_range_bounds(kind: str, body: dict[str, Any], notes: list[str]) -
     dropped = False
     for item in ranges:
         if isinstance(item, dict):
+            item = dict(item)
+            # from/to are inclusive/exclusive; never shift gt/lte bounds
+            # or overwrite a conflicting explicit from/to value.
+            for source, target in (("gte", "from"), ("lt", "to")):
+                if source in item and target not in item:
+                    item[target] = item.pop(source)
+                    notes.append(f"compiled {kind} range bound {source} as {target} with identical inclusivity")
             kept = {k: v for k, v in item.items() if not (k in ("from", "to") and v in ("*", None, ""))}
             dropped |= len(kept) != len(item)
             cleaned.append(kept)
@@ -876,9 +890,8 @@ def _explicit_fixed_interval_range(spec: Any, notes: list[str]) -> Any:
     if "ranges" in body or not isinstance(interval, dict) or set(interval) - {"interval", "time_zone"}:
         return spec
     raw = interval.get("interval")
-    units = {"second": "1s", "minute": "1m", "hour": "1h", "day": "1d", "week": "7d"}
-    fixed = units.get(raw, raw) if isinstance(raw, str) else None
-    if not isinstance(fixed, str) or not re.fullmatch(r"[1-9][0-9]*[smhd]", fixed):
+    fixed = _FIXED_UNIT_NAMES.get(raw, raw) if isinstance(raw, str) else None
+    if not isinstance(fixed, str) or not FIXED_DURATION.fullmatch(fixed):
         return spec
     if "time_zone" in interval and "time_zone" in body and interval["time_zone"] != body["time_zone"]:
         return spec
@@ -1021,7 +1034,7 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                     if agg_type == "date_histogram":
                         patched = _normalize_date_histogram(patched, notes)
                     if agg_type in ("range", "date_range"):
-                        patched = _drop_open_range_bounds(agg_type, patched, notes)
+                        patched = _normalize_range_bounds(agg_type, patched, notes)
                     field = patched.get("field")
                     if isinstance(field, str):
                         target = _alias_field(field, types)
