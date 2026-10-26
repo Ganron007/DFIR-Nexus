@@ -1687,7 +1687,11 @@ def run_work_order(
                 audit_id=str(event.get("audit_id") or ""),
                 status="error" if error else "ok",
                 detail=error,
-                data={"summary": summary, "replayed": bool(event.get("replayed"))},
+                data={"summary": summary, "replayed": bool(event.get("replayed")),
+                      **({"requested_args": event["requested_args"],
+                          "rejection_stage": event["rejection_stage"],
+                          "allowed_tools": event["allowed_tools"]}
+                         if "rejection_stage" in event else {})},
             ))
         elif kind == "round":
             sink.emit(new_event(

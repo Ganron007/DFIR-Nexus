@@ -3,8 +3,8 @@
 
     python devtools/runbook/replay_refused.py 2026-10-26T06:36 CASE-0763B990 [CASE-... ...]
 
-Each call prints its params, the error it got then, and now: RUNS NOW (with any degraded answer) or STILL plus the
-refusal. `unknown_field` answers are the designed degraded hint and are counted, not replayed.
+Each call prints its params, the error it got then, and now: RUNS NOW, HINT for an unknown field, or STILL plus
+the remaining error. Historical `unknown_field` answers are the designed hint and are counted, not replayed.
 """
 from __future__ import annotations
 
@@ -17,6 +17,26 @@ sys.path.insert(0, str(REPO / "src"))
 from nexus.langgraph import es_native  # noqa: E402
 
 ROOT = REPO / "cases"
+
+
+def replay_call(case: str, entry: dict) -> dict:
+    """Replay recorded operational parameters, including the same pre-dispatch policy.
+
+    A captured `filter` must never disappear merely because this helper used to
+    select only `query`, `size`, and `sort` from a failed request.
+    """
+    params = dict(entry["params"])
+    params.pop("case_id", None)
+    if entry.get("rejection_stage"):
+        from nexus.langgraph.context_loop import _validate_call_args
+
+        clean, problem, _ = _validate_call_args(entry["tool"], params, entry.get("allowed_tools"))
+        if problem:
+            raise es_native.ESQueryError(problem)
+        params = clean
+    if entry["tool"] == "es_search":
+        return es_native.es_search(case, **params)
+    return es_native.es_aggregate(case, **params)
 
 
 def main(since: str, cases: list[str]) -> None:
@@ -33,17 +53,20 @@ def main(since: str, cases: list[str]) -> None:
                 err = str((a.get("result_summary") or {}).get("error") or "")
                 if not err:
                     continue
-                if "cannot match" in err and "ESQueryError" not in err:
+                if es_native.is_unknown_field_hint(err):
                     hints += 1
                     continue
                 p = dict(a["params"])
                 p.pop("case_id", None)
                 try:
-                    if a["tool"] == "es_search":
-                        out = es_native.es_search(case, p.get("query"), size=p.get("size", 25), sort=p.get("sort"))
+                    out = replay_call(case, a)
+                    error = str(out.get("error") or "")
+                    if es_native.is_unknown_field_hint(error):
+                        now = f"HINT (unknown_field): {error[:200]}"
+                    elif error:
+                        now = f"STILL: {error[:200]}"
                     else:
-                        out = es_native.es_aggregate(case, p.get("aggs"), p.get("query"))
-                    now = "RUNS NOW" + (f" (degraded: {str(out.get('error'))[:80]})" if out.get("error") else "")
+                        now = "RUNS NOW"
                 except es_native.ESQueryError as exc:
                     now = f"STILL: {str(exc)[:200]}"
                 print(f"{case} {a['audit_id']} {a['tool']}\n   params: {json.dumps(p)[:500]}\n"

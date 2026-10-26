@@ -87,6 +87,15 @@ class ESQueryError(ValueError):
     """Unsupported or unsafe ES query shape."""
 
 
+def is_unknown_field_hint(error: str) -> bool:
+    """The recoverable schema hint, shared by run review and refused-call replay.
+
+    A value/type failure can also say "cannot match"; it must remain an error.
+    """
+    return ("cannot match" in error and "unknown_field" in error
+            and "ESQueryError" not in error and "cannot be a " not in error)
+
+
 def _check_bool(body: dict, depth: int) -> None:
     if depth > 6:
         raise ESQueryError("query nesting too deep (max 6)")

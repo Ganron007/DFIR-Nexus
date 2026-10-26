@@ -1,11 +1,9 @@
-"""Review finished mode runs from the product's own records (Part 11 rule 18): the run log, the run record and every
-tool error in the case audit during the run's window. Reads only; runs nothing.
+"""Read a finished mode's log, actual record and case audit (Part 11 rule 18).
 
-    python devtools/runbook/review_run.py T18-R1z3b:CASE-0763B990:3 [<tag>:<case>:<mode> ...]
+    python devtools/runbook/review_run.py T19-R1z3b:CASE-6C6A9449:2
 
-The window is the first and last UTC stamp line (`YYYY-MM-DDTHH:MM:SSZ`) of
-`cases/<case>/.trace/run-<tag>-mode<N>.log`; a run started per rule 18 writes one at each end. An `unknown_field`
-answer is the designed degraded hint naming the right field; every other error is a defect to look at.
+Reports every retained error, including pre-audit rejections. Does not execute
+tools, alter case records, or approve findings. Nonzero exit means review issues.
 """
 from __future__ import annotations
 
@@ -13,65 +11,164 @@ import collections
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from nexus.langgraph.es_native import is_unknown_field_hint as _unknown_field_hint  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2] / "cases"
 STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})Z$")
 RUN_ID = re.compile(r"(RUN-\S+-interpret-\w+|M2-\d{8}T\d{6}-\w{6}|M3-\d{8}T\d{6}-\w{6})")
+TOOL_RESULT = re.compile(r"^\S+\s+tool\.result\s+\S+\s+(\S+)(?:\s+(.*))?$")
+APPROVAL_PAUSE = re.compile(r"awaiting approval at await_approval \((\d+) DRAFT finding\(s\) staged\)")
 
 
-def review(tag: str, case: str, mode: str) -> None:
-    log = ROOT / case / ".trace" / f"run-{tag}-mode{mode}.log"
-    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
-    stamps = [m.group(1) for line in lines if (m := STAMP.match(line.strip().lstrip("﻿")))]
-    start, end = (stamps[0], stamps[-1]) if len(stamps) >= 2 else ("", "~")
-    exit_line = next((line for line in lines if line.startswith(f"MODE{mode}_EXIT")), "no exit line")
-    status = next((line.strip() for line in reversed(lines)
-                   if "status=" in line or "  completed  " in line or "  settled  " in line), "")
-    found = RUN_ID.search(status or "")
+def _record(folder: Path, run_id: str, mode: str, issues: list[str]) -> dict:
+    if not run_id:
+        issues.append("run id missing from log")
+        return {}
+    candidates = [folder / "runs" / run_id / "manifest.json",
+                  folder / "analysis" / f"mode{mode}_runs" / f"{run_id}.json"]
+    candidates.extend(sorted((folder / "analysis" / f"mode{mode}_runs" / run_id).glob("*.json")))
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as exc:
+            issues.append(f"cannot read run record {path.name}: {exc}")
+            continue
+        if isinstance(record, dict) and record.get("run_id") == run_id:
+            return record
+    issues.append(f"run record missing for {run_id}")
+    return {}
+
+
+def review(tag: str, case: str, mode: str) -> dict:
+    folder = ROOT / case
+    log = folder / ".trace" / f"run-{tag}-mode{mode}.log"
+    issues: list[str] = []
+    try:
+        lines = log.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    except OSError as exc:
+        lines = []
+        issues.append(f"cannot read run log: {exc}")
+    stamps = [m.group(1) for line in lines if (m := STAMP.fullmatch(line.strip()))]
+    start, end = (stamps[0], stamps[-1]) if len(stamps) >= 2 else ("", "")
+    minutes = None
+    if start and end:
+        try:
+            minutes = (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60
+            if minutes < 0:
+                issues.append("terminal timestamp precedes start")
+        except ValueError:
+            issues.append("invalid run timestamps")
+    else:
+        issues.append("start or terminal UTC stamp missing")
+    exit_line = next((line for line in reversed(lines) if line.startswith(f"MODE{mode}_EXIT=")), "")
+    if exit_line != f"MODE{mode}_EXIT=0":
+        issues.append(exit_line or "exit code missing")
+    cli_status = next((line.strip() for line in reversed(lines)
+                       if RUN_ID.match(line.strip().removeprefix("run_id="))), "")
+    found = RUN_ID.search(cli_status)
     run_id = found.group(1) if found else ""
-    model = ""
-    if run_id:
-        for rec in [*(ROOT / case / "runs").glob(f"{run_id}/manifest.json"),
-                    *(ROOT / case / "analysis").glob(f"mode*_runs/{run_id}/*.json"),
-                    *(ROOT / case / "analysis").glob(f"mode*_runs/{run_id}.json")]:
-            m = re.search(r'"model":\s*"([^"]+)"', rec.read_text(encoding="utf-8", errors="replace"))
-            if m:
-                model = m.group(1)
-                break
+    record = _record(folder, run_id, mode, issues)
+    status = str(record.get("status") or "unknown")
+    stop = str(record.get("stop_reason") or record.get("error") or "")
+    model_record = record.get("model") or {}
+    model = str(model_record.get("model") or "") if isinstance(model_record, dict) else str(model_record)
+    if model != "agnes-3.0-flash":
+        issues.append(f"wrong or missing model: {model or '?'}")
+    pause = APPROVAL_PAUSE.fullmatch(stop) if mode == "1" and status == "interrupted" else None
+    if pause:
+        if not (folder / "analysis/interpretation.md").is_file():
+            issues.append("approval pause has no interpretation artifact")
+    elif status != "completed":
+        issues.append(f"record status={status}: {stop}")
+    candidates = len(record.get("candidates") or [])
+    if pause:
+        candidates = int(pause.group(1))
     tracebacks = [i for i, line in enumerate(lines) if "Traceback (most recent call last)" in line]
+    fatal_log = [line for line in lines if re.match(
+        r"(?:\S+\s+(?:run|work_order|agent)\.failed\b|"
+        r"(?:\[[^\]]+\]\s+|\d{4}-\d\d-\d\d[T ]\S+\s+)?ERROR\b|Exception ignored)",
+        line.lstrip())]
     errors: collections.Counter[str] = collections.Counter()
-    hints = 0
-    calls = 0
-    for f in (ROOT / case / "audit").glob("*.jsonl"):
-        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                a = json.loads(line)
-            except ValueError:
+    hints = calls = unaudited = 0
+    error_ids: set[str] = set()
+    for path in sorted((folder / "audit").glob("*.jsonl")):
+        with path.open(encoding="utf-8-sig") as stream:
+            for line_no, line in enumerate(stream, 1):
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    issues.append(f"invalid audit JSON: {path.name}:{line_no}")
+                    continue
+                ts = str(entry.get("ts", ""))[:19]
+                if not start or not (start <= ts <= end):
+                    continue
+                calls += 1
+                error = str((entry.get("result_summary") or {}).get("error") or "")
+                if not error:
+                    continue
+                audit_id = str(entry.get("audit_id") or "")
+                if audit_id:
+                    error_ids.add(audit_id)
+                if _unknown_field_hint(error):
+                    hints += 1
+                else:
+                    errors[f"{entry.get('tool')} [{audit_id}]: {error}"] += 1
+    # Older builds omitted pre-validation audit entries. Match ids to avoid counting
+    # the same audited failure again when it also appears in the run's log.
+    for line_no, line in enumerate(lines, 1):
+        match = TOOL_RESULT.match(line)
+        if not match:
+            continue
+        tool, detail = match.group(1), match.group(2) or ""
+        aid = re.match(r"audit=(\S+)(?:\s+(.*))?$", detail)
+        if aid:
+            if aid.group(1) in error_ids:
                 continue
-            ts = str(a.get("ts", ""))[:19]
-            if not start or not (start <= ts <= end):
-                continue
-            calls += 1
-            err = str((a.get("result_summary") or {}).get("error") or "")
-            if not err:
-                continue
-            if "cannot match" in err and "ESQueryError" not in err:
-                hints += 1
-            else:
-                errors[f"{a.get('tool')} [{a.get('audit_id')}]: {err[:140]}"] += 1
-    print(f"\n== {tag} mode {mode} [{start} .. {end}] {exit_line}")
-    print(f"   {status[:170]}")
-    print(f"   model={model or '?'}  audited calls={calls}  unknown-field hints={hints}  "
-          f"other tool errors={sum(errors.values())}  tracebacks={len(tracebacks)}")
-    for key, count in errors.most_common(20):
+            detail = aid.group(2) or ""
+        if not detail:
+            continue
+        if _unknown_field_hint(detail):
+            hints += 1
+        else:
+            errors[f"{tool} [log:{line_no}]: {detail}"] += 1
+            unaudited += 1
+    if errors:
+        issues.append(f"{sum(errors.values())} tool error(s)")
+    if tracebacks:
+        issues.append(f"{len(tracebacks)} traceback(s)")
+    if fatal_log:
+        issues.append(f"{len(fatal_log)} fatal/error log line(s)")
+    duration = f"{minutes:.1f}" if minutes is not None else "?"
+    print(f"\n== {tag} mode {mode} [{start} .. {end}] {exit_line or 'no exit line'}")
+    print(f"   run_id={run_id or '?'} status={status} stop={stop or '(none)'} candidates/DRAFTs={candidates}")
+    print(f"   model={model or '?'} minutes={duration} audited calls={calls} unknown-field hints={hints} "
+          f"other tool errors={sum(errors.values())} log-only errors={unaudited} tracebacks={len(tracebacks)}")
+    for key, count in errors.items():
         print(f"     {count:3d} x {key}")
-    for i in tracebacks[:3]:
-        print("   traceback:", " | ".join(x.strip() for x in lines[max(0, i - 1): i + 6])[:300])
+    for i in tracebacks:
+        print("   traceback:", " | ".join(line.strip() for line in lines[max(0, i - 1):i + 7]))
+    for line in fatal_log:
+        print("   log error:", line)
+    for issue in issues:
+        print("   ISSUE:", issue)
+    return {"run_id": run_id, "status": status, "stop_reason": stop, "model": model,
+            "minutes": minutes, "candidates": candidates, "audited_calls": calls,
+            "tool_errors": sum(errors.values()), "unaudited_tool_errors": unaudited,
+            "unknown_field_hints": hints, "tracebacks": len(tracebacks), "issues": issues}
+
+
+def main(specs: list[str]) -> int:
+    if not specs:
+        raise SystemExit(__doc__)
+    reports = [review(*spec.split(":")) for spec in specs]
+    return int(any(report["issues"] for report in reports))
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SystemExit(__doc__)
-    for spec in sys.argv[1:]:
-        review(*spec.split(":"))
+    raise SystemExit(main(sys.argv[1:]))

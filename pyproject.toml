@@ -129,6 +129,8 @@ ignore = ["E501", "E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Console pytest and python -m pytest must resolve the same repository test helpers.
+pythonpath = ["."]
 asyncio_mode = "auto"
 # Default pytest discovery: every tests/test_*.py runs in the full suite.
 # (A previous explicit allowlist silently excluded 28 test files — including

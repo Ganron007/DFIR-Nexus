@@ -24,6 +24,7 @@ import os
 import re
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -204,6 +205,7 @@ def _normalize_tool_calls(parsed: dict[str, Any]) -> list[dict[str, Any]]:
         out.append({
             "tool": name,
             "args": args,
+            "requested_args": item.get("args"),
             "why": str(item.get("why") or item.get("reason") or "")[:200],
         })
     return out
@@ -319,6 +321,19 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
 def _preview_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Retain every complete returned row; the model-window budget is applied later."""
     return [row for row in rows if isinstance(row, dict)]
+
+
+def _validate_call_args(tool: str, args: dict[str, Any],
+                        allowed_tools: tuple[str, ...] | list[str] | None = None,
+                        ) -> tuple[dict[str, Any], str, str]:
+    """The argument and role policy shared by execution and refused-call replay."""
+    clean, problem = _validate_args(tool, args)
+    if problem:
+        return {}, problem, "arguments"
+    if allowed_tools and tool not in allowed_tools:
+        return {}, (f"tool {tool!r} is outside this role's allowlist "
+                    f"({', '.join(allowed_tools)})"), "role_allowlist"
+    return clean, "", ""
 
 
 def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -787,6 +802,7 @@ def run_context_loop(
 
     observations: list[dict[str, Any]] = []
     tool_calls: list[dict[str, Any]] = []
+    rejected_calls: list[dict[str, Any]] = []
     all_hits: list[dict[str, Any]] = []
     aggregations: list[dict[str, Any]] = []
     stages: list[dict[str, Any]] = []
@@ -797,6 +813,29 @@ def run_context_loop(
     finish_reason = "rounds"
     partial = True
     reply = ""
+
+    def _reject_call(name: str, args: dict[str, Any], requested_args: Any,
+                     why: str, error: str, stage: str, round_no: int) -> None:
+        # D408: these calls never reach the backbone. Keep the exact request here, at the
+        # rejection point, rather than relying on the backbone to audit an unexecuted call.
+        params = {**deepcopy(args), "case_id": case_id}
+        captured = deepcopy(requested_args)
+        aid = audit.log(
+            tool=name or "unknown", params=params,
+            result_summary={"error": error, "rejected": True},
+            extra={"turn_id": turn_id, "task": task, "round": round_no,
+                   "rejection_stage": stage, "requested_args": captured,
+                   "allowed_tools": list(allowed_tools or ()),
+                   # Ordinary audit summaries clip strings/lists; a replay needs the full parameters.
+                   "params": params},
+        )
+        obs = {"tool": name or "unknown", "why": why, "audit_id": aid or "",
+               "summary": {"error": error}, "read_evidence": False,
+               "requested_args": captured, "rejection_stage": stage,
+               "allowed_tools": list(allowed_tools or ())}
+        rejected_calls.append(obs)
+        observations.append(obs)
+        _emit({"event": "tool_result", "round": round_no, **obs, "error": error})
 
     history_block = ""
     if history:
@@ -1032,6 +1071,7 @@ def run_context_loop(
             name = str(call.get("tool") or "")
             why = str(call.get("why") or "")
             args = call.get("args") or {}
+            requested_args = deepcopy(call.get("requested_args", args))
             # A reason written inside the arguments belongs on the call: it is moved there and the
             # move is recorded, not refused. Mode 2 lost rounds to "es_aggregate: unsupported
             # argument(s) why" (2026-10-14). Any other unknown argument is still refused.
@@ -1044,25 +1084,9 @@ def run_context_loop(
                         moved.append(key)
                         if text and not why:
                             why = text
-            clean_args, problem = _validate_args(name, args)
+            clean_args, problem, rejection_stage = _validate_call_args(name, args, allowed_tools)
             if problem:
-                observations.append({
-                    "tool": name or "unknown", "why": why, "audit_id": "",
-                    "summary": {"error": problem},
-                })
-                _emit({"event": "tool_result", "tool": name or "unknown",
-                       "error": problem})
-                continue
-            if allowed_tools and name not in allowed_tools:
-                message = (
-                    f"tool {name!r} is outside this role's allowlist "
-                    f"({', '.join(allowed_tools)})"
-                )
-                observations.append({
-                    "tool": name, "why": why, "audit_id": "",
-                    "summary": {"error": message},
-                })
-                _emit({"event": "tool_result", "tool": name, "error": message})
+                _reject_call(name, args, requested_args, why, problem, rejection_stage, round_no)
                 continue
             # WO-R2F item 1 (D41): every case-bound tool is bound to THIS run's case. The
             # list is backbone.CASE_BOUND_TOOLS, so no tool is missed here.
@@ -1194,7 +1218,7 @@ def run_context_loop(
         c for c in tool_calls
         if str(c.get("tool") or "") in _EVIDENCE_TOOLS
     ]
-    evidence_attempted = bool(evidence_calls)
+    evidence_attempted = bool(evidence_calls) or any(c["tool"] in _EVIDENCE_TOOLS for c in rejected_calls)
     evidence_read = bool(all_hits) or any(
         bool(c.get("read_evidence")) for c in evidence_calls
     )
@@ -1205,6 +1229,7 @@ def run_context_loop(
         result_summary={
             "rounds": len([s for s in stages if s.get("stage")]),
             "tool_calls": len(tool_calls),
+            "rejected_calls": len(rejected_calls),
             "duplicate_calls": duplicate_calls,
             "hits": len(all_hits),
             "evidence_attempted": evidence_attempted,
@@ -1218,6 +1243,7 @@ def run_context_loop(
     return {
         "reply": reply,
         "tool_calls": tool_calls,
+        "rejected_calls": rejected_calls,
         "hits": all_hits,
         "aggregations": aggregations,
         "rounds": len([s for s in stages if s.get("stage")]),
