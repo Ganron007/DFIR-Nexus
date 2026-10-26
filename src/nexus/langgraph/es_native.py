@@ -73,11 +73,13 @@ _AGG_BODY_KEYS = {
 }
 _COMPOSITE_SOURCE_KEYS = {
     # missing_bucket keeps the documents a source field is absent from (a task registration names no
-    # program, D244); ES 8 composite sources take it in place of `missing`.
-    "terms": {"field", "order", "missing", "missing_bucket", "size"},
+    # program, D244); ES 8 composite sources take it in place of `missing`. D406: `missing` and `size` were
+    # allowed here and ES 8.17.4 refuses both in a source (measured 2026-10-26: a raw 400 "[terms] unknown
+    # field [size]" on T18 Mode 3); a source's size is the composite's own `size`.
+    "terms": {"field", "order", "missing_bucket"},
     "date_histogram": {"field", "calendar_interval", "fixed_interval",
-                       "time_zone", "format", "order", "offset"},
-    "histogram": {"field", "interval", "order", "missing", "offset"},
+                       "time_zone", "format", "order", "offset", "missing_bucket"},
+    "histogram": {"field", "interval", "order", "offset", "missing_bucket"},
 }
 
 
@@ -1181,6 +1183,15 @@ def _aggregation_field_problems(aggs: Any, types: dict[str, str], depth: int = 0
             elif agg_type in NUMERIC_AGGS and kind in ("text", "keyword", "wildcard"):
                 found.append(f"`{field}` is {kind} in this index, and {agg_type} needs a number or a date; "
                              "es_fields lists the numeric and date fields")
+        # D406: a composite's sources read doc values too (T18 Mode 3 grouped by the analysed `text`).
+        composite = spec.get("composite") if isinstance(spec.get("composite"), dict) else {}
+        for source in composite.get("sources") or []:
+            for inner in (source.values() if isinstance(source, dict) else []):
+                terms = (inner or {}).get("terms") if isinstance(inner, dict) else None
+                field = terms.get("field") if isinstance(terms, dict) else None
+                if isinstance(field, str) and str(types.get(field) or "") == "text" and f"{field}.kw" not in types:
+                    found.append(f"`{field}` is analysed text with no keyword sub-field, which a composite source "
+                                 "cannot read; group by a keyword field (es_fields lists them)")
         found.extend(_aggregation_field_problems(spec.get("aggs"), types, depth + 1))
     return found
 

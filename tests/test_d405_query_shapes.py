@@ -111,6 +111,22 @@ def test_size_inside_aggs_and_an_aggregation_inside_a_query_item():
     assert any("cardinality" in n for n in notes)
 
 
+def test_d406_composite_sources_take_what_es_8_takes():
+    # T18 Mode 3 `M3-20261026T063632-bfb75c`: `size` in a terms source answered a raw 400 "[terms] unknown field
+    # [size]"; ES 8.17.4 refuses `missing` there too (measured), and takes `missing_bucket`.
+    out, notes = _aggs({"by_src": {"composite": {"sources": [
+        {"src": {"terms": {"field": "family", "size": 100, "missing": "none"}}}]}}})
+    body = out["by_src"]["composite"]
+    assert body["size"] == 100 and body["sources"] == [{"src": {"terms": {"field": "family", "missing_bucket": True}}}]
+    assert len(notes) >= 2
+    with pytest.raises(ESQueryError, match="unsupported composite source options"):
+        validate_aggs({"c": {"composite": {"sources": [{"s": {"terms": {"field": "family", "size": 5}}}]}}})
+    # grouping by the analysed `text` gets a pointer, not a raw 400
+    problems = es_native._aggregation_field_problems(
+        {"by_src_dest": {"composite": {"sources": [{"src_dest": {"terms": {"field": "text"}}}]}}}, TYPES)
+    assert problems and "composite source" in problems[0]
+
+
 def test_a_bare_column_resolves_to_its_fields_name():
     # T18 Mode 2: `sa` answered "this index has fields.sa"
     out, notes = normalize_query({"term": {"sa": "172.16.62.42"}}, field_types=TYPES)

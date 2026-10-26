@@ -814,6 +814,36 @@ def _normalize_date_histogram(body: dict[str, Any], notes: list[str]) -> dict[st
     return body
 
 
+def _composite_source_options(body: dict[str, Any], notes: list[str]) -> dict[str, Any]:
+    """A composite source takes neither `size` nor `missing` in ES 8 (D406, T18 Mode 3: a raw 400).
+
+    A source's `size` is the composite's page size, so it moves to the body when the body has none; `missing` is
+    `missing_bucket: true` (keep the rows the field is absent from).
+    """
+    sources = []
+    for source in body.get("sources") or []:
+        if not isinstance(source, dict) or len(source) != 1:
+            sources.append(source)
+            continue
+        ((label, spec),) = source.items()
+        if isinstance(spec, dict) and len(spec) == 1:
+            ((kind, inner),) = spec.items()
+            if isinstance(inner, dict):
+                inner = dict(inner)
+                if "size" in inner:
+                    size = inner.pop("size")
+                    if "size" not in body:
+                        body = {**body, "size": size}
+                    notes.append(f"moved `size` from composite source `{label}` to the composite (a source has none)")
+                if "missing" in inner:
+                    inner.pop("missing")
+                    inner.setdefault("missing_bucket", True)
+                    notes.append(f"composite source `{label}`: `missing` is `missing_bucket: true` in ES 8")
+                spec = {kind: inner}
+        sources.append({label: spec})
+    return {**body, "sources": sources}
+
+
 def _drop_open_range_bounds(kind: str, body: dict[str, Any], notes: list[str]) -> dict[str, Any]:
     """`{"from": "*", "to": "*"}` means unbounded; ES wants the bound left out (D397: a raw date-parse 400)."""
     ranges = body.get("ranges")
@@ -954,6 +984,7 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                             walk({f"s{i}": s}, depth + 1).get(f"s{i}", s)
                             for i, s in enumerate(patched["sources"])
                         ]
+                        patched = _composite_source_options(patched, notes)
                     spec = {agg_type: patched}
                     if isinstance(sub, dict):
                         spec["aggs"] = walk(sub, depth + 1)
