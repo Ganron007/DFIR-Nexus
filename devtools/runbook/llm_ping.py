@@ -1,8 +1,8 @@
 """One call through the product's own model constructor: what was built, what answered, how fast (Part 10, 10.2).
 
     python devtools/runbook/llm_ping.py
-Prints no secret. Expected on the operator's settings: built ChatOpenAI deepseek-flash, record
-{"provider": "openai-compatible", "model": "deepseek-flash"}, content "OK", a few seconds.
+Prints no secret. Expected on the operator's settings: built ChatOpenAI agnes-3.0-flash, record
+{"provider": "openai-compatible", "model": "agnes-3.0-flash"}, content "OK", a few seconds.
 """
 from __future__ import annotations
 
