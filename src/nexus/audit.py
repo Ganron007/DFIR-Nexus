@@ -14,6 +14,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,15 @@ from nexus.config import settings
 logger = logging.getLogger(__name__)
 
 _EXAMINER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
+
+
+def request_audit_extra(params: dict[str, Any], **metadata: Any) -> dict[str, Any]:
+    """Retain replayable operational parameters, separately from bounded summaries.
+
+    AuditWriter hashes this complete entry after merging extra fields. Both
+    rejected and dispatched read requests use this one preservation policy.
+    """
+    return {**metadata, "params": deepcopy(params)}
 
 
 def normalize_examiner(raw: str | None) -> str:

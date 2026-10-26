@@ -630,6 +630,46 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None,
     }
 
 
+def _register_native_read_tool(server: FastMCP, audit: AuditWriter, name: str) -> None:
+    """Expose the native argument contract through MCP without a second signature.
+
+    External callers still pass the existing active-case gate. MCP's legacy
+    optional case/query/aggs defaults are adapter defaults, not extra arguments.
+    """
+    from inspect import Parameter, signature
+
+    from nexus.langgraph import backbone, es_native
+
+    native = getattr(es_native, name)
+    native_signature = signature(native, eval_str=True)
+
+    def read(**kwargs) -> dict:
+        case_id = str(kwargs.pop("case_id", "") or "")
+        case_dir, error = _resolve_active_case(case_id)
+        if error or case_dir is None:
+            return {"error": error or "no active case"}
+        if name == "es_search":
+            kwargs["query"] = kwargs.get("query") or {"match_all": {}}
+        elif kwargs.get("aggs") is None:
+            kwargs["aggs"] = {}
+        return backbone._es_call(name, audit=audit, case_id=case_dir.name, case_dir=case_dir, **kwargs)
+
+    parameters = []
+    for parameter in native_signature.parameters.values():
+        default = parameter.default
+        if parameter.name == "case_id":
+            default = ""
+        elif default is Parameter.empty:
+            default = None
+        parameters.append(parameter.replace(kind=Parameter.KEYWORD_ONLY, default=default))
+    read.__name__ = name
+    read.__doc__ = native.__doc__
+    read.__signature__ = native_signature.replace(parameters=parameters)  # type: ignore[attr-defined]
+    read.__annotations__ = {parameter.name: parameter.annotation for parameter in parameters}
+    read.__annotations__["return"] = dict
+    server.tool(name=name)(read)
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def n4_query(case_id: str = "", dsl: str = "", limit: int | None = None,
@@ -753,78 +793,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         }
         return result
 
-    @server.tool()
-    def es_search(case_id: str = "", query: dict = None, size: int = 200,
-                  sort: list = None, search_after: list = None) -> dict:
-        """Run ONE allowlisted Elasticsearch query on the active case index.
-
-        `query` is standard ES query JSON (`bool/term/terms/range/match/
-        match_phrase/multi_match/wildcard/exists/prefix/match_all`) — ranges on
-        `ts` are the time filters. Exact `total` is always returned; when
-        `has_more` is true continue with `next_search_after` (no silent caps).
-        No scripts, no writes, no cross-index. Elasticsearch required.
-        """
-        started = time.monotonic()
-        case_dir, err = _resolve_active_case(case_id)
-        if err or case_dir is None:
-            return {"error": err or "no active case"}
-        from nexus.langgraph.es_native import ESQueryError
-        from nexus.langgraph.es_native import es_search as _es_search
-
-        try:
-            result = _es_search(
-                Path(case_dir).name, query or {"match_all": {}},
-                size=size, sort=sort, search_after=search_after,
-            )
-        except ESQueryError as exc:
-            with contextlib.suppress(Exception):
-                audit.log(tool="es_search",
-                          params={"case_id": Path(case_dir).name, "query": query},
-                          result_summary={"error": str(exc)[:300]})
-            return {"error": str(exc), "case_id": Path(case_dir).name}
-        result["provenance"] = {
-            "audit_id": audit.log(
-                tool="es_search",
-                params={"case_id": Path(case_dir).name, "query": query, "size": size},
-                result_summary={"total": result.get("total"),
-                                "returned": result.get("returned")},
-                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
-            ),
-            "case_id": Path(case_dir).name,
-        }
-        return result
-
-    @server.tool()
-    def es_aggregate(case_id: str = "", aggs: dict = None, query: dict = None) -> dict:
-        """Run allowlisted ES aggregations (terms/date_histogram/cardinality/
-        composite/min/max/avg). `composite` returns `next_after_key` so the
-        agent can enumerate EVERY bucket — the tail is never hidden. ES-only.
-        """
-        started = time.monotonic()
-        case_dir, err = _resolve_active_case(case_id)
-        if err or case_dir is None:
-            return {"error": err or "no active case"}
-        from nexus.langgraph.es_native import ESQueryError
-        from nexus.langgraph.es_native import es_aggregate as _es_aggregate
-
-        try:
-            result = _es_aggregate(Path(case_dir).name, aggs or {}, query)
-        except ESQueryError as exc:
-            with contextlib.suppress(Exception):
-                audit.log(tool="es_aggregate",
-                          params={"case_id": Path(case_dir).name, "aggs": aggs},
-                          result_summary={"error": str(exc)[:300]})
-            return {"error": str(exc), "case_id": Path(case_dir).name}
-        result["provenance"] = {
-            "audit_id": audit.log(
-                tool="es_aggregate",
-                params={"case_id": Path(case_dir).name, "aggs": aggs, "query": query},
-                result_summary={"names": sorted((aggs or {}).keys())},
-                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
-            ),
-            "case_id": Path(case_dir).name,
-        }
-        return result
+    _register_native_read_tool(server, audit, "es_search")
+    _register_native_read_tool(server, audit, "es_aggregate")
 
     @server.tool()
     def es_sample(case_id: str = "", family: str = "", field: str = "",

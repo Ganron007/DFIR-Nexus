@@ -1,0 +1,445 @@
+[
+  {
+    "audit_id": "nexus-claudebot-20261026-059",
+    "ts": "2026-10-26T08:40:35.152175+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_family": {
+          "terms": {
+            "field": "_type",
+            "size": 10
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "fields.user": "falsimentisroot"
+        }
+      }
+    }
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-313",
+    "ts": "2026-10-26T10:34:36.987593+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "total_vpc": {
+          "value_count": {
+            "field": "_id"
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "family": "aws_vpc_flow"
+        }
+      }
+    }
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-325",
+    "ts": "2026-10-26T12:56:20.740704+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_user": {
+          "terms": {
+            "field": "user",
+            "size": 50
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "filter": [
+            {
+              "term": {
+                "family": "cloudtrail"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-344",
+    "ts": "2026-10-26T13:00:47.442388+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_action": {
+          "terms": {
+            "field": "fields.action",
+            "size": 50
+          }
+        },
+        "by_severity": {
+          "terms": {
+            "field": "fields.severity",
+            "size": 20
+          }
+        },
+        "ts_range": {
+          "date_range": {
+            "field": "ts",
+            "fixed_intervals": {
+              "interval": "day",
+              "time_zone": "UTC"
+            }
+          }
+        },
+        "by_proto": {
+          "terms": {
+            "field": "fields.protocol",
+            "size": 20
+          }
+        },
+        "query": {
+          "match_all": {}
+        }
+      }
+    }
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-347",
+    "ts": "2026-10-26T13:01:15.757070+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_dest_port": {
+          "terms": {
+            "field": "fields.dest_port",
+            "size": 30
+          }
+        },
+        "by_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip",
+            "size": 30
+          }
+        },
+        "by_source_ip": {
+          "terms": {
+            "field": "fields.source_ip",
+            "size": 30
+          }
+        },
+        "by_protocol": {
+          "terms": {
+            "field": "fields.protocol",
+            "size": 20
+          }
+        },
+        "total": {
+          "value": "_count"
+        },
+        "time_range": {
+          "first": {
+            "min": {
+              "field": "ts"
+            }
+          },
+          "last": {
+            "max": {
+              "field": "ts"
+            }
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "family": "aws_vpc_flow"
+        }
+      }
+    }
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-404",
+    "ts": "2026-10-26T13:22:17.658227+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "aggs": {
+        "by_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip",
+            "size": 50
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "fields.action": "accept"
+        }
+      },
+      "family": "aws_vpc_flow",
+      "case_id": "CASE-6C6A9449"
+    },
+    "requested_args": {
+      "aggs": {
+        "by_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip",
+            "size": 50
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "fields.action": "accept"
+        }
+      },
+      "family": "aws_vpc_flow"
+    },
+    "rejection_stage": "arguments",
+    "allowed_tools": [
+      "es_mappings",
+      "es_search",
+      "es_aggregate",
+      "sample_rows",
+      "run_record",
+      "check_file",
+      "check_scheduled_task",
+      "check_process_tree",
+      "check_service",
+      "check_hash",
+      "check_autorun",
+      "check_registry",
+      "analyze_filename_triage",
+      "check_lolbin",
+      "check_hijackable_dll",
+      "deobfuscate_command",
+      "rag_search"
+    ]
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-422",
+    "ts": "2026-10-26T13:29:33.662347+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "aggs": {
+        "by_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip",
+            "size": 50
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.source": "aws_vpc_flow"
+              }
+            },
+            {
+              "term": {
+                "fields.action": "accept"
+              }
+            }
+          ]
+        }
+      },
+      "size": 0,
+      "case_id": "CASE-6C6A9449"
+    },
+    "requested_args": {
+      "aggs": {
+        "by_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip",
+            "size": 50
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.source": "aws_vpc_flow"
+              }
+            },
+            {
+              "term": {
+                "fields.action": "accept"
+              }
+            }
+          ]
+        }
+      },
+      "size": 0
+    },
+    "rejection_stage": "arguments",
+    "allowed_tools": [
+      "es_mappings",
+      "es_search",
+      "es_aggregate",
+      "sample_rows",
+      "run_record",
+      "check_file",
+      "check_scheduled_task",
+      "check_process_tree",
+      "check_service",
+      "check_hash",
+      "check_autorun",
+      "check_registry",
+      "analyze_filename_triage",
+      "check_lolbin",
+      "check_hijackable_dll",
+      "deobfuscate_command",
+      "rag_search"
+    ]
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-429",
+    "ts": "2026-10-26T13:34:29.452739+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "aggs": {
+        "by_src_ip": {
+          "terms": {
+            "field": "fields.source_ip",
+            "size": 10
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "ecs.ecs.file.path": "network"
+              }
+            },
+            {
+              "match": {
+                "fields.description": "AWS in us-west-1"
+              }
+            }
+          ]
+        }
+      },
+      "size": 5,
+      "case_id": "CASE-6C6A9449"
+    },
+    "requested_args": {
+      "aggs": {
+        "by_src_ip": {
+          "terms": {
+            "field": "fields.source_ip",
+            "size": 10
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "ecs.ecs.file.path": "network"
+              }
+            },
+            {
+              "match": {
+                "fields.description": "AWS in us-west-1"
+              }
+            }
+          ]
+        }
+      },
+      "size": 5
+    },
+    "rejection_stage": "arguments",
+    "allowed_tools": [
+      "es_mappings",
+      "es_search",
+      "es_aggregate",
+      "sample_rows",
+      "run_record",
+      "rag_search"
+    ]
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-457",
+    "ts": "2026-10-26T13:50:59.926891+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip.kw",
+            "size": 100
+          }
+        },
+        "by_accept_dest_ip": {
+          "terms": {
+            "field": "fields.dest_ip.kw",
+            "size": 100,
+            "include_in_aggregation": true
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "family": "aws_vpc_flow"
+              }
+            },
+            {
+              "term": {
+                "fields.action.kw": "accept"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "audit_id": "nexus-claudebot-20261026-461",
+    "ts": "2026-10-26T14:59:38.199282+00:00",
+    "tool": "es_aggregate",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "total_vpc": {
+          "value_count": {
+            "field": "_id"
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "family": "aws_vpc_flow"
+        }
+      },
+      "size": 2,
+      "sort": [
+        {
+          "ts": "desc"
+        },
+        {
+          "family": "asc"
+        },
+        {
+          "file": "asc"
+        },
+        {
+          "line": "asc"
+        }
+      ]
+    }
+  }
+]

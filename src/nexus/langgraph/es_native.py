@@ -15,6 +15,8 @@ log = logging.getLogger(__name__)
 DEFAULT_SIZE = 200
 PAGE_SIZE = 1000
 MAX_AGGS = 40
+AGG_PREVIEW_MAX = 10
+_READ_SIZE_MINIMUM = {"es_search": 1, "es_aggregate": 0}
 
 _QUERY_KEYS = {
     "bool", "term", "terms", "range", "match", "match_phrase", "multi_match",
@@ -94,6 +96,48 @@ def is_unknown_field_hint(error: str) -> bool:
     """
     return ("cannot match" in error and "unknown_field" in error
             and "ESQueryError" not in error and "cannot be a " not in error)
+
+
+def read_request_size(size: Any, *, tool: str) -> int:
+    """One size check for the model loop and the native read surface."""
+    minimum = _READ_SIZE_MINIMUM[tool]
+    try:
+        parsed = int(size)
+    except (TypeError, ValueError):
+        raise ESQueryError("size must be an integer") from None
+    if parsed < minimum:
+        raise ESQueryError(f"size must be at least {minimum}")
+    return parsed
+
+
+def _validate_request_sort(sort: Any) -> None:
+    if sort is None:
+        return
+    if not isinstance(sort, list) or len(sort) > 4:
+        raise ESQueryError("sort must be a list of at most 4 entries")
+    for entry in sort:
+        if isinstance(entry, str):
+            continue
+        if not isinstance(entry, dict) or len(entry) != 1:
+            raise ESQueryError("sort entries must be 'field' or {field: {...}}")
+        for spec in entry.values():
+            if isinstance(spec, dict) and set(spec) - {"order", "missing", "unmapped_type"}:
+                raise ESQueryError("unsupported sort options")
+
+
+def _with_family_filter(query: Any, family: str) -> Any:
+    """Conjoin every request-level scope with the supplied query; never replace it."""
+    if not isinstance(family, str):
+        raise ESQueryError("family must be a string")
+    clauses: list[Any] = []
+    if family:
+        clauses.append({"term": {"family": family.lower()}})
+    if not clauses:
+        return query
+    body = {"filter": clauses}
+    if query is not None:
+        body["must"] = [query]
+    return {"bool": body}
 
 
 def _check_bool(body: dict, depth: int) -> None:
@@ -458,7 +502,7 @@ def failed_field_refs(case_id: str, query: Any) -> list[dict[str, str]]:
     return failed_field_refs_detail(case_id, query)[0]
 
 
-def validate_aggs(aggs: Any, depth: int = 0) -> None:
+def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
     """Allowlist aggregation trees (terms/date_histogram/composite/…)."""
     if not isinstance(aggs, dict) or not aggs:
         raise ESQueryError("aggs must be a non-empty object")
@@ -495,9 +539,11 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
                     validate_query(query)
             sub = spec.get("aggs")
             if sub is not None:
-                validate_aggs(sub, depth + 1)
+                _validate_agg_structure(sub, depth + 1)
             continue
         if agg_type == "top_hits":
+            if spec.get("aggs") is not None:
+                raise ESQueryError("top_hits cannot have sub-aggregations")
             unknown_body = set(body) - _AGG_BODY_KEYS["top_hits"]
             if unknown_body:
                 raise ESQueryError(f"unsupported top_hits options: {sorted(unknown_body)}")
@@ -517,13 +563,6 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
             raise ESQueryError(
                 f"{agg_type} needs a non-empty `ranges` list; for the earliest and latest time use "
                 '{"first": {"min": {"field": "ts"}}, "last": {"max": {"field": "ts"}}}')
-        meta = body.get("field")
-        if isinstance(meta, str) and meta.startswith("_"):
-            # ES refuses fielddata on `_id` and the other metadata fields; the model reaches for
-            # `cardinality(_id)` to count rows (D388), which `total` in every es_aggregate result gives.
-            raise ESQueryError(
-                f"aggregation on metadata field `{meta}` is not allowed: to count the rows a query matches, "
-                "read `total` in the es_aggregate result (exact); aggregate a data field otherwise")
         unknown_body = set(body) - _AGG_BODY_KEYS[agg_type]
         if unknown_body:
             raise ESQueryError(
@@ -565,7 +604,46 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
             raise ESQueryError(f"{agg_type} body must be an object")
         sub = spec.get("aggs")
         if sub is not None:
-            validate_aggs(sub, depth + 1)
+            _validate_agg_structure(sub, depth + 1)
+
+
+# ES metadata and search pseudo-fields are distinct from unknown data fields.
+# `_type` is absent in ES 8 and is never aliased to an artifact family.
+_ES_METADATA_FIELDS = frozenset({
+    "_id", "_index", "_routing", "_source", "_field_names", "_ignored", "_size",
+    "_doc_count", "_tier", "_score", "_doc", "_shard_doc", "_seq_no", "_primary_term", "_version",
+})
+
+
+def _aggregation_fields(aggs: dict[str, Any]):
+    """Fields in an already structurally validated aggregation tree."""
+    for spec in aggs.values():
+        kind = next(key for key in spec if key in _AGG_TYPES)
+        body = spec[kind]
+        if isinstance(body.get("field"), str):
+            yield body["field"]
+        if kind == "composite":
+            for source in body["sources"]:
+                for source_spec in source.values():
+                    for inner in source_spec.values():
+                        if isinstance(inner, dict) and isinstance(inner.get("field"), str):
+                            yield inner["field"]
+        if isinstance(spec.get("aggs"), dict):
+            yield from _aggregation_fields(spec["aggs"])
+
+
+def _validate_agg_metadata(aggs: dict[str, Any]) -> None:
+    for field in _aggregation_fields(aggs):
+        if field.startswith("_"):
+            raise ESQueryError(
+                f"aggregation on metadata field `{field}` is not allowed: to count the rows a query matches, "
+                "read `total` in the es_aggregate result (exact); aggregate a data field otherwise")
+
+
+def validate_aggs(aggs: Any, depth: int = 0) -> None:
+    """Strict raw ES validation; scripts/options/limits and metadata guards remain enforced."""
+    _validate_agg_structure(aggs, depth)
+    _validate_agg_metadata(aggs)
 
 
 def _shape_hit(src: dict[str, Any]) -> dict[str, Any]:
@@ -782,6 +860,7 @@ def es_search(
     size: int = DEFAULT_SIZE,
     sort: list[Any] | None = None,
     search_after: list[Any] | None = None,
+    family: str = "",
 ) -> dict[str, Any]:
     """One allowlisted ES search; exact totals and a labelled next cursor.
 
@@ -798,6 +877,7 @@ def es_search(
     if not case_id:
         raise ESQueryError("case_id is required")
     types = _field_types(case_id)
+    query = _with_family_filter(query, family)
     query, q_notes = normalize_query(query, field_types=types)
     sort, s_notes = normalize_sort(sort, types)
     notes = [*q_notes, *s_notes]
@@ -834,23 +914,8 @@ def es_search(
             "backend": "elasticsearch",
             "hits": [],
         }
-    try:
-        size_i = int(size)
-    except (TypeError, ValueError):
-        raise ESQueryError("size must be an integer") from None
-    if size_i < 1:
-        raise ESQueryError("size must be at least 1")
-    if sort is not None:
-        if not isinstance(sort, list) or len(sort) > 4:
-            raise ESQueryError("sort must be a list of at most 4 entries")
-        for entry in sort:
-            if isinstance(entry, str):
-                continue
-            if not isinstance(entry, dict) or len(entry) != 1:
-                raise ESQueryError("sort entries must be 'field' or {field: {...}}")
-            for _f, spec in entry.items():
-                if isinstance(spec, dict) and set(spec) - {"order", "missing", "unmapped_type"}:
-                    raise ESQueryError("unsupported sort options")
+    size_i = read_request_size(size, tool="es_search")
+    _validate_request_sort(sort)
     body: dict[str, Any] = {
         "size": size_i,
         "query": query,
@@ -1228,14 +1293,21 @@ def _patterns_on_non_strings(query: Any, types: dict[str, str], depth: int = 0) 
 
 
 def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | None = None,
-                 *, size: int = 0) -> dict[str, Any]:
+                 *, size: int = 0, sort: list[Any] | None = None, family: str = "") -> dict[str, Any]:
     """ES-native aggregation with composite paging support.
 
     Normalized first, like `es_search`: a JSON-string `aggs`, a plain agg field
     name or a `text` field without its `.kw` are all shapes an LLM writes and ES
-    rejects.
+    rejects. A nonzero size returns a bounded sorted hit preview alongside the
+    complete aggregation result and exact total. Use es_search for enumeration.
     """
-    from nexus.langgraph.query_normalize import lift_aggs_query, normalize_aggs, normalize_query
+    from nexus.langgraph.query_normalize import (
+        compile_row_count_requests,
+        lift_aggs_query,
+        normalize_aggs,
+        normalize_query,
+        normalize_sort,
+    )
 
     if not case_id:
         raise ESQueryError("case_id is required")
@@ -1245,12 +1317,32 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
     # The request's `query` written among the named aggs (D387) is the request query, not an agg.
     aggs, lifted, l_notes = lift_aggs_query(aggs)
     notes.extend(l_notes)
+    aggs, row_counts, count_notes = compile_row_count_requests(aggs)
+    notes.extend(count_notes)
     if lifted is not None:
         query = lifted if query is None else {"bool": {"must": [query, lifted]}}
+    query = _with_family_filter(query, family)
     if query is not None:
         query, q_notes = normalize_query(query, field_types=types)
         notes.extend(q_notes)
-    validate_aggs(aggs)
+    # Validate the whole structure before issuing any schema hint: an unknown
+    # field must never mask a later script or unsupported option.
+    _validate_agg_structure(aggs)
+    # An unmapped data field remains a legal ES aggregation. A name in the
+    # reserved metadata namespace that ES does not define is a schema error,
+    # distinct from a known metadata field whose aggregation is forbidden.
+    unknown = list(dict.fromkeys(field for field in _aggregation_fields(aggs)
+                               if types and field.startswith("_") and field not in types
+                               and field not in _ES_METADATA_FIELDS))
+    if unknown:
+        failed = [{"field": field, "reason": "unknown_field", "did_you_mean": similar_fields(field, types)}
+                  for field in unknown]
+        return {"case_id": case_id, "backend": "elasticsearch", "degraded": True,
+                "error": "aggregation references fields that cannot match: "
+                         + ", ".join(f"{field} (unknown_field)" for field in unknown),
+                "failed_terms": failed, "aggregations": {},
+                **({"normalized": notes} if notes else {})}
+    _validate_agg_metadata(aggs)
     problems = _aggregation_field_problems(aggs, types)
     if query is not None:
         problems.extend(_patterns_on_non_strings(query, types))
@@ -1275,11 +1367,18 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
                 **({"normalized": notes} if notes else {}),
             }
     body: dict[str, Any] = {
-        "size": max(0, min(int(size or 0), 10)),
+        "size": min(read_request_size(size, tool="es_aggregate"), AGG_PREVIEW_MAX),
         "track_total_hits": True,
         "aggs": aggs,
         "query": _with_lenient(query) if query else {"match_all": {}},
     }
+    sort, s_notes = normalize_sort(sort, types)
+    notes.extend(s_notes)
+    _validate_request_sort(sort)
+    if sort:
+        body["sort"] = sort
+    elif body["size"]:
+        body["sort"] = ["_doc"]
     client, name = _client_and_index(case_id)
     with client() as c:
         r = c.post(f"/{name}/_search", json=body)
@@ -1292,6 +1391,13 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
             raise ESQueryError(f"ES aggregation failed: {r.status_code} {r.text[:300]}")
         data = r.json()
     out = dict(data.get("aggregations") or {})
+    hits = [_shape_hit(row.get("_source") or {}) for row in (data.get("hits") or {}).get("hits") or []]
+    if row_counts:
+        measured = (data.get("hits") or {}).get("total") or {}
+        if measured.get("relation") != "eq" or type(measured.get("value")) is not int:
+            raise ESQueryError("ES omitted an exact hits.total for the requested row count")
+        for count_name in row_counts:
+            out[count_name] = {"value": measured["value"]}
     next_key = None
     for spec in out.values():
         if isinstance(spec, dict) and spec.get("after_key") is not None:
@@ -1304,6 +1410,8 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         # The exact count of rows the query matched (`track_total_hits`), so a row count never needs an agg (D388).
         "total": ((data.get("hits") or {}).get("total") or {}).get("value"),
         "aggregations": out,
+        "returned": len(hits),
+        "hits": hits,
         "next_after_key": next_key,
         **({"normalized": notes} if notes else {}),
     }
@@ -1389,3 +1497,22 @@ def es_sample(
             "(FD-001); use es_search search_after for complete enumeration"
         ),
     }
+
+
+def _read_tool_contracts():
+    """Derive the prompt/loop argument contracts from the native functions."""
+    from inspect import Parameter, signature
+
+    functions = {"es_mappings": es_fields, "es_search": es_search,
+                 "es_aggregate": es_aggregate, "sample_rows": es_sample}
+    parameters = {}
+    required = {}
+    for name, function in functions.items():
+        specs = signature(function).parameters
+        parameters[name] = tuple(key for key in specs if key != "case_id")
+        required[name] = tuple(key for key, spec in specs.items()
+                               if key != "case_id" and spec.default is Parameter.empty)
+    return parameters, required
+
+
+READ_TOOL_PARAMETERS, READ_TOOL_REQUIRED_ARGS = _read_tool_contracts()

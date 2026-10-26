@@ -132,18 +132,22 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
     send model-chosen values out of the process and stay outside the bounded
     loop unless the examiner explicitly enables them elsewhere.
     """
+    from nexus.langgraph.es_native import AGG_PREVIEW_MAX, READ_TOOL_PARAMETERS
+
+    signatures = {name: f"{name}(case_id{', ' + ', '.join(parameters) if parameters else ''})"
+                  for name, parameters in READ_TOOL_PARAMETERS.items()}
     lines = [
         "You investigate through these READ-ONLY tools only (you cannot mutate case state):",
-        "- es_mappings(case_id) — per-case field catalog: families, row counts, typed core fields, every parsed column. Call this first when you need to know where the data is.",
-        "- es_search(case_id, query, size, sort, search_after) — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; use a range clause on ts for time filters and fields.<Name>/fields.<Name>.kw for parsed columns. A zero-hit result says which clause matched nothing (`zero_hit`); a result of more than 10,000 rows says what they are made of (`flood`).",
+        f"- {signatures['es_mappings']} — per-case field catalog: families, row counts, typed core fields, every parsed column. Call this first when you need to know where the data is.",
+        f"- {signatures['es_search']} — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; family is conjoined with query; put other filters inside query.bool.filter. Use a range clause on ts for time filters and fields.<Name>/fields.<Name>.kw for parsed columns. A zero-hit result says which clause matched nothing (`zero_hit`); a result of more than 10,000 rows says what they are made of (`flood`).",
         "  FIELD CHOICE (WO-CS1): prefer ecs.* for cross-source questions "
         "(ecs.process.command_line, ecs.user.name, ecs.source.ip, ecs.file.path, "
         "ecs.registry.path, ecs.process.executable, ecs.host.name); use "
         "ecs.winlog.event_data.<Name> for Windows event fields (TargetUserName, "
         "LogonType, Image, CommandLine, ...); use fields.<tool column> for "
         "tool-specific detail. The catalog lists the ecs.* fields THIS case fills.",
-        "- es_aggregate(case_id, aggs, query) — terms/date_histogram/cardinality/composite/min/max/avg; composite returns `next_after_key` for complete bucket enumeration. Use it for counts, distributions and completeness checks.",
-        "- sample_rows(case_id, family, field, value, n) — representative raw rows spread over time; context, never evidence.",
+        f"- {signatures['es_aggregate']} — terms/date_histogram/cardinality/composite/min/max/avg; exact row count is `total`; composite returns `next_after_key` for complete bucket enumeration. Family is conjoined with query; put other filters inside query.bool.filter. Nonzero size returns up to {AGG_PREVIEW_MAX} sorted preview hits; bucket limits belong inside aggs. Use es_search for full row enumeration. Use this tool for counts, distributions and completeness checks.",
+        f"- {signatures['sample_rows']} — representative raw rows spread over time; context, never evidence.",
         "- rag_search(query, top_k, source, technique, platform) — semantic methodology/detection knowledge; methodology, never evidence.",
         "- run_record(case_id) — the tool-lane ledger: which parser/tool ran, status (OK/SKIP/FAIL), reason, output file, command, audit_id. Use this before claiming evidence is absent — distinguish 'not parsed' from 'not found'.",
         "",
@@ -205,6 +209,7 @@ def _es_call(
     """
     import time as _time
 
+    from nexus.audit import request_audit_extra
     from nexus.langgraph import es_native
     from nexus.tools.evidence_index import _resolve_active_case
 
@@ -230,8 +235,8 @@ def _es_call(
     started = _time.monotonic()
     fn = getattr(es_native, name)
     label = tool_label or name
-    audit_keys = ("query", "aggs", "size", "family", "field", "value",
-                  "n", "sort", "search_after")
+    request_params = {"case_id": Path(case_dir).name, **kwargs}
+    extra = request_audit_extra(request_params, **({"canonical_tool": name} if label != name else {}))
     try:
         result = fn(str(Path(case_dir).name), **kwargs)
     except Exception as exc:  # noqa: BLE001 — audit every failure, not just ESQueryError
@@ -240,13 +245,12 @@ def _es_call(
             with contextlib.suppress(Exception):
                 audit_id = str(audit.log(
                     tool=label,
-                    params={"case_id": Path(case_dir).name,
-                            **{k: v for k, v in kwargs.items() if k in audit_keys}},
+                    params=request_params,
                     result_summary={
                         "error": f"{type(exc).__name__}: {exc}"[:300],
                     },
                     elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
-                    extra={"canonical_tool": name} if label != name else None,
+                    extra=extra,
                 ) or "")
         failed = {
             "error": f"{label} failed: {type(exc).__name__}: {exc}"[:400],
@@ -274,11 +278,10 @@ def _es_call(
                 summary[key] = result[key]
         aid = audit.log(
             tool=label,
-            params={"case_id": Path(case_dir).name,
-                    **{k: v for k, v in kwargs.items() if k in audit_keys}},
+            params=request_params,
             result_summary=summary,
             elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
-            extra={"canonical_tool": name} if label != name else None,
+            extra=extra,
         )
     result.setdefault("provenance", {})
     result["provenance"] = {"audit_id": aid, "case_id": Path(case_dir).name}

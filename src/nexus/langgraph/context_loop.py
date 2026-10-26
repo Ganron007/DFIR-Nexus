@@ -30,9 +30,15 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from nexus.audit import AuditWriter
+from nexus.audit import AuditWriter, request_audit_extra
 from nexus.langgraph import backbone as backbone_module
 from nexus.langgraph.backbone import bind_case_args, tool_contracts_block
+from nexus.langgraph.es_native import (
+    READ_TOOL_PARAMETERS,
+    READ_TOOL_REQUIRED_ARGS,
+    ESQueryError,
+    read_request_size,
+)
 from nexus.langgraph.model_json import json_error_note, loads_model_json
 from nexus.llm.egress import egress_bound
 
@@ -53,10 +59,7 @@ def context_loop_enabled() -> bool:
     return raw not in ("0", "false", "no", "off", "disabled")
 
 _TOOL_ARGS: dict[str, set[str]] = {
-    "es_mappings": set(),
-    "es_search": {"query", "size", "sort", "search_after"},
-    "es_aggregate": {"aggs", "query"},
-    "sample_rows": {"family", "field", "value", "n"},
+    **{name: set(parameters) for name, parameters in READ_TOOL_PARAMETERS.items()},
     "rag_search": {"query", "top_k", "source", "source_ids", "technique", "platform"},
     "run_record": set(),
     # WO-K2: the examiner toolkit, validated in the same table as every other
@@ -212,8 +215,7 @@ def _normalize_tool_calls(parsed: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 _REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
-    "es_search": ("query",),
-    "es_aggregate": ("aggs",),
+    **READ_TOOL_REQUIRED_ARGS,
     "rag_search": ("query",),
     "ti_lookup": ("value",),
     "ti_fanout": ("value",),
@@ -294,14 +296,13 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
             clean["source_ids"] = [source_ids]
         elif not isinstance(source_ids, list):
             return {}, f"{tool}: source_ids must be a list of strings"
-    if tool == "es_search":
+    if tool in ("es_search", "es_aggregate"):
         try:
-            size = int(clean.get("size", 50))
-        except (TypeError, ValueError):
-            return {}, "es_search: size must be an integer"
-        if size < 1:
-            return {}, "es_search: size must be at least 1"
-        clean["size"] = size
+            if tool == "es_search" or "size" in clean:
+                size = read_request_size(clean.get("size", 50), tool=tool)
+                clean["size"] = size
+        except ESQueryError as exc:
+            return {}, f"{tool}: {exc}"
     if tool == "sample_rows":
         try:
             n = int(clean.get("n", 12))
@@ -422,6 +423,14 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
         # the first made later buckets silently invisible to the model.
         if len(named) > 1:
             summary["aggregations"] = named
+        # D414: these are the native producer's measurements and rewrite notes.
+        # Dropping them made the seat improvise a forbidden metadata count.
+        for key in ("total", "normalized", "case_id", "backend", "took_ms"):
+            if key in result:
+                summary[key] = result[key]
+        if "hits" in result:
+            summary["hits"] = _preview_rows(result["hits"])
+            summary["returned"] = result.get("returned", len(summary["hits"]))
         return summary
     if name == "run_record":
         return {
@@ -471,7 +480,7 @@ def _call_read_evidence(name: str, result: dict[str, Any]) -> bool:
     if name == "es_search":
         return bool(result.get("hits"))
     if name == "es_aggregate":
-        return bool(result.get("aggregations"))
+        return bool(result.get("aggregations")) or bool(result.get("hits"))
     if name == "es_mappings":
         # The catalog is schema, not evidence rows.
         return False
@@ -513,7 +522,7 @@ def _append_tool_observation(
         "read_evidence": _call_read_evidence(name, result),
     }
     tool_calls.append(record)
-    if name == "es_search":
+    if name in ("es_search", "es_aggregate"):
         seen = {
             (str(h.get("family") or ""), str(h.get("file") or "").replace("\\", "/"), str(h.get("line") or ""))
             for h in all_hits
@@ -823,11 +832,10 @@ def run_context_loop(
         aid = audit.log(
             tool=name or "unknown", params=params,
             result_summary={"error": error, "rejected": True},
-            extra={"turn_id": turn_id, "task": task, "round": round_no,
-                   "rejection_stage": stage, "requested_args": captured,
-                   "allowed_tools": list(allowed_tools or ()),
-                   # Ordinary audit summaries clip strings/lists; a replay needs the full parameters.
-                   "params": params},
+            extra=request_audit_extra(
+                params, turn_id=turn_id, task=task, round=round_no,
+                rejection_stage=stage, requested_args=captured,
+                allowed_tools=list(allowed_tools or ())),
         )
         obs = {"tool": name or "unknown", "why": why, "audit_id": aid or "",
                "summary": {"error": error}, "read_evidence": False,

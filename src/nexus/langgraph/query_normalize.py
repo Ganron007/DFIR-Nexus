@@ -863,6 +863,55 @@ def _drop_open_range_bounds(kind: str, body: dict[str, Any], notes: list[str]) -
     return {**body, "ranges": cleaned}
 
 
+def _explicit_fixed_interval_range(spec: Any, notes: list[str]) -> Any:
+    """An explicit fixed interval describes buckets, not range boundaries.
+
+    Only an unambiguous interval object is compiled. Conflicting ranges, zones
+    or unknown interval options stay invalid for the strict validator.
+    """
+    if not isinstance(spec, dict) or not isinstance(spec.get("date_range"), dict):
+        return spec
+    body = spec["date_range"]
+    interval = body.get("fixed_intervals")
+    if "ranges" in body or not isinstance(interval, dict) or set(interval) - {"interval", "time_zone"}:
+        return spec
+    raw = interval.get("interval")
+    units = {"second": "1s", "minute": "1m", "hour": "1h", "day": "1d", "week": "7d"}
+    fixed = units.get(raw, raw) if isinstance(raw, str) else None
+    if not isinstance(fixed, str) or not re.fullmatch(r"[1-9][0-9]*[smhd]", fixed):
+        return spec
+    if "time_zone" in interval and "time_zone" in body and interval["time_zone"] != body["time_zone"]:
+        return spec
+    compiled = {k: v for k, v in body.items() if k != "fixed_intervals"}
+    compiled["fixed_interval"] = fixed
+    if "time_zone" in interval:
+        compiled["time_zone"] = interval["time_zone"]
+    notes.append(f"compiled date_range.fixed_intervals as date_histogram fixed_interval={fixed!r}; "
+                 "the request specifies a bucket interval, not range boundaries")
+    return {"date_histogram": compiled, **{k: v for k, v in spec.items() if k != "date_range"}}
+
+
+def compile_row_count_requests(aggs: Any) -> tuple[Any, list[str], list[str]]:
+    """Compile explicit top-level row counts without aggregating metadata fields.
+
+    Each count keeps a validated named filter node in the ES tree (and its
+    aggregation-count budget). The result metric uses exact hits.total, which
+    counts documents even when a bucket's _doc_count weights differ.
+    """
+    if not isinstance(aggs, dict):
+        return aggs, [], []
+    compiled = dict(aggs)
+    names = []
+    notes = []
+    for name, spec in aggs.items():
+        if spec not in ({"value": "_count"}, {"value_count": {"field": "_id"}}):
+            continue
+        compiled[name] = {"filter": {"match_all": {}}}
+        names.append(name)
+        notes.append(f"row-count metric {name!r} uses exact ES hits.total; no metadata fielddata")
+    return compiled, names, notes
+
+
 def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict[str, Any], list[str]]:
     """Aggregations: a JSON string is parsed; text fields get their `.kw`."""
     notes: list[str] = []
@@ -881,12 +930,20 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
         body = {"agg": body}
         notes.append("wrapped an unnamed aggregation under `agg` (ES needs a name)")
 
-    def walk(node: Any, depth: int) -> Any:
+    def walk(node: Any, depth: int, *, composite_source: bool = False) -> Any:
         if depth > 6 or not isinstance(node, dict):
             return node
         out: dict[str, Any] = {}
         for name, spec in node.items():
             spec = _query_clause_as_filter_agg(name, spec, notes)
+            spec = _explicit_fixed_interval_range(spec, notes)
+            if (not composite_source and isinstance(spec, dict) and spec and not any(k in spec for k in _AGG_TYPES)
+                    and all(isinstance(child, dict) and any(k in child for k in _AGG_TYPES)
+                            for child in spec.values())):
+                # A named group of metrics retains its scope under a match-all
+                # filter; no metric or group label is discarded or interpreted.
+                spec = {"filter": {"match_all": {}}, "aggs": spec}
+                notes.append(f"kept metric group {name!r} under a match_all filter with its named sub-aggregations")
             if isinstance(spec, dict) and any(k in spec for k in _AGG_TYPES):
                 agg_type = next(k for k in spec if k in _AGG_TYPES)
                 agg_body = spec.get(agg_type)
@@ -945,6 +1002,12 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                     notes.append(f"moved {sorted(strag)} inside the `{agg_type}` body")
                 if isinstance(agg_body, dict):
                     patched = dict(agg_body)
+                    if patched.get("include_in_aggregation") is True:
+                        # Explicit inclusion is already represented by this named
+                        # node. Only boolean true is an identity; other values
+                        # remain unsupported and reach the unchanged validator.
+                        patched.pop("include_in_aggregation")
+                        notes.append(f"include_in_aggregation=true: kept named aggregation {name!r}")
                     # ES wants numbers for these; a model writes "100", or `true` for min_doc_count (D390).
                     for num_key in ("size", "shard_size", "min_doc_count",
                                     "precision_threshold"):
@@ -981,7 +1044,7 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                     # Composite sources recurse.
                     if isinstance(patched.get("sources"), list):
                         patched["sources"] = [
-                            walk({f"s{i}": s}, depth + 1).get(f"s{i}", s)
+                            walk({f"s{i}": s}, depth + 1, composite_source=True).get(f"s{i}", s)
                             for i, s in enumerate(patched["sources"])
                         ]
                         patched = _composite_source_options(patched, notes)
