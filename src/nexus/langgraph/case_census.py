@@ -8,10 +8,12 @@ from typing import Any
 
 
 def iter_case_hits(case_id: str) -> Iterator[dict[str, Any]]:
+    from nexus.config import settings
     from nexus.langgraph.query_pack import attach_hit_fields, iter_all_hits
     from nexus.tools.evidence_index import _resolve_active_case
 
-    case_dir, error = _resolve_active_case(case_id)
+    # In-process setup is bound to its run, independent of the examiner pointer.
+    case_dir, error = _resolve_active_case(case_id, settings.cases_root / case_id)
     if error or case_dir is None:
         raise ValueError(error or "no active case")
     for hit in iter_all_hits(case_dir, [], (None, None), match_all=True):

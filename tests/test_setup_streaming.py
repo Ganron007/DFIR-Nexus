@@ -195,3 +195,38 @@ def test_setup_census_is_retained_in_its_run_before_enrichment(tmp_path):
     with pytest.raises(ValueError, match="different setup census"):
         persist_setup_census(case, run.run_id, {"different": True})
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("active", ["absent", "other"])
+def test_setup_stream_binds_its_run_case_without_the_global_pointer(active, monkeypatch):
+    from nexus.config import settings
+    from nexus.langgraph import case_census, query_pack
+
+    case = settings.cases_root / "CASE-CENSUS"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: CASE-CENSUS\n", encoding="utf-8")
+    if active == "other":
+        import os
+
+        Path(os.environ["NEXUS_ACTIVE_CASE_FILE"]).write_text("CASE-OTHER", encoding="utf-8")
+    observed = []
+    row = {"text": "8.8.8.8", "fields": {"Computer": "WS01"}}
+
+    def stream(bound, *args, **kwargs):
+        observed.append((bound, kwargs))
+        yield row
+
+    monkeypatch.setattr(query_pack, "iter_all_hits", stream)
+    assert list(case_census.iter_case_hits(case.name)) == [row]
+    assert observed == [(case, {"match_all": True})]
+
+
+def test_setup_stream_rejects_an_invalid_case_without_reading(monkeypatch):
+    from nexus.langgraph import case_census, query_pack
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid case reached the evidence stream")
+
+    monkeypatch.setattr(query_pack, "iter_all_hits", forbidden)
+    with pytest.raises(ValueError):
+        list(case_census.iter_case_hits("../CASE-OTHER"))
