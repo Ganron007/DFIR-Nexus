@@ -14,10 +14,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from nexus.langgraph.es_native import is_unknown_field_hint as _unknown_field_hint  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2] / "cases"
+MODEL_ENV = Path(__file__).resolve().parents[2] / ".env"
 STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})Z$")
 RUN_ID = re.compile(r"(RUN-\S+-interpret-\w+|M2-\d{8}T\d{6}-\w{6}|M3-\d{8}T\d{6}-\w{6})")
 TOOL_RESULT = re.compile(r"^\S+\s+tool\.result\s+\S+\s+(\S+)(?:\s+(.*))?$")
@@ -78,8 +81,17 @@ def review(tag: str, case: str, mode: str) -> dict:
     stop = str(record.get("stop_reason") or record.get("error") or "")
     model_record = record.get("model") or {}
     model = str(model_record.get("model") or "") if isinstance(model_record, dict) else str(model_record)
-    if model != "agnes-3.0-flash":
-        issues.append(f"wrong or missing model: {model or '?'}")
+    expected_model = ""
+    try:
+        if not MODEL_ENV.is_file():
+            raise ValueError("operator .env is missing")
+        expected_model = str(dotenv_values(MODEL_ENV, interpolate=False).get("NEXUS_LLM_MODEL") or "").strip()
+        if not expected_model:
+            raise ValueError("NEXUS_LLM_MODEL is missing or empty in operator .env")
+    except (OSError, UnicodeError, ValueError) as exc:
+        issues.append(f"cannot read expected NEXUS_LLM_MODEL: {exc}")
+    if expected_model and model != expected_model:
+        issues.append(f"wrong or missing model: {model or '?'}; expected {expected_model}")
     pause = APPROVAL_PAUSE.fullmatch(stop) if mode == "1" and status == "interrupted" else None
     if pause:
         if not (folder / "analysis/interpretation.md").is_file():
@@ -148,7 +160,8 @@ def review(tag: str, case: str, mode: str) -> dict:
     print(f"\n== {tag} mode {mode} [{start} .. {end}] {exit_line or 'no exit line'}")
     print(f"   run_id={run_id or '?'} status={status} stop={stop or '(none)'} candidates/DRAFTs={candidates}")
     print(f"   model={model or '?'} minutes={duration} audited calls={calls} unknown-field hints={hints} "
-          f"other tool errors={sum(errors.values())} log-only errors={unaudited} tracebacks={len(tracebacks)}")
+          f"other tool errors={sum(errors.values())} log-only errors={unaudited} tracebacks={len(tracebacks)} "
+          f"expected_model={expected_model or '?'}")
     for key, count in errors.items():
         print(f"     {count:3d} x {key}")
     for i in tracebacks:
@@ -158,6 +171,7 @@ def review(tag: str, case: str, mode: str) -> dict:
     for issue in issues:
         print("   ISSUE:", issue)
     return {"run_id": run_id, "status": status, "stop_reason": stop, "model": model,
+            "expected_model": expected_model,
             "minutes": minutes, "candidates": candidates, "audited_calls": calls,
             "tool_errors": sum(errors.values()), "unaudited_tool_errors": unaudited,
             "unknown_field_hints": hints, "tracebacks": len(tracebacks), "issues": issues}

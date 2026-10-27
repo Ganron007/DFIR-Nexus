@@ -14,6 +14,9 @@ _spec.loader.exec_module(review_run)
 
 def _run(tmp_path, monkeypatch, mode, run_id, status):
     monkeypatch.setattr(review_run, "ROOT", tmp_path)
+    model_env = tmp_path / "operator.env"
+    model_env.write_text("NEXUS_LLM_MODEL=agnes-3.0-flash\n", encoding="utf-8")
+    monkeypatch.setattr(review_run, "MODEL_ENV", model_env, raising=False)
     case = tmp_path / "CASE-REVIEW"
     (case / ".trace").mkdir(parents=True)
     (case / "audit").mkdir()
@@ -180,3 +183,44 @@ def test_replay_does_not_report_an_error_result_as_runs_now(tmp_path, monkeypatc
     output = capsys.readouterr().out
     assert "now:  STILL:" in output
     assert "RUNS NOW" not in output
+
+
+def test_review_uses_dotenv_model_instead_of_process_environment(tmp_path, monkeypatch):
+    run_id = "M2-20261026T082224-803b0d"
+    case = _run(tmp_path, monkeypatch, "2", run_id, "completed")
+    review_run.MODEL_ENV.write_text('export NEXUS_LLM_MODEL="operator-selected-model"\n', encoding="utf-8")
+    monkeypatch.setenv("NEXUS_LLM_MODEL", "different-process-model")
+    record_path = case / "analysis/mode2_runs" / f"{run_id}.json"
+    record = json.loads(record_path.read_text())
+    record["model"]["model"] = "operator-selected-model"
+    record_path.write_text(json.dumps(record))
+    (case / ".trace/run-T22-R1z3b-mode2.log").write_text(
+        f"2026-10-26T08:22:12Z\nrun_id={run_id} status=completed\nMODE2_EXIT=0\n2026-10-26T10:41:00Z\n")
+    before = review_run.MODEL_ENV.read_bytes()
+    report = review_run.review("T22-R1z3b", case.name, "2")
+    assert report["issues"] == []
+    assert report["expected_model"] == "operator-selected-model"
+    assert review_run.MODEL_ENV.read_bytes() == before
+    import os
+    assert os.environ["NEXUS_LLM_MODEL"] == "different-process-model"
+
+
+def test_review_rejects_actual_model_when_operator_env_expects_another(tmp_path, monkeypatch):
+    run_id = "M2-20261026T082224-803b0d"
+    case = _run(tmp_path, monkeypatch, "2", run_id, "completed")
+    review_run.MODEL_ENV.write_text("NEXUS_LLM_MODEL=operator-selected-model\n", encoding="utf-8")
+    (case / ".trace/run-T22-R1z3b-mode2.log").write_text(
+        f"2026-10-26T08:22:12Z\nrun_id={run_id} status=completed\nMODE2_EXIT=0\n2026-10-26T10:41:00Z\n")
+    report = review_run.review("T22-R1z3b", case.name, "2")
+    assert any("wrong or missing model" in issue for issue in report["issues"])
+    assert report["expected_model"] == "operator-selected-model"
+
+
+def test_review_fails_closed_without_configured_operator_model(tmp_path, monkeypatch):
+    run_id = "M2-20261026T082224-803b0d"
+    case = _run(tmp_path, monkeypatch, "2", run_id, "completed")
+    review_run.MODEL_ENV.write_text("UNRELATED=value\n", encoding="utf-8")
+    (case / ".trace/run-T22-R1z3b-mode2.log").write_text(
+        f"2026-10-26T08:22:12Z\nrun_id={run_id} status=completed\nMODE2_EXIT=0\n2026-10-26T10:41:00Z\n")
+    report = review_run.review("T22-R1z3b", case.name, "2")
+    assert any("NEXUS_LLM_MODEL" in issue for issue in report["issues"])
