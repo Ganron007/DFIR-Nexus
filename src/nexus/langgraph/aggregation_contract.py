@@ -145,16 +145,21 @@ def normalize_option_values(kind: str, body: Any, *, composite_source: bool = Fa
     if not isinstance(body, dict) or kind == "filter":
         return body, []
     properties = (COMPOSITE_OPTIONS if composite_source else OPTIONS).get(kind, {})
+    return normalize_scalar_options(properties, body, label=kind, bool_integers=True)
+
+
+def normalize_scalar_options(properties, body, *, label, bool_integers=False):
+    """One scalar converter for canonical query and aggregation option metadata."""
     out = dict(body)
     notes = []
     for key, spec in properties.items():
         value = out.get(key)
         expected = spec.get("type")
-        if expected == "integer" and isinstance(value, bool):
+        if bool_integers and expected == "integer" and isinstance(value, bool):
             # Existing D390 compiler semantics: a boolean document-count switch
             # is explicit 0/1. Generation itself emits canonical integers.
             out[key] = int(value)
-            notes.append(f"normalized {kind}.{key} boolean to integer {int(value)}")
+            notes.append(f"normalized {label}.{key} boolean to integer {int(value)}")
             continue
         if not isinstance(value, str):
             continue
@@ -172,5 +177,5 @@ def normalize_option_values(kind: str, body: Any, *, composite_source: bool = Fa
             converted = value.lower() == "true"
         if converted != value:
             out[key] = converted
-            notes.append(f"normalized {kind}.{key} scalar {value!r} to {expected}")
+            notes.append(f"normalized {label}.{key} scalar {value!r} to {expected}")
     return out, notes

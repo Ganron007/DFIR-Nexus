@@ -13,8 +13,8 @@ from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from nexus.langgraph import es_native as es
 from nexus.langgraph.aggregation_contract import body_constraints, option_properties
-
-CASE_FIELD_PREFIX = "case_fields_"
+from nexus.langgraph.query_contract import CASE_FIELD_PREFIX
+from nexus.langgraph.query_contract import definitions as query_definitions
 
 
 def _object(properties, required=(), **kwargs):
@@ -42,7 +42,7 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
     argument constraints. Tools without a field catalog can still introspect it.
     """
     types = es._field_types(case_id)
-    definitions: dict[str, Any] = {}
+    definitions: dict[str, Any] = query_definitions(types)
     field_sets = {}
     for kind in sorted(es._AGG_TYPES | es._COMPOSITE_SOURCES):
         eligible = sorted(field for field in types if not field.startswith("_")
@@ -72,7 +72,12 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
                                     "additionalProperties": {"$ref": "#/$defs/aggregation"}}
     nodes = []
     for kind in sorted(es._AGG_TYPES):
-        body = {"type": "object"} if kind == "filter" else body_schema(kind, es._AGG_BODY_KEYS[kind])
+        body = {"$ref": "#/$defs/query"} if kind == "filter" else body_schema(kind, es._AGG_BODY_KEYS[kind])
+        if kind == "filters":
+            body["properties"]["filters"] = {"anyOf": [
+                {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/query"}},
+                {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/query"}},
+            ]}
         if kind == "composite":
             body["properties"].update({
                 "sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source"}},
@@ -95,6 +100,9 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
             assert set(props) == set(signature(function).parameters) - {"case_id"}
         if tool in es._READ_SIZE_MINIMUM:
             props["size"] = {"type": "integer", "minimum": es._READ_SIZE_MINIMUM[tool]}
+        if tool in ("es_search", "es_aggregate"):
+            query = {"$ref": "#/$defs/query"}
+            props["query"] = query if "query" in required.get(tool, ()) else {"anyOf": [query, {"type": "null"}]}
         if tool == "es_aggregate":
             props["aggs"] = {"$ref": "#/$defs/aggregations"}
         args = _object(props, required.get(tool, ()))

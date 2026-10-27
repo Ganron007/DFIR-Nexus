@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from nexus.langgraph import query_contract
 from nexus.langgraph.aggregation_contract import (
     COMPOSITE_OPTIONS,
     COMPOSITE_SIZE_MAX,
@@ -37,21 +38,11 @@ MAX_AGGS = 40
 AGG_PREVIEW_MAX = 10
 _READ_SIZE_MINIMUM = {"es_search": 1, "es_aggregate": 0}
 
-_QUERY_KEYS = {
-    "bool", "term", "terms", "range", "match", "match_phrase", "multi_match",
-    "wildcard", "exists", "prefix", "match_all", "match_none", "ids", "regexp",
-}
-_BOOL_KEYS = {"must", "should", "must_not", "filter", "minimum_should_match"}
-#: The options each single-field clause takes beside its `value`, in the field's object
-#: (`{"wildcard": {"f": {"value": "*x*", "case_insensitive": true}}}`). One definition: the validator allows exactly
-#: these and the normalizer moves exactly these when a model writes them beside the field (D386).
-FIELD_CLAUSE_OPTIONS: dict[str, frozenset[str]] = {
-    **dict.fromkeys(("term", "match", "match_phrase", "prefix", "wildcard"), frozenset({"boost", "case_insensitive"})),
-    "regexp": frozenset({"case_insensitive", "flags"}),
-}
-#: Clauses whose field object holds the pattern under `value` (match/match_phrase take `query`).
-VALUE_CLAUSES = frozenset({"term", "prefix", "wildcard", "regexp"})
-_RANGE_BODY_KEYS = {"gte", "gt", "lte", "lt", "format", "boost", "time_zone"}
+_QUERY_KEYS = query_contract.QUERY_KEYS
+_BOOL_KEYS = query_contract.BOOL_KEYS
+FIELD_CLAUSE_OPTIONS = query_contract.STRUCTURAL_FIELD_OPTIONS
+VALUE_CLAUSES = query_contract.VALUE_CLAUSES
+_RANGE_BODY_KEYS = set(query_contract.RANGE_OPTIONS)
 _AGG_TYPES = set(AGG_OPTIONS) | {"filter"}
 #: Aggregations that read a field's doc values: a `text` field needs its `.kw` keyword sub-field (D391).
 DOC_VALUE_AGGS = frozenset({"terms", "cardinality", "value_count"})
@@ -60,11 +51,18 @@ NUMERIC_AGGS = frozenset({
     "sum", "avg", "min", "max", "stats", "histogram", "range", "date_histogram", "date_range",
 })
 #: Options a `terms` query takes beside its one field (`{"terms": {"f": [..], "boost": 2}}` is valid ES; D405).
-TERMS_OPTIONS = frozenset({"boost"})
+TERMS_OPTIONS = frozenset(query_contract.TERMS_OPTIONS)
 # Option names and value types have one owner for producer, normalizer and guard.
 _COMPOSITE_SOURCES = set(COMPOSITE_OPTIONS)
 _AGG_BODY_KEYS = {kind: set(properties) for kind, properties in AGG_OPTIONS.items()}
 _COMPOSITE_SOURCE_KEYS = {kind: set(properties) for kind, properties in COMPOSITE_OPTIONS.items()}
+
+
+UNKNOWN_FIELD_HEADERS = {
+    "search": "query references fields that cannot match: ",
+    "aggregate_query": "aggregation query references fields that cannot match: ",
+    "aggregate_fields": "aggregation references fields that cannot match: "
+}
 
 
 class ESQueryError(ValueError):
@@ -75,8 +73,9 @@ def is_unknown_field_hint(error: str) -> bool:
     """The recoverable schema hint, shared by run review and refused-call replay.
 
     A value/type failure can also say "cannot match"; it must remain an error.
+    Quoted hint text from another failure stage is never a native hint.
     """
-    return ("cannot match" in error and "unknown_field" in error
+    return (error.startswith(tuple(UNKNOWN_FIELD_HEADERS.values())) and "unknown_field" in error
             and "ESQueryError" not in error and "cannot be a " not in error)
 
 
@@ -122,9 +121,16 @@ def _with_family_filter(query: Any, family: str) -> Any:
     return {"bool": body}
 
 
+def validate_canonical_query(body: Any) -> None:
+    """Check canonical types after normalization, in addition to the safety guard."""
+    problem = query_contract.canonical_problem(body)
+    if problem:
+        raise ESQueryError(problem)
+
+
 def _check_bool(body: dict, depth: int) -> None:
-    if depth > 6:
-        raise ESQueryError("query nesting too deep (max 6)")
+    if depth > query_contract.MAX_BOOL_DEPTH:
+        raise ESQueryError(f"query nesting too deep (max {query_contract.MAX_BOOL_DEPTH})")
     for key, value in body.items():
         if key not in _BOOL_KEYS:
             raise ESQueryError(f"unsupported bool key: {key}")
@@ -135,7 +141,7 @@ def _check_bool(body: dict, depth: int) -> None:
             validate_query(clause, depth + 1)
 
 def validate_query(body: Any, depth: int = 0) -> None:
-    """Allowlist recursive ES query JSON (no scripts, no cross-index, no writes)."""
+    """Structural safety allowlist; canonical option types are checked after normalization."""
     if not isinstance(body, dict) or not body:
         raise ESQueryError("query must be a non-empty object")
     if len(body) != 1:
@@ -154,11 +160,10 @@ def validate_query(body: Any, depth: int = 0) -> None:
         if not isinstance(value, dict) or len(value) != 1:
             raise ESQueryError(f"{key} takes exactly one field")
         (field, spec), = value.items()
-        low_field = field.lower()
-        if low_field in ("script", "_script") or low_field.startswith(("script.", "_script.")) or low_field.endswith((".script", "._script")):
+        if query_contract.unsafe_field_name(field):
             raise ESQueryError("field names cannot contain scripts")
         if isinstance(spec, dict):
-            unknown = set(spec) - {"value"} - FIELD_CLAUSE_OPTIONS[key]
+            unknown = set(spec) - {"value", query_contract.VALUE_KEYS[key]} - FIELD_CLAUSE_OPTIONS[key]
             unknown |= {k for k in spec if k == "script"}
             if unknown:
                 raise ESQueryError(f"unsupported {key} options: {sorted(unknown)}")
@@ -169,7 +174,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
         (field, values), = named.items()
         if not isinstance(values, list) or not values:
             raise ESQueryError("terms values must be a non-empty list")
-        if len(values) > 5000:
+        if len(values) > query_contract.MAX_TERMS:
             raise ESQueryError("terms list too large (max 5000)")
     elif key == "range":
         if not isinstance(value, dict) or len(value) != 1:
@@ -180,7 +185,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
         unknown = set(spec) - _RANGE_BODY_KEYS
         if unknown:
             raise ESQueryError(f"unsupported range options: {sorted(unknown)}")
-        for bound in ("gte", "gt", "lte", "lt"):
+        for bound in query_contract.RANGE_BOUND_KEYS:
             if bound in spec and not isinstance(spec[bound], (str, int, float)):
                 raise ESQueryError(f"range {bound} must be a string or number")
     elif key == "exists":
@@ -214,7 +219,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
         if unknown:
             raise ESQueryError(f"unsupported regexp options: {sorted(unknown)}")
         pattern = str(spec.get("value") or "")
-        if len(pattern) > 200:
+        if len(pattern) > query_contract.MAX_REGEXP:
             raise ESQueryError("regexp pattern too long (max 200)")
         from nexus.langgraph.query_dsl import _DANGEROUS_RE
 
@@ -222,7 +227,7 @@ def validate_query(body: Any, depth: int = 0) -> None:
             raise ESQueryError("regexp rejected: nested quantifier (ReDoS guard)")
     elif key == "ids":
         values = value.get("values") if isinstance(value, dict) else None
-        if not isinstance(values, list) or len(values) > 1000:
+        if not isinstance(values, list) or len(values) > query_contract.MAX_IDS:
             raise ESQueryError("ids requires values (max 1000)")
     elif key == "match_all" or key == "match_none":
         if value not in ({}, None):
@@ -234,12 +239,10 @@ def validate_query(body: Any, depth: int = 0) -> None:
 _MAPPING_TYPES_TTL = 60.0
 _mapping_types_cache: dict[str, tuple[float, dict[str, str]]] = {}
 
-_CLAUSE_FIELD_KEYS = ("term", "terms", "match", "match_phrase", "prefix", "wildcard", "regexp", "range")
-_NUMERIC_ES = {
-    "long", "integer", "short", "byte", "double", "float", "half_float", "scaled_float",
-}
-_DATE_ES = {"date", "date_nanos"}
-_BOOL_ES = {"boolean"}
+_CLAUSE_FIELD_KEYS = query_contract.FIELD_CLAUSES
+_NUMERIC_ES = query_contract.NUMERIC_TYPES
+_DATE_ES = query_contract.DATE_TYPES
+_BOOL_ES = query_contract.BOOL_TYPES
 
 
 def _field_types(case_id: str) -> dict[str, str]:
@@ -300,31 +303,7 @@ def _mapping_field_types(case_id: str) -> dict[str, str]:
 
 
 def _coercible(kind: str, value: Any) -> bool:
-    if value is None:
-        return True
-    if kind in _NUMERIC_ES:
-        try:
-            float(value)
-            return True
-        except (TypeError, ValueError):
-            return False
-    if kind in _DATE_ES:
-        s = str(value)
-        if not (s[:4].isdigit() and ("-" in s or s.isdigit())):
-            return False
-        # D405: the calendar date must exist: `2021-13-01` passed the shape check and ES answered a raw 400.
-        parts = s[:10].split("-")
-        if len(parts) == 3 and all(p.isdigit() for p in parts):
-            try:
-                from datetime import date
-
-                date(int(parts[0]), int(parts[1]), int(parts[2]))
-            except ValueError:
-                return False
-        return True
-    if kind in _BOOL_ES:
-        return str(value).lower() in {"true", "false", "0", "1"}
-    return True
+    return query_contract.value_compatible(kind, value)
 
 
 def _check_ref(
@@ -341,7 +320,7 @@ def _check_ref(
     else:
         values: list[Any] = []
         if isinstance(spec, dict):
-            values = [v for k, v in spec.items() if k in {"value", "gte", "lte", "gt", "lt"}]
+            values = [v for k, v in spec.items() if k in set(query_contract.VALUE_KEYS.values()) | query_contract.RANGE_BOUND_KEYS]
         elif isinstance(spec, list):
             # A `terms` list: ES fails the whole query on one value the field cannot hold (D396).
             values = list(spec)
@@ -532,6 +511,7 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
             # applies to each.
             if agg_type == "filter":
                 validate_query(body)
+                validate_canonical_query(body)
             else:
                 named = body.get("filters")
                 queries = list(named.values()) if isinstance(named, dict) else named
@@ -542,6 +522,7 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
                     raise ESQueryError(f"unsupported filters options: {sorted(unknown_body)}")
                 for query in queries:
                     validate_query(query)
+                    validate_canonical_query(query)
                 _validate_aggregation_option_values(agg_type, body)
             sub = spec.get("aggs")
             if sub is not None:
@@ -862,6 +843,7 @@ def es_search(
     sort, s_notes = normalize_sort(sort, types)
     notes = [*q_notes, *s_notes]
     validate_query(query)
+    validate_canonical_query(query)
     patterns = _patterns_on_non_strings(query, types)
     if patterns:
         raise ESQueryError("cannot search: " + "; ".join(patterns))
@@ -877,7 +859,7 @@ def es_search(
                 ref["did_you_mean"] = similar_fields(ref["field"], types)
         return {
             "case_id": case_id,
-            "error": "query references fields that cannot match: "
+            "error": UNKNOWN_FIELD_HEADERS['search']
                      + ", ".join(
                          f"{f['field']} ({f['reason']}"
                          + (f"; this index has {', '.join(f['did_you_mean'])}" if f.get("did_you_mean")
@@ -1281,11 +1263,11 @@ def _patterns_on_non_strings(query: Any, types: dict[str, str], depth: int = 0) 
     if not isinstance(query, dict):
         return found
     for key, value in query.items():
-        if key in ("wildcard", "prefix", "regexp") and isinstance(value, dict):
+        if key in query_contract.PATTERN_CLAUSES | {"match_phrase"} and isinstance(value, dict):
             for field in value:
-                kind = str(types.get(field) or "")
-                if kind and kind not in ("text", "keyword", "wildcard"):
-                    found.append(f"`{field}` is {kind}: a {key} pattern applies to text; use term, terms or range")
+                problem = query_contract.field_problem(key, field, types)
+                if problem:
+                    found.append(problem)
         else:
             found.extend(_patterns_on_non_strings(value, types, depth + 1))
     return found
@@ -1337,7 +1319,7 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         failed = [{"field": field, "reason": "unknown_field", "did_you_mean": similar_fields(field, types)}
                   for field in unknown]
         return {"case_id": case_id, "backend": "elasticsearch", "degraded": True,
-                "error": "aggregation references fields that cannot match: "
+                "error": UNKNOWN_FIELD_HEADERS['aggregate_fields']
                          + ", ".join(f"{field} (unknown_field)" for field in unknown),
                 "failed_terms": failed, "aggregations": {},
                 **({"normalized": notes} if notes else {})}
@@ -1349,6 +1331,7 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         raise ESQueryError("cannot aggregate: " + "; ".join(problems))
     if query is not None:
         validate_query(query)
+        validate_canonical_query(query)
         failed = failed_field_refs(case_id, query)
         if failed:
             # Same honesty rule as `es_search`: a query that cannot match is a
@@ -1358,7 +1341,7 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
             return {
                 "case_id": case_id,
                 "backend": "elasticsearch",
-                "error": "aggregation query references fields that cannot match: "
+                "error": UNKNOWN_FIELD_HEADERS['aggregate_query']
                          + ", ".join(f"{f['field']} ({f['reason']})" for f in failed[:5]),
                 "degraded": True,
                 "failed_terms": failed,

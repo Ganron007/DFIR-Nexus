@@ -31,8 +31,8 @@ from typing import Any
 
 from nexus.langgraph.aggregation_contract import normalize_option_values
 
-# The validator's own tables (one definition each, rule 16): what this surface rewrites is exactly what it accepts.
-# `es_native` imports only the standard library at module level, so this stays a pure module.
+# Shared structural names; canonical option types are checked after normalization.
+# These tables are data-only: importing them never contacts Elasticsearch.
 from nexus.langgraph.es_native import (
     _AGG_BODY_KEYS,
     _AGG_TYPES,
@@ -42,6 +42,11 @@ from nexus.langgraph.es_native import (
     FIXED_DURATION,
     TERMS_OPTIONS,
     VALUE_CLAUSES,
+)
+from nexus.langgraph.query_contract import (
+    ANALYZED_CLAUSES,
+    CLAUSE_OPTIONS,
+    normalize_clause_options,
 )
 
 log = logging.getLogger(__name__)
@@ -541,15 +546,9 @@ def _normalize_match_body(value: dict[str, Any], notes: list[str]) -> tuple[Any,
             return inner, notes
         if isinstance(inner, str):
             return {"_fieldless": inner}, notes
-    # `{field: {query: "…", type: "phrase"}}` — options inside the field body.
-    lifted: dict[str, Any] = {}
-    for field, spec in value.items():
-        if isinstance(spec, dict) and "query" in spec:
-            lifted[field] = spec["query"]
-    if lifted:
-        notes.append("lifted `query` out of the `match` body")
-        value = {**value, **lifted}
-    return {k: v for k, v in value.items() if k != "type"}, notes
+    # Canonical field objects carry their options; lifting just query loses
+    # valid boosts (D434). Unsupported options stay visible to the guard.
+    return value, notes
 
 
 def _pattern_without_wildcards_on_non_string(
@@ -579,7 +578,7 @@ def _fold_beside_options(key: str, value: dict[str, Any], notes: list[str]) -> d
     `{"wildcard": {"text": "*x*", "case_insensitive": true}}`: ES and the validator read the option as a second field,
     and the multi-field `term` split read it as one more field to match; every such call in T10's and T21's Mode 2 was
     refused. The option belongs in the field's object (an option already there wins); match/match_phrase are analysed,
-    so a case option beside them is dropped with a note. Two real fields are left alone.
+    so their canonical value key is query. Unsupported options remain visible to the guard.
     """
     options = FIELD_CLAUSE_OPTIONS.get(key)
     if not options:
@@ -594,7 +593,8 @@ def _fold_beside_options(key: str, value: dict[str, Any], notes: list[str]) -> d
         spec = {**beside, **spec} if isinstance(spec, dict) else {"value": spec, **beside}
         notes.append(f"moved {sorted(beside)} inside the `{field}` {key} object (options belong there)")
     else:
-        notes.append(f"dropped {sorted(beside)} beside `{field}`: {key} is analysed, so already case-insensitive")
+        spec = {**beside, **spec} if isinstance(spec, dict) else {"query": spec, **beside}
+        notes.append(f"moved {sorted(beside)} inside the `{field}` {key} object (options belong there)")
     return {field: spec}
 
 
@@ -643,8 +643,17 @@ def _normalize_field_clause(
             notes.append("dropped unsupported `case_sensitive` from wildcard")
             value = cleaned
 
+    if key == "terms":
+        value, option_notes = normalize_clause_options(key, value)
+        notes.extend(option_notes)
     out: dict[str, Any] = {}
     for field, spec in value.items():
+        if key == "terms" and field in TERMS_OPTIONS:
+            out[field] = spec
+            continue
+        if isinstance(spec, dict) and key in CLAUSE_OPTIONS:
+            spec, option_notes = normalize_clause_options(key, spec)
+            notes.extend(option_notes)
         # `wildcard` written as {field: {wildcard: "*x*", case_sensitive: false}}:
         # the value is a bare pattern, the options belong beside `value`.
         if key == "wildcard" and isinstance(spec, dict) and "wildcard" in spec:
@@ -662,6 +671,10 @@ def _normalize_field_clause(
             if unknown:
                 notes.append(f"dropped unsupported exists options {sorted(unknown)}")
                 spec = {k: v for k, v in spec.items() if k in ("field",)}
+        if key in ANALYZED_CLAUSES and isinstance(spec, dict) and "value" in spec and "query" not in spec:
+            spec = {**spec, "query": spec["value"]}
+            spec.pop("value")
+            notes.append(f"renamed `{key}` field value to its canonical `query` key")
         target = _alias_field(str(field), types)
         if target != field:
             notes.append(f"aliased field `{field}` → `{target}`")
@@ -673,10 +686,6 @@ def _normalize_field_clause(
             if kw in types:
                 notes.append(f"used keyword sub-field `{kw}` for `{target}` (text field)")
                 target = kw
-        # A `match` spec that is {query: ...} keeps its options; a scalar is fine.
-        if key == "match" and isinstance(spec, dict) and "query" in spec:
-            allowed = {"query", "operator", "minimum_should_match", "fuzziness", "lenient"}
-            spec = {k: v for k, v in spec.items() if k in allowed}
         out[target] = spec
     return out, notes
 

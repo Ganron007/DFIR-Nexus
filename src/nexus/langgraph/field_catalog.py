@@ -16,17 +16,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.query_contract import DATE_TYPES as DATE_TYPES
+from nexus.langgraph.query_contract import NUMERIC_TYPES as NUMERIC_TYPES
+
 log = logging.getLogger(__name__)
 
 _CACHE: dict[str, tuple[float, dict[str, dict[str, Any]]]] = {}
 _TTL = 60.0
-
-NUMERIC_TYPES = frozenset({
-    "long", "integer", "short", "byte", "double", "float", "half_float",
-    "scaled_float", "unsigned_long",
-})
-DATE_TYPES = frozenset({"date", "date_nanos"})
-
 
 def _es_catalog(case_id: str) -> dict[str, dict[str, Any]]:
     try:

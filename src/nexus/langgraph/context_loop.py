@@ -44,6 +44,8 @@ from nexus.llm.egress import egress_bound
 
 log = logging.getLogger(__name__)
 
+_GENERATION_FAILURES = frozenset({"generation_contract", "generation_transport"})
+
 _CALL_CHARS_DEFAULT = 120_000
 
 DEFAULT_SYSTEM = """\
@@ -147,13 +149,21 @@ def _call_model(model: Any, messages: list[dict[str, str]], *, response_format=N
     try:
         client = model.bind(response_format=response_format) if response_format else model
         response = client.invoke(messages)
-    except AttributeError:
+    except Exception as exc:
+        if response_format:
+            exc.generation_request_failed = True
         raise
     text = str(getattr(response, "content", response))
     if response_format:
         from jsonschema import Draft202012Validator
 
-        Draft202012Validator(response_format["json_schema"]["schema"]).validate(json.loads(text))
+        try:
+            Draft202012Validator(response_format["json_schema"]["schema"]).validate(json.loads(text))
+        except Exception as exc:
+            # The caller must retain the whole received reply, not merely the
+            # failing JSON-schema instance (which can be one scalar).
+            exc.model_response_text = text
+            raise
     return text
 
 
@@ -825,7 +835,7 @@ def run_context_loop(
     reply = ""
 
     def _reject_call(name: str, args: dict[str, Any], requested_args: Any,
-                     why: str, error: str, stage: str, round_no: int) -> None:
+                     why: str, error: str, stage: str, round_no: int, response_audit_id: str = "") -> None:
         # D408: these calls never reach the backbone. Keep the exact request here, at the
         # rejection point, rather than relying on the backbone to audit an unexecuted call.
         params = {**deepcopy(args), "case_id": case_id}
@@ -836,7 +846,8 @@ def run_context_loop(
             extra=request_audit_extra(
                 params, turn_id=turn_id, task=task, round=round_no,
                 rejection_stage=stage, requested_args=captured,
-                allowed_tools=list(allowed_tools or ())),
+                allowed_tools=list(allowed_tools or ()),
+                **({"model_response_audit_id": response_audit_id} if response_audit_id else {})),
         )
         obs = {"tool": name or "unknown", "why": why, "audit_id": aid or "",
                "summary": {"error": error}, "read_evidence": False,
@@ -1012,6 +1023,27 @@ def run_context_loop(
                     record_token_count,
                 )
 
+                received = getattr(exc, "model_response_text", None)
+                if isinstance(received, str):
+                    error = "generation contract: " + str(getattr(exc, "message", exc))[:400]
+                    response_audit_id = audit.log(
+                        tool="context_loop_reply", params={"case_id": case_id},
+                        result_summary={"error": error, "rejected": True},
+                        extra={"model_response": received, "rejection_stage": "generation_contract",
+                               "turn_id": turn_id, "task": task, "round": round_no},
+                    )
+                    try:
+                        refused_reply = json.loads(received)
+                    except (json.JSONDecodeError, TypeError):
+                        refused_reply = None
+                    if isinstance(refused_reply, dict):
+                        for call in _normalize_tool_calls(refused_reply):
+                            _reject_call(call["tool"], call["args"], call["requested_args"], call["why"],
+                                         error, "generation_contract", round_no, str(response_audit_id or ""))
+                    log.warning("context loop reply failed its generation contract: %s", error)
+                    stages.append({"stage": f"round-{round_no}", "status": "error", "detail": error})
+                    finish_reason = "generation_contract"
+                    break
                 refused_tokens = context_overflow_tokens(str(exc))
                 if attempt == 1 and refused_tokens:
                     # D380: the provider named the prompt's real size. Record it, so the next pack uses the measured
@@ -1022,12 +1054,25 @@ def run_context_loop(
                     stages.append({"stage": f"round-{round_no}", "status": "repacked",
                                    "detail": f"refused at {refused_tokens} tokens; re-packed and sent again"})
                     continue
+                if getattr(exc, "generation_request_failed", False):
+                    error = "generation transport: " + str(exc)[:400]
+                    audit.log(
+                        tool="context_loop_reply", params={"case_id": case_id},
+                        result_summary={"error": error, "rejected": True},
+                        extra={"model_error": str(exc), "rejection_stage": "generation_transport",
+                               "turn_id": turn_id, "task": task, "round": round_no},
+                    )
+                    stages.append({"stage": f"round-{round_no}", "status": "error", "detail": error})
+                    finish_reason = "generation_transport"
+                    log.warning("context loop schema request failed: %s", error)
+                    break
                 log.warning("context loop model call failed: %s", exc)
                 stages.append({"stage": f"round-{round_no}", "status": "error",
                                "detail": str(exc)[:200]})
                 break
         if raw is None:
-            finish_reason = "model_error"
+            if finish_reason not in _GENERATION_FAILURES:
+                finish_reason = "model_error"
             break
         stages.append({"stage": f"round-{round_no}", "ms": round((time.monotonic() - t0) * 1000),
                        "detail": raw[:160]})
@@ -1198,7 +1243,8 @@ def run_context_loop(
             finish_reason = "no_tools"
             break
 
-    if partial and not reply and time.monotonic() < deadline:
+    if (partial and not reply and finish_reason not in _GENERATION_FAILURES
+            and time.monotonic() < deadline):
         from nexus.langgraph.prompt_budget import budget_chars, case_window
 
         forced = _force_answer(
@@ -1223,6 +1269,8 @@ def run_context_loop(
             "calls": "tool-call budget exhausted",
             "time": "time budget exhausted",
             "model_error": "model call failed",
+            "generation_contract": "model reply violated the read contract; full reply and requests retained in audit",
+            "generation_transport": "schema-bound model request failed; request context and error retained",
             "no_tools": "model did not call a tool",
             "empty_model": "model returned an empty reply",
         }.get(finish_reason, finish_reason)
