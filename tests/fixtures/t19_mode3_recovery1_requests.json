@@ -1,0 +1,1418 @@
+[
+  {
+    "ts": "2026-10-26T20:46:50.895152+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-920",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_user": {
+          "terms": {
+            "field": "user",
+            "size": 10
+          }
+        },
+        "time_range": {
+          "range": {
+            "field": "ts",
+            "ranges": [
+              {
+                "from": "2021-07-28"
+              },
+              {
+                "from": "2021-07-29",
+                "to": "2021-07-30"
+              },
+              {
+                "from": "2021-07-30",
+                "to": "2021-07-31"
+              }
+            ]
+          }
+        },
+        "query": {
+          "terms": {
+            "field": "user",
+            "size": [
+              [
+                "falsimentisroot"
+              ],
+              [
+                "342082656213"
+              ]
+            ]
+          }
+        }
+      },
+      "family": "cloudtrail"
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES aggregation failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"x_content_parse_exception\",\"reason\":\"[1:281] [terms] size doesn't support values of type: START_ARRAY\"}],\"type\":\"x_content_parse_exception\",\"reason\":\"[1:281] [terms] size doesn't support values of type: START_ARRAY\"},\"status\":"
+    },
+    "elapsed_ms": 47.0,
+    "sha256": "e423b05f7567714ccd52ba3369f9f193e41eedbd2d8870d0135ed7de56abf4f8"
+  },
+  {
+    "ts": "2026-10-26T20:47:54.829677+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-949",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "terms": {
+                "fields.source_ip.kw": [
+                  "96.253.26.224"
+                ],
+                "terms": {
+                  "fields.dest_ip.kw": [
+                    "96.253.26.224"
+                  ]
+                }
+              },
+              "range": {
+                "ts": {
+                  "gte": "2021-07-29T00:00:00Z",
+                  "lte": "2021-07-29T00:30:00Z"
+                }
+              }
+            }
+          ]
+        },
+        "family": "aws_vpc_flow",
+        "size": 50
+      },
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: unsupported term options: ['fields.dest_ip.kw']"
+    },
+    "elapsed_ms": 0.8,
+    "sha256": "96b64fa25cf911a27f58ff0edb6106e1599c07fccd09472ede0c0d0943812a7f"
+  },
+  {
+    "ts": "2026-10-26T20:47:54.834293+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-950",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_dst_port": {
+          "terms": {
+            "field": "fields.dest_port",
+            "size": 30
+          }
+        },
+        "by_action": {
+          "terms": {
+            "field": "fields.action_arguments",
+            "size": 10
+          }
+        },
+        "by_protocol": {
+          "terms": {
+            "field": "fields.source_ip",
+            "size": 20
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "terms": {
+                "fields.source_ip.kw": [
+                  "96.253.26.224"
+                ],
+                "terms": {
+                  "fields.dest_ip.kw": [
+                    "96.253.26.224"
+                  ]
+                }
+              },
+              "range": {
+                "ts": {
+                  "gte": "2021-07-29T00:00:00Z",
+                  "lte": "2021-07-29T00:30:00Z"
+                }
+              }
+            }
+          ]
+        },
+        "family": "aws_vpc_flow",
+        "size": 0
+      },
+      "sort": []
+    },
+    "result_summary": {
+      "error": "ESQueryError: unsupported term options: ['fields.dest_ip.kw']"
+    },
+    "elapsed_ms": 1.0,
+    "sha256": "3879ef6e29524e2757cbc4805bbf35a6479304ab4a56131d3d6a22ea307906f1"
+  },
+  {
+    "ts": "2026-10-26T20:54:30.540593+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1085",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "family": "aws_vpc_flow",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "wildcard": {
+                "fields.source_ip": {
+                  "case_insensitive": true,
+                  "value": "*3.238.12.183*"
+                }
+              },
+              "must_not": []
+            }
+          ]
+        }
+      },
+      "size": 10
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must contain exactly one clause (bool, exists, ids, match, match_all, match_none, match_phrase, multi_match, prefix, range, regexp, term, terms, wildcard) at each level"
+    },
+    "elapsed_ms": 0.6,
+    "sha256": "2d6d9b45e2d415c49869c308e630857abeb561531ae4cd8d2d9a3e348ceaaa4b"
+  },
+  {
+    "ts": "2026-10-26T20:54:30.545900+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1086",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "family": "aws_vpc_flow",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "match_phrase": {
+                "text": "REJECT"
+              }
+            },
+            "range({",
+            "ts",
+            {
+              "gte": "2021-07-28T14:00:00Z",
+              "lte": "2021-07-28T15:00:00Z"
+            }
+          ]
+        }
+      },
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must be a non-empty object"
+    },
+    "elapsed_ms": 0.7,
+    "sha256": "4adfadb3e3183cc739594b73fa1618ac15b9680843d9ec99c3fac8af7e2a3d40"
+  },
+  {
+    "ts": "2026-10-26T20:59:43.417100+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1160",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "family": "aws_s3_access"
+              }
+            },
+            {
+              "range": {
+                "ts": {
+                  "gte": "2021-07-29T13:06:00Z",
+                  "lte": "2021-07-29T13:07:00Z"
+                }
+              }
+            }
+          ]
+        },
+        "size": 0,
+        "aggs": {
+          "by_bucket": {
+            "terms": {
+              "field": "fields.bucket",
+              "size": 20
+            }
+          }
+        }
+      },
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: unsupported query clause: aggs"
+    },
+    "elapsed_ms": 0.8,
+    "sha256": "2097dc6b8d25c7f9ec1d434e4a36c2a55ab7b268b276a08e8a187c1653479819"
+  },
+  {
+    "ts": "2026-10-26T21:00:16.315515+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1179",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "family": "aws_s3_access"
+              }
+            },
+            "range",
+            "tool_calls",
+            "ts",
+            "range",
+            "ts",
+            "gte",
+            "2021-07-29T13:06:00Z",
+            "lte",
+            "2021-07-29T13:07:00Z"
+          ]
+        }
+      },
+      "sort": [
+        {
+          "ts": "asc"
+        },
+        "size",
+        20,
+        "tool",
+        "es_search",
+        "why",
+        "Q551812: check if aws_s3_access has any rows in the 13:06:31 window to identify which bucket was targeted",
+        "args",
+        {
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "term": {
+                    "family": "aws_s3_access"
+                  }
+                },
+                {
+                  "range": {
+                    "ts": {
+                      "gte": "2021-07-29T13:06:00Z",
+                      "lte": "2021-07-29T13:07:00Z"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "sort": [
+            {
+              "ts": "asc"
+            }
+          ],
+          "size": 20
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must be a non-empty object"
+    },
+    "elapsed_ms": 1.8,
+    "sha256": "ed1c1d860dd23cf01e997106d72d2b7d4c1813287239292a47fd27ef5a9b6f6e"
+  },
+  {
+    "ts": "2026-10-26T21:09:57.584146+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1225",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "family": "cloudtrail",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "wildcard": {
+                "text": {
+                  "value": "*jmerckle*",
+                  "case_insensitive": true
+                },
+                "range": {
+                  "ts": {
+                    "gte": "2021-07-29T14:01:49Z"
+                  }
+                }
+              }
+            }
+          ],
+          "sort": [
+            {
+              "ts": "asc"
+            }
+          ],
+          "size": 20
+        },
+        "why": "Check if any jmerckle cloudtrail rows exist after 14:01:48 on 2021-07-29 (i.e. after the versioning-check and before/after the 14:03:06 DELETE)"
+      },
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must contain exactly one clause (bool, exists, ids, match, match_all, match_none, match_phrase, multi_match, prefix, range, regexp, term, terms, wildcard) at each level"
+    },
+    "elapsed_ms": 0.7,
+    "sha256": "d6f56b1f79fb7ebe9121c844d346b167dc0764c77e8ac463419705dc8205a704"
+  },
+  {
+    "ts": "2026-10-26T21:10:14.632932+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1227",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "wildcard": {
+                "fields.user": {
+                  "value": "*jmerckle*",
+                  "case_insensitive": true
+                },
+                "range": {
+                  "fields.ts_synthesized": {
+                    "gte": "2021-07-29T14:01:48Z"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "sort": [
+          {
+            "fields.ts_synthesized": "asc"
+          }
+        ],
+        "size": 50,
+        "family": "cloudtrail"
+      },
+      "sort": [
+        {
+          "fields.ts_synthesized": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: wildcard takes exactly one field"
+    },
+    "elapsed_ms": 0.8,
+    "sha256": "3bf89dfa36aa3ed2cd2daaa2e2b8c0c1f9a4aaa0931751940a739883675fad89"
+  },
+  {
+    "ts": "2026-10-26T21:11:25.461034+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1239",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.user": "jmerckle"
+              }
+            }
+          ]
+        },
+        "aggs": {
+          "by_src_ip": {
+            "terms": {
+              "field": "fields.source_ip",
+              "size": 50
+            }
+          },
+          "by_action": {
+            "terms": {
+              "field": "fields.event_name",
+              "size": 50
+            }
+          },
+          "by_ts_hour": {
+            "date_histogram": {
+              "field": "ts",
+              "fixed_interval": "h"
+            }
+          }
+        },
+        "size": 0
+      },
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: unsupported query clause: aggs"
+    },
+    "elapsed_ms": 1.3,
+    "sha256": "f65f53e7cccb5a4e53f9324573a87508dbcdfd8e6515134a02f5579fb78f169b"
+  },
+  {
+    "ts": "2026-10-26T21:13:34.539682+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-1297",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_description": {
+          "terms": {
+            "field": "fields.artifact_type.kw",
+            "size": 50
+          }
+        },
+        "by_src": {
+          "terms": {
+            "field": "fields.source_ip.kw",
+            "size": 20
+          }
+        },
+        "by_hour": {
+          "date_histogram": {
+            "field": "ts",
+            "fixed_interval": "1h",
+            "min_doc_count": 1
+          }
+        },
+        "query": {
+          "terms": {
+            "field": "fields.source_ip.kw",
+            "size": 20
+          }
+        },
+        "size": {
+          "terms": {
+            "field": "fields.source_ip.kw",
+            "size": 20
+          }
+        }
+      },
+      "query": {
+        "term": "falsimentisroot",
+        "type": "text"
+      },
+      "size": 0
+    },
+    "result_summary": {
+      "error": "ESQueryError: term takes exactly one field"
+    },
+    "elapsed_ms": 0.9,
+    "sha256": "76a26836da610cd3363d279777538be6a5fe9aa9b94f9cc7b50d74252b85d918"
+  },
+  {
+    "ts": "2026-10-26T21:14:37.531886+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-1302",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_description": {
+          "terms": {
+            "field": "fields.artifact_type.kw",
+            "size": 50
+          }
+        },
+        "by_hour_0730": {
+          "date_histogram": {
+            "field": "fields.user",
+            "fixed_interval": "1s",
+            "min_doc_count": 1,
+            "time_zone": "UTC"
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "fields.user.kw": "falsimentisroot"
+        }
+      },
+      "size": 0
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES aggregation failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"illegal_argument_exception\",\"reason\":\"Fielddata is disabled on [fields.user] in [nexus-case-case-6c6a9449]. Text fields are not optimised for operations that require per-document field data like aggregations and sorting, so th"
+    },
+    "elapsed_ms": 43.8,
+    "sha256": "faf21b70ae551fb772b1bc44309ecb73f86d0cf0477c285655929d7b56d65e2d"
+  },
+  {
+    "ts": "2026-10-26T21:14:37.582189+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-1303",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_description": {
+          "terms": {
+            "field": "fields.artifact_type.kw",
+            "size": 50
+          }
+        },
+        "by_hour_0730": {
+          "date_histogram": {
+            "field": "fields.user",
+            "fixed_interval": "1s",
+            "min_doc_count": 1,
+            "time_zone": "UTC"
+          }
+        }
+      },
+      "query": {
+        "term": {
+          "fields.user.kw": "falsimentisroot"
+        }
+      },
+      "size": 0
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES aggregation failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"illegal_argument_exception\",\"reason\":\"Fielddata is disabled on [fields.user] in [nexus-case-case-6c6a9449]. Text fields are not optimised for operations that require per-document field data like aggregations and sorting, so th"
+    },
+    "elapsed_ms": 46.9,
+    "sha256": "ee971a9373b8c55602dd3d79219c8cabd14493871831aad3ffa9a66d4e0a7752"
+  },
+  {
+    "ts": "2026-10-26T21:21:48.893919+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1379",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "terms": {
+                "fields.dest_ip": [
+                  "10.0.0.162",
+                  "10.0.0.82",
+                  "10.0.0.94",
+                  "172.31.28.35",
+                  "10.0.0.237",
+                  "10.0.0.105"
+                ]
+              }
+            }
+          ]
+        },
+        "sort": [
+          {
+            "ts": "asc"
+          }
+        ],
+        "size": 5,
+        "family": "aws_vpc_flow"
+      },
+      "search_after": [
+        1627483201000,
+        1627483201000
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES search failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"illegal_argument_exception\",\"reason\":\"search_after has 2 value(s) but sort has 1.\"}],\"type\":\"search_phase_execution_exception\",\"reason\":\"all shards failed\",\"phase\":\"query\",\"grouped\":true,\"failed_shards\":[{\"shard\":0,\"index\":\"nexus-c"
+    },
+    "elapsed_ms": 51.0,
+    "sha256": "1927edfa6f17e4c4fd23dac3173f693bf3d6118773235f344dc2e86ee15b4eed"
+  },
+  {
+    "ts": "2026-10-26T21:21:48.944392+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1380",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "terms": {
+                "fields.dest_ip": [
+                  "10.0.0.162"
+                ]
+              }
+            }
+          ]
+        },
+        "sort": [
+          {
+            "ts": "asc"
+          }
+        ],
+        "size": 5,
+        "family": "aws_vpc_flow"
+      },
+      "search_after": [
+        1627483201000,
+        1627483201000
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES search failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"illegal_argument_exception\",\"reason\":\"search_after has 2 value(s) but sort has 1.\"}],\"type\":\"search_phase_execution_exception\",\"reason\":\"all shards failed\",\"phase\":\"query\",\"grouped\":true,\"failed_shards\":[{\"shard\":0,\"index\":\"nexus-c"
+    },
+    "elapsed_ms": 46.2,
+    "sha256": "55f2a1c5bb27a9c7182c8ee2eb7adc1674dbb0341f479ba4676b1d668555fa89"
+  },
+  {
+    "ts": "2026-10-26T21:21:48.996533+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1381",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.user": "jmerckle"
+              }
+            },
+            {
+              "range": {
+                "ts": {
+                  "gte": "2021-07-29T13:02:00Z",
+                  "lte": "2021-07-29T14:01:00Z"
+                }
+              }
+            },
+            {
+              "terms": {
+                "fields.source_ip": [
+                  "10.0.0.82",
+                  "10.0.0.94",
+                  "172.31.28.35",
+                  "10.0.0.237",
+                  "10.0.0.105",
+                  "10.0.0.162"
+                ]
+              }
+            }
+          ]
+        },
+        "sort": [
+          {
+            "ts": "asc"
+          }
+        ],
+        "size": 10,
+        "family": "cloudtrail"
+      },
+      "search_after": [
+        1627483201000,
+        1627483201000
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES search failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"illegal_argument_exception\",\"reason\":\"search_after has 2 value(s) but sort has 1.\"}],\"type\":\"search_phase_execution_exception\",\"reason\":\"all shards failed\",\"phase\":\"query\",\"grouped\":true,\"failed_shards\":[{\"shard\":0,\"index\":\"nexus-c"
+    },
+    "elapsed_ms": 48.8,
+    "sha256": "59fa4ef03468e09e96e09f794893d2a4fc14073e640b3b314cea893f89d85dd7"
+  },
+  {
+    "ts": "2026-10-26T21:24:19.738676+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-1410",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "first_ts": {
+          "min": {
+            "field": "ts"
+          }
+        },
+        "last_ts": {
+          "max": {
+            "field": "ts"
+          }
+        },
+        "by_src_ip": {
+          "terms": {
+            "field": "ecs",
+            "size": 0
+          }
+        }
+      },
+      "query": {
+        "match_all": {}
+      },
+      "size": 0,
+      "sort": [
+        {}
+      ]
+    },
+    "result_summary": {
+      "error": "ESQueryError: ES aggregation failed: 400 {\"error\":{\"root_cause\":[{\"type\":\"x_content_parse_exception\",\"reason\":\"[1:153] [terms] failed to parse field [size]\"}],\"type\":\"x_content_parse_exception\",\"reason\":\"[1:153] [terms] failed to parse field [size]\",\"caused_by\":{\"type\":\"illegal_argument_exception\",\""
+    },
+    "elapsed_ms": 55.4,
+    "sha256": "b9b2cd0960896e2fb23379c127657b52069376ab5b94937dbe9cd1c68e883e08"
+  },
+  {
+    "ts": "2026-10-26T21:28:01.698589+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1445",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.action": "accept"
+              }
+            },
+            {
+              "bool": {
+                "should": [
+                  {
+                    "term": {
+                      "fields.source_ip": "74.120.14.24"
+                    }
+                  },
+                  {},
+                  {},
+                  {},
+                  {}
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "size": 50,
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ]
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must be a non-empty object"
+    },
+    "elapsed_ms": 1.1,
+    "sha256": "81141cedb98629e50bf30f86de7277c8d2a970b3b5ac30bc196e15f2f1cb8cb0"
+  },
+  {
+    "ts": "2026-10-26T21:30:55.931010+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1482",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "wildcard": {
+                "text": {
+                  "case_insensitive": true,
+                  "value": "*jmerckle*"
+                }
+              },
+              "terms": "family=aws_s3_access text contains jmerckle"
+            }
+          ]
+        }
+      },
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "error": "ESQueryError: terms takes exactly one field"
+    },
+    "elapsed_ms": 18.2,
+    "sha256": "b94317d3ff765f4f6a88a80268af5b6456f02686a2309dca629afa36df4bdc30"
+  },
+  {
+    "ts": "2026-10-26T21:33:47.712448+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1495",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "family": "cloudtrail",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.iam_user": "arn:aws:iam::342082656213:user/jmerckle"
+              }
+            },
+            {
+              "term": {
+                "fields.severity": "high"
+              }
+            },
+            {
+              "range": {
+                "fields.ts_synthesized": {
+                  "gte": "2021-07-29T13:06:00",
+                  "lte": "2021-07-29T13:11:00"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "sort": [
+        {
+          "fields.ts_synthesized": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "total": 0,
+      "returned": 0,
+      "families": 0,
+      "evidence_rows": [],
+      "error": "query references fields that cannot match: fields.iam_user (unknown_field), fields.ts_synthesized (value '2021-07-29T13:06:00' cannot be a boolean). To find a phrase in any column, search the row text: {\"match_phrase\":{\"text\":\"<phrase>\"}}.",
+      "degraded": true,
+      "failed_terms": [
+        {
+          "field": "fields.iam_user",
+          "reason": "unknown_field",
+          "context": "required",
+          "did_you_mean": []
+        },
+        {
+          "field": "fields.ts_synthesized",
+          "reason": "value '2021-07-29T13:06:00' cannot be a boolean",
+          "context": "required"
+        }
+      ]
+    },
+    "elapsed_ms": 2.5,
+    "sha256": "bf5338e1041338048d7b43da0a06ccaf75472e53853cf10342a8ff24437c01a7"
+  },
+  {
+    "ts": "2026-10-26T21:33:47.717800+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1496",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "family": "cloudtrail",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.source_ip": "3.238.12.183"
+              }
+            },
+            {
+              "term": {
+                "fields.iam_user": "arn:aws:iam::342082656213:user/jmerckle"
+              }
+            },
+            {
+              "range": {
+                "fields.ts_synthesized": {
+                  "gte": "2021-07-29T13:02:00",
+                  "lte": "2021-07-29T14:02:00"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "sort": [
+        {
+          "fields.ts_synthesized": "asc"
+        }
+      ],
+      "size": 50
+    },
+    "result_summary": {
+      "total": 0,
+      "returned": 0,
+      "families": 0,
+      "evidence_rows": [],
+      "error": "query references fields that cannot match: fields.iam_user (unknown_field), fields.ts_synthesized (value '2021-07-29T13:02:00' cannot be a boolean). To find a phrase in any column, search the row text: {\"match_phrase\":{\"text\":\"<phrase>\"}}.",
+      "degraded": true,
+      "failed_terms": [
+        {
+          "field": "fields.iam_user",
+          "reason": "unknown_field",
+          "context": "required",
+          "did_you_mean": []
+        },
+        {
+          "field": "fields.ts_synthesized",
+          "reason": "value '2021-07-29T13:02:00' cannot be a boolean",
+          "context": "required"
+        }
+      ]
+    },
+    "elapsed_ms": 2.4,
+    "sha256": "c6cc326381533119ffa926bc7ef0d76d2fde364eb411f150ac20fe674338ac02"
+  },
+  {
+    "ts": "2026-10-26T21:34:10.396324+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1505",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields.artifact_type": "network"
+              }
+            },
+            {
+              "range": {
+                "fields.dst_port": {
+                  "eq": 2375
+                }
+              }
+            }
+          ]
+        },
+        "family": "aws_vpc_flow"
+      },
+      "size": 20,
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ]
+    },
+    "result_summary": {
+      "error": "ESQueryError: unsupported range options: ['eq']"
+    },
+    "elapsed_ms": 0.8,
+    "sha256": "29ac11866ab76ccc80dee13b5ef93a5fc74ca08a7b51927cecca5858c9225468"
+  },
+  {
+    "ts": "2026-10-26T21:54:00.195087+00:00",
+    "mcp": "nexus",
+    "tool": "es_aggregate",
+    "audit_id": "nexus-claudebot-20261026-1626",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "aggs": {
+        "by_action": {
+          "terms": {
+            "field": "fields.action_arguments",
+            "size": 10
+          }
+        },
+        "by_source_ip": {
+          "terms": {
+            "field": "fields.source_ip",
+            "size": 50
+          }
+        },
+        "by_dest_port": {
+          "terms": {
+            "field": "fields.dest_port",
+            "size": 50
+          }
+        },
+        "by_protocol": {
+          "terms": {
+            "field": "fields.dest_port",
+            "size": 50
+          }
+        }
+      },
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "bool": {
+                "should": [
+                  {
+                    "term": {
+                      "ecs.source_ip.keyword": "10.0.0.94"
+                    },
+                    "boost": 10
+                  },
+                  {
+                    "term": {
+                      "ecs.destination_ip.keyword": "10.0.0.94"
+                    }
+                  },
+                  {
+                    "match": {
+                      "ecs.source_ip": "10.0.0.94"
+                    },
+                    "boost": 10
+                  },
+                  {
+                    "match": {
+                      "ecs.destination_ip": "10.0.0.94"
+                    }
+                  },
+                  {
+                    "wildcard": {
+                      "ecs.source_ip": {
+                        "value": "10.0.0.94"
+                      }
+                    },
+                    "boost": 10
+                  },
+                  {
+                    "wildcard": {
+                      "ecs.destination_ip": {
+                        "value": "10.0.0.94"
+                      }
+                    }
+                  },
+                  {
+                    "match_phrase": {
+                      "text": "10.0.0.94"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "size": 0,
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ]
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must contain exactly one clause (bool, exists, ids, match, match_all, match_none, match_phrase, multi_match, prefix, range, regexp, term, terms, wildcard) at each level"
+    },
+    "elapsed_ms": 2.7,
+    "sha256": "13f4aee0ad101a0f9a6582fc96eef4b2b0ddba6df4cf3bab05244434cd1546bc"
+  },
+  {
+    "ts": "2026-10-26T21:54:00.202228+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1627",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "wildcard": {
+                "ecs.source_ip.keyword": {
+                  "value": "*10.0.0.94*"
+                }
+              },
+              "boost": 1
+            },
+            {
+              "wildcard": {
+                "ecs.destination_ip.keyword": {
+                  "value": "*10.0.0.94*"
+                }
+              },
+              "boost": 1
+            },
+            {
+              "match_phrase": {
+                "text": "10.0.0.94"
+              }
+            },
+            {
+              "term": {
+                "ecs.source_ip.keyword": "10.0.0.94"
+              }
+            },
+            {
+              "term": {
+                "ecs.destination_ip.keyword": "10.0.0.94"
+              }
+            }
+          ]
+        }
+      },
+      "size": 20,
+      "sort": [
+        {
+          "ts": "asc"
+        }
+      ]
+    },
+    "result_summary": {
+      "error": "ESQueryError: query must contain exactly one clause (bool, exists, ids, match, match_all, match_none, match_phrase, multi_match, prefix, range, regexp, term, terms, wildcard) at each level"
+    },
+    "elapsed_ms": 2.5,
+    "sha256": "22ca0afb65969c13ff74ab6387a7c770bb81bcb9aa6d852826aa61e3faad2a58"
+  },
+  {
+    "ts": "2026-10-26T21:54:40.003812+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1636",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields._type": "aws_vpc_flow"
+              }
+            },
+            {
+              "range": {
+                "fields.ts_synthesized": {
+                  "gte": "2021-07-28T14:38:00",
+                  "lte": "2021-07-28T15:07:00"
+                }
+              }
+            },
+            {
+              "terms": {
+                "fields.dst_port": [
+                  2375
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "size": 20,
+      "sort": [
+        {
+          "fields.ts_synthesized": "asc"
+        }
+      ]
+    },
+    "result_summary": {
+      "total": 0,
+      "returned": 0,
+      "families": 0,
+      "evidence_rows": [],
+      "error": "query references fields that cannot match: fields._type (unknown_field; this index has fields.Type, fields.type, fields.ecs.winlog.logon.type, fields.rules.<rule>.matches[][].type), fields.ts_synthesized (value '2021-07-28T14:38:00' cannot be a boolean), fields.dst_port (unknown_field; this index has fields.tcp.dstport, fields.udp.dstport). To find a phrase in any column, search the row text: {\"match_phrase\":{\"text\":\"<phrase>\"}}.",
+      "degraded": true,
+      "failed_terms": [
+        {
+          "field": "fields._type",
+          "reason": "unknown_field",
+          "context": "required",
+          "did_you_mean": [
+            "fields.Type",
+            "fields.type",
+            "fields.ecs.winlog.logon.type",
+            "fields.rules.<rule>.matches[][].type"
+          ]
+        },
+        {
+          "field": "fields.ts_synthesized",
+          "reason": "value '2021-07-28T14:38:00' cannot be a boolean",
+          "context": "required"
+        },
+        {
+          "field": "fields.dst_port",
+          "reason": "unknown_field",
+          "context": "required",
+          "did_you_mean": [
+            "fields.tcp.dstport",
+            "fields.udp.dstport"
+          ]
+        }
+      ]
+    },
+    "elapsed_ms": 3.8,
+    "sha256": "a4af6b5e1ea80cdef4af430423e81da71cde6e4dd5d24dcc6de807341cb23d08"
+  },
+  {
+    "ts": "2026-10-26T21:54:40.008926+00:00",
+    "mcp": "nexus",
+    "tool": "es_search",
+    "audit_id": "nexus-claudebot-20261026-1637",
+    "examiner": "claudebot",
+    "case_id": "CASE-6C6A9449",
+    "source": "mcp",
+    "params": {
+      "case_id": "CASE-6C6A9449",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "term": {
+                "fields._type": "cloudtrail"
+              }
+            },
+            {
+              "range": {
+                "fields.ts_synthesized": {
+                  "gte": "2021-07-29T13:00:00",
+                  "lte": "2021-07-29T20:10:00"
+                }
+              }
+            },
+            {
+              "match_phrase": {
+                "fields.description": "jmerckle"
+              }
+            }
+          ]
+        }
+      },
+      "size": 20,
+      "sort": [
+        {
+          "fields.ts_synthesized": "asc"
+        }
+      ]
+    },
+    "result_summary": {
+      "total": 0,
+      "returned": 0,
+      "families": 0,
+      "evidence_rows": [],
+      "error": "query references fields that cannot match: fields._type (unknown_field; this index has fields.Type, fields.type, fields.ecs.winlog.logon.type, fields.rules.<rule>.matches[][].type), fields.ts_synthesized (value '2021-07-29T13:00:00' cannot be a boolean). To find a phrase in any column, search the row text: {\"match_phrase\":{\"text\":\"<phrase>\"}}.",
+      "degraded": true,
+      "failed_terms": [
+        {
+          "field": "fields._type",
+          "reason": "unknown_field",
+          "context": "required",
+          "did_you_mean": [
+            "fields.Type",
+            "fields.type",
+            "fields.ecs.winlog.logon.type",
+            "fields.rules.<rule>.matches[][].type"
+          ]
+        },
+        {
+          "field": "fields.ts_synthesized",
+          "reason": "value '2021-07-29T13:00:00' cannot be a boolean",
+          "context": "required"
+        }
+      ]
+    },
+    "elapsed_ms": 2.2,
+    "sha256": "20df9170402c78dd97c24d6ade4756916b5e1b66aa57e978b4c90b72ddf5c392"
+  }
+]

@@ -350,22 +350,17 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
     if result.get("error"):
         return {"error": str(result.get("error"))[:400]}
     if name == "es_mappings":
-        # Return the FULL catalog: hiding columns behind a small cap made the
-        # live model repeat es_mappings because it could not find e.g. USB
-        # fields in the first 80 alphabetical names. The context budget (1M
-        # tokens by default) is the only cap that should apply.
+        # Preserve native descriptors, every nested mapping path, and measured
+        # population. A list of names cannot explain type compatibility or
+        # distinguish declared columns from those filled in this case.
+        summary = dict(result)
         families = result.get("families") or {}
-        return {
-            "case_id": result.get("case_id"),
-            "families": list(families.keys()),
+        summary.update({
+            "families": list(families),
             "family_rows": families,
-            "core_fields": [f.get("field") for f in (result.get("core_fields") or [])],
-            "parsed_columns": [
-                f.get("field") for f in (result.get("parsed_columns") or [])
-            ],
             "parsed_columns_count": len(result.get("parsed_columns") or []),
-            "ts_note": result.get("ts_note"),
-        }
+        })
+        return summary
     if name in ("es_search", "sample_rows"):
         rows = result.get("hits") or []
         summary = {

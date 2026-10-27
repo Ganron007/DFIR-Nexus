@@ -356,8 +356,8 @@ def field_sheet_block(case_dir: str | Path | None, *, cap_bytes: int = 4096) -> 
     if not lines:
         return ""
     text = (
-        "CASE FIELD SHEET (columns FILLED in this case; a name absent here is not "
-        "filled — call es_mappings for the full list):\n" + "\n".join(lines)
+        "CASE FIELD SHEET (compact subset of columns FILLED in this case; omission "
+        "does not mean empty — call es_mappings for the full typed/populated catalog):\n" + "\n".join(lines)
     )
     return text[:cap_bytes]
 
@@ -419,8 +419,9 @@ def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
         fam_lines = []
 
     if ecs_lines or fam_lines:
-        head = ("CASE FIELD CATALOG (columns populated by a family PRESENT in this case; "
-                "a column absent here is not filled in this case - do not query it):\n")
+        head = ("CASE FIELD CATALOG (compact subset of columns populated by a family PRESENT "
+                "in this case; omission does not mean empty - call es_mappings for the "
+                "full typed/populated catalog):\n")
         if ecs_lines:
             head += ("COMMON FIELDS (ecs.*) - prefer these for cross-source questions; "
                      "use fields.<tool column> for tool-specific detail:\n"

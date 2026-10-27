@@ -47,7 +47,9 @@ _AGG_TYPES = {
 #: Aggregations that read a field's doc values: a `text` field needs its `.kw` keyword sub-field (D391).
 DOC_VALUE_AGGS = frozenset({"terms", "cardinality", "value_count"})
 #: Aggregations that compute on numbers or dates: a `text` field cannot be their input (D405: `sum` on text `bytes`).
-NUMERIC_AGGS = frozenset({"sum", "avg", "min", "max", "stats", "histogram", "range"})
+NUMERIC_AGGS = frozenset({
+    "sum", "avg", "min", "max", "stats", "histogram", "range", "date_histogram", "date_range",
+})
 #: Options a `terms` query takes beside its one field (`{"terms": {"f": [..], "boost": 2}}` is valid ES; D405).
 TERMS_OPTIONS = frozenset({"boost"})
 #: Most example rows a `top_hits` bucket may return.
@@ -286,6 +288,29 @@ def _field_types(case_id: str) -> dict[str, str]:
     return _mapping_field_types(case_id)
 
 
+def mapping_field_types(
+    properties: dict[str, Any], *, include_multifields: bool = True,
+) -> dict[str, str]:
+    """Flatten the actual mapping, including nested paths and multi-fields."""
+    out: dict[str, str] = {}
+
+    def walk(prefix: str, spec: Any) -> None:
+        if not isinstance(spec, dict):
+            return
+        kind = str(spec.get("type") or ("object" if "properties" in spec else "text"))
+        if prefix:
+            out[prefix] = kind
+        for sub, sub_spec in ((spec.get("fields") or {}) if include_multifields else {}).items():
+            if isinstance(sub_spec, dict):
+                out[f"{prefix}.{sub}"] = str(sub_spec.get("type") or "text")
+        for child, child_spec in (spec.get("properties") or {}).items():
+            walk(f"{prefix}.{child}" if prefix else str(child), child_spec)
+
+    for key, spec in properties.items():
+        walk(str(key), spec)
+    return out
+
+
 def _mapping_field_types(case_id: str) -> dict[str, str]:
     import time
 
@@ -303,20 +328,7 @@ def _mapping_field_types(case_id: str) -> dict[str, str]:
             if r.status_code == 200:
                 props = ((r.json().get(name) or {}).get("mappings") or {}).get("properties") or {}
 
-                def walk(prefix: str, spec: Any) -> None:
-                    if not isinstance(spec, dict):
-                        return
-                    kind = str(spec.get("type") or ("object" if "properties" in spec else "text"))
-                    if prefix:
-                        out[prefix] = kind
-                    for sub, sub_spec in (spec.get("fields") or {}).items():
-                        if isinstance(sub_spec, dict):
-                            out[f"{prefix}.{sub}"] = str(sub_spec.get("type") or "text")
-                    for child, child_spec in (spec.get("properties") or {}).items():
-                        walk(f"{prefix}.{child}" if prefix else str(child), child_spec)
-
-                for key, spec in props.items():
-                    walk(str(key), spec)
+                out = mapping_field_types(props)
     except Exception:  # noqa: BLE001 — validation is best-effort, never blocks search
         out = {}
     _mapping_types_cache[case_id] = (now, out)
@@ -716,15 +728,10 @@ def _client_and_index(case_id: str):
 def es_fields(case_id: str) -> dict[str, Any]:
     """Full per-family field catalog + family counts, with D35 population.
 
-    D35 (WO-KM1 item 2): the catalog must not present **declared** columns as
-    **present**. ES reports which columns the mapping types - every one the registry
-    declares - and `parsed_columns` still lists them so validation keeps working.
-    What is added here is what is actually **filled**: an ES ``terms`` aggregation
-    per family on the columns the registry maps to that family, so a caller can see
-    "listened" as populated for `zeek` and absent for `authlog`.
-
-    ``populated_columns`` is the honest half. It is empty (and says so) when no
-    aggregation ran, never silently equal to ``parsed_columns``.
+    The mapping declares which paths are typed; measured exists counts say
+    which paths each family actually fills. Registry declarations are not a
+    population source: importers can produce additional mapped columns.
+    Failed measurements raise visibly instead of claiming a family is empty.
     """
     if not case_id:
         raise ESQueryError("case_id is required")
@@ -747,51 +754,41 @@ def es_fields(case_id: str) -> dict[str, Any]:
                 "aggs": {"families": {"terms": {"field": "family", "size": 1000}}},
             },
         )
-        families: dict[str, int] = {}
-        if agg.status_code < 400:
-            for bucket in (
-                ((agg.json().get("aggregations") or {}).get("families") or {}).get("buckets")
-                or []
-            ):
-                families[str(bucket.get("key"))] = int(bucket.get("doc_count") or 0)
-
-        # D35 (item 2): per family, which `fields.*` columns actually have a value.
-        # ONE ES request per family: a `filters` aggregation with one `exists`
-        # filter per column. The previous per-column request loop was O(columns)
-        # round-trips per family (hundreds), and quoted names with spaces must be
-        # sent verbatim (a spaced field path is valid; verified).
+        if agg.status_code >= 400:
+            raise ESQueryError(f"family population failed: {agg.status_code} {agg.text[:300]}")
+        family_agg = (agg.json().get("aggregations") or {}).get("families") or {}
+        if family_agg.get("sum_other_doc_count"):
+            raise ESQueryError("family population is incomplete: the family aggregation omitted rows")
+        families = {str(bucket.get("key")): int(bucket.get("doc_count") or 0)
+                    for bucket in family_agg.get("buckets") or []}
+        field_types = mapping_field_types(props)
+        leaf_types = mapping_field_types(props, include_multifields=False)
+        parsed_paths = {path for path, kind in leaf_types.items()
+                        if path.startswith("fields.") and kind not in ("object", "nested")}
+        filters = {path: {"exists": {"field": path}}
+                   for path, kind in field_types.items() if kind not in ("object", "nested")}
         populated: dict[str, dict[str, int]] = {}
+        populated_fields: dict[str, dict[str, int]] = {}
         for fam in families:
-            cols = _columns_for_family(fam)
-            if not cols:
+            if not filters:
+                populated[fam] = {}
+                populated_fields[fam] = {}
                 continue
-            filters: dict[str, Any] = {
-                column: {"exists": {"field": f"fields.{column}"}} for column in cols
-            }
-            try:
-                res = c.post(
-                    f"/{name}/_search",
-                    json={
-                        "size": 0,
-                        "query": {"term": {"family": fam}},
-                        "aggs": {"pop": {"filters": {"filters": filters}}},
-                    },
-                )
-            except Exception:  # noqa: BLE001 - one family must not lose the rest
-                continue
+            res = c.post(f"/{name}/_search", json={
+                "size": 0,
+                "query": {"term": {"family": fam}},
+                "aggs": {"pop": {"filters": {"filters": filters}}},
+            })
             if res.status_code >= 400:
-                continue
-            buckets = (
-                ((res.json().get("aggregations") or {}).get("pop") or {}).get("buckets")
-                or {}
-            )
-            per = {
-                column: int((bucket or {}).get("doc_count") or 0)
-                for column, bucket in buckets.items()
-                if int((bucket or {}).get("doc_count") or 0) > 0
-            }
-            if per:
-                populated[fam] = per
+                raise ESQueryError(f"field population failed for {fam}: {res.status_code} {res.text[:300]}")
+            buckets = (((res.json().get("aggregations") or {}).get("pop") or {}).get("buckets"))
+            if not isinstance(buckets, dict) or set(buckets) != set(filters):
+                raise ESQueryError(f"field population incomplete for {fam}: missing measured field counts")
+            measured = {path: int(bucket.get("doc_count") or 0) for path, bucket in buckets.items()
+                        if int(bucket.get("doc_count") or 0) > 0}
+            populated_fields[fam] = measured
+            populated[fam] = {path.removeprefix("fields."): count for path, count in measured.items()
+                              if path in parsed_paths}
 
     def _type_of(spec: Any) -> str:
         if not isinstance(spec, dict):
@@ -816,6 +813,7 @@ def es_fields(case_id: str) -> dict[str, Any]:
         "index": name,
         "families": families,
         "core_fields": core,
+        "field_types": field_types,
         "parsed_columns": sorted(
             ({"field": key, "type": _type_of(spec)} for key, spec in parsed.items()),
             key=lambda row: row["field"],
@@ -823,11 +821,13 @@ def es_fields(case_id: str) -> dict[str, Any]:
         # D35: the honest half. `parsed_columns` is what the mapping TYPES (every
         # registry column for every family); this is what is FILLED in this case.
         "populated_columns": populated,
+        "populated_fields": populated_fields,
         "population_note": (
-            "populated_columns is measured from the case's own documents. "
-            "parsed_columns is every column the index is typed for, which includes "
-            "columns this case does not have - query a parsed column on a family "
-            "that is absent from populated_columns and it matches nothing."
+            "populated_fields measures every mapped leaf and multi-field per family from "
+            "the case's own documents; populated_columns lists the populated parsed source columns. "
+            "parsed_columns declares types, including columns this case does not fill. "
+            "A parsed column absent from a measured family's populated_columns matches nothing "
+            "in that family; absence from a compact prompt subset says nothing about population."
         ),
         "ts_note": (
             "ts is the canonical event time (ts_src=event|synthesized, "
@@ -835,29 +835,6 @@ def es_fields(case_id: str) -> dict[str, Any]:
             "use es_search range on ts for time filters"
         ),
     }
-
-
-def _columns_for_family(family: str) -> list[str]:
-    """The registry columns declared for `family`, as ``fields.<Name>`` names.
-
-    WO-R0F item 2 (D35): no space/punctuation skip and no 80-column cut. ES indexes
-    every column name verbatim (a spaced name like ``Event Data`` is a valid field
-    path — verified), so dropping spaced/punctuated columns silently lost them from
-    the population measurement.
-    """
-    try:
-        from nexus.knowledge.query_validation import expand_families, load_field_registry
-
-        cols = load_field_registry()
-        wanted = set(expand_families([family]))
-        found = []
-        for name, info in cols.items():
-            fams = {str(f).lower() for f in (info.get("families") or [])}
-            if fams and (fams & wanted):
-                found.append(name)
-        return sorted(found)
-    except Exception:  # noqa: BLE001 - the population probe is best-effort
-        return []
 
 
 def _with_lenient(node: Any) -> Any:
@@ -1298,15 +1275,22 @@ def _aggregation_field_problems(aggs: Any, types: dict[str, str], depth: int = 0
             elif aggregation_field_problem(agg_type, field, types) == "not_numeric":
                 found.append(f"`{field}` is {kind} in this index, and {agg_type} needs a number or a date; "
                              "es_fields lists the numeric and date fields")
-        # D406: a composite's sources read doc values too (T18 Mode 3 grouped by the analysed `text`).
+        # Composite sources obey the same field rule as their standalone type.
         composite = spec.get("composite") if isinstance(spec.get("composite"), dict) else {}
         for source in composite.get("sources") or []:
             for inner in (source.values() if isinstance(source, dict) else []):
-                terms = (inner or {}).get("terms") if isinstance(inner, dict) else None
-                field = terms.get("field") if isinstance(terms, dict) else None
-                if isinstance(field, str) and aggregation_field_problem("terms", field, types) == "analysed_text":
-                    found.append(f"`{field}` is analysed text with no keyword sub-field, which a composite source "
-                                 "cannot read; group by a keyword field (es_fields lists them)")
+                if not isinstance(inner, dict):
+                    continue
+                for source_type in _COMPOSITE_SOURCES & set(inner):
+                    body = inner[source_type]
+                    field = body.get("field") if isinstance(body, dict) else None
+                    problem = aggregation_field_problem(source_type, field, types)
+                    if problem == "analysed_text":
+                        found.append(f"`{field}` is analysed text with no keyword sub-field, which a composite source "
+                                     "cannot read; group by a keyword field (es_fields lists them)")
+                    elif problem == "not_numeric":
+                        found.append(f"`{field}` is {types.get(field)} in this index, and a {source_type} composite source "
+                                     "needs a number or a date; es_fields lists the numeric and date fields")
         found.extend(_aggregation_field_problems(spec.get("aggs"), types, depth + 1))
     return found
 
