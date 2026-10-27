@@ -381,6 +381,8 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
             "window_truncated": result.get("window_truncated"),
             "hits": _preview_rows(rows),
         }
+        if "sort" in result:
+            summary["sort"] = result["sort"]
         # What the surface says about the query reaches the seat (IC-9). Only the six keys above did: the rewrite
         # notes, the zero-hit diagnosis and the unpopulated-field note were computed and dropped here, so a seat saw
         # `total: 0` and nothing else for 178 of the fresh Mode 3 run's 815 searches.

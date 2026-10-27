@@ -159,12 +159,13 @@ def definitions(types: dict[str, str] | None = None) -> dict[str, Any]:
         bodies = []
         for names, value in choices:
             if clause == "terms":
-                body = {"type": "object", "properties": deepcopy(TERMS_OPTIONS),
+                base = {"type": "object", "properties": deepcopy(TERMS_OPTIONS),
                         "additionalProperties": value,
-                        "propertyNames": {"anyOf": [{"enum": sorted(TERMS_OPTIONS)}, names]},
-                        "if": {"required": ["boost"]},
-                        "then": {"minProperties": 2, "maxProperties": 2},
-                        "else": {"minProperties": 1, "maxProperties": 1}}
+                        "propertyNames": {"anyOf": [{"enum": sorted(TERMS_OPTIONS)}, names]}}
+                body = {"anyOf": [
+                    {**deepcopy(base), "not": {"required": ["boost"]}, "minProperties": 1, "maxProperties": 1},
+                    {**deepcopy(base), "required": ["boost"], "minProperties": 2, "maxProperties": 2},
+                ]}
             else:
                 body = {"type": "object", "minProperties": 1, "maxProperties": 1,
                         "propertyNames": names, "additionalProperties": value}

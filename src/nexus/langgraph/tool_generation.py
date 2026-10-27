@@ -7,6 +7,7 @@ transport: a provider that ignores its contract must fail visibly.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from inspect import signature
 from types import UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
@@ -15,6 +16,7 @@ from nexus.langgraph import es_native as es
 from nexus.langgraph.aggregation_contract import body_constraints, option_properties
 from nexus.langgraph.query_contract import CASE_FIELD_PREFIX
 from nexus.langgraph.query_contract import definitions as query_definitions
+from nexus.langgraph.read_request_contract import CURSOR, REQUEST_SORT, paging_constraints
 
 
 def _object(properties, required=(), **kwargs):
@@ -103,9 +105,19 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
         if tool in ("es_search", "es_aggregate"):
             query = {"$ref": "#/$defs/query"}
             props["query"] = query if "query" in required.get(tool, ()) else {"anyOf": [query, {"type": "null"}]}
+            props["sort"] = {"anyOf": [REQUEST_SORT, {"type": "null"}]}
+        if tool == "es_search":
+            props["search_after"] = {"anyOf": [CURSOR, {"type": "null"}]}
         if tool == "es_aggregate":
             props["aggs"] = {"$ref": "#/$defs/aggregations"}
         args = _object(props, required.get(tool, ()))
+        if tool == "es_search":
+            variants = []
+            for branch in paging_constraints():
+                variant_props = {**deepcopy(props), **branch["properties"]}
+                variant_required = list(dict.fromkeys([*required.get(tool, ()), *branch.get("required", ())]))
+                variants.append(_object(variant_props, variant_required))
+            args["anyOf"] = variants
         calls.append(_object({"tool": {"const": tool}, "args": args,
                               "why": {"type": "string"}}, ["tool", "args"]))
     return {"type": "object", "properties": {

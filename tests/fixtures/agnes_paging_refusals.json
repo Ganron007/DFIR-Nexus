@@ -1,0 +1,144 @@
+[
+  {
+    "control": "T19-T22-paging-schema-transport.json",
+    "reply": {
+      "tool_calls": [
+        {
+          "args": {
+            "index": "docs",
+            "body": {
+              "query": {
+                "bool": {
+                  "must": [
+                    {
+                      "match": {
+                        "text": {
+                          "query": "syntax control",
+                          "boost": 2
+                        }
+                      }
+                    }
+                  ],
+                  "filter": [
+                    {
+                      "term": {
+                        "fields.ts_synthesized": false
+                      }
+                    }
+                  ]
+                }
+              },
+              "sort": [
+                {
+                  "ts": {
+                    "order": "asc"
+                  }
+                },
+                {
+                  "_doc": {
+                    "order": "asc"
+                  }
+                }
+              ],
+              "search_after": [
+                0,
+                0
+              ],
+              "size": 1
+            }
+          },
+          "tool": "es_search"
+        },
+        {
+          "args": {
+            "index": "docs",
+            "body": {
+              "aggs": {
+                "family_terms": {
+                  "terms": {
+                    "field": "family",
+                    "size": 3
+                  }
+                },
+                "match_all_filter": {
+                  "filter": {
+                    "match_all": {}
+                  }
+                }
+              }
+            }
+          },
+          "tool": "es_search"
+        }
+      ]
+    }
+  },
+  {
+    "control": "T19-T22-paging-wire-control.json",
+    "reply": {
+      "tool_calls": [
+        {
+          "args": {
+            "query": {
+              "bool": {
+                "must": [
+                  {
+                    "match": {
+                      "text": {
+                        "query": "syntax control",
+                        "boost": 2
+                      }
+                    }
+                  }
+                ],
+                "filter": [
+                  {
+                    "term": {
+                      "fields.ts_synthesized": false
+                    }
+                  }
+                ]
+              }
+            },
+            "sort": [
+              {
+                "ts": {
+                  "order": "asc"
+                }
+              },
+              {
+                "_doc": {
+                  "order": "asc"
+                }
+              }
+            ],
+            "search_after": [
+              0,
+              0
+            ],
+            "size": 1
+          },
+          "tool": "es_search"
+        },
+        {
+          "args": {
+            "aggregations": {
+              "family_terms": {
+                "terms": {
+                  "field": "family",
+                  "size": 3
+                }
+              },
+              "all_match_filter": {
+                "filter": {
+                  "match_all": {}
+                }
+              }
+            }
+          },
+          "tool": "es_search"
+        }
+      ]
+    }
+  }
+]

@@ -92,18 +92,29 @@ def read_request_size(size: Any, *, tool: str) -> int:
 
 
 def _validate_request_sort(sort: Any) -> None:
-    if sort is None:
-        return
-    if not isinstance(sort, list) or len(sort) > 4:
-        raise ESQueryError("sort must be a list of at most 4 entries")
-    for entry in sort:
-        if isinstance(entry, str):
-            continue
-        if not isinstance(entry, dict) or len(entry) != 1:
-            raise ESQueryError("sort entries must be 'field' or {field: {...}}")
-        for spec in entry.values():
-            if isinstance(spec, dict) and set(spec) - {"order", "missing", "unmapped_type"}:
-                raise ESQueryError("unsupported sort options")
+    from nexus.langgraph.read_request_contract import sort_problem
+
+    if problem := sort_problem(sort):
+        raise ESQueryError(problem)
+
+
+def _prepare_request_sort(sort, types, search_after=None):
+    from nexus.langgraph.query_normalize import _as_dict, normalize_sort
+    from nexus.langgraph.read_request_contract import DEFAULT_CURSOR_SORT, paging_problem
+
+    raw, _ = _as_dict(sort)
+    raw = [raw] if isinstance(raw, (str, dict)) else raw
+    # Validate before the legacy normalizer can drop entries or truncate a list.
+    _validate_request_sort(raw)
+    normalized, notes = normalize_sort(sort, types)
+    raw_fields = [entry if isinstance(entry, str) else next(iter(entry)) for entry in raw or []]
+    normalized_fields = [entry if isinstance(entry, str) else next(iter(entry)) for entry in normalized]
+    if search_after and raw_fields != normalized_fields:
+        raise ESQueryError("search_after cannot be reused with a substituted sort field")
+    effective = normalized or list(DEFAULT_CURSOR_SORT)
+    if problem := paging_problem(effective, search_after):
+        raise ESQueryError(problem)
+    return effective, notes
 
 
 def _with_family_filter(query: Any, family: str) -> Any:
@@ -830,17 +841,18 @@ def es_search(
     rejects all four. Every rewrite is reported under ``normalized`` — the
     operator's rule is "accept and normalize; never fail silently".
     """
-    from nexus.langgraph.query_normalize import (
-        normalize_query,
-        normalize_sort,
-    )
+    from nexus.langgraph.query_normalize import normalize_query
+    from nexus.langgraph.read_request_contract import query_envelope_problem
 
     if not case_id:
         raise ESQueryError("case_id is required")
+    if problem := query_envelope_problem(query):
+        raise ESQueryError(problem)
     types = _field_types(case_id)
+    size_i = read_request_size(size, tool="es_search")
+    sort, s_notes = _prepare_request_sort(sort, types, search_after)
     query = _with_family_filter(query, family)
     query, q_notes = normalize_query(query, field_types=types)
-    sort, s_notes = normalize_sort(sort, types)
     notes = [*q_notes, *s_notes]
     validate_query(query)
     validate_canonical_query(query)
@@ -876,19 +888,12 @@ def es_search(
             "backend": "elasticsearch",
             "hits": [],
         }
-    size_i = read_request_size(size, tool="es_search")
-    _validate_request_sort(sort)
     body: dict[str, Any] = {
         "size": size_i,
         "query": query,
         "track_total_hits": True,
     }
-    if sort:
-        body["sort"] = sort
-    else:
-        # Always provide a deterministic cursor sort so paging works even
-        # when the caller did not specify one (review fix).
-        body["sort"] = ["_doc"]
+    body["sort"] = sort
     if search_after:
         body["search_after"] = search_after
     body["query"] = _with_lenient(body["query"])
@@ -915,6 +920,7 @@ def es_search(
         "returned": len(hits),
         "has_more": has_more,
         "next_search_after": next_cursor if has_more else None,
+        "sort": body["sort"],
         "took_ms": data.get("took"),
         "backend": "elasticsearch",
         "hits": hits,
@@ -1287,11 +1293,17 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         lift_aggs_query,
         normalize_aggs,
         normalize_query,
-        normalize_sort,
+    )
+    from nexus.langgraph.read_request_contract import (
+        DEFAULT_CURSOR_SORT,
+        aggregation_envelope_problem,
+        query_envelope_problem,
     )
 
     if not case_id:
         raise ESQueryError("case_id is required")
+    if problem := query_envelope_problem(query) or aggregation_envelope_problem(aggs):
+        raise ESQueryError(problem)
     types = _field_types(case_id)
     aggs, a_notes = normalize_aggs(aggs, types)
     notes = list(a_notes)
@@ -1354,13 +1366,10 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         "aggs": aggs,
         "query": _with_lenient(query) if query else {"match_all": {}},
     }
-    sort, s_notes = normalize_sort(sort, types)
+    sort, s_notes = _prepare_request_sort(sort, types)
     notes.extend(s_notes)
-    _validate_request_sort(sort)
-    if sort:
+    if body["size"] or sort != list(DEFAULT_CURSOR_SORT):
         body["sort"] = sort
-    elif body["size"]:
-        body["sort"] = ["_doc"]
     client, name = _client_and_index(case_id)
     with client() as c:
         r = c.post(f"/{name}/_search", json=body)

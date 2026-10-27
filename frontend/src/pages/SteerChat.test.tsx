@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../api/client", () => ({
@@ -27,7 +27,7 @@ vi.mock("../api/client", () => ({
 }));
 
 vi.mock("../context/CaseContext", () => ({
-  useCase: () => ({ mode: "1", activeCase: { id: "CASE-TEST" } }),
+  useCase: () => ({ mode: "1", activeCase: "CASE-TEST" }),
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -45,5 +45,20 @@ describe("SteerChat partial-answer badge", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText(/Partial answer/)).toBeTruthy();
+  });
+
+  it("scrolls loaded history to the real target when its delayed callback fires", async () => {
+    vi.useFakeTimers();
+    const view = render(<MemoryRouter><SteerChat /></MemoryRouter>);
+    try {
+      const log = screen.getByRole("log");
+      Object.defineProperty(log, "scrollHeight", { value: 640, configurable: true });
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+      expect(log.scrollTop).toBe(640);
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
   });
 });

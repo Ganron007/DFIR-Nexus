@@ -48,12 +48,17 @@ from nexus.langgraph.query_contract import (
     CLAUSE_OPTIONS,
     normalize_clause_options,
 )
+from nexus.langgraph.read_request_contract import (
+    DEFAULT_CURSOR_SORT,
+    ENVELOPE_KEYS,
+    MAX_SORT_FIELDS,
+)
 
 log = logging.getLogger(__name__)
 
 #: ES keys that belong to the request envelope, not the query. Lifted out of
 #: the query when the model puts them there.
-_ENVELOPE_KEYS = {"size", "from", "sort", "search_after", "_source", "track_total_hits"}
+_ENVELOPE_KEYS = ENVELOPE_KEYS
 
 #: Plain names the model writes → this index's real field. Only names that exist
 #: in the index are rewritten (`ecs.*` is what the indexer writes).
@@ -720,12 +725,12 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
             elif _is_text(types.get(field)):
                 notes.append(f"`{field}` is analysed text and cannot be sorted; sorted on `ts` instead")
                 field = "ts"
-            elif types and field not in types:
+            elif types and field not in types and field not in DEFAULT_CURSOR_SORT:
                 notes.append(
                     f"`{field}` is not mapped in this index; sorted on `ts` instead"
                 )
                 field = "ts"
-            out.append({field: "asc"})
+            out.append(field if field in DEFAULT_CURSOR_SORT else {field: "asc"})
         elif isinstance(entry, dict) and len(entry) == 1:
             (field, spec), = entry.items()
             target = _alias_field(str(field), types)
@@ -743,7 +748,7 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
                 # D391: `sort: [{"text": "asc"}]` came back as a raw fielddata 400 (T01, T10).
                 notes.append(f"`{target}` is analysed text and cannot be sorted; sorted on `ts` instead")
                 target = "ts"
-            elif types and target not in types:
+            elif types and target not in types and target not in DEFAULT_CURSOR_SORT:
                 # Sorting on a field this index does not map is a shard 400. Fall
                 # back to the timestamp, which every row has, and say so.
                 notes.append(
@@ -753,7 +758,7 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
             out.append({target: spec})
         else:
             notes.append(f"dropped unusable sort entry {entry!r}")
-    return out[:4], notes
+    return out[:MAX_SORT_FIELDS], notes
 
 
 #: date_histogram intervals that are calendar units; anything else is a fixed interval.

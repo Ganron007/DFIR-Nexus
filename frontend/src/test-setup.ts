@@ -34,3 +34,23 @@ if (typeof globalThis.EventSource === "undefined") {
   }
   (globalThis as { EventSource?: unknown }).EventSource = EventSourceStub;
 }
+
+// jsdom exposes scroll offsets but not Element.scrollTo. Model its coordinate
+// effect and scroll event: a no-op would hide broken chat autoscrolling. There
+// is no layout/animation clock here; the component test checks the final offset.
+if (typeof Element.prototype.scrollTo !== "function") {
+  Element.prototype.scrollTo = function (options?: ScrollToOptions | number, y?: number): void {
+    const previousTop = this.scrollTop;
+    const previousLeft = this.scrollLeft;
+    if (typeof options === "number") {
+      this.scrollLeft = options;
+      if (y !== undefined) this.scrollTop = y;
+    } else if (options) {
+      if (options.left !== undefined) this.scrollLeft = options.left;
+      if (options.top !== undefined) this.scrollTop = options.top;
+    }
+    if (this.scrollTop !== previousTop || this.scrollLeft !== previousLeft) {
+      this.dispatchEvent(new Event("scroll"));
+    }
+  };
+}
