@@ -12,6 +12,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -87,22 +88,27 @@ def _address_quads(text: str) -> list[str]:
     return quads
 
 
-def extract_iocs(texts: list[str]) -> dict[str, list[str]]:
-    """Deterministic IOC census over evidence text (hashes > IPs > domains > URLs)."""
-    found: dict[str, set[str]] = {"sha256": set(), "sha1": set(), "md5": set(),
-                                  "ipv4": set(), "domain": set(), "url": set()}
-    for text in texts:
+class IOCAccumulator:
+    """One IOC rule owner; retain unique indicators, never input rows or texts."""
+
+    def __init__(self) -> None:
+        self.found: dict[str, set[str]] = {
+            "sha256": set(), "sha1": set(), "md5": set(),
+            "ipv4": set(), "domain": set(), "url": set(),
+        }
+
+    def add_text(self, text: str) -> None:
         if not text:
-            continue
+            return
         for m in _SHA256_RE.findall(text):
-            found["sha256"].add(m.lower())
+            self.found["sha256"].add(m.lower())
         for m in _SHA1_RE.findall(text):
-            found["sha1"].add(m.lower())
+            self.found["sha1"].add(m.lower())
         for m in _MD5_RE.findall(text):
-            found["md5"].add(m.lower())
+            self.found["md5"].add(m.lower())
         for m in _address_quads(text):
             if not _is_private_ip(m):
-                found["ipv4"].add(m)
+                self.found["ipv4"].add(m)
         for m in _DOMAIN_RE.findall(text):
             if _is_code_name(m):
                 continue
@@ -112,24 +118,34 @@ def extract_iocs(texts: list[str]) -> dict[str, list[str]]:
             # Skip pure hex-ish tokens that happen to look like domains
             if re.fullmatch(r"[a-f0-9]{8,}", d.split(".")[0]):
                 continue
-            found["domain"].add(d)
+            self.found["domain"].add(d)
         for m in _URL_RE.findall(text):
             u = m.rstrip(".,;:)")
             if any(part in u.lower() for part in _NOISE_URL_PARTS):
                 continue
-            found["url"].add(u)
-    out: dict[str, list[str]] = {}
-    for kind, values in found.items():
-        # hashes first by kind priority; drop hashes that are substrings of
-        # longer hashes seen (md5 inside sha1/sha256 hex strings is common)
-        out[kind] = sorted(values)
-    sha256_set = set(out["sha256"])
-    all_hex = " ".join(sha256_set)
-    out["sha1"] = [h for h in out["sha1"] if h not in all_hex]
-    sha1_joined = " ".join(out["sha1"])
-    out["md5"] = [h for h in out["md5"]
-                  if h not in all_hex and h not in sha1_joined]
-    return out
+            self.found["url"].add(u)
+
+    def result(self) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for kind, values in self.found.items():
+            # hashes first by kind priority; drop hashes that are substrings of
+            # longer hashes seen (md5 inside sha1/sha256 hex strings is common)
+            out[kind] = sorted(values)
+        sha256_set = set(out["sha256"])
+        all_hex = " ".join(sha256_set)
+        out["sha1"] = [h for h in out["sha1"] if h not in all_hex]
+        sha1_joined = " ".join(out["sha1"])
+        out["md5"] = [h for h in out["md5"]
+                      if h not in all_hex and h not in sha1_joined]
+        return out
+
+
+def extract_iocs(texts: Iterable[str]) -> dict[str, list[str]]:
+    """Deterministic IOC census with global hash-substring exclusion."""
+    accumulator = IOCAccumulator()
+    for text in texts:
+        accumulator.add_text(text)
+    return accumulator.result()
 
 
 def _ordered_iocs(iocs: dict[str, list[str]]) -> list[str]:
@@ -141,59 +157,52 @@ def _ordered_iocs(iocs: dict[str, list[str]]) -> list[str]:
     return ordered
 
 
+class IOCSweep:
+    """TI's text-plus-fields census, incrementally folded over indexed hits."""
+
+    def __init__(self) -> None:
+        self.hits_scanned = 0
+        self.iocs = IOCAccumulator()
+
+    def add_hit(self, hit: dict[str, Any]) -> None:
+        if not isinstance(hit, dict):
+            return
+        self.hits_scanned += 1
+        self.iocs.add_text(str(hit.get("text") or ""))
+        fields = hit.get("fields") or {}
+        if isinstance(fields, dict):
+            for value in fields.values():
+                if value:
+                    self.iocs.add_text(str(value))
+
+    def result(self) -> dict[str, Any]:
+        return {"hits_scanned": self.hits_scanned, "hits_capped": False,
+                "iocs": self.iocs.result(), "error": ""}
+
+
 def sweep_case_iocs(
     case_id: str = "",
     *,
-    hits: list[dict[str, Any]] | None = None,
+    hits: Iterable[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Extract IOCs from the case's indexed evidence rows (deterministic, no LLM).
-
-    ``hits`` lets a caller hand in an already-fetched wide scan (the interpret
-    node fetches ONE match-all scan and shares it with the entity inventory —
-    B5) instead of each builder re-reading the whole case.
-    """
-    error = ""
-    capped = False
+    """Census the complete hit stream without retaining rows or text lists."""
     if hits is None:
-        from nexus.tools.evidence_index import do_n4_query
+        from nexus.langgraph.case_census import iter_case_hits
 
-        result = do_n4_query(case_id=case_id, dsl="", limit=None, match_all=True)
-        hits = result.get("hits") or []
-        error = str(result.get("error") or "")
-        capped = bool(result.get("count_lower_bound"))
-    hits = [h for h in hits if isinstance(h, dict)]
-    texts: list[str] = []
-    for h in hits:
-        if not isinstance(h, dict):
-            continue
-        texts.append(str(h.get("text") or ""))
-        fields = h.get("fields") or {}
-        if isinstance(fields, dict):
-            texts.extend(str(v) for v in fields.values() if v)
-    iocs = extract_iocs(texts)
-    return {
-        "hits_scanned": len(hits),
-        "hits_capped": capped,
-        "iocs": iocs,
-        "error": error,
-    }
+        hits = iter_case_hits(case_id)
+    accumulator = IOCSweep()
+    for hit in hits:
+        accumulator.add_hit(hit)
+    return accumulator.result()
 
 
 def enrich_iocs(iocs: list[str]) -> list[dict[str, Any]]:
-    """Run the TI router for each IOC (mock/local by default; external w/ keys)."""
+    """Enrich every ordered IOC in one bounded asynchronous batch."""
     from nexus.ti import create_default_router
     from nexus.ti.enrich import _run_async
 
     router = create_default_router()
-    results: list[dict[str, Any]] = []
-    for ioc in iocs:
-        try:
-            res = _run_async(router.lookup(ioc))
-            if isinstance(res, dict):
-                results.append(res)
-        except Exception as exc:  # noqa: BLE001 — enrichment is best-effort
-            log.warning("TI lookup failed for %s: %s", ioc, exc)
-    return results
+    return _run_async(router.lookup_many(iocs))
 
 
 def _result_line(res: dict[str, Any]) -> str:
@@ -221,8 +230,15 @@ def _result_line(res: dict[str, Any]) -> str:
         )
         summary = re.sub(r"\s+", " ", str(p.get("summary") or ""))
         piece = f"{name}:{p_verdict}"
+        if p_status == "error" and p.get("error"):
+            reason = re.sub(r"\s+", " ", str(p["error"]))
+            piece += f" ({reason})"
         if summary and p.get("malicious") is True:
             piece += f" ({summary})"
+        history = (p.get("raw") or {}).get("nexus_attempt_failures") or []
+        if history:
+            reasons = [str(item.get("reason") or "") for item in history if isinstance(item, dict)]
+            piece += "; attempts: " + " | ".join(reasons)
         tags.append(piece)
     line = f"- {value} [{ioc_type}] → {verdict} (malicious_count={malicious})"
     if also:
@@ -263,10 +279,14 @@ def render_ti_markdown(sweep: dict[str, Any], results: list[dict[str, Any]]) -> 
 def build_case_ti_context(
     case_id: str,
     *,
-    hits: list[dict[str, Any]] | None = None,
+    hits: Iterable[dict[str, Any]] | None = None,
+    sweep: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Sweep the case's evidence for IOCs and enrich every extracted IOC."""
-    sweep = sweep_case_iocs(case_id, hits=hits)
+    if sweep is not None and hits is not None:
+        raise ValueError("supply the census or hits, not both")
+    if sweep is None:
+        sweep = sweep_case_iocs(case_id, hits=hits)
     ordered = _ordered_iocs(sweep.get("iocs") or {})
     results = enrich_iocs(ordered)
     return {

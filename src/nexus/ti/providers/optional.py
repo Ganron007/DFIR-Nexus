@@ -19,6 +19,7 @@ from nexus.ti.constants import (
     ENV_SHODAN_API_KEY,
     ENV_VIRUSTOTAL_API_KEY,
     OTX_API_BASE,
+    TI_LOOKUP_TIMEOUT_SECONDS,
 )
 from nexus.ti.schemas import IOCType, TIResult
 
@@ -78,7 +79,7 @@ async def query_otx(value: str, *, mock: bool, ioc_type: str = "domain") -> TIRe
     else:
         section, indicator = _otx_indicator_path(it, value)
         url = f"{OTX_API_BASE}/indicators/{section}/{quote(indicator, safe='')}/general"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
             resp = await client.get(url, headers={"X-OTX-API-KEY": key})
             resp.raise_for_status()
             raw = resp.json()
@@ -129,7 +130,7 @@ async def query_shodan(ip: str, *, mock: bool) -> TIResult:
             error=f"Set {ENV_SHODAN_API_KEY} (free tier available)",
         )
     else:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
             try:
                 resp = await client.get(
                     f"https://api.shodan.io/shodan/host/{ip}",
@@ -182,7 +183,7 @@ async def query_virustotal(value: str, *, mock: bool, ioc_type: str = "domain") 
             it.value, "domains"
         )
         url = f"https://www.virustotal.com/api/v3/{path}/{quote(value, safe='')}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
             resp = await client.get(url, headers={"x-apikey": key})
             resp.raise_for_status()
             raw = resp.json()
@@ -213,7 +214,7 @@ async def query_abuseipdb(ip: str, *, mock: bool) -> TIResult:
             error=f"Set {ENV_ABUSEIPDB_API_KEY} (commercial/free-tier API)",
         )
     else:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
             resp = await client.get(
                 "https://api.abuseipdb.com/api/v2/check",
                 params={"ipAddress": ip, "maxAgeInDays": 90},
@@ -235,7 +236,7 @@ async def query_abuseipdb(ip: str, *, mock: bool) -> TIResult:
 
 
 async def _crowdstrike_token(client_id: str, client_secret: str) -> str:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
         resp = await client.post(
             f"{CROWDSTRIKE_API_BASE}/oauth2/token",
             data={"client_id": client_id, "client_secret": client_secret},
@@ -250,7 +251,7 @@ async def _crowdstrike_token(client_id: str, client_secret: str) -> str:
 async def _crowdstrike_intel_lookup(token: str, value: str) -> dict[str, Any]:
     headers = {"Authorization": f"Bearer {token}"}
     safe = value.replace("'", "\\'")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
         query = await client.get(
             f"{CROWDSTRIKE_API_BASE}/intel/queries/indicators/v1",
             params={"filter": f"indicator:'{safe}'", "limit": 5},

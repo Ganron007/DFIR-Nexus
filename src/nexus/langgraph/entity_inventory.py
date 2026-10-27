@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -69,85 +70,92 @@ def _top(counts: dict[str, int]) -> list[dict[str, Any]]:
     return [{"value": v, "count": c} for v, c in ranked]
 
 
-def build_entity_inventory(
-    case_id: str,
-    *,
-    hits: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Census entities from the case's indexed evidence rows (no LLM).
+class EntityAccumulator:
+    """Entity counters and raw-text network census without retaining hits."""
 
-    ``hits`` accepts an already-fetched wide scan so the interpret node pays
-    for ONE match-all read and shares it with the TI sweep (B5).
-    """
-    fetch_error = ""
-    fetch_capped = False
-    if hits is None:
-        from nexus.tools.evidence_index import do_n4_query
+    def __init__(self) -> None:
+        from nexus.langgraph.ti_context import IOCAccumulator
 
-        result = do_n4_query(case_id=case_id, dsl="", limit=None, match_all=True)
-        hits = result.get("hits") or []
-        fetch_error = str(result.get("error") or "")
-        fetch_capped = bool(result.get("count_lower_bound"))
-    hits = [h for h in hits if isinstance(h, dict)]
+        self.hits_scanned = 0
+        self.procs: dict[str, int] = {}
+        self.paths: dict[str, int] = {}
+        self.users: dict[str, int] = {}
+        self.hosts: dict[str, int] = {}
+        self.commands: dict[str, int] = {}
+        self.network = IOCAccumulator()
 
-    procs: dict[str, int] = {}
-    paths: dict[str, int] = {}
-    users: dict[str, int] = {}
-    hosts: dict[str, int] = {}
-    commands: dict[str, int] = {}
-    for h in hits:
+    def add_hit(self, h: dict[str, Any]) -> None:
+        if not isinstance(h, dict):
+            return
+        self.hits_scanned += 1
         text = str(h.get("text") or "")
+        self.network.add_text(text)
         host = str(h.get("host") or "")
         if host:
-            _add(hosts, host)
+            _add(self.hosts, host)
         fields = h.get("fields") or {}
         if isinstance(fields, dict):
             for key, value in fields.items():
                 key_low = str(key).lower()
                 str_value = str(value or "")
                 if key_low in ("computer", "host", "hostname"):
-                    _add(hosts, str_value)
+                    _add(self.hosts, str_value)
                 elif "user" in key_low or "account" in key_low:
                     found = _USER_RE.findall(str_value)
                     for u in found or [str_value]:
                         if _looks_like_path(str(u)):
                             continue  # C:\STUDY\Github\... is a directory, not an account
-                        _add(users, u)
+                        _add(self.users, u)
                 text += " " + str_value
         for m in _EXE_RE.findall(text):
-            _add(procs, m.lower())
+            _add(self.procs, m.lower())
         for m in _PATH_RE.findall(text):
-            _add_path(paths, m)
+            _add_path(self.paths, m)
         low = text.lower()
         for hint in _CMD_HINTS:
             if hint in low:
-                _add(commands, hint)
+                _add(self.commands, hint)
 
-    from nexus.langgraph.ti_context import extract_iocs
 
-    network = extract_iocs([str(h.get("text") or "") for h in hits])
+    def result(self) -> dict[str, Any]:
+        network = self.network.result()
+        inventory = {
+            "hits_scanned": self.hits_scanned,
+            "hits_capped": False,
+            "error": "",
+            "processes": _top(self.procs),
+            "paths": _top(self.paths),
+            "users": _top(self.users),
+            "hosts": _top(self.hosts),
+            "commands": _top(self.commands),
+            "network": {
+                "ipv4": network.get("ipv4", []),
+                "domain": network.get("domain", []),
+                "url": network.get("url", []),
+            },
+            "hashes": {
+                "sha256": network.get("sha256", []),
+                "sha1": network.get("sha1", []),
+                "md5": network.get("md5", []),
+            },
+        }
+        return inventory
 
-    inventory = {
-        "hits_scanned": len(hits),
-        "hits_capped": fetch_capped,
-        "error": fetch_error,
-        "processes": _top(procs),
-        "paths": _top(paths),
-        "users": _top(users),
-        "hosts": _top(hosts),
-        "commands": _top(commands),
-        "network": {
-            "ipv4": network.get("ipv4", []),
-            "domain": network.get("domain", []),
-            "url": network.get("url", []),
-        },
-        "hashes": {
-            "sha256": network.get("sha256", []),
-            "sha1": network.get("sha1", []),
-            "md5": network.get("md5", []),
-        },
-    }
-    return inventory
+
+def build_entity_inventory(
+    case_id: str,
+    *,
+    hits: Iterable[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the existing complete inventory by folding its input stream."""
+    if hits is None:
+        from nexus.langgraph.case_census import iter_case_hits
+
+        hits = iter_case_hits(case_id)
+    accumulator = EntityAccumulator()
+    for hit in hits:
+        accumulator.add_hit(hit)
+    return accumulator.result()
 
 
 def render_inventory_markdown(inv: dict[str, Any]) -> str:

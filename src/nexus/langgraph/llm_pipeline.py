@@ -1949,17 +1949,14 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         except Exception as exc:  # noqa: BLE001 - reported below if the loop cannot run
             digest_error = f"{type(exc).__name__}: {exc}"
             log.warning("case digest build failed: %s", exc)
-        # B5: ONE wide case scan, shared by the TI sweep and the entity
-        # census (each used to run its own match-all fetch back-to-back).
-        wide_hits: list[dict[str, Any]] = []
-        try:
-            from nexus.tools.evidence_index import do_n4_query as _wide_query
+        from nexus.langgraph.case_census import build_setup_census, persist_setup_census
 
-            _wide = _wide_query(case_id=case_id, dsl="", limit=None, match_all=True)
-            wide_hits = [h for h in (_wide.get("hits") or []) if isinstance(h, dict)]
-        except Exception as exc:  # noqa: BLE001 — builders fall back to their own fetch
-            log.debug("wide case scan unavailable: %s", exc)
-        share_hits = wide_hits or None
+        emit_stage(state, "interpret", "setup", "evidence census (TI and entities)")
+        census = build_setup_census(case_id)
+        persist_setup_census(settings.cases_root / case_id, str(state.get("run_id") or ""), census)
+        census_counts = {kind: len(values) for kind, values in census["ti_sweep"]["iocs"].items()}
+        emit_stage(state, "interpret", "setup",
+                   f"evidence census complete: rows={census['ti_sweep']['hits_scanned']}; IOCs={census_counts}")
 
         # Mode 2 deterministic lane: IOC sweep + TI enrichment. Context only —
         # findings still cite evidence audit_ids (FD-001).
@@ -1967,7 +1964,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
 
             emit_stage(state, "interpret", "setup", "threat-intel context")
-            ti_ctx = build_case_ti_context(case_id, hits=share_hits)
+            ti_ctx = build_case_ti_context(case_id, sweep=census["ti_sweep"])
             write_ti_context(settings.cases_root / case_id, ti_ctx)
             ti_block = str(ti_ctx.get("markdown") or "")
         except Exception as exc:  # noqa: BLE001 — TI is best-effort context
@@ -1977,13 +1974,12 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         inv: dict[str, Any] = {}
         try:
             from nexus.langgraph.entity_inventory import (
-                build_entity_inventory,
                 render_inventory_markdown,
                 write_entity_inventory,
             )
 
             emit_stage(state, "interpret", "setup", "entity inventory")
-            inv = build_entity_inventory(case_id, hits=share_hits)
+            inv = census["entity_inventory"]
             write_entity_inventory(settings.cases_root / case_id, inv)
             inv_md = render_inventory_markdown(inv)
         except Exception as exc:  # noqa: BLE001 — inventory is best-effort

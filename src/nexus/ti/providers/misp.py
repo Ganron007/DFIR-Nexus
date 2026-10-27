@@ -8,7 +8,7 @@ import os
 import httpx
 
 from nexus.ti import mock_data
-from nexus.ti.constants import ENV_MISP_API_KEY, ENV_MISP_URL
+from nexus.ti.constants import ENV_MISP_API_KEY, ENV_MISP_URL, TI_LOOKUP_TIMEOUT_SECONDS
 from nexus.ti.schemas import TIResult
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ async def query_misp(value: str, *, mock: bool, ioc_type: str = "domain") -> TIR
             "enforceWarninglist": False,
             "limit": 25,
         }
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 endpoint,
                 json=payload,

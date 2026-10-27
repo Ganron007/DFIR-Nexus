@@ -9,11 +9,14 @@ import httpx
 
 from nexus.ti import mock_data
 from nexus.ti.constants import (
+    ABUSE_CH_FORM_URLS,
     ABUSE_CH_MALWARE_BAZAAR_URL,
+    ABUSE_CH_NO_RESULT_STATUSES,
     ABUSE_CH_THREATFOX_URL,
     ABUSE_CH_URLHAUS_URL,
     ABUSE_CH_YARAIFY_URL,
     ENV_ABUSECH_KEY,
+    TI_LOOKUP_TIMEOUT_SECONDS,
 )
 from nexus.ti.schemas import TIResult
 
@@ -21,19 +24,31 @@ log = logging.getLogger(__name__)
 
 
 def _headers(api_key: str | None) -> dict[str, str]:
-    h = {"Content-Type": "application/json"}
+    h: dict[str, str] = {}  # httpx owns Content-Type for its json/data encoder.
     if api_key:
         h["Auth-Key"] = api_key
     return h
 
 
+class TIReplyError(ValueError):
+    """An API error retains the original HTTP response for failure auditing."""
+
+    def __init__(self, reason: str, response: httpx.Response) -> None:
+        super().__init__(reason)
+        self.response = response
+
+
 async def _post_json(url: str, payload: dict[str, Any], api_key: str | None) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json=payload, headers=_headers(api_key))
+    async with httpx.AsyncClient(timeout=TI_LOOKUP_TIMEOUT_SECONDS) as client:
+        options = {"data": payload} if url in ABUSE_CH_FORM_URLS else {"json": payload}
+        resp = await client.post(url, headers=_headers(api_key), **options)
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, dict):
-            return {"query_status": "error", "raw": data}
+            raise TIReplyError("API reply is not a JSON object", resp)
+        status = str(data.get("query_status") or "")
+        if status != "ok" and status not in ABUSE_CH_NO_RESULT_STATUSES:
+            raise TIReplyError(f"API query_status={status or '(missing)'}: {data}", resp)
         return data
 
 

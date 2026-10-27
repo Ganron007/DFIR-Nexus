@@ -12,11 +12,13 @@ import json
 import logging
 import os
 import re
+import sqlite3
+import tempfile
 import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
@@ -2382,7 +2384,7 @@ def query_index(
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
     catalog: dict[str, Any] | None = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     case_dir = Path(case_dir)
     name = index_name(case_dir.name)
     needles = [t.lower() for t in terms if t.strip()]
@@ -2603,96 +2605,15 @@ def query_index(
                 # scan the index once.
                 hits_raw.extend(_search(client, [], 400))
 
-    hits: list[dict[str, str]] = []
+    hits: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for row in hits_raw:
-        src = row.get("_source") or {}
-        text = str(src.get("text") or "")
-        if start is not None and end is not None:
-            # CSV parity: any date in the row text inside the window keeps the
-            # row (multi-date rows are common). The structured `ts` is
-            # authoritative ONLY when the raw text carries no date at all —
-            # imported rows would otherwise leak in as "no date = kept"
-            # regardless of their real timestamp.
-            if _DATE_RE.search(text):
-                if not _row_in_window(text, start, end):
-                    continue
-            else:
-                ts_raw = src.get("ts")
-                if ts_raw not in (None, ""):
-                    try:
-                        from datetime import UTC as _UTC
-
-                        dt = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=_UTC)
-                        if not (start <= dt <= end):
-                            continue
-                    except ValueError:
-                        pass  # unparsable ts → keep (keyword row without date)
-        low = text.lower()
-        fam = str(src.get("family") or "other")
-        file_rel = str(src.get("file") or "")
-        # Schema-v2 parsed columns ride along for the row-side re-check so a
-        # term that only lives in fields.* still passes ES→CSV parity.
-        fields_map = src.get("fields") or {}
-        fields_low = ""
-        if search_fields and isinstance(fields_map, dict) and fields_map:
-            fields_low = " ".join(
-                str(v) for v in fields_map.values() if v is not None
-            )
-        classified: dict[str, Any] = {
-            "signal": [], "facts": [], "weak": [], "sites": [],
-        }
-        if query is not None:
-            from nexus.langgraph.query_dsl import row_matches
-
-            ok, matched = row_matches(
-                query, line_lower=low, family=fam, file_rel=file_rel,
-                extra_text=fields_low, row_ts=str(src.get("ts") or ""),
-                row_fields=_row_match_fields(src),
-            )
-            if not ok:
-                continue
-        else:
-            # Match-site awareness (Mode 1 keyword semantics): content +
-            # token boundary counts, id/label columns are facts, embedded
-            # matches and timestamps do not count.
-            candidates = [
-                t for t in needles
-                if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))
-            ]
-            classified = classify_matched_terms(fam, fields_map, text, candidates)
-            _count_fact_sites(stats, classified)
-            matched = classified["signal"]
-            if not matched and not classified["facts"]:
-                if not match_all:
-                    continue
-                matched = ["*"]
-        key = (str(src.get("file") or ""), str(src.get("line") or 0))
-        if key in seen:
-            continue
-        seen.add(key)
-        hit: dict[str, Any] = {
-            "family": fam,
-            "file": key[0],
-            "line": key[1],
-            "terms": ",".join(matched),
-            # Structured matched needles — the primary (ES) path used to omit
-            # this, so every downstream consumer comma-split it again (EH-8).
-            "terms_list": matched,
-            "text": text,
-        }
-        if classified.get("facts"):
-            hit["fact_terms"] = classified["facts"]
-            hit["fact_sites"] = classified["sites"]
-        if classified.get("weak"):
-            hit["weak_terms"] = classified["weak"]
-        for key_name in ("host", "user", "event_id", "ts"):
-            value = src.get(key_name)
-            if value not in (None, ""):
-                hit[key_name] = value
-        hits.append(hit)
+        hit = _shape_es_hit(
+            row, start, end, needles, strong, query, match_all,
+            search_fields, seen, stats=stats,
+        )
+        if hit is not None:
+            hits.append(hit)
     if stats is not None:
         stats["hits_returned"] = len(hits)
         stats["hits_capped"] = False
@@ -2726,6 +2647,45 @@ def _index_search_fields(case_id: str) -> bool:
     return False
 
 
+class _HitKeySet(Protocol):
+    def __contains__(self, key: tuple[str, str]) -> bool: ...
+
+    def add(self, key: tuple[str, str]) -> None: ...
+
+
+class _DiskHitKeys:
+    """Exact row-identity deduplication with bounded RAM, regardless of row count."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def __contains__(self, key: tuple[str, str]) -> bool:
+        return self.connection.execute(
+            "SELECT 1 FROM hit_keys WHERE file = ? AND line = ?", key,
+        ).fetchone() is not None
+
+    def add(self, key: tuple[str, str]) -> None:
+        self.connection.execute("INSERT OR IGNORE INTO hit_keys VALUES (?, ?)", key)
+
+
+@contextlib.contextmanager
+def _bounded_hit_keys():
+    # This temporary database contains query bookkeeping, never case/evidence data.
+    # Preserve the existing (file, line) identity across pages and term chunks.
+    with tempfile.TemporaryDirectory(prefix="nexus-hit-keys-") as folder:
+        connection = sqlite3.connect(str(Path(folder) / "keys.sqlite"))
+        try:
+            connection.execute("PRAGMA journal_mode=OFF")
+            connection.execute("PRAGMA synchronous=OFF")
+            connection.execute("PRAGMA cache_size=-2048")
+            connection.execute(
+                "CREATE TABLE hit_keys (file TEXT, line TEXT, PRIMARY KEY (file, line)) WITHOUT ROWID"
+            )
+            yield _DiskHitKeys(connection)
+        finally:
+            connection.close()
+
+
 def _shape_es_hit(
     row: dict[str, Any],
     start,
@@ -2735,9 +2695,11 @@ def _shape_es_hit(
     query: Any | None,
     match_all: bool,
     search_fields: bool,
-    seen: set[tuple[str, str]],
+    seen: _HitKeySet,
+    *,
+    stats: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """One ES source row -> N4 hit, replicating query_index semantics exactly."""
+    """The shared stored-document to N4-hit contract for both ES query paths."""
     src = row.get("_source") or {}
     text = str(src.get("text") or "")
     if start is not None and end is not None:
@@ -2784,6 +2746,7 @@ def _shape_es_hit(
             if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))
         ]
         classified = classify_matched_terms(fam, fields_map, text, candidates)
+        _count_fact_sites(stats, classified)
         matched = classified["signal"]
         if not matched and not classified["facts"]:
             if not match_all:
@@ -2800,6 +2763,7 @@ def _shape_es_hit(
         "terms": ",".join(matched),
         "terms_list": matched,
         "text": text,
+        "fields": fields_map if isinstance(fields_map, dict) else {},
     }
     if classified.get("facts"):
         hit["fact_terms"] = classified["facts"]
@@ -2858,12 +2822,11 @@ def iter_index_hits(
     start, end = window or (None, None)
     filt = _index_window_filter(window)
     size = max(100, min(int(page or 1000), 5000))
-    with _client() as client:
+    with _client() as client, _bounded_hit_keys() as seen:
         head = client.head(f"/{name}")
         if head.status_code != 200:
             raise IndexMissing(f"no index {name}")
         search_fields = _index_search_fields(case_dir.name)
-        seen: set[tuple[str, str]] = set()
         chunks = _index_query_terms(needles, strong, query, match_all,
                                     search_fields, catalog=catalog)
         for base in chunks:

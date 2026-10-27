@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -20,6 +21,7 @@ from nexus.ti.constants import (
     ENV_SHODAN_API_KEY,
     ENV_VIRUSTOTAL_API_KEY,
     FANOUT_PROVIDERS,
+    TI_IOC_WORKERS,
     ti_mock_enabled,
 )
 from nexus.ti.providers import abuse_ch, misp, optional
@@ -150,7 +152,48 @@ class TIRouter:
             )
         return out
 
+    def _failure(self, provider: str, value: str, ioc_type: IOCType, exc: Exception) -> TIResult:
+        it = ioc_type.value
+        error_msg = f"{type(exc).__name__}: {str(exc).strip() or 'no exception message supplied'}"
+        for env_name, env_val in os.environ.items():
+            if env_val and len(env_val) >= 8 and env_name.startswith("NEXUS_"):
+                error_msg = error_msg.replace(env_val, "***REDACTED***")
+        # One line with the reason: the result below carries the failure. A full traceback per
+        # failed lookup buried a Mode 1 run's console (2026-10-14).
+        raw = {"nexus_failure": {"provider": provider, "ioc": value,
+                                 "http_status": None, "retry_after": None,
+                                 "exception_type": type(exc).__name__}}
+        response = getattr(exc, "response", None)
+        if response is not None:
+            raw["nexus_failure"]["http_status"] = response.status_code
+            raw["nexus_failure"]["retry_after"] = response.headers.get("Retry-After")
+        detail = raw["nexus_failure"]
+        log.warning("TI provider %s IOC=%s HTTP=%s Retry-After=%r failed: %s",
+                    provider, value, detail["http_status"], detail["retry_after"], error_msg)
+        return TIResult(
+            provider=provider,
+            ioc_type=it,
+            value=value,
+            status="error",
+            summary=f"{provider} lookup failed",
+            error=error_msg,
+            raw=raw,
+        )
+
     async def _dispatch(self, provider: str, value: str, ioc_type: IOCType) -> TIResult:
+        if self.use_mock or provider not in ALL_TI_PROVIDERS or self._provider_mode(provider) != ProviderMode.LIVE:
+            return await self._dispatch_once(provider, value, ioc_type)
+        from nexus.ti.scheduling import run_provider_lookup
+
+        info = next(p for p in self.list_providers() if p.name == provider)
+        account = hashlib.sha256("\0".join(os.environ.get(k, "") for k in info.env_keys).encode()).hexdigest()
+        return await run_provider_lookup(
+            provider, account,
+            lambda: self._dispatch_once(provider, value, ioc_type),
+            lambda exc: self._failure(provider, value, ioc_type, exc),
+        )
+
+    async def _dispatch_once(self, provider: str, value: str, ioc_type: IOCType) -> TIResult:
         if provider not in ALL_TI_PROVIDERS:
             return TIResult(
                 provider=provider,
@@ -187,21 +230,7 @@ class TIRouter:
             if provider == "crowdstrike":
                 return await optional.query_crowdstrike(value, mock=mock, ioc_type=it)
         except Exception as exc:
-            error_msg = str(exc)
-            for env_name, env_val in os.environ.items():
-                if env_val and len(env_val) >= 8 and env_name.startswith("NEXUS_"):
-                    error_msg = error_msg.replace(env_val, "***REDACTED***")
-            # One line with the reason: the result below carries the failure. A full traceback per
-            # failed lookup buried a Mode 1 run's console (2026-10-14).
-            log.warning("TI provider %s failed: %s", provider, error_msg[:200])
-            return TIResult(
-                provider=provider,
-                ioc_type=it,
-                value=value,
-                status="error",
-                summary=f"{provider} lookup failed",
-                error=error_msg,
-            )
+            return self._failure(provider, value, ioc_type, exc)
         return TIResult(
             provider=provider,
             ioc_type=it,
@@ -254,6 +283,22 @@ class TIRouter:
             "malicious_count": malicious,
             "results": [r.to_dict() for r in results],
         }
+
+    async def lookup_many(self, values: list[str]) -> list[dict[str, Any]]:
+        """A complete ordered IOC batch using four workers, never one task per IOC.
+
+        Four is an internal scheduling bound, not a provider request quota.
+        Provider rate/backoff policies belong at the shared dispatch owner.
+        """
+        results: list[dict[str, Any]] = [{} for _ in values]
+        pending = iter(enumerate(values))
+
+        async def worker() -> None:
+            for index, value in pending:
+                results[index] = await self.lookup(value)
+
+        await asyncio.gather(*(worker() for _ in range(min(TI_IOC_WORKERS, len(values)))))
+        return results
 
     async def fanout(self, value: str, ioc_type: str | None = None) -> dict[str, Any]:
         it = IOCType(ioc_type) if ioc_type else infer_ioc_type(value)
