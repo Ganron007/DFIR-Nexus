@@ -19,6 +19,8 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "httpx>=0.27",
+    # Native read guards and model generation consume the same JSON contracts.
+    "jsonschema>=4.18",
     # Spreadsheet reports (.xlsx) examiners receive as evidence: the importer reads them (2026-10-18).
     "openpyxl>=3.1",
     # Windows has no system IANA database; pin historical timezone rules for reproducible task timestamps.
@@ -57,8 +59,6 @@ pipeline = [
     "langgraph>=0.2",
     "langchain-anthropic>=0.1",
     "langchain-openai>=0.1",
-    # Validate schema-constrained replies before a read tool can execute.
-    "jsonschema>=4.18",
     "langchain-mcp-adapters>=0.0.1",
     # Security pin (PYSEC-2026-3545/46/47) — aiohttp arrives via langchain.
     "aiohttp>=3.14.3",

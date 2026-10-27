@@ -8,8 +8,26 @@ Read-only, case-index-pinned, ES-required (no CSV pretence).
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
+
+from nexus.langgraph.aggregation_contract import (
+    COMPOSITE_OPTIONS,
+    COMPOSITE_SIZE_MAX,
+    COMPOSITE_SIZE_MIN,
+    FIXED_DURATION,
+    TOP_HITS_MAX,
+    TOP_HITS_MIN,
+    option_problem,
+)
+from nexus.langgraph.aggregation_contract import (
+    OPTIONS as AGG_OPTIONS,
+)
+from nexus.langgraph.aggregation_contract import (
+    RANGE_BOUND_KEYS as AGG_RANGE_BOUND_KEYS,
+)
+from nexus.langgraph.aggregation_contract import (
+    REQUIRED_KEYS as AGG_REQUIRED_KEYS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +35,6 @@ DEFAULT_SIZE = 200
 PAGE_SIZE = 1000
 MAX_AGGS = 40
 AGG_PREVIEW_MAX = 10
-FIXED_DURATION = re.compile(r"[1-9][0-9]*(?:ms|[smhd])")
 _READ_SIZE_MINIMUM = {"es_search": 1, "es_aggregate": 0}
 
 _QUERY_KEYS = {
@@ -35,15 +52,7 @@ FIELD_CLAUSE_OPTIONS: dict[str, frozenset[str]] = {
 #: Clauses whose field object holds the pattern under `value` (match/match_phrase take `query`).
 VALUE_CLAUSES = frozenset({"term", "prefix", "wildcard", "regexp"})
 _RANGE_BODY_KEYS = {"gte", "gt", "lte", "lt", "format", "boost", "time_zone"}
-_AGG_TYPES = {
-    "terms", "date_histogram", "cardinality", "composite", "min", "max",
-    "avg", "sum", "value_count", "histogram", "range",
-    # D389: the model counts a condition with `filter` and buckets time with `date_range` (T01, T04).
-    "filter", "date_range",
-    # D405: a time span is `stats` on `ts`, several named conditions are `filters`, example rows per bucket are
-    # `top_hits` (T21 Mode 3: eight calls refused).
-    "stats", "filters", "top_hits",
-}
+_AGG_TYPES = set(AGG_OPTIONS) | {"filter"}
 #: Aggregations that read a field's doc values: a `text` field needs its `.kw` keyword sub-field (D391).
 DOC_VALUE_AGGS = frozenset({"terms", "cardinality", "value_count"})
 #: Aggregations that compute on numbers or dates: a `text` field cannot be their input (D405: `sum` on text `bytes`).
@@ -52,55 +61,10 @@ NUMERIC_AGGS = frozenset({
 })
 #: Options a `terms` query takes beside its one field (`{"terms": {"f": [..], "boost": 2}}` is valid ES; D405).
 TERMS_OPTIONS = frozenset({"boost"})
-#: Most example rows a `top_hits` bucket may return.
-TOP_HITS_MIN = 1
-TOP_HITS_MAX = 20
-COMPOSITE_SIZE_MIN = 1
-COMPOSITE_SIZE_MAX = 1000
-AGG_RANGE_BOUND_KEYS = frozenset({"from", "to", "key"})
-_COMPOSITE_SOURCES = {"terms", "date_histogram", "histogram"}
-# Strict per-type body allowlists: anything else (script!) is rejected.
-_AGG_BODY_KEYS = {
-    "terms": {"field", "size", "order", "missing", "min_doc_count",
-              "shard_size", "include", "exclude"},
-    "date_histogram": {"field", "calendar_interval", "fixed_interval",
-                       "time_zone", "format", "min_doc_count", "missing",
-                       "order", "offset", "extended_bounds", "hard_bounds"},
-    "date_range": {"field", "ranges", "format", "time_zone", "keyed", "missing"},
-    "histogram": {"field", "interval", "min_doc_count", "missing", "order",
-                  "offset"},
-    "range": {"field", "ranges", "keyed", "missing"},
-    "cardinality": {"field", "precision_threshold", "missing"},
-    "min": {"field", "missing", "format"},
-    "max": {"field", "missing", "format"},
-    "avg": {"field", "missing", "format"},
-    "sum": {"field", "missing", "format"},
-    "value_count": {"field", "missing"},
-    "composite": {"sources", "size", "after"},
-    "stats": {"field", "missing", "format"},
-    "filters": {"filters", "other_bucket", "other_bucket_key"},
-    "top_hits": {"size", "_source", "sort"},
-}
-_COMPOSITE_SOURCE_KEYS = {
-    # missing_bucket keeps the documents a source field is absent from (a task registration names no
-    # program, D244); ES 8 composite sources take it in place of `missing`. D406: `missing` and `size` were
-    # allowed here and ES 8.17.4 refuses both in a source (measured 2026-10-26: a raw 400 "[terms] unknown
-    # field [size]" on T18 Mode 3); a source's size is the composite's own `size`.
-    "terms": {"field", "order", "missing_bucket"},
-    "date_histogram": {"field", "calendar_interval", "fixed_interval",
-                       "time_zone", "format", "order", "offset", "missing_bucket"},
-    "histogram": {"field", "interval", "order", "offset", "missing_bucket"},
-}
-
-
-# Required canonical keys are shared by the validator and model producer.
-AGG_REQUIRED_KEYS = {
-    kind: (["sources"] if kind == "composite" else
-           ["filters"] if kind == "filters" else
-           [] if kind in ("filter", "top_hits") else
-           ["field", "ranges"] if kind in ("range", "date_range") else ["field"])
-    for kind in _AGG_TYPES
-}
+# Option names and value types have one owner for producer, normalizer and guard.
+_COMPOSITE_SOURCES = set(COMPOSITE_OPTIONS)
+_AGG_BODY_KEYS = {kind: set(properties) for kind, properties in AGG_OPTIONS.items()}
+_COMPOSITE_SOURCE_KEYS = {kind: set(properties) for kind, properties in COMPOSITE_OPTIONS.items()}
 
 
 class ESQueryError(ValueError):
@@ -537,6 +501,12 @@ def aggregation_range_requirement(agg_type: str) -> str:
             '{"first": {"min": {"field": "ts"}}, "last": {"max": {"field": "ts"}}}')
 
 
+def _validate_aggregation_option_values(kind, body, *, composite_source=False):
+    problem = option_problem(kind, body, composite_source=composite_source)
+    if problem:
+        raise ESQueryError(problem)
+
+
 def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
     """Allowlist aggregation trees (terms/date_histogram/composite/…)."""
     if not isinstance(aggs, dict) or not aggs:
@@ -572,6 +542,7 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
                     raise ESQueryError(f"unsupported filters options: {sorted(unknown_body)}")
                 for query in queries:
                     validate_query(query)
+                _validate_aggregation_option_values(agg_type, body)
             sub = spec.get("aggs")
             if sub is not None:
                 _validate_agg_structure(sub, depth + 1)
@@ -587,6 +558,7 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
                     raise ESQueryError(f"top_hits size must be {TOP_HITS_MIN}..{TOP_HITS_MAX}")
             except (TypeError, ValueError):
                 raise ESQueryError("top_hits size must be an integer") from None
+            _validate_aggregation_option_values(agg_type, body)
             continue
         if "field" in AGG_REQUIRED_KEYS[agg_type] and not body.get("field"):
             # ES answers a field-less metric with a raw 400 (D395: `{"value_count": {}}` to count rows).
@@ -609,6 +581,7 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
             raise ESQueryError(
                 f"unsupported {agg_type} options: {sorted(unknown_body)}"
             )
+        _validate_aggregation_option_values(agg_type, body)
         if agg_type == "composite":
             sources = body.get("sources")
             if not isinstance(sources, list) or not sources:
@@ -632,6 +605,7 @@ def _validate_agg_structure(aggs: Any, depth: int = 0) -> None:
                         raise ESQueryError(
                             f"unsupported composite source options: {sorted(unknown_inner)}"
                         )
+                    _validate_aggregation_option_values(source_types[0], inner, composite_source=True)
             if "size" in body:
                 try:
                     if not COMPOSITE_SIZE_MIN <= int(body["size"]) <= COMPOSITE_SIZE_MAX:

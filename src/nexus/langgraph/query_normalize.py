@@ -29,6 +29,8 @@ import logging
 import re
 from typing import Any
 
+from nexus.langgraph.aggregation_contract import normalize_option_values
+
 # The validator's own tables (one definition each, rule 16): what this surface rewrites is exactly what it accepts.
 # `es_native` imports only the standard library at module level, so this stays a pure module.
 from nexus.langgraph.es_native import (
@@ -975,6 +977,8 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                         notes.extend(sub_notes)
                         named[label] = fixed
                     inner = spec.get("aggs") if isinstance(spec.get("aggs"), dict) else spec.get("aggregations")
+                    agg_body, value_notes = normalize_option_values("filters", agg_body)
+                    notes.extend(value_notes)
                     out[name] = {"filters": {**agg_body, "filters": named},
                                  **({"aggs": walk(inner, depth + 1)} if isinstance(inner, dict) else {})}
                     continue
@@ -1021,16 +1025,6 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                         # remain unsupported and reach the unchanged validator.
                         patched.pop("include_in_aggregation")
                         notes.append(f"include_in_aggregation=true: kept named aggregation {name!r}")
-                    # ES wants numbers for these; a model writes "100", or `true` for min_doc_count (D390).
-                    for num_key in ("size", "shard_size", "min_doc_count",
-                                    "precision_threshold"):
-                        raw = patched.get(num_key)
-                        if isinstance(raw, bool):
-                            patched[num_key] = int(raw)
-                            notes.append(f"coerced `{num_key}` from a boolean to {int(raw)}")
-                        elif isinstance(raw, str) and raw.strip().isdigit():
-                            patched[num_key] = int(raw.strip())
-                            notes.append(f"coerced `{num_key}` from a string to a number")
                     if agg_type == "date_histogram":
                         patched = _normalize_date_histogram(patched, notes)
                     if agg_type in ("range", "date_range"):
@@ -1061,6 +1055,10 @@ def normalize_aggs(aggs: Any, types: dict[str, str] | None = None) -> tuple[dict
                             for i, s in enumerate(patched["sources"])
                         ]
                         patched = _composite_source_options(patched, notes)
+                    patched, value_notes = normalize_option_values(
+                        agg_type, patched, composite_source=composite_source,
+                    )
+                    notes.extend(value_notes)
                     spec = {agg_type: patched}
                     if isinstance(sub, dict):
                         spec["aggs"] = walk(sub, depth + 1)

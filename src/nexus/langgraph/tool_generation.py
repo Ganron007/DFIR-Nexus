@@ -12,6 +12,7 @@ from types import UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from nexus.langgraph import es_native as es
+from nexus.langgraph.aggregation_contract import body_constraints, option_properties
 
 CASE_FIELD_PREFIX = "case_fields_"
 
@@ -52,24 +53,19 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
                             {"type": "string", "enum": eligible})
         field_sets.setdefault(tuple(eligible), key)
 
-    def body_schema(kind, keys):
-        props: dict[str, Any] = dict.fromkeys(sorted(keys), {})
+    def body_schema(kind, keys, *, composite_source=False):
+        props = option_properties(kind, composite_source=composite_source)
+        assert set(props) == set(keys)
         if "field" in keys:
             props["field"] = {"$ref": "#/$defs/" + CASE_FIELD_PREFIX + kind}
-        if "ranges" in keys:
-            bounds = {key: {"type": "string"} if key == "key" else {}
-                      for key in sorted(es.AGG_RANGE_BOUND_KEYS)}
-            props["ranges"] = {"type": "array", "minItems": 1, "items": _object(bounds)}
-        if "fixed_interval" in keys:
-            props["fixed_interval"] = {"type": "string", "pattern": "^" + es.FIXED_DURATION.pattern + "$"}
-        body = _object(props, es.AGG_REQUIRED_KEYS[kind])
+        body = _object(props, **body_constraints(kind))
         if "ranges" in keys:
             body["description"] = es.aggregation_range_requirement(kind)
         return body
 
     sources = []
     for kind in sorted(es._COMPOSITE_SOURCES):
-        sources.append(_object({kind: body_schema(kind, es._COMPOSITE_SOURCE_KEYS[kind])}, [kind]))
+        sources.append(_object({kind: body_schema(kind, es._COMPOSITE_SOURCE_KEYS[kind], composite_source=True)}, [kind]))
     definitions["source"] = {"type": "object", "minProperties": 1, "maxProperties": 1,
                               "additionalProperties": {"anyOf": sources}}
     definitions["aggregations"] = {"type": "object", "minProperties": 1, "maxProperties": es.MAX_AGGS,
@@ -80,13 +76,7 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
         if kind == "composite":
             body["properties"].update({
                 "sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source"}},
-                "size": {"type": "integer", "minimum": es.COMPOSITE_SIZE_MIN,
-                         "maximum": es.COMPOSITE_SIZE_MAX},
-                "after": {"type": "object"},
             })
-        if kind == "top_hits":
-            body["properties"]["size"] = {"type": "integer", "minimum": es.TOP_HITS_MIN,
-                                           "maximum": es.TOP_HITS_MAX}
         props = {kind: body}
         if kind != "top_hits":
             props["aggs"] = {"$ref": "#/$defs/aggregations"}
