@@ -190,9 +190,8 @@ def do_n4_query(case_id: str = "", dsl: str = "", limit: int | None = None,
     if result.get("error"):
         return {**result, "case_id": Path(case_dir).name}
     hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
-    if result.get("backend") != "elasticsearch":
-        with contextlib.suppress(Exception):
-            hits = attach_hit_fields(case_dir, hits)  # CSV rows still need parsed fields.
+    with contextlib.suppress(Exception):
+        hits = attach_hit_fields(case_dir, hits)
     trimmed = [_trim_hit(h) for h in hits]
     aid = audit.log(
         tool="n4_query",

@@ -1,0 +1,21 @@
+{
+  "doc_id": "88fe4e4f375ec614962f4b6cb45a0238947b6733",
+  "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/json/general.json",
+  "line": "3043",
+  "text": "{\"class\":\"GEN\",\"ver\":\"5.19\",\"sys\":\"16299_aa660df4\",\"type\":\"process\",\"pid\":200,\"proc\":\"winlogon.exe\",\"i\":200,\"obj\":\"ffff930ef10dd580\",\"num\":8040,\"hex\":\"77f00000\",\"desc\":\"\\\\Device\\\\HarddiskVolume2\\\\Windows\\\\System32\\\\winlogon.exe\",\"desc2\":\"flags:[     ] user:[SYSTEM] upath:[C:\\\\WINDOWS\\\\system32\\\\winlogon.exe] cmd:[winlogon.exe] createtime:[2020-02-18 05:02:47 UTC] integrity:[System]\"}",
+  "indexed_fields": {
+    "class": "GEN",
+    "ver": "5.19",
+    "sys": "16299_aa660df4",
+    "type": "process",
+    "pid": "200",
+    "proc": "winlogon.exe",
+    "i": "200",
+    "obj": "ffff930ef10dd580",
+    "num": "8040",
+    "hex": "77f00000",
+    "desc": "\\Device\\HarddiskVolume2\\Windows\\System32\\winlogon.exe",
+    "desc2": "flags:[     ] user:[SYSTEM] upath:[C:\\WINDOWS\\system32\\winlogon.exe] cmd:[winlogon.exe] createtime:[2020-02-18 05:02:47 UTC] integrity:[System]"
+  },
+  "source": "Captured real T22 indexed document; only transport/field preservation is tested."
+}

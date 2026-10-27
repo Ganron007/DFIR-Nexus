@@ -54,13 +54,13 @@ def test_n4_tool_does_not_reparse_indexed_fields(tmp_path, monkeypatch):
         "backend": "elasticsearch", "hits": [raw_hit], "count": 1, "complete": True,
     })
     reparsed = []
-    original = query_pack.attach_hit_fields
+    original = query_pack._split_csv_row
 
     def record_reparse(*args, **kwargs):
         reparsed.append(True)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(query_pack, "attach_hit_fields", record_reparse)
+    monkeypatch.setattr(query_pack, "_split_csv_row", record_reparse)
     result = evidence_index.do_n4_query(case_id=tmp_path.name, dsl="", limit=None, match_all=True)
     assert result["hits"][0]["fields"] == fields
     assert reparsed == [], "indexed fields must not be reconstructed from source files"
@@ -230,3 +230,23 @@ def test_setup_stream_rejects_an_invalid_case_without_reading(monkeypatch):
     monkeypatch.setattr(query_pack, "iter_all_hits", forbidden)
     with pytest.raises(ValueError):
         list(case_census.iter_case_hits("../CASE-OTHER"))
+
+
+@pytest.mark.parametrize("empty_fields", [False, True])
+def test_every_enrichment_caller_preserves_captured_stored_fields(empty_fields, tmp_path, monkeypatch):
+    from nexus.langgraph import pipeline_runs, query_pack
+
+    captured = json.loads((Path(__file__).parent / "fixtures/t22_indexed_device_row.json").read_text(encoding="utf-8"))
+    fields = {} if empty_fields else captured["indexed_fields"]
+    hit = {"file": captured["file"], "line": captured["line"], "text": captured["text"],
+           "fields": fields, "host": ""}
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("stored indexed fields must not reopen or parse their source")
+
+    monkeypatch.setattr(pipeline_runs, "resolve_tools_extractions", forbidden)
+    result = query_pack.attach_hit_fields(tmp_path, [hit])
+    assert result == [hit]
+    assert result[0]["fields"] == fields
+    assert result[0]["host"] == ""
+    assert "device" not in [result[0]["host"], *result[0]["fields"].keys()]

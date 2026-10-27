@@ -17,11 +17,8 @@ def iter_case_hits(case_id: str) -> Iterator[dict[str, Any]]:
     if error or case_dir is None:
         raise ValueError(error or "no active case")
     for hit in iter_all_hits(case_dir, [], (None, None), match_all=True):
-        # Indexed hits already carry the authoritative parsed fields. The
-        # fallback's legacy source parser remains its sole field owner.
-        if "fields" not in hit:
-            hit = attach_hit_fields(case_dir, [hit])[0]
-        yield hit
+        # The shared boundary owns preservation of stored fields and fallback parsing.
+        yield attach_hit_fields(case_dir, [hit])[0]
 
 
 def build_setup_census(case_id: str) -> dict[str, Any]:

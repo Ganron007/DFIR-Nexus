@@ -1253,21 +1253,25 @@ def attach_hit_fields(
     columns instead of raw text rows.
 
     Headers are read once per source file (line 1, cached process-wide).
-    Rows are split with the csv reader so quoted commas survive. ES and
-    CSV backends share the same hit shape, so this works for both.
+    Stored fields, including an empty map, are authoritative and are never
+    re-parsed. Only hits without fields use the source parser below.
     """
     case_dir = Path(case_dir)
     if not hits:
         return hits
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    roots = machine_roots(case_dir)
-    tools_root = resolve_tools_extractions(case_dir, run_id)
-    # Hits can come from the tools run, the SIFT mirror, or the ingest store —
-    # resolve the source file against every candidate root.
-    candidate_roots = [tools_root, tools_root.parent / "sift" / "extractions", case_dir]
+    roots = None
+    candidate_roots = None
     out: list[dict[str, Any]] = []
     for h in hits:
+        if isinstance(h.get("fields"), dict):
+            out.append(h)
+            continue
+        if candidate_roots is None:
+            roots = machine_roots(case_dir)
+            tools_root = resolve_tools_extractions(case_dir, run_id)
+            candidate_roots = [tools_root, tools_root.parent / "sift" / "extractions", case_dir]
         row = dict(h)
         fields: dict[str, str] = {}
         file_rel = str(h.get("file") or "")
