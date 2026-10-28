@@ -545,6 +545,7 @@ def alerts_from_leads(case_dir: Path, leads: list[dict[str, Any]]) -> list[dict[
             "title": str(lead.get("subject") or "")[:160],
             "detail": str(lead.get("detail") or "")[:300],
             "count": int(extra.get("count") or 0),
+            "score": float(lead.get("score") or 0.0),
             "time": str(extra.get("first") or "")[:40],
             "host": str((extra.get("hosts") or [""])[0] or "")[:60],
             "doc_ids": doc_ids,
@@ -552,7 +553,9 @@ def alerts_from_leads(case_dir: Path, leads: list[dict[str, Any]]) -> list[dict[
         }
         records[id(alert)] = _lead_record(lead)
         alerts.append(alert)
-    alerts.sort(key=lambda a: (_ALERT_LEVEL_RANK.get(a["level"], 2), a["time"]))
+    # The lead's own score first: a scanner level ("severity 100") is not in the rank table, and sorted after
+    # every `high` item by it (D459).
+    alerts.sort(key=lambda a: (-a["score"], _ALERT_LEVEL_RANK.get(a["level"], 2), a["time"]))
     if not alerts:
         return alerts
     rows: dict[int, dict[str, Any]] = {}

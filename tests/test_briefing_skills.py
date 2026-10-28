@@ -523,3 +523,17 @@ def test_top_entities_are_typed_and_never_paths(tmp_path, monkeypatch):
     assert set(b["entities"]) == {"process"}
     assert b["entities"]["process"][0]["source_file"] == "vol/pslist.txt"
     assert b["paths_summary"]["distinct"] == 0
+
+
+
+def test_a_scanner_severity_alert_ranks_by_its_score(tmp_path, monkeypatch):
+    """D459: T22's YARA alert at `severity 100` sorted after `high` review items by its level."""
+    from nexus.analysis import leads as leads_mod
+    from nexus.langgraph.briefing import alerts_from_leads
+
+    def lead(subject, level, score):
+        return leads_mod.Lead(kind="rule_engine", subject=subject, family="memprocfs", detail="", score=score,
+                              audit_ids=(f"a-{subject}",), extra={"crit_high": True, "level": level}).to_dict()
+
+    alerts = alerts_from_leads(tmp_path, [lead("baseline item", "high", 0.5), lead("YARA match", "severity 100", 1.0)])
+    assert [a["title"] for a in alerts] == ["YARA match", "baseline item"]
