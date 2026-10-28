@@ -24,10 +24,12 @@ identifies (``Threat_name``). FindEvil's other verdict types are one neutral lea
 """
 from __future__ import annotations
 
+import fnmatch
 import logging
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -54,12 +56,24 @@ PERSISTENCE_SOURCES: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
      {"bool": {"filter": [{"term": {"family": "memprocfs"}}, {"wildcard": {"file": "*/csv/services.csv"}}]}}),
 )
 
-#: Score of a persistence lead, by where its unknown executable sits.
-SCORE_WINDOWS_PROGRAM = 1.0
-SCORE_WINDOWS_DRIVER = 0.9
-SCORE_ELSEWHERE = 0.6
-#: A FindEvil verdict with no severity of its own.
-SCORE_MEMORY_NEUTRAL = 0.5
+#: Score of a persistence lead. A program no Windows build ships is a review item (data reduction against the
+#: baseline, SANS FOR508 Memory Baseliner; UNKNOWN is neutral, FD-004), ordered by where it sits. It is crit/high
+#: only with corroboration: its name is a well-known Windows process at a path none of that process's valid paths
+#: names (masquerading, ATT&CK T1036.005; the triage context's ``expected_processes``, from SANS and MemProcFS), or
+#: a detection or scanner verdict names the same program (``corroborate_baseline_leads``). Any Windows file name at
+#: another path is not enough: on T22 that took VMware's vmxnet3.sys and pvscsi.sys (Windows keeps copies in its
+#: driver store) and Chrome's elevation_service.exe (Edge ships one) for masquerades.
+#: Part 12 FM-5 (operator 2026-10-28): every unknown program in the Windows directory used to be crit/high, which
+#: on T22 flagged Sysmon, McAfee and the responders' own F-Response and Mnemosyne.
+SCORE_MASQUERADE = 1.0
+SCORE_WINDOWS_PROGRAM = 0.5
+SCORE_WINDOWS_DRIVER = 0.45
+SCORE_ELSEWHERE = 0.3
+#: A FindEvil verdict by MemProcFS's own false-positive rating (``findevil_rating``); unrated is neutral.
+SCORE_BY_FP = {"LOW": 0.7, "MEDIUM": 0.5, "HIGH": 0.2, "": 0.5}
+SCORE_MEMORY_NEUTRAL = SCORE_BY_FP[""]
+#: The EPROCESS image name MemProcFS and Volatility report is cut to 14 characters.
+_IMAGE_NAME_CHARS = 14
 
 _DRIVER_SUFFIXES = (".sys",)
 
@@ -191,7 +205,17 @@ def _entry_known(baseline: Any, entry: _Entry) -> bool:
     return bool(baseline.lookup_service(entry.name))
 
 
-def persistence_leads_from(entries: Iterable[_Entry], baseline: Any) -> list[Lead]:
+def masquerades(context: Any, normalized: str) -> bool:
+    """A well-known Windows process name at a path none of its valid paths names (T1036.005)."""
+    name = normalized.rsplit("\\", 1)[-1]
+    if context is None or not name or "\\" not in normalized:
+        return False
+    row = context.get_expected_process(name) or {}
+    paths = [str(p).lower() for p in row.get("valid_paths") or [] if p]
+    return bool(paths) and not any(fnmatch.fnmatch(normalized.lower(), p) for p in paths)
+
+
+def persistence_leads_from(entries: Iterable[_Entry], baseline: Any, context: Any = None) -> list[Lead]:
     """One lead per executable outside the baseline, naming the tasks and services that run it."""
     by_exe: dict[str, dict[str, Any]] = {}
     for entry in entries:
@@ -216,8 +240,10 @@ def persistence_leads_from(entries: Iterable[_Entry], baseline: Any) -> list[Lea
         entries_here = sorted(item["entries"], key=lambda e: (e.kind, e.name.lower()))
         in_windows = _in_windows_directory(normalized)
         driver = normalized.endswith(_DRIVER_SUFFIXES)
-        crit = in_windows and not driver
-        score = SCORE_WINDOWS_PROGRAM if crit else SCORE_WINDOWS_DRIVER if in_windows else SCORE_ELSEWHERE
+        masquerade = masquerades(context, normalized)
+        crit = masquerade
+        score = (SCORE_MASQUERADE if masquerade else SCORE_WINDOWS_DRIVER if in_windows and driver
+                 else SCORE_WINDOWS_PROGRAM if in_windows else SCORE_ELSEWHERE)
         named = [
             f"{e.kind} {e.name}" + ("" if _entry_known(baseline, e) else " (not in the Windows baseline)")
             for e in entries_here[:4]
@@ -233,6 +259,9 @@ def persistence_leads_from(entries: Iterable[_Entry], baseline: Any) -> list[Lea
                 f"it, and it sits {where}"
                 + (" (a kernel driver)" if driver else "")
                 + (f"; seen {item['first']} to {item['last']}" if item["first"] else "")
+                + ("; its name is a well-known Windows process at a path none of its valid paths names "
+                   "(masquerading, T1036.005)"
+                   if masquerade else "; a review item: absent from the baseline is not suspicious by itself")
             ),
             rows=(),
             audit_ids=(),
@@ -243,6 +272,7 @@ def persistence_leads_from(entries: Iterable[_Entry], baseline: Any) -> list[Lea
                 "engine": "triage baseline",
                 "executable": item["written"],
                 "in_windows_directory": in_windows,
+                "masquerade": masquerade,
                 "entries": [{"kind": e.kind, "name": e.name, "in_baseline": _entry_known(baseline, e)}
                             for e in entries_here],
                 "first": item["first"],
@@ -332,12 +362,21 @@ def _baseline() -> Any:
     return known_good
 
 
+def _context() -> Any:
+    """The triage context database (expected processes); None when it is not installed."""
+    from nexus.triage.server import _open_dbs
+
+    _known_good, context = _open_dbs()
+    return context
+
+
 def persistence_leads(case_dir: Path | str, *, probe: Any = None) -> list[Lead]:
     """Persistence leads for a case from its index. ``probe`` may supply ``persistence_rows()`` and ``baseline``."""
     case_id = _case_id(Path(case_dir))
     if probe is not None and hasattr(probe, "persistence_rows"):
         rows = list(probe.persistence_rows())
         baseline = probe.baseline
+        context = getattr(probe, "context", None)
     elif probe is not None and not hasattr(probe, "case_dir"):
         return []  # a test probe without the inventory seam
     elif not _indexed(Path(case_dir)):
@@ -345,7 +384,8 @@ def persistence_leads(case_dir: Path | str, *, probe: Any = None) -> list[Lead]:
     else:
         rows = _composite_rows(case_id)
         baseline = _baseline()
-    leads = persistence_leads_from(_merge(rows), baseline)
+        context = _context()
+    leads = persistence_leads_from(_merge(rows), baseline, context)
     if probe is not None and hasattr(probe, "persistence_rows"):
         return leads
     return [Lead(kind=lead.kind, subject=lead.subject, family=lead.family, detail=lead.detail,
@@ -360,6 +400,36 @@ YARA_ROWS = {"bool": {"filter": [{"term": {"family": "memprocfs"}}, {"wildcard":
                                  {"exists": {"field": "fields.Rule"}}]}}
 FINDEVIL_ROWS = {"bool": {"filter": [{"term": {"family": "memprocfs"}}, {"wildcard": {"file": "*/csv/findevil.csv"}}],
                           "must_not": [{"prefix": {"fields.Type.kw": "YR_"}}]}}
+
+
+@lru_cache(maxsize=1)
+def findevil_ratings() -> dict[str, str]:
+    """MemProcFS's own false-positive rating of each FindEvil type, from the pinned wiki (FM-6).
+
+    ``data/knowledge/sources/memprocfs_findevil.yaml`` is generated by
+    ``devtools/knowledge/import_memprocfs_findevil.py`` from the page's snapshot, never typed.
+    """
+    import yaml
+
+    path = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "sources" / "memprocfs_findevil.yaml"
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {str(name): str((entry or {}).get("fp") or "") for name, entry in (doc.get("types") or {}).items()}
+
+
+def findevil_rating(verdict: str) -> str:
+    """LOW, MEDIUM or HIGH as MemProcFS rates the type's false positives; "" when it rates none."""
+    ratings = findevil_ratings()
+    name = str(verdict or "").strip().upper()
+    return ratings.get(name) or (ratings.get("YR_*", "") if name.startswith("YR_") else "")
+
+
+def same_program(path_or_name: str, process: str) -> bool:
+    """Whether an executable and a process name are one program; the image name may be cut to 14 characters."""
+    name = str(path_or_name or "").replace("/", "\\").rsplit("\\", 1)[-1].strip().lower()
+    image = str(process or "").strip().lower()
+    if not name or not image or image in ("?", "---"):
+        return False
+    return name == image or (len(image) >= _IMAGE_NAME_CHARS and name.startswith(image))
 
 
 def _severity(value: Any) -> float | None:
@@ -412,18 +482,81 @@ def memory_verdict_leads_from(yara_hits: Iterable[dict[str, Any]],
     for (verdict, process), hits in sorted(by_type.items()):
         pids = sorted({str(fields_of(h).get("PID") or "") for h in hits} - {""})
         sample = [str(fields_of(h).get("Description") or "")[:120] for h in hits[:3]]
+        rating = findevil_rating(verdict)
+        # FM-6: a type MemProcFS rates HIGH for false positives is context for a process already of
+        # interest (attach_findevil_context), not a lead of its own.
         leads.append(Lead(
-            kind="rule_engine",
+            kind="context" if rating == "HIGH" else "rule_engine",
             subject=f"{verdict} {process}",
             family="memprocfs",
             detail=(f"MemProcFS FindEvil {verdict}: {len(hits)} row(s) in {process}"
-                    + (f" (pid {', '.join(pids[:4])})" if pids else "") + f": {'; '.join(sample)}"),
+                    + (f" (pid {', '.join(pids[:4])})" if pids else "") + f": {'; '.join(sample)}"
+                    + (f" [MemProcFS rates {verdict} false positives {rating}]" if rating else "")),
             rows=tuple(_hit_rows(hits[:ANALYTIC_SAMPLE_ROWS])),
             audit_ids=(),
-            score=SCORE_MEMORY_NEUTRAL,
+            score=SCORE_BY_FP.get(rating, SCORE_MEMORY_NEUTRAL),
             extra={"engine": "memprocfs-findevil", "level": "", "crit_high": False, "count": len(hits),
-                   "verdict": verdict, "process": process},
+                   "verdict": verdict, "process": process, "fp_rating": rating},
         ))
+    return leads
+
+
+def _programs(lead: Lead) -> list[str]:
+    """The program names a lead is about: its executable, its process, or its YARA match's process."""
+    extra = lead.extra or {}
+    return [str(v) for v in (extra.get("executable"), extra.get("process")) if v]
+
+
+def attach_findevil_context(leads: list[Lead]) -> list[Lead]:
+    """Each HIGH-false-positive FindEvil verdict joins the lead about the same process as context (FM-6).
+
+    A verdict with no lead about its process stays a ``context`` lead, ranked after every other lead.
+    """
+    context = [lead for lead in leads if lead.kind == "context"]
+    others = [lead for lead in leads if lead.kind != "context"]
+    attached: dict[int, list[dict[str, Any]]] = {}
+    unattached: list[Lead] = []
+    for item in context:
+        process = str((item.extra or {}).get("process") or "")
+        index = next((i for i, lead in enumerate(others)
+                      if any(same_program(p, process) or same_program(process, p) for p in _programs(lead))),
+                     None)
+        if index is None:
+            unattached.append(item)
+            continue
+        attached.setdefault(index, []).append(
+            {"verdict": item.extra.get("verdict"), "fp_rating": item.extra.get("fp_rating"),
+             "count": item.extra.get("count"), "detail": item.detail})
+    merged = [replace(lead, extra={**lead.extra, "findevil_context": attached[i]}) if i in attached else lead
+              for i, lead in enumerate(others)]
+    return merged + unattached
+
+
+def corroborate_baseline_leads(leads: list[Lead], responder_tools: str = "") -> list[Lead]:
+    """Raise a baseline review item to high when a detection or scanner verdict names the same program (FM-5),
+    and label the programs the examiner names among the responders' tools (D224)."""
+    detections = [lead for lead in leads if lead.kind == "rule_engine"]
+    tools = [t.strip() for t in str(responder_tools or "").replace(";", ",").split(",") if t.strip()]
+    out: list[Lead] = []
+    for lead in leads:
+        if lead.kind != "baseline":
+            out.append(lead)
+            continue
+        extra = dict(lead.extra)
+        detail, score = lead.detail, lead.score
+        executable = str(extra.get("executable") or "")
+        names = " ".join([executable] + [str(e.get("name") or "") for e in extra.get("entries") or []]).lower()
+        named = [t for t in tools if t.lower() in names]
+        if named:
+            extra["responder_tool"] = named[0]
+            detail += f"; the examiner names {named[0]} among the responders' tools"
+        by = [d for d in detections if any(same_program(executable, p) for p in _programs(d))]
+        if by and not extra.get("crit_high"):
+            extra.update(crit_high=True, level="high", corroborated_by=[d.subject for d in by])
+            detail += "; corroborated by " + "; ".join(d.subject for d in by)
+            score = max(score, SCORE_MASQUERADE)
+        out.append(replace(lead, detail=detail, score=score, extra=extra))
+    return out
     return leads
 
 

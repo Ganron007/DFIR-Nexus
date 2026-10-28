@@ -207,7 +207,11 @@ def test_all_crit_rules_outrank_every_other_lead_kind(tmp_path: Path):
 
     class _Probe:
         def aggregate(self, **_kw):
-            return {"top": [{"value": "System\\reg.exe", "count": 1}]}
+            return {"top": []}
+
+        def host_stack(self, field):
+            return {"hosts": 3, "audit_id": "", "values": [{"value": "System\\reg.exe", "hosts": ["ws02"],
+                                                           "count": 1}]}
 
         def observed_calls(self, **_kw):
             return []
@@ -220,10 +224,10 @@ def test_all_crit_rules_outrank_every_other_lead_kind(tmp_path: Path):
     kinds = [lead.kind for lead in leads]
     assert kinds and kinds[0] == "rule_engine", kinds
     assert leads[0].score == 1.0
-    # A rarity lead (score 1.0 on a single occurrence) must still sort after it.
+    # A rarity lead (a value on one of three hosts) must still sort after it.
     rarity = [lead for lead in leads if lead.kind == "rarity"]
     assert rarity, kinds
-    assert rarity[0].score == 1.0, rarity[0].score
+    assert kinds.index("rarity") > kinds.index("rule_engine")
 
 
 def test_ruleset_note_counts_crit_high(tmp_path: Path):

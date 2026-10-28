@@ -30,12 +30,22 @@ FIELDS = {"Service Name", "Process Name", "Parent Process Name"}
 class FakeProbe:
     """A probe with no Elasticsearch and no triage DB behind it."""
 
-    def __init__(self, spans=None, calls=None, verdicts=None, buckets=None):
+    def __init__(self, spans=None, calls=None, verdicts=None, buckets=None, stacks=None, hosts=3):
         self._spans = spans or {}
         self._calls = calls or []
         self._verdicts = verdicts or {}
         self._buckets = buckets or []
+        # field -> [(value, [hosts it is seen on])]: host stacking (Part 12 FM-4).
+        self._stacks = stacks or {}
+        self._hosts = hosts
         self.aggregate_calls: list[dict] = []
+        self.stack_calls: list[str] = []
+
+    def host_stack(self, field):
+        self.stack_calls.append(field)
+        return {"hosts": self._hosts, "audit_id": f"nexus-lead-stack-{field.replace(' ', '-').lower()}",
+                "values": [{"value": v, "hosts": sorted(h), "count": len(h)}
+                           for v, h in self._stacks.get(field, [])]}
 
     def aggregate(self, **kwargs):
         self.aggregate_calls.append(dict(kwargs))
@@ -81,10 +91,9 @@ def test_a_rare_service_and_a_wrong_parent_lsass_are_both_raised(tmp_path):
     """The work order's own fixture, asserted lead by lead."""
     case = _case(tmp_path)
     probe = FakeProbe(
-        spans={
-            "Service Name": [{"value": "evil_svc", "count": 1}],
-            "Process Name": [{"value": "lsass", "count": 12},
-                             {"value": "explorer", "count": 900}],
+        stacks={
+            "Service Name": [("evil_svc", ["ws02"]), ("spooler", ["ws01", "ws02", "ws03"])],
+            "Process Name": [("lsass", ["ws01", "ws02", "ws03"]), ("explorer", ["ws01", "ws02", "ws03"])],
         },
         calls=[{"process": "lsass", "parent": "evil_svc"}],
         verdicts={"lsass": {"verdict": "SUSPICIOUS", "parent_name": "evil_svc",
@@ -138,13 +147,13 @@ def test_an_unknown_verdict_is_never_escalated(tmp_path):
 def test_leads_are_deterministic_and_round_trip(tmp_path):
     """Two builds over the same index must agree, and the file must reload."""
     case = _case(tmp_path)
-    spans = {
-        "Service Name": [{"value": "b_svc", "count": 1}, {"value": "a_svc", "count": 1}],
-        "Process Name": [{"value": "rare.exe", "count": 1}],
+    stacks = {
+        "Service Name": [("b_svc", ["ws01"]), ("a_svc", ["ws02"])],
+        "Process Name": [("rare.exe", ["ws03"])],
     }
-    first = build_leads(case, probe=FakeProbe(spans=spans), known_fields=FIELDS)
+    first = build_leads(case, probe=FakeProbe(stacks=stacks), known_fields=FIELDS)
     stored = (case / "analysis" / "leads.jsonl").read_text(encoding="utf-8")
-    second = build_leads(case, probe=FakeProbe(spans=spans), known_fields=FIELDS)
+    second = build_leads(case, probe=FakeProbe(stacks=stacks), known_fields=FIELDS)
     assert (case / "analysis" / "leads.jsonl").read_text(encoding="utf-8") == stored
     assert [lead.to_dict() for lead in first] == [lead.to_dict() for lead in second]
 
@@ -156,11 +165,10 @@ def test_leads_are_deterministic_and_round_trip(tmp_path):
 def test_a_field_the_case_does_not_carry_is_not_probed(tmp_path):
     """Guessing a field name would silently return nothing and look benign."""
     case = _case(tmp_path)
-    probe = FakeProbe(spans={"Service Name": [{"value": "evil_svc", "count": 1}]})
+    probe = FakeProbe(stacks={"Service Name": [("evil_svc", ["ws02"])]})
     build_leads(case, probe=probe, known_fields={"Service Name"})
-    probed = {str(call.get("field")) for call in probe.aggregate_calls}
-    assert "Service Name" in probed
-    assert "Process Name" not in probed, probed
+    assert "Service Name" in probe.stack_calls
+    assert "Process Name" not in probe.stack_calls, probe.stack_calls
 
 
 def test_a_broken_probe_kind_does_not_lose_the_others(tmp_path):
@@ -173,9 +181,22 @@ def test_a_broken_probe_kind_does_not_lose_the_others(tmp_path):
                 raise RuntimeError("dsl unsupported on this backend")
             return super().aggregate(**kwargs)
 
-    probe = HalfBroken(spans={"Service Name": [{"value": "evil_svc", "count": 1}]})
+    probe = HalfBroken(stacks={"Service Name": [("evil_svc", ["ws02"])]})
     leads = build_leads(case, probe=probe, known_fields=FIELDS)
     assert [lead.subject for lead in leads if lead.kind == "rarity"] == ["evil_svc"]
+
+
+def test_rarity_needs_hosts_to_stack(tmp_path):
+    """Part 12 FM-4: on one host, how many rows mention a value is not rarity (T22: `---`, `$creator`)."""
+    case = _case(tmp_path)
+    one_host = FakeProbe(stacks={"Service Name": [("evil_svc", ["ws01"])]}, hosts=1)
+    assert [lead for lead in build_leads(case, probe=one_host, known_fields=FIELDS)
+            if lead.kind == "rarity"] == []
+    many = FakeProbe(stacks={"Service Name": [("evil_svc", ["ws07"]), ("spooler", [f"ws{i}" for i in range(9)])]},
+                     hosts=9)
+    rare = [lead for lead in build_leads(case, probe=many, known_fields=FIELDS) if lead.kind == "rarity"]
+    assert [(lead.subject, lead.score) for lead in rare] == [("evil_svc", round(1 - 1 / 9, 3))]
+    assert "is on 1 of the case's 9 hosts (ws07" in rare[0].detail
 
 
 def test_burst_needs_a_real_spike(tmp_path):

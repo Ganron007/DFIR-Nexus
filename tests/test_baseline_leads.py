@@ -65,18 +65,19 @@ def test_every_source_names_the_task_and_what_it_runs():
         "\\windows\\system32\\drivers\\ena.sys"]
 
 
-def test_an_unknown_program_in_the_windows_directory_is_crit_and_windows_own_task_raises_nothing():
+def test_an_unknown_program_is_a_review_item_and_windows_own_task_raises_nothing():
+    """Part 12 FM-5: absent from the baseline is data reduction, not suspicion (FD-004)."""
     leads = {lead.subject: lead for lead in persistence_leads_from(entries_from_documents(_docs()), Baseline())}
     assert "%windir%\\system32\\lpremove.exe" not in {s.lower() for s in leads}
     stun = leads["C:\\Windows\\System32\\STUN.exe"]
-    assert stun.kind == "baseline" and stun.score == 1.0 and stun.extra["crit_high"] is True
+    assert stun.kind == "baseline" and stun.score == 0.5 and stun.extra["crit_high"] is False
+    assert "a review item" in stun.detail
     assert "task \\SRL Update Service (not in the Windows baseline)" in stun.detail
     assert stun.extra["entries"] == [{"kind": "task", "name": "\\SRL Update Service", "in_baseline": False}]
-    assert leads["C:\\Windows\\System32\\SRLUpdate.exe"].extra["crit_high"] is True
-    assert leads["C:\\windows\\subject_srv.exe"].extra["crit_high"] is True
-    # A kernel driver there is routine for hardware and vendor packages: high, not crit.
+    assert leads["C:\\Windows\\System32\\SRLUpdate.exe"].extra["crit_high"] is False
+    assert leads["C:\\windows\\subject_srv.exe"].extra["crit_high"] is False
     driver = leads["\\SystemRoot\\System32\\drivers\\ena.sys"]
-    assert driver.score == 0.9 and driver.extra["crit_high"] is False
+    assert driver.score == 0.45 and driver.extra["crit_high"] is False
     # IC-5: a task is ATT&CK's Scheduled Task, a service its Windows Service (by ATT&CK's own names).
     assert stun.extra["attack_ids"] == ["T1053.005"]
     assert leads["C:\\windows\\subject_srv.exe"].extra["attack_ids"] == ["T1543.003"]
@@ -91,8 +92,34 @@ def test_a_windows_task_whose_program_is_not_windows_own_is_still_a_lead():
     leads = {lead.subject: lead for lead in
              persistence_leads_from(entries_from_documents(_docs("task_run_stun")), baseline)}
     stun = leads["C:\\Windows\\System32\\STUN.exe"]
-    assert stun.extra["crit_high"] is True
+    assert stun.extra["crit_high"] is False
     assert stun.extra["entries"] == [{"kind": "task", "name": "\\SRL Update Service", "in_baseline": True}]
+
+
+class Context:
+    """What the triage context's expected_processes holds for a name: its valid paths (SANS / MemProcFS)."""
+
+    def __init__(self, expected):
+        self.expected = expected
+
+    def get_expected_process(self, name):
+        paths = self.expected.get(name.lower())
+        return {"process_name_lower": name.lower(), "valid_paths": paths} if paths else None
+
+
+def test_a_well_known_process_name_at_another_path_is_masquerading():
+    """T1036.005: a well-known Windows process name at a path none of its valid paths names is crit/high."""
+    elsewhere = Context({"stun.exe": ["\\windows\\syswow64\\stun.exe"]})
+    leads = {lead.subject: lead for lead in
+             persistence_leads_from(entries_from_documents(_docs("task_run_stun")), Baseline(), elsewhere)}
+    stun = leads["C:\\Windows\\System32\\STUN.exe"]
+    assert stun.extra["crit_high"] is True and stun.extra["masquerade"] is True and stun.score == 1.0
+    assert "masquerading, T1036.005" in stun.detail
+    # At one of its valid paths (wildcards allowed) the name is not a masquerade.
+    here = Context({"stun.exe": ["\\windows\\sys*\\stun.exe"]})
+    leads = {lead.subject: lead for lead in
+             persistence_leads_from(entries_from_documents(_docs("task_run_stun")), Baseline(), here)}
+    assert leads["C:\\Windows\\System32\\STUN.exe"].extra["masquerade"] is False
 
 
 def test_a_yara_match_naming_a_threat_is_a_crit_detection_and_other_verdicts_are_neutral():
@@ -104,8 +131,10 @@ def test_a_yara_match_naming_a_threat_is_a_crit_detection_and_other_verdicts_are
     assert len(stun.rows) == 3
     # The FindEvil table's own YR_ row is the YARA report's match: not a second lead.
     assert [lead.subject for lead in leads if "YR_" in lead.subject] == []
+    # Part 12 FM-6: MemProcFS rates THREAD false positives HIGH (pinned FS_FindEvil), so it is context.
     thread = by_subject["THREAD msedge.exe"]
-    assert thread.extra["crit_high"] is False and thread.score == 0.5 and thread.extra["count"] == 2
+    assert thread.kind == "context" and thread.extra["fp_rating"] == "HIGH"
+    assert thread.extra["crit_high"] is False and thread.score == 0.2 and thread.extra["count"] == 2
 
 
 class _Probe:
@@ -157,6 +186,34 @@ def test_build_leads_puts_crit_baseline_leads_before_lesser_detections(tmp_path)
     crit = [o for o in order if o[2]]
     assert order[:len(crit)] == crit, order  # every crit/high lead first
     assert order[0] == ("rule_engine", "STUN.exe (pid 1912)", True)  # detections first among them
-    assert ("baseline", "C:\\Windows\\System32\\STUN.exe", True) in crit
-    assert order.index(("rule_engine", "THREAD msedge.exe", False)) > order.index(
-        ("baseline", "C:\\windows\\subject_srv.exe", True))
+    # FM-5: STUN.exe is crit/high because the YARA verdict names the same program, not because it is unknown.
+    stun = next(lead for lead in leads if lead.subject == "C:\\Windows\\System32\\STUN.exe")
+    assert stun.extra["crit_high"] is True and stun.extra["corroborated_by"] == ["STUN.exe (pid 1912)"]
+    assert ("baseline", "C:\\windows\\subject_srv.exe", False) in order
+    # FM-6: the THREAD verdict on msedge.exe, a process no other lead is about, is context and ranks last.
+    assert order[-1] == ("context", "THREAD msedge.exe", False)
+
+
+def test_the_examiners_responder_tools_label_their_programs(tmp_path):
+    case = tmp_path / "CASE-RESPONDER"
+    (case / "analysis").mkdir(parents=True)
+    (case / "CASE.yaml").write_text("intake:\n  responder_tools: F-Response, KAPE\n", encoding="utf-8")
+    leads = build_leads(case, probe=_Probe(), known_fields=set())
+    subject = next(lead for lead in leads if lead.subject == "C:\\windows\\subject_srv.exe")
+    assert subject.extra["responder_tool"] == "F-Response" and subject.extra["crit_high"] is False
+    assert "the examiner names F-Response among the responders' tools" in subject.detail
+
+
+def test_findevil_ratings_are_the_pinned_wiki_pages():
+    """The ratings are the importer's reading of the pinned page; regenerating changes nothing."""
+    import subprocess
+    import sys as _sys
+
+    from nexus.analysis.baseline_leads import findevil_rating
+
+    check = subprocess.run([_sys.executable, "devtools/knowledge/import_memprocfs_findevil.py", "--check"],
+                           cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+    assert check.returncode == 0, check.stdout + check.stderr
+    assert findevil_rating("PE_PATCHED") == "HIGH" and findevil_rating("pe_nolink") == "HIGH"
+    assert findevil_rating("HIGH_ENTROPY") == "MEDIUM" and findevil_rating("YR_TROJAN") == "MEDIUM"
+    assert findevil_rating("PE_INJECT") == "LOW" and findevil_rating("NOT_A_TYPE") == ""

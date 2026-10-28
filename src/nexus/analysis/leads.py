@@ -8,9 +8,12 @@ traced the same way a finding can.
 
 Four lead kinds, per the work order:
 
-* **rarity** — stacking and rarity: a value that occurs once (or far below its
-  family's norm) among executables, services, tasks, parent processes, logon
-  sources or accounts.
+* **rarity** — stacking (least frequency of occurrence) across hosts: a value
+  of an executable, service, task, parent process, logon source or account
+  seen on exactly one of the case's hosts, when the case holds at least
+  ``MIN_STACK_HOSTS`` (Part 12 FM-4; SANS FOR508: "If one were to collect all
+  the executables, drivers, DLLs, or services across many systems, the items
+  associated with malware should be among the least frequently occurring").
 * **first_seen** — a value whose earliest occurrence is inside the window.
 * **ancestry** — a process whose parent / path / user disagrees with the triage
   baseline's `expected_processes` table.
@@ -61,6 +64,15 @@ RARITY_CONCEPTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 #: A value seen at most this many times is a rarity candidate.
 RARITY_MAX_HITS = 1
+#: Stacking needs a population: on one or two hosts, how many rows mention a value measures how many artifacts
+#: record it, not how rare it is (T22, one memory image: `---`, `$creator` and the 14-character image name
+#: `ApplicationFra` were "rare"). The probe used to take the top 200 values by count and keep those seen once,
+#: so on a field with more than 200 values it never reached the rare ones (Part 12 FM-4).
+MIN_STACK_HOSTS = 3
+#: What stacking compares across hosts: programs, the way SANS FOR508 stacks executables, drivers, DLLs and services.
+#: An account or a logon source is per host by nature (each server's own machine account is on that server alone):
+#: T12's stacking made `offsec\fs01$` "rare" on fs01.
+STACK_CONCEPTS = ("process", "service", "task", "parent", "executable")
 #: Rarity and first-seen probes look at most this many values per field.
 RARITY_TOP = 200
 #: A bucket this many times its median neighbour is a burst.
@@ -129,6 +141,51 @@ class EsProbe:
                 log.debug("lead aggregation audit failed: %s", exc)
         out = dict(result) if isinstance(result, dict) else {}
         out["audit_id"] = audit_id
+        return out
+
+    def host_stack(self, field: str) -> dict[str, Any]:
+        """Each value of ``field`` with the hosts it is seen on and its row count, and the case's host count.
+
+        Exact: composite paging over (value, host) pairs and over the hosts. A field the index cannot aggregate
+        gives no values; a failed request raises.
+        """
+        from nexus.langgraph.case_index import _resolve_agg_field, es_aggregate
+        from nexus.langgraph.es_native import es_aggregate as es_native_aggregate
+
+        hosts = es_aggregate(self.case_dir, "", field="host", top=0, match_all=True) or {}
+        total = int(hosts.get("distinct") or 0)
+        path = _resolve_agg_field(self.case_dir.name, field)
+        out: dict[str, Any] = {"hosts": total, "values": [], "audit_id": ""}
+        if total < MIN_STACK_HOSTS or not path:
+            return out
+        seen: dict[str, dict[str, Any]] = {}
+        after: dict[str, Any] | None = None
+        while True:
+            composite: dict[str, Any] = {"size": 1000, "sources": [{"value": {"terms": {"field": path}}},
+                                                                   {"host": {"terms": {"field": "host"}}}]}
+            if after:
+                composite["after"] = after
+            result = es_native_aggregate(self.case_dir.name, {"pairs": {"composite": composite}})
+            if result.get("degraded") or result.get("error"):
+                raise RuntimeError(f"host stacking of {field} failed: {result.get('error') or result.get('degraded')}")
+            agg = (result.get("aggregations") or {}).get("pairs") or {}
+            for bucket in agg.get("buckets") or []:
+                key = bucket.get("key") or {}
+                entry = seen.setdefault(str(key.get("value") or ""), {"hosts": [], "count": 0})
+                entry["hosts"].append(str(key.get("host") or ""))
+                entry["count"] += int(bucket.get("doc_count") or 0)
+            after = agg.get("after_key")
+            if not after or not agg.get("buckets"):
+                break
+        out["values"] = [{"value": value, "hosts": sorted(e["hosts"]), "count": e["count"]}
+                         for value, e in seen.items() if value]
+        if self.audit is not None:
+            try:
+                out["audit_id"] = str(self.audit.log(
+                    tool="es_aggregate", params={"field": field, "stack": "host"},
+                    result_summary={"values": len(out["values"]), "hosts": total}) or "")
+            except Exception as exc:  # noqa: BLE001 - a lead without an id still beats none
+                log.debug("stacking audit failed: %s", exc)
         return out
 
     def observed_calls(
@@ -311,16 +368,25 @@ def _is_executable_path(value: str) -> bool:
 
 
 def rarity_leads(probe: Any, known: set[str], case_dir: Path) -> list[Lead]:
+    """Values seen on exactly one of the case's hosts, when it holds at least ``MIN_STACK_HOSTS`` (FM-4)."""
+    stack = getattr(probe, "host_stack", None)
+    if stack is None:
+        return []
     out: list[Lead] = []
     for name, label in _wanted_fields(known):
-        # Only the executable concept is a program path; the others (account,
-        # service, task) are not, so keep their values as they are.
+        if label not in STACK_CONCEPTS:
+            continue
+        # Only the executable concept is a program path; the others (service,
+        # task) are not, so keep their values as they are.
         exec_only = label == "executable"
-        result = probe.aggregate(field=name, top=RARITY_TOP, match_all=True, with_spans=True)
-        for span in _spans(result):
-            value = str(span.get("value") or "").strip()
-            count = int(span.get("count") or 0)
-            if not value or count <= 0 or count > RARITY_MAX_HITS:
+        result = stack(field=name) or {}
+        total = int(result.get("hosts") or 0)
+        if total < MIN_STACK_HOSTS:
+            return []
+        for item in result.get("values") or []:
+            value = str(item.get("value") or "").strip()
+            hosts = list(item.get("hosts") or [])
+            if not value or len(hosts) != 1:
                 continue
             if exec_only and not _is_executable_path(value):
                 continue
@@ -328,11 +394,12 @@ def rarity_leads(probe: Any, known: set[str], case_dir: Path) -> list[Lead]:
                 kind="rarity",
                 subject=value,
                 family=name,
-                detail=f"{label} {value!r} appears once in the index (no baseline occurrence)",
-                rows=({"field": name, "value": value, "count": count},),
+                detail=f"{label} {value!r} is on 1 of the case's {total} hosts ({hosts[0]}; "
+                       f"{int(item.get('count') or 0)} row(s))",
+                rows=({"field": name, "value": value, "host": hosts[0], "count": int(item.get("count") or 0)},),
                 audit_ids=_audit_id(result),
-                # Rarer is more interesting; keep the score monotone and small.
-                score=round(1.0 / max(count, 1), 3),
+                # Rarer against a larger population is more interesting: one of three hosts is weaker than one of 73.
+                score=round(1.0 - 1.0 / total, 3),
             ))
     return out
 
@@ -461,6 +528,18 @@ def _rule_engine_leads(case_dir: Path) -> list[Lead]:
     from nexus.analysis.rule_leads import rule_engine_leads
 
     return rule_engine_leads(case_dir)
+
+
+def _responder_tools(case_dir: Path) -> str:
+    """The responders' own tools as the examiner names them in the intake (D224); "" when unset."""
+    try:
+        import yaml
+
+        meta = yaml.safe_load((Path(case_dir) / "CASE.yaml").read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - no intake names no tools
+        return ""
+    intake = meta.get("intake") if isinstance(meta, dict) else None
+    return str((intake or {}).get("responder_tools") or "") if isinstance(intake, dict) else ""
 
 
 def _with_software(lead: Lead) -> Lead:
@@ -800,6 +879,9 @@ def build_leads(
             failed.append(f"{type(exc).__name__}: {exc}")
 
     leads = [_with_software(lead) for lead in leads]
+    from nexus.analysis.baseline_leads import attach_findevil_context, corroborate_baseline_leads
+
+    leads = corroborate_baseline_leads(attach_findevil_context(leads), _responder_tools(case_dir))
     # Stable order: crit/high leads first, rule-engine detections first among them and among the rest,
     # then strongest score, then kind and subject so two runs over the same index produce byte-identical
     # output. A crit/high detection must never be outranked by a heuristic lead (WO-R1F item 1) — the
