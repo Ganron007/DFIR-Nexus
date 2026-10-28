@@ -4,8 +4,8 @@ Data lives in ``data/knowledge/needles/itm_needles.yaml`` (pack = ITM section
 -> families + hard-artifact needles/strong + caveat). Only standout artifacts
 are shipped (tool names, exact command fragments, service domains) - numbers,
 IDs and generic words stay out of keyword scanning by design. Companion to
-``attack_needles.py``/``sigma_needles.py``; grounding for Mode 1's signal map
-with an Insider Threat Matrix section id per pack.
+``attack_needles.py``/``sigma_needles.py``; the examiner's keyword pivots
+with an Insider Threat Matrix section id per pack (never counted as signal, D460).
 """
 
 from __future__ import annotations

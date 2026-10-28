@@ -146,7 +146,7 @@ All three drive the same N1–N8 spine, the same `case_id` and the same HMAC loc
 
 **Mode 1 — LLM** · the merged examiner + LLM surface
 
-- Deterministic tool lane plus the code-based N4 query pack; the full-run scribe.
+- Deterministic tool lane plus the examiner's N4 query pack (keyword pivots, never counted as signal).
 - Steer chat: the LLM plans N4 queries that push down to the per-case ES index (field filters, ES-native aggregations) and answers with cited rows, per-stage timings and audit IDs.
 - Coverage and interpretation — interpretation never runs on a CSV fallback.
 - Surfaces: **Briefing** and **Steer Chat**. Sign-off stays manual and cryptographic.

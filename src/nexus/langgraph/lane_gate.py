@@ -9,7 +9,7 @@ The rule, encoded here and enforced at every analysis entry point:
 3. When a tool cannot finish (timeout / failure), the lane finishes all
    remaining evidence, then HALTS and alerts: the gate is written as
    ``blocked`` and every analysis stage refuses to start.
-4. No analysis stage (Mode 1 full-run, Mode 2, Mode 3, interpret / coverage /
+4. No analysis stage (Mode 1, Mode 2, Mode 3, interpret / coverage /
    design) runs until the examiner either re-runs the lane so the item
    processes, or explicitly skips it through an **audited** decision (HMAC
    challenge, same path as finding approvals).
@@ -789,9 +789,9 @@ def lane_stages(case_dir: Path | str) -> list[dict[str, Any]]:
     add("N3", "done" if docs else "pending", f"{docs} indexed doc(s)")
 
     # N4 query
-    add("N4", "done" if (case_dir / "analysis" / "mode1_full_run.json").is_file() else "pending",
-        "needle scan ran" if (case_dir / "analysis" / "mode1_full_run.json").is_file()
-        else "no scan output yet")
+    query_pack = (case_dir / "analysis" / "query_pack.md").is_file()
+    add("N4", "done" if query_pack else "pending",
+        "examiner query pack written" if query_pack else "no query pack yet")
 
     # N5 interpret
     mode_runs = list((case_dir / "analysis" / "mode2_runs").glob("*.json")) + list(

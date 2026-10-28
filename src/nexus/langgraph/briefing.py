@@ -1,21 +1,21 @@
 """Case briefing — WP 4i.1/4i.2.
 
 Auto-generated after N3 indexing (and on demand). The examiner's first view
-of a processed case: what was collected, what the signatures already caught,
-where the signal density is, and what they said they were looking for.
+of a processed case: what was collected, what the detections and baselines
+raised (every crit/high lead), the leads to review, the typed entities, and
+what the examiner said they were looking for.
 
-Deterministic by default — no LLM required. One exhaustive extraction scan
-powers three surfaces: needle hit-counts (playbook auto-scan), alert rows
-(Hayabusa/Zircolite severity), and the entity inventory. The optional LLM layer
-(mode1 directions) consumes this structure, never replaces it.
+Deterministic by default — no LLM required. Everything comes from the index
+and the leads built on it; no keyword is counted as signal (Part 12 FM-3,
+D460): keyword pivots are the examiner's own, in Explore and the query pack.
+The optional LLM layer (mode1 directions) consumes this structure, never
+replaces it.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -111,102 +111,6 @@ def _parser_ledger(case_dir: Path) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Needle sources for the auto-scan
-# ---------------------------------------------------------------------------
-
-def _scan_needles(
-    case_dir: Path,
-    families: list[str],
-    dropped: list[str] | None = None,
-) -> dict[str, str]:
-    """needle -> source label, for the families present in the case.
-
-    The returned vocabulary contains every scannable term from each source.
-    ``dropped`` is retained for call compatibility and remains empty because
-    the scanner no longer discards terms by count.
-    """
-    from nexus.knowledge.attack_needles import attack_needles_for
-    from nexus.knowledge.sigma_needles import sigma_needles_for
-    from nexus.langgraph.query_pack import (
-        playbook_strong_terms_for_families,
-        playbook_terms_for_families,
-    )
-
-    fams = set(families)
-    needles: dict[str, str] = {}
-    for t in playbook_strong_terms_for_families(fams):
-        needles.setdefault(t.lower(), "playbook-strong")
-    for t in playbook_terms_for_families(fams):
-        needles.setdefault(t.lower(), "playbook")
-    for t in attack_needles_for(fams, limit=None, cap=None):
-        needles.setdefault(t.lower(), "attack")
-    for t in sigma_needles_for(fams, limit=None, cap=None):
-        needles.setdefault(t.lower(), "sigma")
-
-    # Insider Threat Matrix hard artifacts (section-grounded packs).
-    try:
-        from nexus.knowledge.itm_needles import itm_needles_for, itm_strong_for
-
-        for t in itm_strong_for(fams, limit=None, cap=None):
-            needles.setdefault(t.lower(), "itm-strong")
-        for t in itm_needles_for(fams, limit=None, cap=None):
-            needles.setdefault(t.lower(), "itm")
-    except Exception:  # noqa: BLE001 — optional needles
-        pass
-
-    # External-threat hard artifacts (ATT&CK-grounded packs).
-    try:
-        from nexus.knowledge.external_needles import (
-            external_needles_for,
-            external_strong_for,
-        )
-
-        for t in external_strong_for(fams, limit=None, cap=None):
-            needles.setdefault(t.lower(), "external-strong")
-        for t in external_needles_for(fams, limit=None, cap=None):
-            needles.setdefault(t.lower(), "external")
-    except Exception:  # noqa: BLE001 — optional needles
-        pass
-
-    # Intake extras + question terms the examiner already named
-    try:
-        from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
-
-        for t in collect_query_terms(load_case_intake(case_dir)):
-            needles.setdefault(t.lower(), "intake")
-    except Exception:  # noqa: BLE001
-        pass
-
-    from nexus.knowledge.needle_terms import is_scannable_term
-    from nexus.langgraph.query_pack import is_needle_like
-
-    # Vocabulary hygiene, two gates by provenance:
-    # - content gate (F6): bare numbers / container file names never become
-    #   needles, whoever authored them;
-    # - free-text tokens (intake/question/query_extra) additionally reject
-    #   machine paths and schema labels - the live leak of 2026-09-23
-    #   (STUDY\Github, domain_user).
-    # Curated packs are hand-authored: their command fragments and registry
-    # paths ARE evidence strings and stay scannable (cipher /w,
-    # currentversion\run, auditpol /clear; ubiquity demotion handles the
-    # generic ones). A blanket separator rule here silently ate 28 real
-    # needles, contradicting the packs and their F6 export tests.
-    clean: dict[str, str] = {}
-    for k, v in needles.items():
-        term = k.strip()
-        if len(term) < 3 or not is_scannable_term(term):
-            continue
-        if v == "intake" and not is_needle_like(term):
-            continue
-        clean[k] = v
-    return clean
-
-
-# ---------------------------------------------------------------------------
-# Briefing assembly — one scan powers everything
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # WP 4j.3 — guided first pass: the order an examiner walks a fresh case
 # ---------------------------------------------------------------------------
 
@@ -219,33 +123,6 @@ def _alert_needle(alert: dict[str, Any]) -> tuple[str, str]:
             if q:
                 return q, str(alert.get("family") or "")
     return str(alert.get("title") or alert.get("family") or ""), str(alert.get("family") or "")
-
-
-def _exact_needle_counts(case_dir: Path, needles: list[str], scan_stats: dict[str, Any]) -> dict[str, int] | None:
-    """Each needle's exact row count on the case index (IC-13), or None when the scan did not use the index.
-
-    `count_hits` counts a term exactly as the scan matches it; four at a time, 295 needles take about a
-    minute on 7 M documents. A needle whose count fails keeps no number at all rather than a sampled one.
-    """
-    if str((scan_stats or {}).get("backend") or "") != "elasticsearch" or not needles:
-        return None
-    from concurrent.futures import ThreadPoolExecutor
-
-    from nexus.langgraph.query_pack import count_hits
-
-    def one(term: str) -> tuple[str, int | None]:
-        try:
-            result = count_hits(case_dir, [term], (None, None), backend="elasticsearch")
-            return term, int(result["count"]) if result.get("exact") else None
-        except Exception:  # noqa: BLE001 - one needle's failure is recorded below
-            return term, None
-
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        results = dict(pool.map(one, needles))
-    failed = sorted(t for t, n in results.items() if n is None)
-    if failed:
-        scan_stats["count_failed"] = failed
-    return {t: n for t, n in results.items() if n is not None}
 
 
 def _walkthrough_learn(
@@ -282,17 +159,18 @@ def _guided_first_pass(
     *,
     alerts: list[dict[str, Any]],
     entities: dict[str, list[dict[str, Any]]],
-    needle_scan: list[dict[str, Any]],
+    leads: list[dict[str, Any]],
     hosts: list[str],
     families: list[str],
     case_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """The deterministic Mode 1 walkthrough.
 
-    Four steps in examiner order: triage the alerts, map who/where, read the
-    signal clusters, then the concrete starting points. Each step carries
-    grounded actions (a needle + family) so the examiner can act without
-    thinking about query syntax. Ranking is by real counts, never invented.
+    Four steps in examiner order: triage the alerts, map who/where, review the
+    leads the index raised, then the concrete starting points. Each step carries
+    grounded actions (a search term + family) so the examiner can act without
+    thinking about query syntax. Ranking is by the leads' own scores, never by
+    how often a keyword matched (D460).
     """
     steps: list[dict[str, Any]] = []
     tech_notes, pb_triggers = _walkthrough_learn(families, alerts, case_dir)
@@ -377,33 +255,34 @@ def _guided_first_pass(
         },
     })
 
-    # 3) What fired — signal clusters by needle volume.
-    scan_actions = [
+    # 3) What the index raised below crit/high — baseline review items, rarity and context, by the lead's score.
+    # The crit/high leads are the alerts of step 1 (`alerts_from_leads` takes `crit_high`); these are the rest.
+    review = sorted((lead for lead in leads if not (lead.get("extra") or {}).get("crit_high")),
+                    key=lambda lead: -float(lead.get("score") or 0.0))
+    lead_actions = [
         {
-            "label": str(s.get("needle") or ""),
-            "needle": str(s.get("needle") or ""),
-            "family": "",
-            "hits": int(s.get("hits") or 0),
-            "source": str(s.get("source") or ""),
+            "label": f"{lead.get('kind')}: {str(lead.get('detail') or lead.get('subject') or '')[:110]}",
+            "needle": str(lead.get("subject") or "")[:120],
+            "family": str(lead.get("family") or "")[:40],
+            "source": str(lead.get("kind") or ""),
         }
-        for s in [x for x in needle_scan if not x.get("ubiquitous")][:8]
+        for lead in review[:8] if lead.get("subject")
     ]
     steps.append({
         "order": 3,
-        "key": "signals",
-        "title": "Read the signal clusters",
+        "key": "leads",
+        "title": "Review the leads",
         "why": (
-            f"{len(needle_scan)} needle(s) with hits. Volume is not proof, but "
-            "a cluster of related needles is where a story forms. Start with "
-            "the highest-count needles that fit the intake question."
+            f"{len(review)} lead(s) below crit/high: baseline review items, values rare across hosts, and "
+            "detector context. A lead is a question worth asking of the rows, not a finding."
         ),
-        "count": len(needle_scan),
-        "actions": scan_actions,
+        "count": len(review),
+        "actions": lead_actions,
         "learn": {
             "headline": (
                 "Techniques present: "
                 + ", ".join(f"{t['name']} ({t['id']})" for t in tech_notes if t.get("name"))
-            ) if tech_notes else "These needles are the vocabulary of the case.",
+            ) if tech_notes else "Absent from a baseline is a review item, not suspicion (FD-004).",
             "why_matters": pb_triggers[:4],
             "sources": [s for s, have in (
                 ("technique", bool(tech_notes)),
@@ -413,10 +292,10 @@ def _guided_first_pass(
     })
 
     # 4) Starting points — the cross-cutting terms to run first. Alerts beat
-    # signal clusters beat entities; each needle appears once.
+    # leads beat entities; each term appears once.
     starts: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for a in [*alert_actions, *scan_actions, *ent_actions]:
+    for a in [*alert_actions, *lead_actions, *ent_actions]:
         n = str(a.get("needle") or "")
         if n and n.lower() not in seen:
             seen.add(n.lower())
@@ -426,7 +305,7 @@ def _guided_first_pass(
         "key": "starting_points",
         "title": "Run the starting points",
         "why": (
-            "Concrete first queries drawn from the alerts, signal clusters, and "
+            "Concrete first queries drawn from the alerts, leads, and "
             "top entities above. Run them, read the rows with their "
             "interpretation, then steer with your own questions."
         ),
@@ -437,8 +316,9 @@ def _guided_first_pass(
             "why_matters": [
                 "Read each row's interpretation before drawing a conclusion — "
                 "the meaning and what-to-check panel is the teaching layer.",
-                "If a query returns nothing, that absence is evidence too "
-                "(negative evidence) — record what you expected and did not find.",
+                "A query that returns nothing says only that this index holds no such "
+                "row: absence needs the source that would record the activity to be "
+                "present and complete — record what you expected and where it would be.",
                 "When the deterministic steps run dry, switch to Steer Chat and "
                 "ask your own question — you stay the driver.",
             ],
@@ -452,9 +332,8 @@ def _guided_first_pass(
 def _index_census(case_dir: Path) -> dict[str, Any]:
     """Hosts/users/time range straight from the N3 index (ES aggregations).
 
-    Fallback for when the threat-needle scan found no rows: the briefing must
-    still show what the evidence contains. Never raises; returns {} when the
-    index/aggregation path is unavailable (CSV-only cases keep prior behavior).
+    The briefing's hosts and time range. Never raises; returns {} when the
+    index/aggregation path is unavailable, and the briefing then shows none.
     """
     try:
         from nexus.langgraph.case_index import es_aggregate
@@ -593,204 +472,25 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
     """Deterministic case briefing.
 
     Returns:
-        inventory   — per-family {files, rows}
+        inventory   — per-family {files, rows} of the extraction files
         ledger      — parser run status (ok/skip/fail + per-tool entries)
-        hosts       — hosts seen in hits
-        time_range  — {start, end} best-effort from hit timestamps
-        alerts      — high/critical severity rows (hayabusa/zircolite/…)
-        needle_scan — [{needle, hits, source}] sorted by hit count desc
-        entities    — every extracted entity per type with family coverage
+        hosts       — hosts the index holds
+        time_range  — {start, end} from the index
+        alerts      — every crit/high lead (detections, baselines, scanners)
+        leads       — the leads built from the index, and their counts by kind
+        entities    — the typed entities the index holds (host, user, process, ...)
         intake      — question / subjects / hypothesis / suspicion echo
-    """
-    from nexus.langgraph.query_pack import attach_hit_fields, n4_hits
 
+    No keyword is counted here (D460): a word matched across the index says nothing about
+    behaviour, and its zero count says nothing about absence.
+    """
     case_dir = Path(case_dir)
     inventory = _family_inventory(case_dir)
     families = sorted(inventory)
 
-    needle_map = _scan_needles(case_dir, families)
-    terms = list(needle_map)
-    hits: list[dict[str, Any]] = []
-    backend = ""
-    scan_stats: dict[str, Any] = {}
-    if terms and families:
-        try:
-            hits, backend = n4_hits(case_dir, terms, (None, None), stats=scan_stats)
-        except Exception as exc:  # noqa: BLE001
-            log.debug("briefing scan failed: %s", exc)
-            hits, backend = [], ""
-    # Detection/event-ID probe: playbook event ids are TYPED facts (the
-    # vocabulary gate keeps bare numbers out of the keyword scan). This probe
-    # keeps the alert surface and EventId field-facts independent of the
-    # keyword vocabulary - a row is found by its event id, and match-site
-    # classification records it as a fact, never as signal.
-    if families:
-        try:
-            from nexus.knowledge.attack_needles import attack_packs_for
-            from nexus.knowledge.needle_terms import split_terms
-            from nexus.knowledge.sigma_needles import sigma_packs_for
-            from nexus.langgraph.query_pack import playbook_event_ids_for_families
-
-            fact_terms: list[str] = []
-            with contextlib.suppress(Exception):
-                fact_terms.extend(playbook_event_ids_for_families(families))
-            for packs in (
-                attack_packs_for(families, set(), limit=None),
-                sigma_packs_for(families, limit=None),
-            ):
-                for pack in packs:
-                    _, context = split_terms(pack.get("needles") or [])
-                    fact_terms.extend(context["event_ids"])
-            fact_terms = list(dict.fromkeys(t for t in fact_terms if t))
-        except Exception:  # noqa: BLE001
-            fact_terms = []
-        if fact_terms:
-            try:
-                probe_hits, _probe = n4_hits(
-                    case_dir, fact_terms, (None, None), priority_terms=fact_terms
-                )
-                seen_hits = {
-                    (str(h.get("family")), str(h.get("file")), str(h.get("line")))
-                    for h in hits
-                }
-                for hit in probe_hits:
-                    key = (
-                        str(hit.get("family")),
-                        str(hit.get("file")),
-                        str(hit.get("line")),
-                    )
-                    if key not in seen_hits:
-                        seen_hits.add(key)
-                        hits.append(hit)
-            except Exception as exc:  # noqa: BLE001
-                log.debug("event-id probe failed: %s", exc)
-                scan_stats["event_id_probe_failed"] = True
-    # Per-needle counts below cover the full scan window. If files cannot be
-    # read, CSV recovery is needed, or an ES clause fails, counts are lower
-    # bounds and the UI marks those chips honestly.
-    from nexus.langgraph.query_pack import _incomplete_reasons
-
-    incomplete_reasons = _incomplete_reasons(scan_stats)
-    if scan_stats.get("event_id_probe_failed"):
-        incomplete_reasons.append("event-ID fact probe failed")
-    scan_stats["incomplete_reasons"] = incomplete_reasons
-    scan_stats["truncated"] = bool(incomplete_reasons)
-    scan_stats["truncated_reasons"] = incomplete_reasons
-    scan_truncated = bool(incomplete_reasons)
-    hits = attach_hit_fields(case_dir, hits)
-
-    # --- needle -> hit count (from matched terms recorded per hit) ---
-    counts: dict[str, int] = {t: 0 for t in needle_map}
-    for h in hits:
-        # terms_list is the structured copy; the comma string is display-only
-        # (a needle containing a comma must not split into phantom terms).
-        matched_terms = h.get("terms_list")
-        if not isinstance(matched_terms, list):
-            matched_terms = str(h.get("terms") or "").split(",")
-        for t in matched_terms:
-            t = str(t).strip().lower()
-            if t in counts:
-                counts[t] += 1
-    # The scan retains every matching row. Where Elasticsearch is available,
-    # exact per-term counts are independently verified against the index.
-    index_counts = _exact_needle_counts(case_dir, list(counts), scan_stats)
-    if index_counts is not None:
-        counts = index_counts
-    counts_exact = index_counts is not None or not incomplete_reasons
-    scan_stats["counts_exact"] = counts_exact
-    needle_scan = [
-        {"needle": n, "hits": c, "source": needle_map[n], "exact": counts_exact}
-        for n, c in counts.items()
-        if c > 0
-    ]
-    needle_scan.sort(key=lambda r: -r["hits"])
-
-    # --- F1: ubiquity demotion - a term matching a large share of the case is
-    # background noise, not a signal cluster. Env-tunable share, minimum floor.
-    total_rows = sum(int(v.get("rows") or 0) for v in inventory.values())
-    try:
-        ubiquity_pct = float(os.environ.get("NEXUS_NEEDLE_UBIQUITY_PCT", "20"))
-    except ValueError:
-        ubiquity_pct = 20.0
-    ubiquity_floor = (
-        max(25, int(total_rows * ubiquity_pct / 100.0)) if total_rows else 0
-    )
-    for entry in needle_scan:
-        entry["ubiquitous"] = bool(
-            ubiquity_floor and int(entry.get("hits") or 0) >= ubiquity_floor
-        )
-    # Signal terms first (by hits), background terms last.
-    needle_scan.sort(
-        key=lambda r: (bool(r.get("ubiquitous")), -int(r.get("hits") or 0))
-    )
-
-    # --- Insider Threat Matrix coverage (pack hits; absence = negative evidence)
-    itm_coverage: list[dict[str, Any]] = []
-    try:
-        from nexus.knowledge.itm_needles import itm_packs_for
-
-        for pack in itm_packs_for(set(families), limit=None):
-            pack_terms = [
-                str(t).strip().lower() for t in (pack.get("needles") or [])
-            ]
-            pack_strong = [
-                str(t).strip().lower() for t in (pack.get("strong") or [])
-            ]
-            itm_coverage.append({
-                "itm": str(pack.get("itm") or ""),
-                "name": str(pack.get("name") or ""),
-                "hits": int(sum(counts.get(t, 0) for t in pack_terms)),
-                "strong_hits": int(sum(counts.get(t, 0) for t in pack_strong)),
-                "caveat": str(pack.get("caveat") or "")[:200],
-            })
-        itm_coverage.sort(key=lambda r: -r["hits"])
-    except Exception:  # noqa: BLE001 — coverage panel is best-effort
-        itm_coverage = []
-
-    # --- field facts (id/label columns) — pivots, never signal ---
-    # Match-site awareness: a keyword that lands in an EventId/RecordNumber/
-    # Provider/Level cell says the evidence contains the value, not that
-    # behaviour is suspicious. Counted during the exhaustive scan so a
-    # downstream page cannot crowd fact-only rows out; fall back to the hit
-    # list for backends that do not populate the counters.
-    stat_fact_counts = dict((scan_stats or {}).get("fact_counts") or {})
-    stat_fact_fields = (scan_stats or {}).get("fact_fields") or {}
-    fact_counts: dict[str, int] = {}
-    fact_fields: dict[str, dict[str, int]] = {}
-    fact_classes: dict[str, str] = {}
-    if stat_fact_counts:
-        fact_counts = stat_fact_counts
-        fact_fields = {
-            str(t): {str(f): int(n) for f, n in (fields or {}).items()}
-            for t, fields in stat_fact_fields.items()
-        }
-    else:
-        for h in hits:
-            for s in (h.get("fact_sites") or []):
-                term = str(s.get("term") or "").strip().lower()
-                if not term:
-                    continue
-                fact_counts[term] = fact_counts.get(term, 0) + 1
-                field = str(s.get("field") or "")
-                fact_fields.setdefault(term, {})
-                fact_fields[term][field] = fact_fields[term].get(field, 0) + 1
-                fact_classes.setdefault(term, str(s.get("class") or ""))
-    needle_facts = [
-        {
-            "needle": term,
-            "hits": n,
-            "field": max(fact_fields.get(term, {}), key=fact_fields[term].get)
-            if fact_fields.get(term) else "",
-            "class": fact_classes.get(term, ""),
-        }
-        for term, n in sorted(fact_counts.items(), key=lambda kv: -kv[1])
-    ]
-
     # --- alerts: every crit/high lead, the one set every mode answers (Part 12 FM-3) ---
     # They were the severity rows among the rows a keyword happened to match, so a critical detection whose
     # text named no needle never reached the alert surface; the leads read every detection.
-    from nexus.langgraph.evidence_rows import row_time
-
     try:
         from nexus.analysis.leads import build_leads
 
@@ -798,24 +498,16 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         leads_error = ""
     except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
         built_leads, leads_error = [], str(exc)[:200]
-    alerts = alerts_from_leads(case_dir, [lead.to_dict() for lead in built_leads])
+    lead_dicts = [lead.to_dict() for lead in built_leads]
+    alerts = alerts_from_leads(case_dir, lead_dicts)
 
     # --- typed entities, hosts and time range: the whole index by field meaning (Part 12 FM-7) ---
     # They came from the rows a keyword happened to match, typed by pattern: hosts, accounts and the
     # time range followed the needle list, not the evidence.
     entities = _typed_entities(case_dir) if families else {}
-    paths_summary: dict[str, Any] = {"distinct": 0, "families": [], "examples": []}
     census = _index_census(case_dir) if families else {}
     hosts = list(census.get("hosts") or [])
     time_range = dict(census.get("time_range") or {"start": "", "end": ""})
-    census_source = "index"
-    if not hosts and not time_range.get("start") and hits:
-        # A case with no Elasticsearch index: the scanned rows' own host and time fields (typed at index
-        # time, never read from their text), labelled as the rows they come from.
-        hosts = sorted({str(h.get("host") or "") for h in hits if h.get("host")})
-        times = [t for t in (row_time(h) for h in hits) if t]
-        time_range = {"start": min(times) if times else "", "end": max(times) if times else ""}
-        census_source = "needle_hits"
 
     # --- intake echo ---
     intake: dict[str, str] = {}
@@ -835,7 +527,7 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
     walkthrough = _guided_first_pass(
         alerts=alerts,
         entities=entities,
-        needle_scan=needle_scan,
+        leads=lead_dicts,
         hosts=hosts,
         families=families,
         case_dir=case_dir,
@@ -895,21 +587,9 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         "time_range": time_range,
         "alerts": alerts,
         "alert_count": len(alerts),
-        "needle_scan": needle_scan,
-        "needle_facts": needle_facts,
-        "itm_coverage": itm_coverage,
-        "ubiquity_floor": ubiquity_floor,
-        "ubiquity_pct": ubiquity_pct,
-        "scanned_needles": len(terms),
         "entities": entities,
-        "paths_summary": paths_summary,
         "intake": intake,
         "walkthrough": walkthrough,
-        "backend": backend,
-        "hits_examined": len(hits),
-        "scan_truncated": scan_truncated,
-        "scan_stats": scan_stats,
-        "census_source": census_source,
         "mode_interpretation": mode_interpretation,
         "ti_context": ti_context,
         "findings_summary": findings_summary,
@@ -928,11 +608,10 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         out["reconciliation"] = {}
 
     # WO-K3: anomaly leads. Deterministic, written to analysis/leads.jsonl, and
-    # surfaced here next to the needles so a briefing carries the questions worth
-    # asking - rarity, an unexpected parent, a first sighting, a volume burst -
-    # not only the rows a keyword happened to match. A lead is not a finding and
-    # stages nothing.
-    out["leads"] = [lead.to_dict() for lead in built_leads[:60]]
+    # surfaced here so a briefing carries the questions worth asking - rarity, an
+    # unexpected parent, a first sighting, a volume burst. A lead is not a finding
+    # and stages nothing.
+    out["leads"] = lead_dicts[:60]
     by_kind: dict[str, int] = {}
     for lead in built_leads:
         by_kind[lead.kind] = by_kind.get(lead.kind, 0) + 1
@@ -952,70 +631,25 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
         out["absence"] = {"statement": "", "error": str(exc)[:200]}
 
-    # WP 4j.5c: persist an offline copy — the briefing and signal map must be
-    # reviewable without the UI (DFIR practice: every analysis leaves a file
-    # artifact the examiner can open, diff, or attach to notes).
-    out["artifacts"] = _write_briefing_artifacts(case_dir, out, counts, needle_map)
+    # WP 4j.5c: persist an offline copy — the briefing must be reviewable without
+    # the UI (DFIR practice: every analysis leaves a file artifact the examiner can
+    # open, diff, or attach to notes).
+    out["artifacts"] = _write_briefing_artifacts(case_dir, out)
     return out
 
 
-def _write_briefing_artifacts(
-    case_dir: Path,
-    brief: dict[str, Any],
-    needle_counts: dict[str, int],
-    needle_map: dict[str, str],
-) -> dict[str, str]:
-    """Write analysis/briefing.md + analysis/signal_map.csv; return paths.
+def _write_briefing_artifacts(case_dir: Path, brief: dict[str, Any]) -> dict[str, str]:
+    """Write analysis/briefing.md; return its path.
 
     Best-effort — a read-only case dir or IO failure must never break the
-    briefing itself. The CSV records EVERY scanned needle (0 hits included)
-    because "checked, absent" is negative evidence, not noise — and a needle
-    that could not actually be queried is marked ``scanned=no`` so it can
-    never masquerade as "checked, absent".
+    briefing itself.
     """
-    import csv
-
     try:
         analysis_dir = case_dir / "analysis"
         analysis_dir.mkdir(parents=True, exist_ok=True)
         md_path = analysis_dir / "briefing.md"
         md_path.write_text(briefing_to_markdown(brief), encoding="utf-8")
-
-        failed_terms = {
-            str(t).lower() for t in (brief.get("scan_stats") or {}).get("terms_failed") or []
-        }
-        # The full scan retains every matching row. A term whose query failed
-        # is written as not scanned rather than as a zero-hit absence.
-        stats = brief.get("scan_stats") or {}
-        exact = "yes" if stats.get("counts_exact") else "no"
-        count_failed = [str(t) for t in stats.get("count_failed") or []]
-        csv_path = analysis_dir / "signal_map.csv"
-        with csv_path.open("w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            w.writerow(["needle", "hits", "source", "scanned", "exact"])
-            for needle, count in sorted(needle_counts.items(), key=lambda kv: -kv[1]):
-                low = str(needle).lower()
-                scanned = "no" if low in failed_terms else "yes"
-                w.writerow([needle, count, needle_map.get(needle, ""), scanned, exact])
-            for needle in count_failed:
-                w.writerow([needle, 0, needle_map.get(needle, "playbook"), "no", exact])
-
-        # Match-site facts (EventId/RecordNumber/label cells): recorded apart
-        # from the signal map so a bare value is never read as behaviour.
-        facts_path = analysis_dir / "field_facts.csv"
-        with facts_path.open("w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            w.writerow(["needle", "rows", "field", "class"])
-            for fact in brief.get("needle_facts") or []:
-                w.writerow([
-                    fact.get("needle"), fact.get("hits"),
-                    fact.get("field"), fact.get("class"),
-                ])
-        return {
-            "briefing_md": str(md_path),
-            "signal_map_csv": str(csv_path),
-            "field_facts_csv": str(facts_path),
-        }
+        return {"briefing_md": str(md_path)}
     except Exception:  # noqa: BLE001
         return {}
 
@@ -1092,96 +726,17 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
                 lines.append(f"  - why: {learn['headline']}")
             for w in (learn.get("why_matters") or [])[:1]:
                 lines.append(f"  - {w}")
-    scan = brief.get("needle_scan") or []
-    if scan:
-        signal_rows = [s for s in scan if not s.get("ubiquitous")]
-        lines.append(f"\n## Signal map ({len(signal_rows)} needles with signal hits)")
-        for s in signal_rows:
-            lines.append(f"- `{s['needle']}` — {s['hits']} hits ({s['source']})")
-    facts = brief.get("needle_facts") or []
-    if facts:
-        lines.append(f"\n## Field facts (not signal) — {len(facts)} term(s)")
-        lines.append(
-            "Keyword matches on id/label columns (EventId, RecordNumber, "
-            "Provider, Level, ...). They show the value exists in the evidence "
-            "- useful as pivots, never as suspicious signal or findings."
-        )
-        for f in facts:
-            field = f" in `{f['field']}`" if f.get("field") else ""
-            lines.append(
-                f"- `{f['needle']}` - {f['hits']} row(s){field} "
-                f"({f.get('class') or 'fact'})"
-            )
-    floor = int(brief.get("ubiquity_floor") or 0)
-    background = [s for s in scan if s.get("ubiquitous")]
-    if background:
-        lines.append(
-            f"\n## Background terms (ubiquitous, >={floor} hits) - not signal"
-        )
-        lines.append(
-            "These match a large share of the case; they are ranked last and "
-            "never staged as findings."
-        )
-        for s in background:
-            lines.append(f"- `{s['needle']}` - {s['hits']} hits ({s['source']})")
-    itm_cov = brief.get("itm_coverage") or []
-    if itm_cov:
-        lines.append(
-            f"\n## Insider Threat Matrix coverage ({len(itm_cov)} relevant pack(s))"
-        )
-        for row in itm_cov:
-            strong = (
-                f", {row['strong_hits']} strong" if row.get("strong_hits") else ""
-            )
-            lines.append(
-                f"- `{row.get('itm')}` {row.get('name')} - {row.get('hits')} hit(s){strong}"
-            )
-    scan_stats = brief.get("scan_stats") or {}
-    if str(brief.get("backend") or "").startswith("csv"):
-        reason = str(scan_stats.get("fallback_reason") or "NEXUS_ES_URL unset")
-        lines.append(
-            f"\n> Backend: **CSV pack** (Elasticsearch not used — {reason}). "
-            "Mode 2/3 analysis requires ES; restart ES and rebuild the index."
-        )
-    failed_terms = scan_stats.get("terms_failed") or []
+    leads = [lead for lead in brief.get("leads") or [] if not (lead.get("extra") or {}).get("crit_high")]
+    if leads:
+        lines.append(f"\n## Leads ({len(leads)} below crit/high)")
+        for lead in leads[:30]:
+            lines.append(f"- [{lead.get('kind')}] {lead.get('subject')} — {str(lead.get('detail') or '')[:160]}")
     pending_families = (brief.get("coverage") or {}).get("pending") or []
     if pending_families:
         lines.append(
             f"\n> PENDING EVIDENCE: {len(pending_families)} item(s) the lane has "
             f"not processed ({', '.join(str(p) for p in pending_families[:10])}). "
             "No absence claim may be made about these."
-        )
-    if failed_terms:
-        lines.append(
-            f"\n> WARNING: {len(failed_terms)} needle(s) could NOT be queried "
-            f"({', '.join(failed_terms[:10])}) — their 0-hit rows in "
-            "`signal_map.csv` are marked `scanned=no` and are NOT evidence of absence."
-        )
-    elif scan_stats and scan_stats.get("terms_requested"):
-        files_line = ""
-        if scan_stats.get("files_total"):
-            files_line = (
-                f" · files {scan_stats.get('files_scanned', 0)}/"
-                f"{scan_stats.get('files_total', 0)}"
-            )
-        lines.append(
-            f"\nScan coverage: {scan_stats.get('terms_queried', 0)}/"
-            f"{scan_stats.get('terms_requested', 0)} needles queried"
-            f"{files_line}"
-            f" ({scan_stats.get('chunk_queries', 0)} ES chunk queries)."
-        )
-    trunc_reasons = scan_stats.get("truncated_reasons") or []
-    if trunc_reasons:
-        lines.append(
-            f"\n> WARNING: hit counts are LOWER BOUNDS — scan truncated by: "
-            f"{'; '.join(trunc_reasons)}. Explore may find more rows."
-        )
-    if brief.get("census_source") == "index" and not scan:
-        lines.append(
-            "\n> No playbook needle hits in this evidence. The host/user/time "
-            "map below comes from the index census (deterministic), not from "
-            "the needle scan — the evidence is present even when no threat "
-            "needle matched."
         )
     ent = brief.get("entities") or {}
     if ent:
@@ -1193,15 +748,6 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
                 for e in elist
             )
             lines.append(f"- **{etype}**: {vals}")
-    paths = brief.get("paths_summary") or {}
-    if paths.get("distinct"):
-        fams = ", ".join(paths.get("families") or []) or "the case"
-        examples = ", ".join(paths.get("examples") or [])
-        lines.append(
-            f"- **host filesystem paths** (content, NOT evidence files): "
-            f"{paths['distinct']} distinct across {fams}"
-            + (f" — e.g. {examples}" if examples else "")
-        )
     intake = brief.get("intake") or {}
     if intake:
         lines.append("\n## Intake")
@@ -1218,19 +764,20 @@ _DIRECTIONS_SYSTEM = """\
 You are a senior DFIR examiner writing an investigation briefing for a peer.
 
 You receive a DETERMINISTIC case briefing: evidence inventory, parser ledger,
-alert surface (Hayabusa/Sigma severity), a signal map (which playbook/ATT&CK/
-Sigma needles already hit and how many times), top entities, hosts, the time
-range, and the intake question.
+alert surface (every crit/high lead: detections, baselines, scanners), the
+leads below crit/high (baseline review items, values rare across hosts,
+detector context), typed entities, hosts, the time range, and the intake
+question.
 
 Produce 3-6 investigation DIRECTIONS — concrete starting points an examiner
 can run immediately. Rules:
-- Ground every direction in the briefing's actual numbers — cite "47 lsass
-  hits" or "critical: LSASS Memory Access on WS01", never invent evidence.
+- Ground every direction in the briefing's actual items — cite "critical:
+  LSASS Memory Access on WS01" or the lead it comes from, never invent evidence.
 - Each direction = {title, why, needles, family}. needles are search terms
   the examiner can paste into the query box.
-- Order by investigative value: confirmed alerts first, then high-count
-  needle clusters, then negative-evidence checks (things that SHOULD be
-  there if the suspicion is right but aren't).
+- Order by investigative value: alerts first, then the leads, then the checks
+  whose source is present (an absence holds only where the source that would
+  record it is present and complete).
 - If the intake question names subjects/hosts/times, prioritise directions
   that address it directly.
 - Return ONLY JSON: {"directions": [{title, why, needles, family}, ...]}
@@ -1296,7 +843,7 @@ def llm_directions(
     if model is None:
         return []
 
-    scan = brief.get("needle_scan") or []
+    leads = [lead for lead in brief.get("leads") or [] if not (lead.get("extra") or {}).get("crit_high")]
     alerts = brief.get("alerts") or []
     ents = brief.get("entities") or {}
     intake = brief.get("intake") or {}
@@ -1318,8 +865,8 @@ def llm_directions(
             f"[{a.get('level','')}] {a.get('title','')} @{a.get('host','')}"
             for a in alerts[:10]
         ) or "none"),
-        "Signal map: " + (", ".join(
-            f"{s['needle']}({s['hits']})" for s in scan[:25]
+        "Leads: " + ("; ".join(
+            f"[{lead.get('kind')}] {lead.get('subject')}" for lead in leads[:25]
         ) or "none"),
         "Top entities: " + (" | ".join(
             f"{t}={', '.join(e['value'] for e in (ents.get(t) or [])[:5])}"

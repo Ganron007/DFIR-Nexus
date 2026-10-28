@@ -329,34 +329,6 @@ export interface WorkbenchAddManyResponse {
   error?: string;
 }
 
-/** POST/GET /mode1/full-run[/status] → tracked run record (202 on start) */
-export interface Mode1FullRunResponse {
-  status: string; // running | complete | error | interrupted | never_run
-  run_id?: string;
-  stage?: string;
-  current?: string;
-  started_at?: number;
-  updated_at?: number;
-  completed_at?: number;
-  needles_done?: number;
-  needles_total?: number;
-  needles_scanned: number;
-  needles_hit_total?: number;
-  needles_hit?: number;
-  needles_capped?: number;
-  scan_truncated?: boolean;
-  bookmarks_added: number;
-  drafts: { finding_id?: string; title: string; hits: number; families: string[]; confidence_adjusted?: string[] }[];
-  drafts_staged?: number;
-  superseded?: { needle: string; finding_id: string; replaced_by?: string }[];
-  revised_approved?: { needle: string; finding_id?: string; prior_approved_ids: string[] }[];
-  reprocess?: boolean;
-  skipped: { needle?: string; reason: string }[];
-  next?: string;
-  error?: string;
-  thread_alive?: boolean;
-}
-
 /** GET /commit/status → {examiner, password_configured, setup_hint} */
 export interface CommitStatusResponse {
   examiner: string | null;
@@ -907,31 +879,6 @@ export interface BriefingAlert {
   /** WP 4j.1 — interpretation (meaning + what to check next) attached at build. */
   interpret?: HitInterpretation;
 }
-export interface BriefingNeedle {
-  needle: string;
-  hits: number;
-  source: string;
-  /** F1 ubiquity demotion: matches a large share of the case — background,
-   *  ranked last, never staged as a finding. */
-  ubiquitous?: boolean;
-}
-/** Insider Threat Matrix coverage: hit counts per relevant needle pack
- *  (0 hits = negative evidence, not absence of risk). */
-export interface BriefingItmCoverage {
-  itm: string;
-  name: string;
-  hits: number;
-  strong_hits?: number;
-  caveat?: string;
-}
-/** Match-site fact: keyword matched an id/label column (EventId, Provider,
- *  RecordNumber...). A value in the evidence — a pivot, never signal. */
-export interface BriefingNeedleFact {
-  needle: string;
-  hits: number;
-  field?: string;
-  class?: string;
-}
 export interface BriefingEntity {
   value: string;
   hits: number;
@@ -976,25 +923,13 @@ export interface BriefingResponse {
   time_range: { start: string; end: string };
   alerts: BriefingAlert[];
   alert_count: number;
-  needle_scan: BriefingNeedle[];
-  /** Id/label column matches (EventId, Provider, ...) — facts, not signal. */
-  needle_facts?: BriefingNeedleFact[];
-  /** Insider Threat Matrix pack coverage for this case (F3). */
-  itm_coverage?: BriefingItmCoverage[];
-  /** Hit count at/above which a needle is background (F1). */
-  ubiquity_floor?: number;
-  scanned_needles: number;
+  /** Leads built from the index: detections, baselines, rarity and context (WO-K3). */
+  lead_counts?: { total: number; by_kind: Record<string, number>; error?: string };
+  /** Typed entities: the index's own fields (host, user, process, ...), Part 12 FM-7. */
   entities: Record<string, BriefingEntity[]>;
-  /** Host filesystem paths inside evidence content (NOT evidence files) —
-   *  summarized instead of listed as top entities. */
-  paths_summary?: { distinct: number; families: string[]; examples: string[] };
   intake: Record<string, string>;
   directions?: BriefingDirection[];
   walkthrough?: BriefingWalkthroughStep[];
-  backend: string;
-  hits_examined: number;
-  /** WP 4j.5 — true when the needle scan hit its cap; chip counts are lower bounds. */
-  scan_truncated?: boolean;
   /** Mode 2 — LLM interpretation markdown (verdict + findings + gaps + TI). */
   mode_interpretation?: string;
   /** Mode 2 — deterministic IOC sweep + provider verdicts (markdown). */
@@ -1006,20 +941,9 @@ export interface BriefingResponse {
     top: { id: string; title: string; severity: string; confidence: string }[];
   };
   /** WP 4j.5c — persisted offline copies (absolute paths on the server host). */
-  artifacts?: { briefing_md?: string; signal_map_csv?: string };
+  artifacts?: { briefing_md?: string };
   /** GATE-A — deterministic Case Digest exists (Mode 2/3). */
   digest_exists?: boolean;
-  /** EH-1 — scan coverage accounting (lower-bound reasons when truncated). */
-  scan_stats?: {
-    terms_requested?: number;
-    terms_queried?: number;
-    files_total?: number;
-    files_scanned?: number;
-    truncated?: boolean;
-    truncated_reasons?: string[];
-    terms_failed?: string[];
-    needles_dropped_cap?: string[];
-  };
   error?: string;
 }
 
@@ -1071,15 +995,7 @@ export interface CaseDigestResponse {
     ledger: { ok: number; skip: number; fail: number; entries: unknown[] };
     hosts: string[];
     time_range: { start?: string; end?: string };
-    signal_map: {
-      scanned: number;
-      with_hits: { needle: string; hits: number }[];
-      zero_hit: string[];
-      /** Needles that were NOT scanned (dropped cap/truncation) — shown so
-       *  "scanned" can never be read as full coverage. */
-      unscanned?: string[];
-    };
-    alerts: { level: string; family: string; title: string; host: string; time: string }[];
+    alerts:{ level: string; family: string; title: string; host: string; time: string }[];
     entities: Record<string, { value: string; hits: number }[]>;
     entity_spans: Record<string, { value: string; count: number; first_seen?: string; last_seen?: string }[]>;
     timeline: { buckets_per_day: Record<string, number>; source: string };
@@ -1087,11 +1003,6 @@ export interface CaseDigestResponse {
       present?: number; missing?: number; synthesized?: number;
       tz_assumed?: number; year_assumed?: number;
     }>;
-    backend: string;
-    scan_stats?: {
-      truncated?: boolean;
-      truncated_reasons?: string[];
-    };
   };
   markdown: string;
   error?: string;

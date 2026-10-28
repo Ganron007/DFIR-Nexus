@@ -990,17 +990,17 @@ def build_dfir_markdown(
         lines.extend(render_assessment(assessment))
 
     # Mode 1 LLM directions — the examiner-led starting points, carried into
-    # the report as suggested next steps (grounded in the signal map/needle
-    # hits; suggestions only, never approved conclusions).
+    # the report as suggested next steps (grounded in the briefing's alerts and
+    # leads; suggestions only, never approved conclusions).
     directions_record = _load_briefing_directions_record(case_dir)
     directions = _load_briefing_directions(case_dir)
     if directions:
         lines.append("## Suggested next steps")
         lines.append("")
         lines.append(
-            "_LLM-generated investigation directions grounded in the current "
-            "keyword scan and needle-hit signal map — suggestions for the "
-            "examiner, not approved conclusions._"
+            "_LLM-generated investigation directions grounded in the briefing's "
+            "alerts and leads — suggestions for the examiner, not approved "
+            "conclusions._"
         )
         generated = str(directions_record.get("generated_at") or "").strip()
         source = str(directions_record.get("source") or "llm").strip()

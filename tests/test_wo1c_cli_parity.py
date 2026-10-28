@@ -97,25 +97,6 @@ def test_collect_mode_claims_ignores_non_analysis_pipeline_runs(tmp_path: Path) 
     assert not by_mode["1"], "a tools run must not be read as a Mode 1 analysis run"
 
 
-def test_collect_mode_claims_reads_mode1_full_run(tmp_path: Path) -> None:
-    """``analysis/mode1_full_run.json`` is the other Mode 1 record shape."""
-    _cite(tmp_path, "aud-2", process="cmd.exe")
-    _write_json(tmp_path / "findings.json", [])
-    _write_json(
-        tmp_path / "analysis" / "mode1_full_run.json",
-        {
-            "run_id": "mode1_full_run",
-            "candidates": [
-                {"id": "F-1", "title": "cmd.exe executed", "audit_ids": ["aud-2"]}
-            ],
-        },
-    )
-    by_mode = collect_mode_claims(tmp_path)
-    assert by_mode["1"], "the Mode 1 full-run record must be collected"
-    assert by_mode["1"][0]["mode"] == "1"
-    assert by_mode["1"][0]["source"] == "finding:F-1"
-
-
 def test_one_case_three_modes_are_all_seen(tmp_path: Path) -> None:
     """The D5 = C shape: one case, M1 + M2 + M3, all three compared."""
     for audit_id in ("a", "b", "c"):

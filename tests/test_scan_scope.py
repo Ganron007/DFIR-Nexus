@@ -41,38 +41,6 @@ def test_scan_reads_only_case_evidence(tmp_path):
     assert out_scope == [], "a file outside the case must never be searched"
 
 
-def test_briefing_needles_are_evidence_vocabulary(tmp_path):
-    """Machine paths never become needles - even when intake contains them."""
-    from nexus.langgraph import briefing
-    from nexus.langgraph.case_intake import persist_case_intake
-
-    case = _case_with_evidence(tmp_path)
-    persist_case_intake(case, {
-        "question": r"triage C:\STUDY\Github\CADRE-Platform\DFIR-Nexus evidence",
-        "subjects": r"C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files",
-        "query_extra": "\n".join([
-            "domain_user",
-            r"STUDY\Github",
-            r"CADRE-Platform\DFIR-Nexus",
-        ]),
-    })
-
-    needles = briefing._scan_needles(case, ["hayabusa"], [])
-
-    assert needles, "the scan still proposes real needles (e.g. playbook terms)"
-    # Free-text tokens are machine-local strings: nothing path-shaped, no labels.
-    intake_terms = [k for k, v in needles.items() if v == "intake"]
-    assert all("\\" not in k and "/" not in k and ":" not in k for k in intake_terms)
-    assert "domain_user" not in needles
-    lowered = " ".join(needles).lower()
-    assert not any(
-        part in lowered for part in ("study", "github", "cadre", "nexus", "evidence-files")
-    )
-    assert CANARY not in lowered
-    # Curated pack fragments are evidence strings and stay scannable.
-    assert "cipher /w" in needles  # hayabusa-family sigma pack
-
-
 def test_persistable_needles_blocks_paths_and_labels():
     from nexus.langgraph.query_pack import persistable_needles
 

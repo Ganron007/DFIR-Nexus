@@ -301,7 +301,7 @@ def _dedupe(terms: list[str]) -> list[str]:
 # Entity/schema vocabulary that must never become a needle: type labels like
 # "domain_user" are how the extractor classifies rows, not strings the host
 # emits. Paths are machine-local (C:\STUDY\Github\...) and match every path in
-# every row — they belong in the file column, not in the signal map.
+# every row — they belong in the file column, not in the needle vocabulary.
 _NEEDLE_NOISE = frozenset({
     "domain_user", "windows_path", "posix_path", "process_name", "service_name",
     "ipv4", "ipv6", "url", "domain", "hostname", "username", "account",
@@ -1941,16 +1941,12 @@ def count_hits(
     return {"count": n, "backend": "csv", "exact": True}
 
 
-def build_query_pack_markdown(
-    case_dir: Path,
-    ledger: list[dict[str, Any]] | None = None,
-    intake: dict[str, str] | None = None,
-    run_id: str = "",
-    *,
-    _scan_output: dict[str, Any] | None = None,
-) -> str:
-    case_dir = Path(case_dir)
-    intake = intake if intake is not None else load_case_intake(case_dir)
+def query_pack_terms(case_dir: Path, intake: dict[str, str], run_id: str = "") -> tuple[list[str], list[str]]:
+    """The examiner's keyword vocabulary: the intake's terms and the playbook terms, as (terms, priority terms).
+
+    The one place keyword needles are kept (Part 12 FM-3, D460): the query pack and the Timeline's default view
+    read it; no mode prompt, coverage verdict or report counts it.
+    """
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
     # WO-R1F item 6: with NO playbooks, choose the needle packs from the case's
@@ -1968,6 +1964,24 @@ def build_query_pack_markdown(
             derived_from_families = []
         if derived_from_families:
             pb_terms = _dedupe([*pb_terms, *derived_from_families])
+    return terms, pb_terms
+
+
+def build_query_pack_markdown(
+    case_dir: Path,
+    ledger: list[dict[str, Any]] | None = None,
+    intake: dict[str, str] | None = None,
+    run_id: str = "",
+    *,
+    _scan_output: dict[str, Any] | None = None,
+) -> str:
+    case_dir = Path(case_dir)
+    intake = intake if intake is not None else load_case_intake(case_dir)
+    terms, pb_terms = query_pack_terms(case_dir, intake, run_id=run_id)
+    # The terms the case's families added (no playbooks named in the intake), for the pack's own account.
+    named = set(collect_playbook_query_terms(intake))
+    derived_from_families = ([] if str(intake.get("playbooks") or "").strip()
+                             else [term for term in pb_terms if term not in named])
     window = parse_intake_window(intake)
     pack_stats: dict[str, Any] = {}
     hits, backend = n4_hits(
@@ -2073,7 +2087,7 @@ def write_query_pack(
         timeline_query_plan,
     )
 
-    timeline_terms, _timeline_priority = timeline_query_plan(case_dir)
+    timeline_terms, _timeline_priority = timeline_query_plan(case_dir, intake, run_id=run_id)
     pack_intake = intake if intake is not None else load_case_intake(case_dir)
     pack_terms = collect_query_terms(pack_intake)
     if pack_terms == timeline_terms:

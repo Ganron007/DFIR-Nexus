@@ -443,19 +443,6 @@ def test_run_record_reads_the_tool_lane_ledger(tmp_path, monkeypatch):
     assert result["provenance"]["audit_id"]
 
 
-def test_full_run_scribe_policy_defaults(monkeypatch):
-    from nexus.dashboard.app import _full_run_scribe_policy
-
-    monkeypatch.delenv("NEXUS_FULL_RUN_SCRIBE", raising=False)
-    monkeypatch.delenv("NEXUS_FULL_RUN_SCRIBE_MIN_HITS", raising=False)
-    assert _full_run_scribe_policy() == ("heuristic", 3)
-    monkeypatch.setenv("NEXUS_FULL_RUN_SCRIBE", "signal")
-    monkeypatch.setenv("NEXUS_FULL_RUN_SCRIBE_MIN_HITS", "5")
-    assert _full_run_scribe_policy() == ("signal", 5)
-    monkeypatch.setenv("NEXUS_FULL_RUN_SCRIBE", "not-a-mode")
-    assert _full_run_scribe_policy()[0] == "heuristic"
-
-
 def test_briefing_directions_are_persisted_for_the_report(tmp_path):
     from nexus.integration.dfir_report import _load_briefing_directions
 
@@ -811,15 +798,6 @@ def test_case_assessment_uses_context_loop(tmp_path):
             clusters, analyses, rows_for, model=object(), case_dir=case)
     assert out["sequence"] == "s"
     assert out["source"] == "llm-context-loop"
-
-
-def test_full_run_llm_scribe_decision():
-    from nexus.dashboard.app import _full_run_llm_scribe
-
-    assert _full_run_llm_scribe("heuristic", 3, [1, 2, 3, 4]) is False
-    assert _full_run_llm_scribe("llm", 3, [1]) is True
-    assert _full_run_llm_scribe("signal", 3, [1, 2]) is False
-    assert _full_run_llm_scribe("signal", 3, [1, 2, 3]) is True
 
 
 def test_slim_tool_calls_drops_large_catalog():

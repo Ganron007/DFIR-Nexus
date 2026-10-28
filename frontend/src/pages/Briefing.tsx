@@ -1,17 +1,18 @@
 /**
  * Briefing — WP 4i.4. The examiner's first view of a processed case.
  *
- * What was collected (inventory + parser ledger), what the signatures already
- * caught (alert surface), where the signal density is (playbook auto-scan),
- * top entities, hosts, time range, and the intake echo. Deterministic — no
- * LLM required. Clicking a needle drops into Explore with that needle set.
+ * What was collected (inventory + parser ledger), what the detections and
+ * baselines raised (the alert surface: every crit/high lead), the typed
+ * entities, hosts, time range, and the intake echo. Deterministic — no LLM
+ * required. Keyword pivots are the examiner's own, in Explore and the query
+ * pack: a word count is never shown as signal (Part 12 FM-3, D460).
  */
 import { useEffect, useRef, useState } from "react";
 import styles from "./Briefing.module.css";
 import { useNavigate, Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, type BriefingDirection, type BriefingResponse, type CaseDigestResponse, type InterpretRoundsResponse, type Mode1FullRunResponse } from "../api/client";
+import { api, type BriefingDirection, type BriefingResponse, type CaseDigestResponse, type InterpretRoundsResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
@@ -51,87 +52,6 @@ export default function Briefing() {
   const [openAlert, setOpenAlert] = useState<number | null>(null);
   // WP 4j.3: guided first-pass step completion (per-case, local)
   const [doneSteps, setDoneSteps] = useState<Record<string, boolean>>({});
-  // WP 4j.5d: Mode 1 full run — tracked server-side run; survives navigation
-  const [fullRunResult, setFullRunResult] = useState<Mode1FullRunResponse | null>(null);
-  const [fullRunError, setFullRunError] = useState("");
-  const [reprocess, setReprocess] = useState(false);
-  const fullRunPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopFullRunPoll = () => {
-    if (fullRunPollRef.current) {
-      clearInterval(fullRunPollRef.current);
-      fullRunPollRef.current = null;
-    }
-  };
-
-  const pollFullRun = () => {
-    stopFullRunPoll();
-    fullRunPollRef.current = setInterval(async () => {
-      try {
-        const r = await api.mode1FullRunStatus();
-        setFullRunResult(r);
-        if (r.status !== "running") {
-          stopFullRunPoll();
-          if (activeCase) refreshStages(activeCase);
-        }
-      } catch {
-        /* transient poll failure — keep polling */
-      }
-    }, 1500);
-  };
-
-  // On mount / case switch: reconnect to an in-flight or finished run.
-  useEffect(() => {
-    if (!activeCase) return;
-    let stale = false;
-    api.mode1FullRunStatus()
-      .then((r) => {
-        if (stale || r.status === "never_run") return;
-        setFullRunResult(r);
-        if (r.status === "running") pollFullRun();
-      })
-      .catch(() => { /* no record yet — fine */ });
-    return () => {
-      stale = true;
-      stopFullRunPoll();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCase]);
-
-  const fullRunRunning = fullRunResult?.status === "running";
-  // A prior terminal run exists → the button is a re-run; the reprocess
-  // checkbox lets the examiner supersede open DRAFTs and re-stage fresh.
-  const hasPriorRun = !!fullRunResult && !fullRunRunning && fullRunResult.status !== "never_run";
-
-  const fullRun = async () => {
-    setFullRunError("");
-    // Optimistic state — the POST returns instantly now, but show the running
-    // card the moment the click lands so there's never a dead-looking gap.
-    setFullRunResult({
-      status: "running",
-      stage: "starting",
-      needles_done: 0,
-      needles_total: 0,
-      needles_scanned: 0,
-      bookmarks_added: 0,
-      drafts: [],
-      skipped: [],
-    });
-    try {
-      const r = await api.mode1FullRun({ reprocess });
-      setFullRunResult(r);
-      if (r.status === "running") pollFullRun();
-    } catch (e) {
-      // 409 = a run is already live — attach to it instead of failing
-      const rec = (e as { detail?: Mode1FullRunResponse }).detail;
-      if ((e as { status?: number }).status === 409 && rec) {
-        setFullRunResult(rec);
-        if (rec.status === "running") pollFullRun();
-      } else {
-        setFullRunError((e as Error).message);
-      }
-    }
-  };
 
   useEffect(() => {
     if (!activeCase) return;
@@ -281,15 +201,8 @@ export default function Briefing() {
   if (error) return <div className="error-banner">{error}</div>;
   if (!brief) return null;
 
-  const scanStats = brief.scan_stats || {};
-  const truncReasons = scanStats.truncated_reasons || [];
   const ledger = brief.ledger || { entries: [], ok: 0, skip: 0, fail: 0 };
   const inv = brief.inventory || {};
-  const scan = brief.needle_scan || [];
-  const signalScan = scan.filter((s) => !s.ubiquitous);
-  const backgroundTerms = scan.filter((s) => s.ubiquitous);
-  const itmCoverage = brief.itm_coverage || [];
-  const facts = brief.needle_facts || [];
   const alerts = brief.alerts || [];
   const entities = brief.entities || {};
   const intake = brief.intake || {};
@@ -299,29 +212,6 @@ export default function Briefing() {
     <div>
       <div className={styles.s1}>
         <h2 className={styles.s2}>Case Briefing</h2>
-        {mode === "1" && (
-        <button
-          className={`btn btn-sm ${styles.s3}`}
-          disabled={fullRunRunning || scan.length === 0}
-          title={
-            fullRunRunning
-              ? "A Mode 1 full run is already in progress — status below"
-              : scan.length === 0
-                ? "No playbook needles matched any evidence — nothing to promote"
-                : `Needle scan: bookmark hits and stage one DRAFT per needle. This does not call the LLM. The interpretation card below does.`
-          }
-          onClick={fullRun}
-        >
-          {fullRunRunning ? "Needle scan in progress…" : hasPriorRun ? "↻ Re-run needle scan" : "▶ Needle scan"}
-        </button>
-        )}
-        {mode === "1" && hasPriorRun && !fullRunRunning && (
-          <label className={styles.s4}
-            title="Supersede open DRAFT findings for hit needles and stage fresh ones. APPROVED findings stay signed — a fresh DRAFT revision is staged alongside them for comparison and approval.">
-            <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} />
-            reprocess (refresh drafts / revise approved)
-          </label>
-        )}
       </div>
       <p className={styles.s5}>
         Auto-generated after processing — what was collected, what the signatures
@@ -451,25 +341,13 @@ export default function Briefing() {
           )}
           {digest && (() => {
             const d = digest.digest;
-            const digestTruncated = Boolean(d.scan_stats?.truncated);
-            const withHits = d.signal_map?.with_hits?.length ?? 0;
-            const zeroHits = d.signal_map?.zero_hit?.length ?? 0;
             return (
               <>
                 <div className={styles.s22}>
-                  {Math.max(0, (d.signal_map?.scanned ?? 0) - (d.signal_map?.unscanned?.length ?? 0))} needles scanned
-                  {d.signal_map?.unscanned?.length ? ` (${d.signal_map.unscanned.length} NOT scanned)` : ""} · {withHits} with hits ·{" "}
-                  {zeroHits} checked-absent (negative evidence) · {(d.alerts || []).length} high/critical alert(s) ·{" "}
+                  {(d.alerts || []).length} high/critical alert(s) ·{" "}
                   {d.hosts?.length ?? 0} host(s) · {Object.keys(d.inventory || {}).length} famil{Object.keys(d.inventory || {}).length === 1 ? "y" : "ies"} ·{" "}
                   timeline: {d.timeline?.source || "n/a"}
                 </div>
-                {digestTruncated && (
-                  <div className={styles.s23}>
-                    LOWER BOUNDS — the briefing scan was truncated (
-                    {(d.scan_stats?.truncated_reasons || []).join("; ") || "cap reached"}).
-                    Counts below are minimums.
-                  </div>
-                )}
                 {(d.scope?.explicitly_absent?.length ?? 0) > 0 && (
                   <div className={styles.s23}>
                     Scope — NOT in evidence (stated as scope, never as “no compromise”):{" "}
@@ -605,72 +483,6 @@ export default function Briefing() {
         </div>
       )}
 
-      {/* WP 4j.5d — tracked full run: live progress, then per-stage summary */}
-      {mode === "1" && fullRunError && <div className="error-banner">{fullRunError}</div>}
-      {mode === "1" && fullRunRunning && (
-        <div className={`card ${styles.s36}`}>
-          <div className={`card-title ${styles.s7}`}>
-            Full run in progress — {fullRunResult?.stage || "starting"}
-          </div>
-          <div className={styles.s8}>
-            Needle {fullRunResult?.needles_done ?? 0}/{fullRunResult?.needles_total ?? 0}
-            {fullRunResult?.current && ` — ${fullRunResult.current}`}
-            {" · "}{fullRunResult?.drafts.length ?? 0} draft(s) staged
-            {" · "}{fullRunResult?.bookmarks_added ?? 0} bookmark(s) added
-          </div>
-          <div className={styles.s37}>
-            <progress
-              className={styles.barFill}
-              value={fullRunResult?.needles_done ?? 0}
-              max={fullRunResult?.needles_total || 1}
-            />
-          </div>
-        </div>
-      )}
-      {mode === "1" && fullRunResult && !fullRunRunning && (
-        <div className={`card ${fullRunResult.status === "complete" ? styles.edgeOk : styles.edgeBad}`}>
-          <div className={`card-title ${styles.s7}`}>
-            {fullRunResult.status === "complete"
-              ? `Full run complete — ${fullRunResult.drafts_staged ?? fullRunResult.drafts.length} DRAFT finding(s) staged`
-              : fullRunResult.status === "interrupted"
-                ? "Full run interrupted — server restarted mid-run; safe to re-run"
-                : `Full run failed — ${fullRunResult.error || "unknown error"}`}
-          </div>
-          <div className={styles.s8}>
-            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit_total ?? fullRunResult.needles_total ?? 0} with hits
-            {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
-            {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench
-            {(fullRunResult.superseded?.length ?? 0) > 0 && ` · ${fullRunResult.superseded!.length} draft(s) superseded`}
-            {(fullRunResult.revised_approved?.length ?? 0) > 0 && ` · ${fullRunResult.revised_approved!.length} approved signal(s) revised (fresh DRAFT staged)`}
-          </div>
-          {fullRunResult.drafts.length > 0 && (
-            <ul className={styles.s27}>
-              {fullRunResult.drafts.map((d) => (
-                <li key={d.finding_id || d.title}>
-                  {d.title}
-                  {d.confidence_adjusted?.length ? (
-                    <span className={styles.s38} title={d.confidence_adjusted.join("\n")}>
-                      {" "}· confidence capped → LOW (needs corroboration)
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          {fullRunResult.skipped.length > 0 && (
-            <div className={styles.s39}>
-              Skipped: {fullRunResult.skipped.map((s) => `${s.needle || "?"} (${s.reason})`).join(" · ")}
-            </div>
-          )}
-          <div className={styles.s40}>
-            {fullRunResult.next}{" "}
-            <button className="btn btn-sm" onClick={() => navigate("/approve")}>
-              Review in Approve →
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* WP 4j.3 — guided first pass: the walkthrough an examiner follows (Mode 1) */}
       {mode === "1" && walkthrough.length > 0 && (
         <div className={`card ${styles.s36}`}>
@@ -682,7 +494,7 @@ export default function Briefing() {
           </div>
           <p className={styles.s43}>
             Work top-down: triage what the signatures caught, map who/where,
-            read the signal clusters, then run the starting points.
+            then run the starting points.
           </p>
           {walkthrough.map((st) => {
             const done = !!doneSteps[st.key];
@@ -797,8 +609,8 @@ export default function Briefing() {
           <div className={styles.s21}>crit/high alerts</div>
         </div>
         <div className={`card ${styles.s64}`}>
-          <div className={styles.s65}>{scan.length}</div>
-          <div className={styles.s21}>needles with hits</div>
+          <div className={styles.s65}>{brief.lead_counts?.total ?? 0}</div>
+          <div className={styles.s21}>leads to review</div>
         </div>
         <div className={`card ${styles.s64}`}>
           <div className={styles.s65}>{brief.hosts?.length || 0}</div>
@@ -932,97 +744,6 @@ export default function Briefing() {
               </table>
             )}
           </div>
-
-          {/* Signal map — playbook auto-scan needle → hit count */}
-          <div className="card">
-            <div className={`card-title ${styles.s56}`}>
-              Signal Map <span className={styles.s20}>({brief.scanned_needles} playbook/ATT&CK/Sigma needles scanned)</span>
-            </div>
-            {scan.length === 0 ? (
-              <p className={styles.s68}>
-                No playbook needles matched. Try the Explore page with your own terms.
-              </p>
-            ) : (
-              <>
-                <div className={styles.s53}>
-                  {signalScan.slice(0, 60).map((s) => (
-                    <button
-                      key={s.needle}
-                      className={`btn btn-sm clickable-tint ${styles.s90}`}
-                      title={`${s.hits}${brief.scan_truncated ? "+" : ""} hits — ${s.source} — click to open in Explore`}
-                      onClick={() => searchNeedle(s.needle)}
-                    >
-                      {s.needle} <strong>{s.hits}{brief.scan_truncated ? "+" : ""}</strong>
-                    </button>
-                  ))}
-                </div>
-                {brief.scan_truncated && (
-                  <div className={styles.s91}>
-                    Counts are LOWER BOUNDS
-                    {truncReasons.length > 0 && ` — ${truncReasons.join("; ")}`}
-                    {truncReasons.length === 0 && " — the scan stopped at the briefing window"}
-                    ; Explore shows the true total.
-                  </div>
-                )}
-              </>
-            )}
-            {facts.length > 0 && (
-              <div className={styles.s92}>
-                <div
-                  className={styles.s93}
-                  title="Keyword matches on id/label columns (EventId, RecordNumber, Provider, Level...). They show the value exists in the evidence — useful pivots, never suspicious signal or findings."
-                >
-                  Field facts — id/label column matches (not signal)
-                </div>
-                <div className={styles.s94}>
-                  {facts.slice(0, 40).map((f) => (
-                    <span
-                      key={`${f.needle}:${f.field || ""}`}
-                      className={styles.s95}
-                      title={`${f.hits} row(s) matched ${f.field || "a field"} (${f.class || "fact"}) — the value exists in the evidence, it is not evidence of behaviour`}
-                    >
-                      {f.needle}
-                      {f.field ? ` · ${f.field}` : ""} <strong>{f.hits}</strong>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {itmCoverage.length > 0 && (
-              <div className={styles.s92}>
-                <div
-                  className={styles.s93}
-                  title="Insider Threat Matrix packs relevant to this case's families. 0 hits is negative evidence for those artifacts, not absence of risk — caveats apply."
-                >
-                  Insider Threat Matrix coverage — pack hits (not evidence)
-                </div>
-                <div className={styles.s94}>
-                  {itmCoverage.slice(0, 10).map((r) => (
-                    <span
-                      key={r.itm}
-                      className={r.hits ? styles.itmHit : styles.itmMiss}
-                      title={`${r.name}${r.caveat ? ` — ${r.caveat}` : ""}`}
-                    >
-                      {r.itm} {r.name} <strong>{r.hits}</strong>
-                      {r.strong_hits ? ` (${r.strong_hits} strong)` : ""}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {backgroundTerms.length > 0 && (
-              <div
-                className={styles.s96}
-                title={`Terms matching >= ${brief.ubiquity_floor || 0} rows of this case — background noise, ranked last and never staged as findings.`}
-              >
-                Background terms (ubiquitous):{" "}
-                {backgroundTerms
-                  .slice(0, 12)
-                  .map((s) => `${s.needle} (${s.hits})`)
-                  .join(" · ")}
-              </div>
-            )}
-          </div>
         </div>
 
         <div className={styles.s97}>
@@ -1093,38 +814,21 @@ export default function Briefing() {
                   </div>
                 </div>
               ))}
-              {brief.paths_summary && brief.paths_summary.distinct > 0 && (
-                <div className={styles.s96}>
-                  Host filesystem paths inside evidence content:{" "}
-                  <strong>{brief.paths_summary.distinct}</strong> distinct
-                  {brief.paths_summary.families?.length
-                    ? ` (${brief.paths_summary.families.join(", ")})`
-                    : ""}{" "}
-                  — content paths, not evidence files.
-                  {brief.paths_summary.examples?.length
-                    ? ` e.g. ${brief.paths_summary.examples.join(", ")}`
-                    : ""}
-                </div>
-              )}
             </div>
           )}
         </div>
       </div>
 
       <div className={styles.s109}>
-        Backend: {brief.backend || "csv"} · {brief.hits_examined} hits examined ·{" "}
         <Link to="/explore" className={styles.s110}>Open Explore →</Link>
       </div>
 
-      {/* WP 4j.5c — offline copies: the briefing + full signal map persist to the
+      {/* WP 4j.5c — offline copies: the briefing persists to the
           case dir on every render so the examiner can review them without the UI. */}
       {brief.artifacts?.briefing_md && (
         <div className={styles.s111}>
           Offline copies (rebuilt each view — open these if the UI misbehaves):{" "}
           <code className={styles.s112}>{brief.artifacts.briefing_md}</code>
-          {brief.artifacts.signal_map_csv && (
-            <>{" · "}<code className={styles.s112}>{brief.artifacts.signal_map_csv}</code></>
-          )}
         </div>
       )}
     </div>

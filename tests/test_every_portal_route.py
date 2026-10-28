@@ -85,8 +85,9 @@ OPEN = [r for r in TABLE if not r["mode_owned"]]
 def test_the_table_is_the_whole_surface():
     """Sanity: the enumeration found a real route table, not an empty parse."""
     assert len(TABLE) >= 90, f"only {len(TABLE)} routes found"
-    # 31 since Part 12 FM-8 removed the legacy /mode2/orchestrator simulation endpoint.
-    assert len(MODE_OWNED) >= 31, f"{len(MODE_OWNED)} mode-owned routes, expected >= 31"
+    # 29 since D460 removed the Mode 1 needle full run and its status (Part 12 FM-8 removed the legacy
+    # /mode2/orchestrator simulation endpoint before it).
+    assert len(MODE_OWNED) >= 29, f"{len(MODE_OWNED)} mode-owned routes, expected >= 29"
     assert all(r["path"].startswith("/portal/api/") for r in TABLE)
 
 

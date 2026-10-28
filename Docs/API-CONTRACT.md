@@ -699,83 +699,6 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 
 ---
 
-### POST /portal/api/mode1/full-run
-**Description:** Mode 1 "full run" (WP 4j.5d) — one click after evidence processing: scans every playbook/ATT&CK/Sigma needle, bookmarks all matching hits into the workbench, and stages one DRAFT finding per needle. Drafts use the deterministic heuristic scribe by default (instant; no LLM wait). `NEXUS_FULL_RUN_SCRIBE=signal|llm` upgrades initial fills for needles above `NEXUS_FULL_RUN_SCRIBE_MIN_HITS` or all needles respectively (model failures fall back to the heuristic fill). **Approval stays examiner-manual** — the run ends at DRAFTs and points the examiner at Approve (HMAC), then report generation (N8). Idempotent: needles whose identical draft title is already staged are skipped, and bookmarks dedupe.
-
-**Request (all fields optional):**
-```json
-{
-  "max_needles": "integer (optional — cap on needles to process, 1-120, default 40)",
-  "needle_filter": "string (optional — comma-separated subset of needles to run)",
-  "reprocess": "boolean (optional — supersede existing DRAFTs for hit needles and re-stage fresh; APPROVED findings are never overwritten or rejected — a fresh DRAFT revision is staged alongside each for examiner comparison)"
-}
-```
-
-**Re-run semantics:** a second POST after a terminal run always executes.
-Incremental mode (default) skips needles already covered by a DRAFT or
-APPROVED finding. `reprocess: true` retires covered DRAFTs — marked
-`REJECTED` with `superseded_by`/`rejection_reason` naming the replacement
-(drafts are unsigned machine output — safe to replace; the audit trail is
-preserved) — and stages fresh drafts. Needles covered by APPROVED findings
-are *revised*, not touched: the signed finding stays `APPROVED` and a fresh
-DRAFT revision is staged alongside it with `related_findings` naming the
-prior approved id(s) — the examiner compares and approves manually. The run
-record echoes `reprocess`, lists `superseded: [{needle, finding_id,
-replaced_by}]`, and lists `revised_approved: [{needle, finding_id,
-prior_approved_ids}]`.
-
-**Response 202 (started):**
-```json
-{
-  "run_id": "M1-<epoch>",
-  "status": "running",
-  "stage": "starting",
-  "needles_done": 0,
-  "needles_total": 0,
-  "needles_scanned": 0,
-  "needles_hit_total": 0,
-  "needles_capped": 0,
-  "scan_truncated": false,
-  "bookmarks_added": 0,
-  "drafts": [],
-  "skipped": [],
-  "superseded": [],
-  "revised_approved": []
-}
-```
-
-The 202 record is the reservation stub — the worker fills the scan counts
-(`needles_total`, `needles_scanned`, `needles_hit_total`, …) once the
-briefing vocabulary lands; poll the status endpoint for real values.
-
-The run executes in a background worker with a persisted record at
-`analysis/mode1_full_run.json` — navigation/reload never loses it. Poll
-`GET /portal/api/mode1/full-run/status` for live progress
-(`needles_done`/`needles_total`, `stage`, `current` needle, `drafts`,
-`bookmarks_added`) until `status` reaches `complete` (then `drafts_staged`,
-`next`) or `error`/`interrupted` (then `error`). A second POST while a run is
-live returns **409** with the running record — never a duplicate run. A stale
-`running` record with a dead worker (e.g. server restarted mid-run) is
-relabelled `interrupted` and does not block a new run.
-
-`skipped` entries are reported honestly — e.g. `low-signal needle (numeric/too short)` (pure-digit or <3-char needles are never staged), `draft already staged`, `no hits matched this needle`, or a query error.
-
-The run record persists `needles` (the scan vocabulary used). On completion
-the worker rebuilds the N7 timeline from the collected hits + finding
-evidence + workbench bookmarks — so the Timeline page is populated before
-examiner approval. Re-runs dedupe against DRAFT **and** APPROVED findings by
-needle name, so an identical needle never re-stages under a new hit count.
-
-**Errors:**
-- `400` — `max_needles` not an integer.
-- `404` — No active case.
-- `409` — A full run is already in progress (body carries the live record) OR case is sealed OR the case's stored investigation mode is not `1`.
-
-### GET /portal/api/mode1/full-run/status
-**Description:** Latest Mode 1 full-run record for the active case. Returns `{status: "never_run"}` when no run exists.
-
----
-
 ## 5. Explore
 
 ### POST /portal/api/explore/search
@@ -787,7 +710,7 @@ needle name, so an identical needle never re-stages under a new hit count.
   "query": "string (optional — DSL query text, e.g. 'error AND family:evtx NOT defender')",
   "needles": "string (optional — comma-separated plain search terms)",
   "family": "string (optional — comma-separated family names to filter)",
-  "default_needles": "boolean (optional — when true and query is empty, resolve the case investigation vocabulary: full-run needles → briefing scan vocabulary; response echoes default_needles count)",
+  "default_needles": "boolean (optional — when true and query is empty, resolve the examiner's query-pack vocabulary (intake and playbook terms); response echoes default_needles count)",
   "start": "string (optional — start date YYYY-MM-DD)",
   "end": "string (optional — end date YYYY-MM-DD)",
   "limit": "integer (optional — response page size; omitted means return every match)",
@@ -1179,10 +1102,12 @@ no-op, `added: 0`).
 absent. The Timeline page colors lane bars by this map.
 
 **Empty-query vocabulary (added 2026-09-13):** when `query` is empty the
-handler no longer returns zero hits — it resolves the case's investigation
-vocabulary: `needles` from the request when given, else the Mode 1 full-run's
-persisted needle list (`analysis/mode1_full_run.json`), else the briefing
-scan vocabulary (playbook/ATT&CK/Sigma needles for the case's families).
+handler no longer returns zero hits — it resolves the case's vocabulary:
+`needles` from the request when given, else the examiner's query-pack
+vocabulary (`query_pack.query_pack_terms`: the intake's terms and the playbook
+terms, chosen from the case's families when the intake names no playbook).
+Keyword needles are kept only here (D460): no mode, coverage verdict or report
+counts them.
 Terms go straight to `n4_hits`; N4 applies no term-count cap.
 The response carries `default_needles: <n>` when the auto-vocabulary was used
 (`0` for explicit/user needles). This is what lets a portal-created case
@@ -1202,8 +1127,8 @@ resolution (Timeline's events panel uses it); the response echoes
 **Description:** Regenerates `timeline.json` (N7) for the active case.
 Merges, in dedupe order: existing ledger events (`T-*` entries — never
 dropped), finding evidence rows (tagged `finding:<id>`, inherit the
-finding's status), N4 hits (intake terms, or the persisted full-run needle
-list when intake is empty), workbench bookmarks (`workbench` source,
+finding's status), N4 hits (the query pack's intake and playbook terms),
+workbench bookmarks (`workbench` source,
 `status: UNREVIEWED`), and ingest artifacts. Rows sharing `file:line`
 collapse to one event with unioned matched terms — the same row hit by two
 needles is one event.
@@ -1323,7 +1248,7 @@ needles is one event.
 ### POST /portal/api/mode1/corroborate
 **Description:** Runs an FD-006/007 corroboration check on a finding. Checks whether the finding has sufficient evidence family diversity and audit_id count for its confidence level. Returns problems and suggested corroboration queries.
 
-**Draft-staging behavior (FD-006/007 auto-cap):** when any draft is staged through `record_finding` (workbench promote, hit-promote, mode2/mode3 draft, full-run), a `MEDIUM`/`HIGH` confidence that fails these requirements is automatically lowered to `LOW` with an auditable note appended to `confidence_justification` and returned as `confidence_adjusted` in the response — the draft stages rather than being rejected. `LOW` and `SPECULATIVE` are below the escalation bar and never capped. To escalate, add corroborating evidence (another artifact family, or a second audit_id) and re-stage. `validate_finding` still rejects over-claimed confidence for direct/uncapped calls.
+**Draft-staging behavior (FD-006/007 auto-cap):** when any draft is staged through `record_finding` (workbench promote, hit-promote, mode2/mode3 draft), a `MEDIUM`/`HIGH` confidence that fails these requirements is automatically lowered to `LOW` with an auditable note appended to `confidence_justification` and returned as `confidence_adjusted` in the response — the draft stages rather than being rejected. `LOW` and `SPECULATIVE` are below the escalation bar and never capped. To escalate, add corroborating evidence (another artifact family, or a second audit_id) and re-stage. `validate_finding` still rejects over-claimed confidence for direct/uncapped calls.
 
 **Request:**
 ```json
@@ -2149,9 +2074,12 @@ Empty `ledger` + empty `run_id` = no tools run has executed yet for this case.
 
 ### GET /portal/api/case/briefing
 **Description:** Deterministic case briefing (WP 4i.1) — what was processed
-(inventory + parser ledger), what the signatures caught (alert surface), the
-signal map (needle→hit counts), top entities, hosts, time range, and intake
-echo. WP 4j.3 adds a `walkthrough` — the four-step guided first pass.
+(inventory + parser ledger), what the detections and baselines raised (the
+alert surface: every crit/high lead), the leads below crit/high with their
+counts (`leads`, `lead_counts`), the typed entities, hosts and time range from
+the index, and the intake echo. No keyword is counted (D460). WP 4j.3 adds a
+`walkthrough` — the four-step guided first pass (alerts, entities, leads,
+starting points).
 WP 4j.1 attaches `interpret` to each alert — see `/hit/interpret` for the
 payload shape (without the RAG `methodology` chunk).
 
@@ -2201,8 +2129,7 @@ only** (the Case Digest + interpretation run covers the agent modes).
 **Description:** GATE-A deterministic Case Digest (Mode 2/3) — everything the
 interpretation consumes, in one artifact: scope statement (evidence classes
 present AND explicitly absent — absence is scope, never a verdict), inventory
-+ parser ledger, signal map **including 0-hit needles as negative evidence**,
-alert surface, entities with first/last-seen spans, per-day timeline, TI
++ parser ledger, alert surface (every crit/high lead), the top leads, entities with first/last-seen spans, per-day timeline, TI
 context. Built on demand if `analysis/case_digest.json` is missing.
 
 **Query params:** `case_id` (optional — explicit case; `X-Nexus-Case` header

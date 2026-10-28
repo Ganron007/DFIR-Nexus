@@ -450,7 +450,7 @@ export default function CaseSetup() {
                 {mode === "1" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Examiner + LLM: deterministic lane, full-run scribe, steer chat, coverage and
+                Examiner + LLM: deterministic lane, steer chat, coverage and
                 interpretation. Briefing and Steer Chat are the primary surfaces.
               </p>
             </div>
@@ -546,7 +546,7 @@ export default function CaseSetup() {
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
             Case <strong>{caseId}</strong> ready. Mode <strong>{mode}</strong> selected.
             {mode === "1"
-              ? " Mode 1 (LLM) runs the deterministic parser lane; full-run, steer chat and coverage/interpretation follow from Briefing."
+              ? " Mode 1 (LLM) runs the deterministic parser lane; steer chat and coverage/interpretation follow from Briefing."
               : mode === "2"
                 ? " Mode 2 (Multi-role) runs the parser lane; the supervised multi-role run starts from Agent Run."
                 : " Mode 3 (Multi-agent) runs the parser lane; the concurrent team starts from Agent Run (Investigation Board)."}

@@ -167,6 +167,20 @@ def _call_model(model: Any, messages: list[dict[str, str]], *, response_format=N
     return text
 
 
+def _length_limited_reply(exc: BaseException) -> str | None:
+    """The text a reply carried when the provider stopped it at its completion limit, else None (D465)."""
+    try:
+        from openai import LengthFinishReasonError
+    except ImportError:  # no OpenAI-compatible transport installed
+        return None
+    if not isinstance(exc, LengthFinishReasonError):
+        return None
+    try:
+        return str(exc.completion.choices[0].message.content or "")
+    except (AttributeError, IndexError):
+        return ""
+
+
 def _parse_loop_json(text: str) -> dict[str, Any] | None:
     """Parse the strict JSON object from a model response (fences tolerated).
 
@@ -930,7 +944,7 @@ def run_context_loop(
         supports_generation_schema,
     )
 
-    response_format = None
+    response_format = schema = None
     if supports_generation_schema(model):
         schema = response_schema(case_id, _TOOL_ARGS, _REQUIRED_ARGS, _STRING_FIELDS_BY_TOOL,
                                  allowed_tools=allowed_tools)
@@ -1011,6 +1025,7 @@ def run_context_loop(
         _emit({"event": "round", "round": round_no, "max_rounds": budget.rounds})
         t0 = time.monotonic()
         raw = None
+        retry_round = False
         for attempt in (1, 2):
             user = _packed_round(round_no) + "\n\nReturn the next JSON object now."
             try:
@@ -1038,13 +1053,52 @@ def run_context_loop(
                         refused_reply = json.loads(received)
                     except (json.JSONDecodeError, TypeError):
                         refused_reply = None
-                    if isinstance(refused_reply, dict):
-                        for call in _normalize_tool_calls(refused_reply):
-                            _reject_call(call["tool"], call["args"], call["requested_args"], call["why"],
-                                         error, "generation_contract", round_no, str(response_audit_id or ""))
                     log.warning("context loop reply failed its generation contract: %s", error)
-                    stages.append({"stage": f"round-{round_no}", "status": "error", "detail": error})
-                    finish_reason = "generation_contract"
+                    # D464: the refused calls are never dispatched and no free-form fallback runs (D435), but one
+                    # invalid argument no longer ends the seat. Each call is checked on its own; the invalid ones
+                    # are refused with the validator's reason, the valid ones run, and the next round is schema-bound.
+                    if isinstance(refused_reply, dict):
+                        from nexus.langgraph.tool_generation import refused_calls
+
+                        calls_in = refused_reply.get("tool_calls")
+                        refused_reply["tool_calls"] = calls_in = calls_in if isinstance(calls_in, list) else []
+                        refused = refused_calls(schema, refused_reply)
+                        for bad, reason in refused:
+                            for call in (_normalize_tool_calls({"tool_calls": [bad]})
+                                         or [{"tool": str((bad or {}).get("tool") or "") if isinstance(bad, dict)
+                                              else "", "args": {}, "requested_args": bad, "why": ""}]):
+                                _reject_call(call["tool"], call["args"], call["requested_args"], call["why"],
+                                             "generation contract: " + reason, "generation_contract", round_no,
+                                             str(response_audit_id or ""))
+                        kept = [call for call in calls_in if not any(call is bad for bad, _ in refused)]
+                        stages.append({"stage": f"round-{round_no}", "status": "contract",
+                                       "detail": f"{len(refused)} call(s) refused by the reply contract, "
+                                                 f"{len(kept)} kept"})
+                        raw = json.dumps({**refused_reply, "tool_calls": kept}, ensure_ascii=False)
+                        break
+                    observations.append({"tool": "system", "why": "", "audit_id": str(response_audit_id or ""),
+                                         "summary": {"error": "the reply was not one JSON object and was not read; "
+                                                              "resend ONE JSON object under the reply contract"}})
+                    stages.append({"stage": f"round-{round_no}", "status": "contract", "detail": error})
+                    retry_round = True
+                    break
+                truncated = _length_limited_reply(exc)
+                if truncated is not None:
+                    # D465: the provider stopped the reply at its completion limit, so nothing in it can be read.
+                    # The received text is kept (the cause is in it) and the round is asked again under the schema.
+                    error = "generation length limit: " + str(exc)[:300]
+                    response_audit_id = audit.log(
+                        tool="context_loop_reply", params={"case_id": case_id},
+                        result_summary={"error": error, "rejected": True},
+                        extra={"model_response": truncated, "rejection_stage": "generation_length",
+                               "turn_id": turn_id, "task": task, "round": round_no},
+                    )
+                    log.warning("context loop reply ran to the completion limit (%d chars received)", len(truncated))
+                    observations.append({"tool": "system", "why": "", "audit_id": str(response_audit_id or ""),
+                                         "summary": {"error": "your reply ran to the model's length limit and was "
+                                                              "not read; send ONE short JSON object"}})
+                    stages.append({"stage": f"round-{round_no}", "status": "length_limit", "detail": error})
+                    retry_round = True
                     break
                 refused_tokens = context_overflow_tokens(str(exc))
                 if attempt == 1 and refused_tokens:
@@ -1072,6 +1126,8 @@ def run_context_loop(
                 stages.append({"stage": f"round-{round_no}", "status": "error",
                                "detail": str(exc)[:200]})
                 break
+        if retry_round:
+            continue
         if raw is None:
             if finish_reason not in _GENERATION_FAILURES:
                 finish_reason = "model_error"

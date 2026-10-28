@@ -1,6 +1,6 @@
 """Coverage audit — WIRING-PLAN 10.2.
 
-Answers the three questions an examiner asks before sealing a case:
+Answers the two questions an examiner asks before sealing a case:
 
 1. **Tools** — which lane tools were *applicable* to this evidence but never
    produced output? (planned vs ledger, cross-checked against the artifact YAML
@@ -8,22 +8,21 @@ Answers the three questions an examiner asks before sealing a case:
 2. **Sources** — which indexed evidence families were never cited by any
    finding, and (the inverse, an integrity signal) did anything cite a family
    that is not in the index?
-3. **Needles** — 0-hit reconciliation: which needles were genuinely scanned and
-   found nothing (true negatives) versus never queried at all (NOT evidence of
-   absence), plus every truncation reason.
+
+A keyword count is not coverage: a word that matched nothing says nothing about
+absence (Part 12 FM-3, D460), so no needle section is audited.
 
 Two rules govern this module:
 
 **Honesty over completeness.** Every section reports ``status`` in
 ``ok | gaps | unknown``. When an input cannot be read — no ledger, ES
-unreachable, no signal map — the section is ``unknown`` with the reason and the
+unreachable — the section is ``unknown`` with the reason and the
 top-level ``unavailable`` list, never a silent pass. A coverage audit that
 claims coverage it could not prove is worse than no audit.
 
-**No fabrication.** Nothing here invents a tool, a family or a needle. Every
+**No fabrication.** Nothing here invents a tool or a family. Every
 row is derived from an artifact the pipeline wrote: the tool-lane ledger
-(``_tool_lane_ledger.json``), the ES family aggregation, and
-``analysis/signal_map.csv``.
+(``_tool_lane_ledger.json``) and the index's own family counts.
 
 Persisted to ``analysis/coverage_audit.json`` (schema 1).
 """
@@ -31,7 +30,6 @@ Persisted to ``analysis/coverage_audit.json`` (schema 1).
 from __future__ import annotations
 
 import contextlib
-import csv
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -321,71 +319,6 @@ def _sources_section(case_dir: Path) -> dict[str, Any]:
     return out
 
 
-# ── section 3: needles ───────────────────────────────────────────────────────
-
-
-def _needles_section(case_dir: Path) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        "status": _UNKNOWN,
-        "reason": "",
-        "requested": 0,
-        "scanned": 0,
-        "not_scanned": 0,
-        "hit": 0,
-        "zero_hit_scanned": 0,
-        "not_scanned_needles": [],
-        "truncated_reasons": [],
-    }
-    csv_path = case_dir / "analysis" / "signal_map.csv"
-    if not csv_path.is_file():
-        out["reason"] = "no analysis/signal_map.csv — the needle scan has not run for this case"
-        return out
-    try:
-        with csv_path.open("r", newline="", encoding="utf-8") as fh:
-            reader = csv.DictReader(fh)
-            rows = [r for r in reader if r]
-    except (OSError, csv.Error) as exc:
-        out["reason"] = f"signal_map.csv unreadable: {exc}"
-        return out
-    if not rows:
-        out["reason"] = "signal_map.csv has no rows"
-        return out
-
-    for row in rows:
-        needle = str(row.get("needle") or "").strip()
-        try:
-            hits = int(str(row.get("hits") or "0").strip() or 0)
-        except ValueError:
-            hits = 0
-        scanned = str(row.get("scanned") or "").strip().lower() in {"yes", "true", "1"}
-        out["requested"] += 1
-        if scanned:
-            out["scanned"] += 1
-            if hits > 0:
-                out["hit"] += 1
-            else:
-                out["zero_hit_scanned"] += 1
-        else:
-            out["not_scanned"] += 1
-            out["not_scanned_needles"].append(needle)
-
-    # Truncation reasons live in the briefing markdown's warning block and in
-    # the scan stats; both are optional, so absence is not an error.
-    brief_md = case_dir / "analysis" / "briefing.md"
-    if brief_md.is_file():
-        try:
-            text = brief_md.read_text(encoding="utf-8")
-        except OSError:
-            text = ""
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith(">") and ("NOT" in stripped or "truncat" in stripped.lower()):
-                out["truncated_reasons"].append(stripped.lstrip("> ").strip()[:300])
-
-    out["status"] = _GAPS if out["not_scanned"] else _OK
-    return out
-
-
 # ── assembly ─────────────────────────────────────────────────────────────────
 
 
@@ -394,7 +327,7 @@ def build_coverage_audit(case_dir: Path | str) -> dict[str, Any]:
     case_dir = Path(case_dir)
     sections: dict[str, Any] = {}
     unavailable: list[str] = []
-    for name, fn in (("tools", _tools_section), ("sources", _sources_section), ("needles", _needles_section)):
+    for name, fn in (("tools", _tools_section), ("sources", _sources_section)):
         try:
             section = fn(case_dir)
         except Exception as exc:  # noqa: BLE001
@@ -492,8 +425,7 @@ def summary_lines(audit: dict[str, Any], *, limit: int = 6) -> list[str]:
     overall = str(audit.get("overall") or _UNKNOWN)
     tools = audit.get("tools") or {}
     sources = audit.get("sources") or {}
-    needles = audit.get("needles") or {}
-    out = [f"Coverage audit: **{overall.upper()}** (tools {tools.get('status')}, sources {sources.get('status')}, needles {needles.get('status')})"]
+    out = [f"Coverage audit: **{overall.upper()}** (tools {tools.get('status')}, sources {sources.get('status')})"]
 
     if tools.get("status") == _GAPS:
         c = tools.get("counts") or {}
@@ -524,18 +456,8 @@ def summary_lines(audit: dict[str, Any], *, limit: int = 6) -> list[str]:
     elif sources.get("status") == _UNKNOWN:
         out.append(f"- Sources: NOT AUDITED — {sources.get('reason') or 'unknown'}")
 
-    if needles.get("status") == _GAPS:
-        out.append(
-            f"- Needles: {needles.get('not_scanned', 0)} of {needles.get('requested', 0)} never queried — "
-            f"their absence is NOT evidence. {needles.get('zero_hit_scanned', 0)} genuinely scanned needle(s) found nothing."
-        )
-        for needle in (needles.get("not_scanned_needles") or [])[:limit]:
-            out.append(f"  - not queried: `{needle}`")
-    elif needles.get("status") == _UNKNOWN:
-        out.append(f"- Needles: NOT AUDITED — {needles.get('reason') or 'unknown'}")
-
     if overall == _OK:
-        out.append("- Every applicable tool ran, every indexed family is cited, every needle was genuinely scanned.")
+        out.append("- Every applicable tool ran and every indexed family is cited.")
     rec = audit.get("reconciliation") or {}
     if rec.get("summary"):
         out.append(f"- {rec['summary']}")
@@ -551,7 +473,7 @@ def report_section(audit: dict[str, Any], case_dir: Path | str | None = None) ->
 
     With ``case_dir`` the section also carries the recorded coverage gaps — a
     prerequisite that was empty is a gap in coverage, and it belongs beside the
-    tools/needles accounting rather than only in the negative-space tail
+    tools accounting rather than only in the negative-space tail
     (WO-V6 item 1). The gaps render even when no coverage audit was written,
     which is the normal state for a `--mode tools` run: on the D12 lane run the
     audit was absent, so the gaps had no coverage line at all.

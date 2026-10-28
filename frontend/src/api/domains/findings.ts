@@ -9,7 +9,6 @@ import type {
   CommitResponse,
   CommitStatusResponse,
   FindingsResponse,
-  Mode1FullRunResponse,
   N4Hit,
   WorkbenchAddManyResponse,
   WorkbenchAddResponse,
@@ -41,11 +40,6 @@ export const findingsApi = {
     needles?: string; query?: string; family?: string; host?: string;
     start?: string; end?: string; note?: string;
   }) => post<WorkbenchAddManyResponse>("/workbench/add_many", params),
-  /** Mode 1 full run — scan all needles → bookmark all hits → stage one
-   *  DRAFT per needle (heuristic scribe). Approval stays manual. */
-  mode1FullRun: (params?: { needle_filter?: string; reprocess?: boolean }) =>
-    post<Mode1FullRunResponse>("/mode1/full-run", params || {}),
-  mode1FullRunStatus: () => request<Mode1FullRunResponse>("/mode1/full-run/status"),
   workbenchRemove: (bookmarkId: string) =>
     post<WorkbenchRemoveResponse>("/workbench/remove", { bookmark_id: bookmarkId }),
   workbenchClear: () => post<WorkbenchClearResponse>("/workbench/clear"),

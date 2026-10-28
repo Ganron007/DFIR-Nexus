@@ -225,7 +225,7 @@ def _sealed_case_error(case_id: str):
     return None
 
 
-def _busy_run_error(case_dir: Path, own_run_id: str = "", *, full_run_handler: bool = False):
+def _busy_run_error(case_dir: Path, own_run_id: str = ""):
     """409 while another analysis run is already running on this case.
 
     WO-1C item 2: a case may run any mode, but only ONE analysis run at a time
@@ -234,21 +234,13 @@ def _busy_run_error(case_dir: Path, own_run_id: str = "", *, full_run_handler: b
     examiner picks. What remains is the writer race: staging two runs at once
     would interleave writes into findings.json.
 
-    Mode 1 was the hole (fixed here): its two run records —
-    ``analysis/mode1_full_run.json`` and ``analysis/pipeline_runs/M1-*.json``
-    — were invisible, so a Mode 2/3 start returned 202 while a Mode 1 run was
-    staging into the same findings.json. Every mode now contributes, and the
-    Mode 1 full-run record is reconciled against its live worker thread so a
-    server restart mid-run is not read as a live run (same rule as
-    ``_mode1_run_record``).
+    Mode 1 was the hole (fixed here): its run records
+    (``analysis/pipeline_runs/M1-*.json``) were invisible, so a Mode 2/3 start
+    returned 202 while a Mode 1 run was staging into the same findings.json.
+    Every mode now contributes.
 
-    ``own_run_id`` is the run the CALLER is already running: the singleton
-    Mode 1 full-run record and the ``M1-`` pipeline records are the caller's
-    own when the caller is the matching handler, so they are not "another"
-    run. Without it, ``api_mode1_full_run`` is refused by the very record it
-    wrote a moment earlier — the guard reads its own run as a competitor and
-    answers 409 with the generic body instead of the run record the caller's
-    own richer, thread-aware check produces.
+    ``own_run_id`` is the run the CALLER is already running: it is not
+    "another" run.
 
     Read from the run records themselves (a live status), not from a lock
     file, so a crashed process cannot wedge a case forever: a record left
@@ -280,21 +272,6 @@ def _busy_run_error(case_dir: Path, own_run_id: str = "", *, full_run_handler: b
     # Mode 1's interpret / coverage / design runs are in busy_runs above (D133): the CLI
     # reads the same list, so the two surfaces answer alike.
 
-    # Mode 1 — the needle full-run record. A "running" record whose worker
-    # thread is dead is a tombstone (server restart / worker crash), so it
-    # must not block; the worker marks it interrupted in place.
-    # The full-run handler answers a live full run itself, with the record (D175): reading the
-    # record here as well raced its own start. The handler read the record to name its own run,
-    # the first POST's worker wrote a new one, and this second read saw another run and answered
-    # with the generic body.
-    rec = None if full_run_handler else _mode1_run_record(case_dir)
-    if isinstance(rec, dict) and rec.get("status") == "running":
-        rid = str(rec.get("run_id") or "mode1_full_run")
-        # The caller's own run is not a competitor — it is the run that is
-        # already staging, and its own handler reports it in full.
-        if not (own_run_id and rid == own_run_id):
-            _note(rid, "mode1_full_run")
-
     if not running:
         return None
     return JSONResponse(
@@ -314,7 +291,7 @@ def _lane_gate_error(case_dir: Path):
 
     N2 must finish every registered artifact before any analysis stage runs.
     The lane writes ``analysis/lane_gate.json``; unprocessed FAIL rows block
-    Mode 1 full-run, Mode 2, Mode 3 and the interpret/coverage/design pipeline
+    Mode 1, Mode 2, Mode 3 and the interpret/coverage/design pipeline
     modes until the examiner re-runs the lane (so the item processes) or records
     an audited skip via ``/portal/api/lane/skip``.
 
@@ -1067,7 +1044,7 @@ async def api_register_evidence(request):
         return sealed
     if not path:
         return JSONResponse({"ok": False, "error": "path missing"}, status_code=400)
-    # New evidence changes the index/signal map; old directions are stale.
+    # New evidence changes the index and the leads; old directions are stale.
     _invalidate_briefing_directions(case_dir)
 
     from nexus.audit import resolve_examiner
@@ -2200,23 +2177,16 @@ def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
 
 
 def _case_default_needles(case_dir) -> list[str]:
-    """The 'no query given' vocabulary: what the investigation flagged.
+    """The 'no query given' vocabulary: the examiner's query pack (intake and playbook terms).
 
-    Order: needles the Mode 1 full-run actually scanned (persisted in the
-    run record — the honest set for this case), else the briefing scan
-    vocabulary for the case's families. Lets the Timeline show matched
-    events for portal cases whose intake is empty.
+    The query pack is the one place keyword needles are kept (Part 12 FM-3, D460); it lets the Timeline show
+    matched rows for portal cases whose intake names no term.
     """
     try:
-        rec = _mode1_run_record(case_dir)
-    except Exception:  # noqa: BLE001
-        rec = None
-    if rec and rec.get("needles"):
-        return [str(n) for n in rec["needles"] if str(n).strip()]
-    try:
-        from nexus.langgraph.briefing import _family_inventory, _scan_needles
+        from nexus.langgraph.query_pack import _dedupe, load_case_intake, query_pack_terms
 
-        return list(_scan_needles(case_dir, sorted(_family_inventory(case_dir))))
+        terms, priority = query_pack_terms(Path(case_dir), load_case_intake(Path(case_dir)))
+        return _dedupe([*priority, *terms])
     except Exception:  # noqa: BLE001
         return []
 
@@ -2538,14 +2508,8 @@ def _case_key(case_dir: Path | None) -> str:
         return str(case_dir)
 
 
-_MODE1_RUN_FILE = "mode1_full_run.json"
-_mode1_run_threads: dict[str, threading.Thread] = {}
-_mode1_run_starting: set[str] = set()
-_mode1_run_lock = threading.Lock()
-
-# Briefing cache — case_briefing scans every playbook needle over the evidence
-# (~seconds on small cases, worse on massive ones) and is re-requested on every
-# Briefing mount + again by the directions endpoint. Short TTL keeps
+# Briefing cache — case_briefing builds the leads and reads the index (seconds on small cases, more on large
+# ones) and is re-requested on every Briefing mount + again by the directions endpoint. Short TTL keeps
 # re-navigation instant; mutations invalidate explicitly.
 _briefing_cache: dict[str, tuple[float, dict]] = {}
 _briefing_lock = threading.Lock()
@@ -2571,705 +2535,13 @@ def _invalidate_briefing(case_id: str) -> None:
 
 
 def _invalidate_briefing_directions(case_dir: Path) -> None:
-    """Directions are tied to the signal map; any reprocessing makes them stale."""
+    """Directions are tied to the briefing; any reprocessing makes them stale."""
     try:
         path = Path(case_dir) / "analysis" / "briefing_directions.json"
         if path.is_file():
             path.unlink()
     except OSError:
         pass
-
-
-def _mode1_run_path(case_dir: Path) -> Path:
-    return case_dir / "analysis" / _MODE1_RUN_FILE
-
-
-def _full_run_scribe_policy() -> tuple[str, int]:
-    """Full-run scribe mode (WP 10.53 decision, Option B).
-
-    Default ``heuristic`` keeps the one-click run fast. ``signal`` runs the
-    LLM scribe only for needles whose hit count clears the threshold;
-    ``llm`` runs it for every staged draft. Env-overridable.
-    """
-    mode = os.environ.get("NEXUS_FULL_RUN_SCRIBE", "heuristic").strip().lower()
-    if mode not in ("heuristic", "signal", "llm"):
-        mode = "heuristic"
-    try:
-        min_hits = int(os.environ.get("NEXUS_FULL_RUN_SCRIBE_MIN_HITS", "3"))
-    except ValueError:
-        min_hits = 3
-    return mode, max(1, min_hits)
-
-
-def _full_run_llm_scribe(mode: str, min_hits: int, hits: list[Any]) -> bool:
-    """Whether one full-run draft qualifies for the LLM scribe (Option B)."""
-    if mode == "llm":
-        return True
-    if mode == "signal":
-        return len(hits) >= max(1, int(min_hits))
-    return False
-
-
-def _mode1_run_record(case_dir: Path) -> dict | None:
-    """Read the persisted full-run record, marking dead runs as interrupted."""
-    path = _mode1_run_path(case_dir)
-    if not path.is_file():
-        return None
-    try:
-        rec = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if rec.get("status") == "running":
-        with _mode1_run_lock:
-            alive = _mode1_run_threads.get(_case_key(case_dir))
-            alive = bool(alive and alive.is_alive())
-        rec["thread_alive"] = alive
-        if not alive:
-            # Server restarted (or the worker died) mid-run — the record is a
-            # tombstone, not a live run. New POSTs may proceed.
-            rec["status"] = "interrupted"
-            rec["error"] = "Run interrupted — server restarted or worker stopped"
-            _atomic_write_json(path, rec)
-    return rec
-
-
-@lock_case_writes
-def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
-                      run_id: str, replaced_by: str) -> list[str]:
-    """Retire DRAFT findings superseded by a reprocess re-run.
-
-    Marked REJECTED with a superseded_by link rather than deleted — the audit
-    trail keeps the old draft, the reason, and its replacement. Only drafts
-    reach here (the caller skips approved needles first); APPROVED findings
-    are signed and never superseded programmatically.
-    Returns the ids actually updated.
-    """
-    done: list[str] = []
-    findings_path = case_dir / "findings.json"
-    if not findings_path.is_file():
-        return done
-    try:
-        findings = json.loads(findings_path.read_text(encoding="utf-8"))
-        changed = False
-        for f in findings:
-            fid = str(f.get("id") or f.get("finding_id") or "")
-            if fid in finding_ids and str(f.get("status") or "").upper() == "DRAFT":
-                f["status"] = "REJECTED"
-                f["rejected_by"] = "mode1-full-run"
-                f["rejected_at"] = datetime.now(UTC).isoformat()
-                f["rejection_reason"] = (
-                    f"Superseded by re-run {run_id}"
-                    + (f" — replaced by {replaced_by}" if replaced_by else "")
-                )
-                f["superseded_by"] = replaced_by
-                done.append(fid)
-                changed = True
-        if changed:
-            from nexus.case.records import save_findings
-
-            save_findings(case_dir, findings)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed superseding drafts in findings.json: %s", exc)
-    # Best-effort SQLite sync — same dual-store pattern as the reject endpoint
-    try:
-        from nexus.case import CaseManager
-        from nexus.case.schemas import ApprovalState
-        from nexus.config import settings
-        mgr = CaseManager(settings.cases_root / "cases.db")
-        for fid in done:
-            f_obj = mgr.store.get_finding(fid, case_id=case_dir.name)
-            if f_obj and f_obj.approval_state == ApprovalState.DRAFT:
-                f_obj.approval_state = ApprovalState.REJECTED
-                f_obj.rejected_by = "mode1-full-run"
-                f_obj.rejected_at = datetime.now(UTC)
-                f_obj.rejection_reason = f"Superseded by re-run {run_id}"
-                mgr.store.save_finding(f_obj)
-        mgr.close()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed syncing superseded drafts to SQLite: %s", exc)
-    return done
-
-
-def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
-                           only: set[str],
-                           reprocess: bool = False) -> None:
-    """Background Mode 1 full-run worker.
-
-    Writes the run record after every needle so navigation/reload/poll always
-    sees live state. Stops at DRAFTs — examiner approval stays manual (HMAC).
-    The briefing scan runs here, not in the POST — the endpoint returns 202
-    instantly; the UI shows stage "scanning briefing" while the vocabulary
-    and hit counts are computed.
-
-    reprocess=True supersedes existing DRAFTs for covered needles and re-stages
-    them fresh (drafts are unsigned machine output — safe to replace). APPROVED
-    findings are never overwritten or rejected: they are signed examiner
-    decisions — reprocess instead stages a fresh DRAFT revision alongside them
-    (recorded under revised_approved) for examiner comparison and approval.
-    """
-    from nexus.audit import AuditWriter, resolve_examiner
-    from nexus.case.workbench import add_bookmarks
-    from nexus.langgraph.briefing import case_briefing
-    from nexus.langgraph.query_pack import (
-        attach_hit_fields,
-        load_case_intake,
-        n4_hits,
-        parse_intake_window,
-    )
-    from nexus.modes.llm_desk import (
-        _heuristic_scribe,
-        promote_hits_to_draft,
-        save_draft_finding,
-        scribe_finding,
-    )
-
-    write_lock = threading.Lock()
-    scribe_mode, scribe_min_hits = _full_run_scribe_policy()
-    scribe_state: dict[str, Any] = {"model": None, "resolved": False}
-
-    def _persist() -> None:
-        record["updated_at"] = time.time()
-        with write_lock:
-            _atomic_write_json(record_path, record)
-
-    try:
-        # Stage 1 — deterministic scan of every playbook/ATT&CK/Sigma needle.
-        # This is the expensive step (~seconds on big evidence) — it lives in
-        # the worker so the POST returns instantly.
-        record["stage"] = "preparing index"
-        _persist()
-        prep_note = _prepare_scan_index(case_dir)
-        if prep_note:
-            record.setdefault("skipped", []).append({"needle": None, "reason": prep_note})
-
-        record["stage"] = "scanning briefing"
-        _persist()
-        brief = case_briefing(case_dir)
-        # A scan that had nothing to read is not a clean result. Judge it from
-        # what actually happened rather than from the configured backend.
-        try:
-            _ev_count = len(files) if files else 0
-        except NameError:
-            _ev_count = 0
-        _blocked = _scan_had_a_corpus(case_dir, brief, _ev_count)
-        if _blocked:
-            record["stage"] = "index not ready"
-            record["needles_total"] = 0
-            record["drafts_staged"] = 0
-            record.setdefault("skipped", []).append({"needle": None, "reason": _blocked})
-            record["completed_at"] = time.time()
-            record["next"] = f"Scan not run: {_blocked}"
-            record["status"] = "failed"
-            _persist()
-            return
-        scan = list(brief.get("needle_scan") or [])
-        if only:
-            scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
-        # F1: ubiquitous terms are background - reported, never staged.
-        record.setdefault("skipped", [])
-        ubiquitous = [s for s in scan if s.get("ubiquitous")]
-        if ubiquitous:
-            record["skipped"].extend(
-                {
-                    "needle": str(s.get("needle") or ""),
-                    "reason": (
-                        f"ubiquitous term ({int(s.get('hits') or 0)} hits - "
-                        "matches a large share of the case; background, not staged)"
-                    ),
-                }
-                for s in ubiquitous
-            )
-            scan = [s for s in scan if not s.get("ubiquitous")]
-        needles_hit_total = len(scan)
-        record["needles"] = [str(s.get("needle") or "") for s in scan]
-        record["needles_total"] = len(scan)
-        record["needles_scanned"] = int(brief.get("scanned_needles") or 0)
-        record["needles_hit_total"] = needles_hit_total
-        record["needles_capped"] = 0  # legacy response field; no needle-count cap remains
-        record["scan_truncated"] = bool(brief.get("scan_truncated"))
-        _persist()
-        if not scan:
-            record["stage"] = "nothing to promote"
-            record["needles_hit"] = 0
-            record["skipped"] = [{"reason": "no playbook needles matched any evidence"}]
-            record["drafts_staged"] = 0
-            record["completed_at"] = time.time()
-            record["next"] = "Nothing to promote - no needle hits in this case."
-            record["status"] = "complete"  # publish LAST (pollers fire on status)
-            _persist()
-            return
-        # Existing DRAFT/APPROVED needles — re-runs must not duplicate staged
-        # findings (titles embed hit counts, so match the needle, not the
-        # string). REJECTED/superseded needles are NOT skipped: the examiner may
-        # legitimately re-stage a signal after rejecting a first attempt.
-        existing: set[str] = set()
-        drafts_by_needle: dict[str, list[str]] = {}
-        approved_by_needle: dict[str, list[str]] = {}
-        findings_path = case_dir / "findings.json"
-        if findings_path.is_file():
-            try:
-                for f in json.loads(findings_path.read_text(encoding="utf-8")):
-                    st = str(f.get("status") or "").upper()
-                    title = str(f.get("title") or "")
-                    m = re.match(r"Signal:\s*(.+?)\s*—", title)
-                    if st in {"DRAFT", "APPROVED"} and m:
-                        needle_key = m.group(1).strip().lower()
-                        existing.add(needle_key)
-                        fid = str(f.get("id") or f.get("finding_id") or "")
-                        (approved_by_needle if st == "APPROVED" else drafts_by_needle
-                         ).setdefault(needle_key, []).append(fid)
-            except (OSError, json.JSONDecodeError):
-                pass
-        record["reprocess"] = reprocess
-        record["superseded"] = []
-        record["revised_approved"] = []
-
-        examiner = resolve_examiner()
-        window = parse_intake_window(load_case_intake(case_dir))
-        record["stage"] = "scanning"
-        _persist()
-
-        # EH-6: ONE batched chunked scan per 25 needles (was one full-case
-        # query per needle — up to 120 sequential rescans). Per-needle rows
-        # are attributed from each hit's structured ``terms_list``, so no
-        # intake terms leak in and no needle needs its own re-query.
-        needles_ordered: list[str] = []
-        for s in scan:
-            needle = str(s.get("needle") or "").strip()
-            if not needle:
-                continue
-            # Low-signal guard: pure digits / single chars match everything and
-            # produce garbage drafts ("Signal: 21 — 37 hits"). Report, don't stage.
-            if len(needle) < 3 or needle.isdigit():
-                record["skipped"].append(
-                    {"needle": needle, "reason": "low-signal needle (numeric/too short)"})
-                continue
-            needles_ordered.append(needle)
-        needle_keys = {n.lower() for n in needles_ordered}
-        hits_by_needle: dict[str, list[dict]] = {}
-        # FD-001: the scan IS a tool call that produced these rows, but it runs
-        # in-process (n4_hits), so nothing audited it — every staged draft was
-        # rejected for a missing evidence trail and Approve stayed empty.
-        # Record one case audit entry per batch and let drafts cite it.
-        scan_audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
-        scan_aid_by_needle: dict[str, str] = {}
-        scan_audit_ids: list[str] = []
-        scan_batches = 0
-        scan_incomplete = bool(brief.get("scan_truncated"))
-        incomplete_reasons = set(
-            (brief.get("scan_stats") or {}).get("incomplete_reasons") or []
-        )
-        scan_coverage = {"terms_requested": 0, "terms_queried": 0, "terms_failed": 0}
-        from nexus.langgraph.query_pack import _incomplete_reasons
-
-        for start_at in range(0, len(needles_ordered), 25):
-            chunk = needles_ordered[start_at:start_at + 25]
-            chunk_stats: dict = {}
-            chunk_hits, _chunk_backend = n4_hits(
-                case_dir, chunk, window, priority_terms=chunk, stats=chunk_stats,
-            )
-            chunk_aid = scan_audit.log(
-                tool="mode1_scan",
-                params={"case_id": case_dir.name, "needles": list(chunk),
-                        "batch": scan_batches},
-                result_summary={"hits": len(chunk_hits),
-                                "backend": str(_chunk_backend or "")},
-                extra={"case_id": case_dir.name},
-            )
-            if chunk_aid:
-                scan_audit_ids.append(chunk_aid)
-                for needle in chunk:
-                    scan_aid_by_needle[str(needle).strip().lower()] = chunk_aid
-            scan_batches += 1
-            chunk_reasons = _incomplete_reasons(chunk_stats)
-            if chunk_reasons:
-                scan_incomplete = True
-                incomplete_reasons.update(chunk_reasons)
-            scan_coverage["terms_requested"] += int(chunk_stats.get("terms_requested") or 0)
-            scan_coverage["terms_queried"] += int(chunk_stats.get("terms_queried") or 0)
-            scan_coverage["terms_failed"] += len(chunk_stats.get("terms_failed") or [])
-            for h in attach_hit_fields(case_dir, list(chunk_hits)):
-                matched = h.get("terms_list")
-                if not isinstance(matched, list):
-                    matched = [t.strip() for t in str(h.get("terms") or "").split(",")]
-                for t in matched:
-                    key = str(t).strip().lower()
-                    if key in needle_keys:
-                        hits_by_needle.setdefault(key, []).append(h)
-        record["scan_batches"] = scan_batches
-        record["scan_coverage"] = scan_coverage
-        record["scan_audit_ids"] = scan_audit_ids
-        record["scan_incomplete_reasons"] = sorted(incomplete_reasons)
-        record["scan_truncated"] = bool(record.get("scan_truncated")) or scan_incomplete
-        _persist()
-
-        all_hits: list[dict] = []
-        seen_hit_keys: set[tuple[str, str, str]] = set()
-        for i, s in enumerate(scan):
-            needle = str(s.get("needle") or "").strip()
-            record["needles_done"] = i
-            record["current"] = needle
-            _persist()
-            if not needle or len(needle) < 3 or needle.isdigit():
-                continue
-            hits = hits_by_needle.get(needle.lower()) or []
-            if not hits:
-                record["skipped"].append({"needle": needle, "reason": "no hits matched this needle"})
-                continue
-            for h in hits:
-                hit_key = (str(h.get("family") or ""), str(h.get("file") or ""), str(h.get("line") or ""))
-                if hit_key not in seen_hit_keys:
-                    seen_hit_keys.add(hit_key)
-                    all_hits.append(h)
-            record["stage"] = "bookmarking"
-            record["bookmarks_added"] += int(add_bookmarks(case_dir, hits).get("added") or 0)
-
-            # One DRAFT per needle (candidate signal, not a verdict).
-            # N4 returns every matching row. Intake terms may also match a row,
-            # so the hit list is not a count of unique behaviors.
-            record["stage"] = "staging draft"
-            families = sorted({str(h.get("family") or "?") for h in hits})
-            more = "+" if scan_incomplete else ""
-            # The title is what an examiner reads first, so it states what the
-            # rows say rather than repeating the needle that matched them. A
-            # title of "Signal: sdelete - 1 hit(s) across evtxecmd" is an
-            # inventory entry; the needle is kept for traceability and grouping,
-            # not for the reader.
-            from nexus.analysis.titles import needle_title
-
-            title = needle_title(needle, hits, families)
-            if more:
-                title = f"{title} (scan truncated, count is a lower bound)"
-            needle_key = needle.lower()
-            approved_ids = approved_by_needle.get(needle_key) or []
-            if needle_key in existing:
-                if approved_ids and not reprocess:
-                    record["skipped"].append({
-                        "needle": needle,
-                        "reason": (
-                            f"approved finding(s) exist ({', '.join(approved_ids)}) — "
-                            "signed examiner decisions are never overwritten; "
-                            "use reprocess to stage a fresh revision"
-                        ),
-                    })
-                    continue
-                if not approved_ids and not reprocess:
-                    record["skipped"].append(
-                        {"needle": needle, "reason": "draft already staged/approved"})
-                    continue
-                # reprocess — fall through: stage fresh, then supersede drafts
-            draft = promote_hits_to_draft(
-                case_dir,
-                hits=hits,
-                title=title,
-                examiner=examiner,
-                examiner_selected=False,
-                interpretation_hint=(
-                    f"Needle '{needle}' ({s.get('source', 'playbook')}) matched "
-                    f"{len(hits)} row(s) — candidate signal pending examiner review."
-                ),
-            )
-            # The needle scan stages without an examiner picking the rows.
-            # Label it as LLM/scan origin so it is not shown as examiner-selected.
-            draft["provenance"] = {
-                "mode": 1,
-                "origin": "llm",
-                "path": "full_run",
-            }
-            # FD-001 provenance: linked tool-lane audits when they exist,
-            # otherwise the audited scan that produced these rows.
-            scan_aid = scan_aid_by_needle.get(needle_key)
-            if scan_aid:
-                existing_aids = [str(a) for a in (draft.get("audit_ids") or [])]
-                if scan_aid not in existing_aids:
-                    draft["audit_ids"] = [*existing_aids, scan_aid]
-                    arts = [a for a in (draft.get("artifacts") or [])
-                            if isinstance(a, dict)]
-                    if not any(a.get("audit_id") == scan_aid for a in arts):
-                        arts.append({"audit_id": scan_aid, "type": "scan"})
-                    draft["artifacts"] = arts
-            draft = _heuristic_scribe(draft, hits, case_dir=case_dir)
-            # WP 10.53 Option B: full-run default stays heuristic; ``signal``
-            # upgrades only drafts clearing the hit threshold, ``llm`` upgrades
-            # every draft. Any model failure falls back to the heuristic fill.
-            if _full_run_llm_scribe(scribe_mode, scribe_min_hits, hits):
-                if not scribe_state["resolved"]:
-                    try:
-                        from nexus.langgraph.llm_pipeline import get_model
-
-                        scribe_state["model"] = get_model()
-                    except Exception:  # noqa: BLE001 — heuristic fallback stands
-                        scribe_state["model"] = None
-                    scribe_state["resolved"] = True
-                if scribe_state["model"] is not None:
-                    with contextlib.suppress(Exception):
-                        draft = scribe_finding(
-                            draft, hits, model=scribe_state["model"],
-                            case_dir=case_dir,
-                        )
-            if approved_ids:
-                draft["related_findings"] = approved_ids
-            draft["needles"] = [needle]
-            from nexus.modes.mode1_verify import apply_verifier
-
-            draft["verifier"] = apply_verifier(case_dir, draft, hits=hits)
-            res = save_draft_finding(case_dir, draft)
-            if res.get("status") == "STAGED":
-                d: dict = {
-                    "finding_id": res.get("finding_id"),
-                    "title": title,
-                    "hits": len(hits),
-                    "families": families,
-                }
-                if res.get("confidence_adjusted"):
-                    d["confidence_adjusted"] = res["confidence_adjusted"]
-                record["drafts"].append(d)
-                if approved_ids:
-                    record["revised_approved"].append({
-                        "needle": needle,
-                        "finding_id": res.get("finding_id"),
-                        "prior_approved_ids": approved_ids,
-                    })
-                # Reprocess: the fresh draft landed — retire the old DRAFTs.
-                # Rejected (not deleted) keeps the audit trail; the reason names
-                # the replacement so the chain is self-documenting.
-                old_drafts = drafts_by_needle.pop(needle_key, [])
-                if reprocess and old_drafts:
-                    sup = _supersede_drafts(
-                        case_dir, old_drafts,
-                        run_id=str(record.get("run_id") or ""),
-                        replaced_by=str(res.get("finding_id") or ""),
-                    )
-                    record["superseded"].extend(
-                        {"needle": needle, "finding_id": fid,
-                         "replaced_by": res.get("finding_id")}
-                        for fid in sup
-                    )
-                existing.add(needle_key)
-            else:
-                detail = res.get("errors") or [str(res.get("error") or "stage failed")]
-                record["skipped"].append(
-                    {"needle": needle, "reason": "; ".join(str(d) for d in detail)})
-
-        # N7: every matched row is timeline-worthy BEFORE approval — the
-        # examiner needs the chronology to review the drafts against.
-        record["stage"] = "building timeline"
-        _persist()
-        try:
-            from nexus.langgraph.timeline_merge import rebuild_case_timeline
-
-            record["timeline_events"] = len(rebuild_case_timeline(case_dir, hits=all_hits))
-        except Exception as exc:  # noqa: BLE001 — drafts are already staged; report, don't fail
-            record["timeline_error"] = str(exc)
-
-        record["needles_done"] = len(scan)
-        record["current"] = ""
-        record["stage"] = "awaiting examiner approval"
-        record["drafts_staged"] = len(record["drafts"])
-        record["completed_at"] = time.time()
-        record["next"] = (
-            "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8)."
-        )
-        # Publish the terminal status LAST: pollers fire as soon as status is
-        # terminal, so every derived field must already be populated.
-        record["status"] = "complete"
-        _persist()
-    except Exception as exc:  # noqa: BLE001 — record must always reach terminal state
-        logger.exception("Mode 1 full-run failed for %s", case_dir.name)
-        record["status"] = "error"
-        record["stage"] = "failed"
-        record["error"] = str(exc)
-        record["completed_at"] = time.time()
-        _persist()
-    finally:
-        with _mode1_run_lock:
-            # A re-run may already have replaced this entry — only the thread
-            # that OWNS the mapping may remove it (popping unconditionally
-            # marked the fresh live run as interrupted).
-            key = _case_key(case_dir)
-            if _mode1_run_threads.get(key) is threading.current_thread():
-                _mode1_run_threads.pop(key, None)
-        _invalidate_briefing(_case_key(case_dir))  # run changed drafts/bookmarks
-
-
-def _prepare_scan_index(case_dir: Path) -> str:
-    """Best-effort index repair before a needle scan. Returns a note, "" if fine.
-
-    Only repairs: deciding whether the scan was *possible* is done after the
-    scan ran, from whether it had a corpus to read. Guessing the backend up front
-    was wrong twice over - it refused on a configured-but-down ES even though the
-    CSV pack was serving, and it could not tell a scan that found nothing from a
-    scan that never had anything to look at.
-    """
-    import os
-
-    from nexus.langgraph.case_index import es_available, index_case, index_stale
-
-    if not (os.environ.get("NEXUS_ES_URL") or "").strip():
-        return ""                      # CSV pack backend by design
-    if not es_available():
-        return "Elasticsearch is configured but not reachable; using the CSV pack"
-    try:
-        stale, why = index_stale(case_dir)
-    except Exception as exc:  # noqa: BLE001
-        return f"index freshness unknown ({exc}); continuing"
-    if not stale:
-        return ""
-    try:
-        meta = index_case(case_dir, incremental=True)
-    except Exception as exc:  # noqa: BLE001
-        return f"index rebuild failed ({type(exc).__name__}: {exc}); continuing"
-    return f"index rebuilt before the scan ({int((meta or {}).get('docs') or 0)} docs; was {why})"
-
-
-def _scan_had_a_corpus(case_dir: Path, brief: dict, evidence_count: int) -> str:
-    """Reason the scan was impossible, or "" when it genuinely found nothing.
-
-    The failure this exists for: on the real corpus the scan read 198 needles
-    against an index with no rows, reported zero hits, and completed with
-    "nothing to promote" - from a case holding 81,115 rows. It was
-    indistinguishable from a real miss, and the stated reason pointed the
-    examiner at their evidence rather than at the index.
-    """
-    scanned = int(brief.get("scanned_needles") or 0)
-    if scanned > 0:
-        return ""                      # the scan had rows to read; empty is genuine
-    if evidence_count <= 0:
-        return ""                      # nothing registered: genuinely nothing to do
-    return (
-        f"the scan had no corpus to read: 0 needles scanned from {evidence_count} "
-        f"registered evidence item(s). This is an index problem, not an absence of "
-        f"evidence - re-run the tool lane, then scan again."
-    )
-
-
-async def api_mode1_full_run(request):
-    """POST /portal/api/mode1/full-run — start a tracked Mode 1 needle scan (WP 4j.5d).
-
-    Runs in a background thread with a persisted record at
-    analysis/mode1_full_run.json so the cockpit can reconnect after
-    navigation/reload. One run per case at a time — a second POST while a
-    run is live returns 409 with the existing record.
-
-    Body: {needle_filter?: "a,b" (explicit subset),
-           reprocess?: bool — supersede existing DRAFTs for hit needles and
-           re-stage them fresh. APPROVED findings are never overwritten or
-           rejected (signed examiner decisions); reprocess stages a fresh
-           DRAFT revision alongside them for examiner comparison}.
-
-    The scan itself does not call the LLM. Draft text uses the heuristic
-    scribe unless ``NEXUS_FULL_RUN_SCRIBE`` is ``signal`` or ``llm``.
-    """
-    case_dir = _get_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "No active case"}, status_code=404)
-    sealed = _sealed_case_error(case_dir.name)
-    if sealed:
-        return sealed
-    # The shared busy guard must not read THIS handler's own run as a
-    # competitor: the singleton full-run record is the run this POST would
-    # supersede, and its own thread-aware check below answers 409 with the
-    # record itself (the guard's generic body loses every needle counter).
-    wrong = _busy_run_error(case_dir, full_run_handler=True)
-    if wrong:
-        return wrong
-    gated = _lane_gate_error(case_dir)
-    if gated:
-        return gated
-    # The full run rescans the needle vocabulary; old directions are stale.
-    _invalidate_briefing_directions(case_dir)
-
-    body: dict = {}
-    with contextlib.suppress(Exception):
-        body = await request.json()
-
-    reprocess = bool(body.get("reprocess"))
-    only = {n.strip().lower() for n in str(body.get("needle_filter") or "").split(",") if n.strip()}
-
-    # Concurrency guard — one live run per case. The record file survives
-    # navigation/reload; "interrupted" records (thread dead) don't block.
-    key = _case_key(case_dir)
-    with _mode1_run_lock:
-        live_thread = _mode1_run_threads.get(key)
-        live = (key in _mode1_run_starting
-                or bool(live_thread and live_thread.is_alive()))
-    if live:
-        # A terminal persisted record means the worker finished the run and is
-        # only unwinding its thread — not a live run. Closes the completion
-        # race where is_alive() is still true for a few ms after "complete".
-        done = _mode1_run_record(case_dir)
-        if isinstance(done, dict) and done.get("status") in ("complete", "error", "interrupted"):
-            live = False
-    if not live:
-        with _mode1_run_lock:
-            _mode1_run_starting.add(key)
-    if live:
-        existing_run = _mode1_run_record(case_dir)
-        payload = dict(existing_run) if isinstance(existing_run, dict) else {"status": "running"}
-        payload["error"] = "Mode 1 full run already in progress"
-        return JSONResponse(payload, status_code=409)
-    try:
-        existing_run = _mode1_run_record(case_dir)
-        if existing_run and existing_run.get("status") == "running":
-            return JSONResponse(
-                {**existing_run, "error": "Mode 1 full run already in progress"},
-                status_code=409,
-            )
-
-        # The needle scan runs inside the worker — this POST returns instantly so
-        # the click always produces immediate feedback. The worker fills in
-        # needles_total / needles_scanned once the briefing lands.
-        record: dict = {
-            "run_id": f"M1-{int(time.time())}",
-            "case_id": case_dir.name,
-            "mode": "mode1_full_run",
-            "status": "running",
-            "stage": "starting",
-            "current": "",
-            "started_at": time.time(),
-            "updated_at": time.time(),
-            "needles_done": 0,
-            "needles_total": 0,
-            "needles_scanned": 0,
-            "needles_hit_total": 0,
-        "needles_capped": 0,
-            "scan_truncated": False,
-            "reprocess": reprocess,
-            "bookmarks_added": 0,
-            "drafts": [],
-            "skipped": [],
-            "superseded": [],
-            "revised_approved": [],
-        }
-        record_path = _mode1_run_path(case_dir)
-        record_path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write_json(record_path, record)
-
-        worker = threading.Thread(
-            target=_mode1_full_run_worker,
-            args=(case_dir, record_path, record, only, reprocess),
-            name=f"mode1-full-run-{case_dir.name}",
-            daemon=True,
-        )
-        with _mode1_run_lock:
-            _mode1_run_threads[_case_key(case_dir)] = worker
-            worker.start()
-            _mode1_run_starting.discard(_case_key(case_dir))
-        return JSONResponse(record, status_code=202)
-    finally:
-        with _mode1_run_lock:
-            _mode1_run_starting.discard(_case_key(case_dir))
-
-
-async def api_mode1_full_run_status(request):
-    """GET /portal/api/mode1/full-run/status — latest run record for the case."""
-    case_dir = _get_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "No active case"}, status_code=404)
-    rec = _mode1_run_record(case_dir)
-    if rec is None:
-        return JSONResponse({"status": "never_run"})
-    return JSONResponse(rec)
 
 
 async def api_workbench_remove(request):
@@ -3929,9 +3201,9 @@ async def api_timeline_lanes(request):
         hits = list(result.get("hits") or [])
         count = int(result.get("count") or 0)
     else:
-        # Empty query = "everything the investigation flagged" — full-run
-        # needles, else the case's scan vocabulary. Term lists go straight
-        # to n4_hits so all case vocabulary participates in the scan.
+        # Empty query = the examiner's query-pack vocabulary (intake and
+        # playbook terms). Term lists go straight to n4_hits so all of it
+        # participates in the scan.
         # Without this a portal case with empty
         # intake renders a blank timeline.
         from nexus.langgraph.query_pack import _parse_needles
@@ -3996,8 +3268,7 @@ async def api_timeline_lanes(request):
 async def api_timeline_rebuild(request):
     """POST /portal/api/timeline/rebuild — regenerate timeline.json (N7).
 
-    Merges N4 hits (intake terms, or the persisted full-run needle list for
-    portal cases), finding evidence rows, ingest artifacts, and existing
+    Merges N4 hits (the query pack's intake and playbook terms), finding evidence rows, ingest artifacts, and existing
     ledger events (T-*) — which are never dropped. Bookmarks are the
     examiner's curated subset of those hits, so this is what "approving
     bookmarks" is expected to surface.
@@ -5094,7 +4365,7 @@ async def api_pipeline_run(request):
         if gated:
             return gated
     # A pipeline run reprocesses/reindexes evidence; directions built from the
-    # previous signal map are stale once it starts.
+    # previous briefing are stale once it starts.
     _invalidate_briefing_directions(case_dir)
 
     # ES is mandatory for the LLM stages (coverage/design); the lane alone can
@@ -5739,7 +5010,7 @@ async def api_case_digest(request):
     """GET /portal/api/case/digest — deterministic Case Digest (Mode 2/3).
 
     Everything the interpretation loop consumes: scope (what IS and is NOT in
-    evidence), inventory + ledger, signal map incl. 0-hit needles, alerts,
+    evidence), inventory + ledger, alerts,
     entities with first/last seen, timeline shape, TI context. Built fresh if
     the persisted digest is missing.
     """
@@ -8069,8 +7340,6 @@ def create_dashboard():
         Route("/portal/api/workbench", api_workbench, methods=["GET"]),
         Route("/portal/api/workbench/add", api_workbench_add, methods=["POST"]),
         Route("/portal/api/workbench/add_many", api_workbench_add_many, methods=["POST"]),
-        _mode_route("/portal/api/mode1/full-run", api_mode1_full_run, ["POST"]),
-        _mode_route("/portal/api/mode1/full-run/status", api_mode1_full_run_status, ["GET"]),
         Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
         Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
         Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),

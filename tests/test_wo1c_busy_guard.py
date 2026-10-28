@@ -76,33 +76,6 @@ def test_busy_guard_ignores_a_running_non_m1_pipeline_run(tmp_path: Path):
     assert _busy_run_error(tmp_path) is None, "a tools run blocked analysis"
 
 
-def test_busy_guard_sees_a_running_mode1_full_run(tmp_path: Path):
-    """Mode 1's needle full-run record lives in analysis/mode1_full_run.json.
-
-    It is reconciled against the live worker thread, so a record whose worker
-    is dead (server restart) must NOT block — the same rule
-    ``_mode1_run_record`` applies. The record marks itself interrupted in
-    place, so a restart cannot wedge a case.
-    """
-    from nexus.dashboard import app as appmod
-    from nexus.dashboard.app import _busy_run_error
-
-    rec = tmp_path / "analysis" / "mode1_full_run.json"
-    rec.parent.mkdir(parents=True, exist_ok=True)
-    rec.write_text(json.dumps({"run_id": "M1-1", "status": "running"}),
-                   encoding="utf-8")
-    # A dead worker means a tombstone, not a live run.
-    with appmod._mode1_run_lock:
-        appmod._mode1_run_threads[_case_key(tmp_path)] = _DeadThread()
-    try:
-        assert _busy_run_error(tmp_path) is None, (
-            "a Mode 1 record whose worker is dead blocked the case"
-        )
-    finally:
-        with appmod._mode1_run_lock:
-            appmod._mode1_run_threads.pop(_case_key(tmp_path), None)
-
-
 def test_busy_guard_allows_a_completed_run(tmp_path: Path):
     from nexus.dashboard.app import _busy_run_error
 
@@ -151,7 +124,6 @@ def test_busy_guard_sees_a_planned_mode3_run(tmp_path: Path):
     err = _busy_run_error(tmp_path)
     assert err is not None, "a planned Mode 3 run did not block a second run"
     assert err.status_code == 409
-
 
 
 def test_busy_runs_reports_the_blocking_run_id(tmp_path: Path):

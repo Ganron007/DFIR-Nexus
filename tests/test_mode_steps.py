@@ -231,39 +231,6 @@ def test_m1_iterate_is_bounded_and_stages_nothing(client, c1):
     assert len(_findings(client, c1)) == len(before), "iterate staged a finding"
 
 
-def test_m1_full_run_starts_async_and_runs_one_at_a_time(client, c1):
-    """The scan is accepted asynchronously and only one may be live.
-
-    `202 Accepted` is the start contract - the scan runs in a background thread
-    and the examiner polls `/full-run/status`. A second start while one is live
-    is refused with 409, because two concurrent scans would race on the signal
-    map and the index.
-    """
-    first = client.post("/portal/api/mode1/full-run",
-                        json={"needle_filter": "sdelete"}, headers=_h(client, c1))
-    assert first.status_code in (202, 200, 409), first.text
-    body = first.json()
-    if first.status_code in (202, 200):
-        assert body.get("run_id"), body
-        assert body.get("status") in ("running", "complete", "done", "failed"), body
-    second = client.post("/portal/api/mode1/full-run",
-                         json={"needle_filter": "sdelete"}, headers=_h(client, c1))
-    assert second.status_code in (202, 200, 409), second.text
-    # Whichever way the race fell, the status endpoint must agree with reality.
-    st = client.get("/portal/api/mode1/full-run/status", headers=_h(client, c1))
-    assert st.status_code in (200, 404), st.text
-    if st.status_code == 200:
-        assert st.json().get("status"), st.json()
-
-
-def test_m1_full_run_status_is_readable(client, c1):
-    r = client.get("/portal/api/mode1/full-run/status", headers=_h(client, c1))
-    assert r.status_code in (200, 404), r.text
-    if r.status_code == 200:
-        body = r.json()
-        assert "status" in body or "run_id" in body, body
-
-
 def test_m1_corroborate_needs_a_real_finding(client, c1):
     """FD-006/007 check on a finding id; an unknown id is refused, not invented."""
     r = client.post("/portal/api/mode1/corroborate",

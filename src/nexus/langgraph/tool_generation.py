@@ -128,6 +128,47 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
     }, "required": ["tool_calls", *extra], "additionalProperties": True, "$defs": definitions}
 
 
+def refused_calls(schema, reply):
+    """The calls of a schema-bound reply that the schema refuses, each with the validator's own reason (D464).
+
+    A provider can ignore the strict schema. Validating the reply whole refused every call in it for one bad
+    argument and said only "not valid under any of the given schemas"; each call is checked against its own
+    tool's branch, so the valid calls run and the model is told what was wrong with the others.
+    """
+    from jsonschema import Draft202012Validator
+
+    def deepest(errors):
+        """The failures under each `anyOf` (the query union, the paging variants hide the argument at fault),
+        deepest first: up to three distinct ones, so a call with two faults names both."""
+        leaves, stack = [], list(errors)
+        while stack:
+            error = stack.pop()
+            if error.context:
+                stack.extend(error.context)
+            else:
+                leaves.append(error)
+        leaves.sort(key=lambda error: -len(error.absolute_path))
+        reasons = dict.fromkeys(f"{'/'.join(str(part) for part in error.absolute_path) or 'the call'}: "
+                                f"{error.message}" for error in leaves)
+        return "; ".join(list(reasons)[:3])[:600]
+
+    defs = schema.get("$defs") or {}
+    branches = {}
+    for branch in schema["properties"]["tool_calls"]["items"]["anyOf"]:
+        branches[branch["properties"]["tool"]["const"]] = branch
+    refused = []
+    for call in reply.get("tool_calls") or []:
+        tool = call.get("tool") if isinstance(call, dict) else None
+        branch = branches.get(tool)
+        if branch is None:
+            refused.append((call, f"`{tool}` is not one of this seat's tools ({', '.join(sorted(branches))})"))
+            continue
+        errors = list(Draft202012Validator({**branch, "$defs": defs}).iter_errors(call))
+        if errors:
+            refused.append((call, deepest(errors)))
+    return refused
+
+
 def supports_generation_schema(model):
     """The transport capability, shared by schema construction and binding."""
     return getattr(model, "_llm_type", "") == "openai-chat"

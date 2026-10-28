@@ -1619,7 +1619,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
             )
         # Build the index BEFORE publishing the terminal status. A poller fires the
         # moment the status is terminal, and every downstream consumer reads the
-        # index: the Mode 1 needle scan, Modes 2 and 3, the coverage audit. Publishing
+        # index: Mode 1's interpretation, Modes 2 and 3, the coverage audit. Publishing
         # `completed` first meant a run could be read as finished while the index was
         # still being written - seen live, status complete with no index_state.json on
         # disk and ES still climbing past 352,000 docs.
@@ -1932,9 +1932,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         # cited filled 58% of orient's prompt (run 4: all `info` level, from lsass / encodedcommand
         # / termsrv). The digest's top leads carry the detections with their citations, and the
         # loop queries the index itself. query_pack.md stays the examiner's needle file.
-        # Case Digest — deterministic "everything" (signal map incl. 0-hit
-        # needles, alerts, entities + spans, ledger, timeline, scope rules,
-        # TI). The LLM reconciles EVERY item; raw detail via n4_sample.
+        # Case Digest — deterministic: alerts (every crit/high lead), the top leads, typed entities + spans,
+        # ledger, timeline, scope rules. The loop answers every alert by audit id and reads the index itself.
         try:
             from nexus.langgraph.case_digest import (
                 build_case_digest,
@@ -1942,7 +1941,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 write_case_digest,
             )
 
-            emit_stage(state, "interpret", "setup", "case digest (signal map, alerts, leads)")
+            emit_stage(state, "interpret", "setup", "case digest (alerts, leads)")
             digest = build_case_digest(settings.cases_root / case_id)
             write_case_digest(settings.cases_root / case_id, digest)
             digest_md = render_digest_markdown(digest)
@@ -2029,17 +2028,20 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     # ── The bounded interpret round loop (the only interpreter) ─────────
     # Orient → Verify ×N → Reconcile, with artifacts under
     # analysis/interpret_rounds/.
-    # EH-13: Mode 2/3 promise ES-backed evidence. If the backend fell back
-    # to the CSV pack (ES lost mid-run, index gone), STOP here — a silent CSV
-    # interpretation is a different analysis with different coverage.
-    if (
-        case_dir_for_ctx is not None
-        and str(state.get("pipeline_mode") or "") in {"coverage", "design"}
-        and digest
-        and str(digest.get("backend") or "") != "elasticsearch"
-    ):
-        fallback = str((digest.get("scan_stats") or {}).get("fallback_reason") or
-                       "Elasticsearch unavailable")
+    # EH-13: the interpret loop reads the case's Elasticsearch index. If the index cannot be measured (ES lost,
+    # index gone), STOP here. The check is the index's own family count (es_native.family_doc_counts); it used
+    # to be the briefing keyword scan's backend, which D460 removed.
+    index_problem = ""
+    if case_dir_for_ctx is not None and str(state.get("pipeline_mode") or "") in {"coverage", "design"}:
+        try:
+            from nexus.langgraph.es_native import family_doc_counts
+
+            if not family_doc_counts(case_id):
+                index_problem = "the case's index holds no documents"
+        except Exception as exc:  # noqa: BLE001 - the refusal names it
+            index_problem = f"{type(exc).__name__}: {exc}"[:300]
+    if index_problem:
+        fallback = index_problem
         emit_stage(state, "interpret", "error", f"ES required: {fallback}")
         log.error("Interpret refused: %s", fallback)
         # A refused interpret must not leave the run reading as 'running'
@@ -2055,8 +2057,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             pass
         return {
             "error": (
-                f"Mode 2/3 requires Elasticsearch — N4 backend fell back to the "
-                f"CSV pack ({fallback}). No analysis was staged; restore ES and "
+                f"The interpretation reads the case's Elasticsearch index, which could not be "
+                f"read ({fallback}). No analysis was staged; restore ES and "
                 "re-run (nexus index rebuild if the index is missing)."
             ),
             "step_log": [f"interpret refused (no ES): {fallback}"],
@@ -2085,17 +2087,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
 
     from nexus.langgraph.interpret_loop import run_interpret_loop
 
-    # P2: scan coverage is part of the run record - files scanned vs eligible and
-    # needles queried vs requested (never silently dropped).
-    _stats = (digest.get("scan_stats") or {}) if isinstance(digest, dict) else {}
-    if _stats.get("files_total"):
-        _cov = (
-            f"scan coverage: files {_stats.get('files_scanned', 0)}/{_stats.get('files_total', 0)}"
-            f", needles {_stats.get('terms_queried', 0)}/{_stats.get('terms_requested', 0)}"
-        )
-        if _stats.get("fallback_reason"):
-            _cov += f" - fallback: {_stats['fallback_reason']}"
-        emit_stage(state, "interpret", "coverage", _cov)
 
     try:
         loop_result = await run_interpret_loop(

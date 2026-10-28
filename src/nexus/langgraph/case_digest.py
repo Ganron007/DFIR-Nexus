@@ -150,16 +150,12 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "hosts": brief.get("hosts") or [],
         "time_range": brief.get("time_range") or {},
         "intake": brief.get("intake") or {},
-        "scan_stats": brief.get("scan_stats") or {},
         "alerts": brief.get("alerts") or [],
         "top_leads": top_leads(case_dir),
         "entities": brief.get("entities") or {},
         "entity_spans": _entity_spans(case_dir),
         "host_identity": _host_identity(case_dir),
         "timeline": _timeline(case_dir),
-        "hits_examined": brief.get("hits_examined", 0),
-        "scan_truncated": brief.get("scan_truncated", False),
-        "backend": brief.get("backend", ""),
     }
 
 
@@ -271,7 +267,7 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
     lines: list[str] = [
         f"# Case Digest — {digest.get('case_id', '')}",
         "",
-        f"Generated: {digest.get('generated_at', '')} · backend: {digest.get('backend', '')}",
+        f"Generated: {digest.get('generated_at', '')}",
         "",
         "## Scope (what this evidence IS — and what it is NOT)",
     ]

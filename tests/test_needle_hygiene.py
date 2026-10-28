@@ -29,36 +29,6 @@ def test_is_needle_like_filters_paths_labels_and_numbers():
     assert is_needle_like("10.0.0.5")
 
 
-def test_scan_needles_drops_intake_paths_and_type_labels(tmp_path):
-    from nexus.langgraph import briefing
-    from nexus.langgraph.case_intake import persist_case_intake
-
-    case = tmp_path / "CASE-SCAN"
-    case.mkdir()
-    persist_case_intake(case, {
-        "query_extra": "\n".join([
-            "domain_user",
-            r"STUDY\Github",
-            r"CADRE-Platform\DFIR-Nexus",
-            "sdelete",
-        ]),
-    })
-
-    needles = briefing._scan_needles(case, ["hayabusa"], [])
-
-    assert "sdelete" in needles
-    # Free-text tokens are machine-local/schema strings, never needles.
-    assert "domain_user" not in needles
-    assert not any("github" in k or "cadre" in k for k in needles)
-    # Curated pack fragments are evidence strings and stay scannable (a
-    # blanket separator rule silently dropped 28 real needles).
-    assert "bitsadmin /transfer" in needles        # sigma-susp-process
-    assert "currentversion\\run" in needles        # sigma-persistence
-    assert "cipher /w" in needles                  # wipe ground truth
-    # F6 content gate still holds end to end: no bare numbers become needles.
-    assert not [k for k in needles if k.isdigit()]
-
-
 @pytest.mark.parametrize("token", ["STUDY\\Github", "CADRE-Platform\\DFIR-Nexus", "domain_user"])
 def test_live_leak_tokens_are_filtered(token):
     from nexus.langgraph.query_pack import is_needle_like

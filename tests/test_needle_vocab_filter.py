@@ -77,25 +77,3 @@ def test_external_pack_valid_and_scannable():
     assert "psexesvc" in [s.lower() for s in strong]
     assert external_needles_for(set()) == []
 
-
-def test_briefing_and_endpoint_carry_external():
-    import tempfile
-    from pathlib import Path
-
-    from nexus.langgraph.briefing import _scan_needles
-
-    mapped = _scan_needles(Path(tempfile.mkdtemp()), ["prefetch", "evtxecmd"])
-    labels = set(mapped.values())
-    assert "external" in labels or "external-strong" in labels, labels
-    # The vocabulary gate holds end to end: no bare numbers become needles.
-    assert not [k for k in mapped if str(k).strip().isdigit()]
-
-    from starlette.applications import Starlette
-    from starlette.testclient import TestClient
-
-    from nexus.dashboard.app import create_dashboard
-
-    client = TestClient(Starlette(routes=create_dashboard()))
-    data = client.get("/portal/api/playbook/needles?families=evtxecmd").json()
-    sources = {s.get("source") for s in (data.get("suggestions") or [])}
-    assert "external" in sources, sources

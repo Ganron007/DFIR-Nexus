@@ -172,7 +172,7 @@ def test_build_digest_scopes_absent_classes(tmp_path, monkeypatch):
         "nexus.langgraph.case_index.es_aggregate", lambda *a, **k: None
     )
     digest = build_case_digest(tmp_path)
-    assert digest["backend"] == "elasticsearch"
+    assert "backend" not in digest  # D460: the scan's backend is gone; the index is checked where it is read
     absent = digest["scope"]["explicitly_absent"]
     assert any("memory" in a for a in absent)
     assert any("disk" in a for a in absent)

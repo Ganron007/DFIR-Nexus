@@ -432,21 +432,28 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
             target["reason"] = "not in the index"
 
     rows = list(by_family.values())
-    examined = [r for r in rows if r["examined"]]
+    # D466: the count is of the families the index holds; a family a query named or read that the index does
+    # not hold is named apart. T22-R1z3d Mode 3 read "4/2 indexed families examined".
+    indexed = [r for r in rows if r["docs"]]
+    examined = [r for r in indexed if r["examined"]]
+    not_in_index = sorted(r["family"] for r in rows if not r["docs"])
+    if index_error:
+        summary = (f"the index could not be measured ({index_error}); "
+                   f"{len([r for r in rows if r['examined']])} queried families examined")
+    else:
+        summary = f"{len(examined)}/{len(indexed)} indexed families examined" + (
+            f"; queried but not in the index: {', '.join(not_in_index)}" if not_in_index else "")
     return {
         "run_id": run_id,
         "index_error": index_error,
         "families": rows,
-        "families_indexed": len([r for r in rows if r["docs"]]),
+        "families_indexed": len(indexed),
         "families_examined": len(examined),
-        "families_not_examined": [r["family"] for r in rows if not r["examined"]],
+        "families_not_examined": [r["family"] for r in indexed if not r["examined"]],
+        "families_not_in_index": not_in_index,
         "queries_total": len(queries),
         "queries_unattributed": len(unattributed),
-        "summary": (
-            f"the index could not be measured ({index_error}); {len(examined)} queried families examined"
-            if index_error else
-            f"{len(examined)}/{len([r for r in rows if r['docs']])} indexed families examined"
-        ),
+        "summary": summary,
     }
 
 

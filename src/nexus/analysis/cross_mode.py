@@ -405,7 +405,6 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
     # D5 = C a Mode 1 case's claims came only from ``findings.json``, so the
     # three-mode comparison on one case could never see a Mode 1 run's own
     # candidates — the "not run" line was wrong whenever Mode 1 had run.
-    # ``mode1_full_run.json`` is the other Mode 1 record shape.
     m1_dir = case_dir / "analysis" / "pipeline_runs"
     if m1_dir.is_dir():
         for rec in sorted(m1_dir.glob("M1-*.json")):
@@ -415,14 +414,6 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
                 continue
             if isinstance(loaded, dict):
                 by_mode["1"].extend(_claims_from_run("1", loaded, case_dir))
-    full_run = case_dir / "analysis" / "mode1_full_run.json"
-    if full_run.is_file():
-        try:
-            loaded = json.loads(full_run.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            loaded = None
-        if isinstance(loaded, dict):
-            by_mode["1"].extend(_claims_from_run("1", loaded, case_dir))
     return by_mode
 
 

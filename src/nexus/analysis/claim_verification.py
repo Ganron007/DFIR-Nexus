@@ -15,7 +15,7 @@ L1.5  timestamps parse and are plausible
 L1.6  the WP 10.4 seal verifies at approval
 L1.7  every count in the prose replays from Elasticsearch
 L1.8  no contradiction with another mode or with the raw rows
-L1.9  coverage is declared (tools / sources / needles)
+L1.9  coverage is declared (tools / sources)
 L1.10 a cited row corroborates the claim, rather than merely naming the
        entity somewhere in an unstructured data blob
 L1.11 every event the claim names ("Sysmon 10", "EID 4688") was returned by
@@ -426,19 +426,22 @@ def _l1_9(res, coverage=None, **_kw) -> None:
         _check(res, "L1.9", "unverifiable", "coverage audit not run")
         return
     overall = str((coverage or {}).get("overall") or "").lower()
+    mirror = coverage.get("sections") if isinstance(coverage.get("sections"), dict) else {}
+    # The audited sections decide, from the `sections` mirror or (audits written before it) the top-level keys.
+    # An audit written before D460 also holds a keyword-needle section and an `overall` that counted it; a word
+    # count is not coverage.
+    sections = {
+        name: mirror.get(name) or coverage.get(name)
+        for name in ("tools", "sources")
+        if isinstance(mirror.get(name) or coverage.get(name), dict)
+    }
+    if sections:
+        statuses = {str(v.get("status") or "unknown").lower() for v in sections.values()}
+        overall = "gaps" if "gaps" in statuses else "unknown" if "unknown" in statuses else "ok"
     if not overall:
         _check(res, "L1.9", "unverifiable", "coverage audit has no verdict")
         return
     if overall == "gaps":
-        sections = coverage.get("sections")
-        if not isinstance(sections, dict) or not sections:
-            # Audits written before the `sections` mirror: rebuild the mapping
-            # from the top-level section keys so gaps are still named.
-            sections = {
-                name: coverage.get(name)
-                for name in ("tools", "sources", "needles")
-                if isinstance(coverage.get(name), dict)
-            }
         gaps = [s for s, v in sections.items()
                 if isinstance(v, dict) and v.get("status") == "gaps"]
         _check(res, "L1.9", "fail", f"coverage reports gaps in: {', '.join(gaps) or 'unknown'}",

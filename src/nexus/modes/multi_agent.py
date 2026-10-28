@@ -2079,23 +2079,15 @@ def run_mode3(
     sink.inner.path = _run_dir(case_dir) / f"{run_id}.jsonl"
     sink.inner.path.parent.mkdir(parents=True, exist_ok=True)
 
-    # WO-4 (D40): build the signal map before the graph runs, so the coverage
-    # audit can answer for the needles this run's claims were drawn from
-    # instead of "unknown". Best-effort by design: a briefing failure must
-    # not take the run down.
+    # The run's leads, built once from the index and persisted (`analysis/leads.jsonl`): the agenda and the lead
+    # dispositions read them. The briefing built them as a side effect until D460 took the briefing out of Mode 3.
     try:
-        from nexus.langgraph.briefing import case_briefing
+        from nexus.analysis.leads import build_leads
 
-        brief = case_briefing(case_dir)
-        sink.emit(new_event(
-            run_id, "briefing.ready", actor="system",
-            detail=f"{brief.get('scanned_needles', 0)} needle(s) scanned",
-            data={"signal_map": bool((brief.get("artifacts") or {}).get("signal_map_csv"))},
-        ))
-    except Exception as exc:  # noqa: BLE001
-        sink.emit(new_event(
-            run_id, "briefing.failed", actor="system", detail=str(exc)[:200],
-        ))
+        sink.emit(new_event(run_id, "leads.ready", actor="system",
+                            detail=f"{len(build_leads(case_dir))} lead(s) built from the index"))
+    except Exception as exc:  # noqa: BLE001 - the run records it and goes on without leads
+        sink.emit(new_event(run_id, "leads.failed", actor="system", detail=str(exc)[:200]))
 
     indexed = list(families or [])
     if not indexed:

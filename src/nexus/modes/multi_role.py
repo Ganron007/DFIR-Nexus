@@ -2343,12 +2343,8 @@ def run_mode2(
         _persist_state(case_dir, run_id, state)
         return state
 
-    # WO-4 (D40): build the signal map before the graph runs, so the coverage
-    # audit can answer for the needles this run's claims were drawn from
-    # instead of "unknown". Best-effort by design: a briefing failure must
-    # not take the run down.
-    #
-    # WO-R1F item 7c: the briefing's DIGEST SUMMARY now reaches every worker. The
+    # WO-R1F item 7c: the briefing's DIGEST SUMMARY reaches every worker (best-effort by design: a briefing
+    # failure must not take the run down). The
     # old code built it and threw it away (only an event was emitted), so the
     # strongest signals the digest carries - the alert surface and the top leads -
     # never reached a Mode 2 seat while they did reach Mode 1.
@@ -2363,9 +2359,10 @@ def run_mode2(
         state["digest_summary"] = _digest_summary(brief)
         sink.emit(new_event(
             run_id, "briefing.ready", actor="system",
-            detail=f"{brief.get('scanned_needles', 0)} needle(s) scanned",
-            data={"signal_map": bool((brief.get("artifacts") or {}).get("signal_map_csv")),
-                  "alerts": len(brief.get("alerts") or [])},
+            detail=(f"{len(brief.get('alerts') or [])} alert(s), "
+                    f"{(brief.get('lead_counts') or {}).get('total', 0)} lead(s)"),
+            data={"alerts": len(brief.get("alerts") or []),
+                  "leads": (brief.get("lead_counts") or {}).get("total", 0)},
         ))
     except Exception as exc:  # noqa: BLE001
         state["digest_summary"] = ""

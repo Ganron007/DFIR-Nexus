@@ -321,3 +321,18 @@ def test_status_spellings_are_classified(tmp_path: Path, index_holds, status, ex
                  status=status, rows=1 if examined else 0, run_id="M2-test")
     ledger = build_family_ledger(tmp_path, run_id="M2-test")
     assert ledger["families"][0]["examined"] is examined
+
+
+def test_queried_families_the_index_does_not_hold_are_named_apart(tmp_path, index_holds):
+    """D466: T22-R1z3d Mode 3's ledger read "4/2 indexed families examined": two queried families the index does not
+    hold ("triage baseline", "eventlog") were counted over the two it does."""
+    index_holds({"memprocfs": 1736903, "vol": 432})
+    run = "M3-20261028T170325-969bbd"
+    for family in ("memprocfs", "vol", "triage baseline", "eventlog"):
+        record_query(tmp_path, {"term": {"family": family}}, status="OK", rows=1, run_id=run)
+    ledger = build_family_ledger(tmp_path, run_id=run)
+    assert ledger["summary"] == ("2/2 indexed families examined; queried but not in the index: "
+                                 "eventlog, triage baseline")
+    assert ledger["families_examined"] == 2 and ledger["families_indexed"] == 2
+    assert ledger["families_not_in_index"] == ["eventlog", "triage baseline"]
+    assert ledger["families_not_examined"] == []

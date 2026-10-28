@@ -464,7 +464,7 @@ export default function Timeline() {
           {defaultedNeedles > 0 ? (
             <p className={styles.note}>
               Showing rows matched by the case&apos;s needle vocabulary (
-              {defaultedNeedles} needles — full-run scan or playbook terms for this
+              {defaultedNeedles} needles — the playbook terms for this
               case&apos;s families). Use Explore for arbitrary queries.
             </p>
           ) : null}

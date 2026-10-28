@@ -65,16 +65,3 @@ def test_prompt_block_compact_and_endpoint():
     itm = [s for s in data["suggestions"] if s.get("source") == "itm"]
     assert itm and itm[0]["needles"], itm[:1]
 
-
-def test_briefing_signal_map_sources_itm(tmp_path):
-    from nexus.langgraph.briefing import _scan_needles
-
-    chainsaw = _scan_needles(tmp_path, ["chainsaw"])
-    assert chainsaw.get("mstsc.exe") == "itm"            # AR3/PR026
-    assert chainsaw.get("clear-eventlog") == "itm-strong"  # AR5/AF002
-
-    recmd = _scan_needles(tmp_path, ["recmd"])
-    assert recmd.get("sc create") == "itm-strong"        # AR3/PR046
-
-    web = _scan_needles(tmp_path, ["browser"])
-    assert web.get("wetransfer.com") == "itm"            # AR4/IF001

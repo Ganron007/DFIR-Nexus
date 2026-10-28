@@ -244,9 +244,9 @@ def propose_next_needles(
     """LLM proposes the next needles from current hits. Heuristic fallback.
 
     WP 4i.9: when ``briefing`` is provided (computed once by the caller), the
-    LLM sees the case's signal map — which playbook/ATT&CK/Sigma needles
-    already hit, the alert surface, and top entities — so proposals are
-    grounded in what the evidence actually contains, not generic vocabulary.
+    LLM sees the case's alert surface, its leads and typed entities, so
+    proposals are grounded in what the evidence actually contains, not
+    generic vocabulary.
 
     Returns {"needles": [...], "rationale": str, "source": "llm"|"heuristic"}.
     """
@@ -269,23 +269,22 @@ def propose_next_needles(
 
 
 def _briefing_context(briefing: dict[str, Any] | None) -> str:
-    """WP 4i.9: compact signal-map block for the proposal prompt."""
+    """WP 4i.9: the briefing's alerts, leads and typed entities for the proposal prompt (no keyword counts, D460)."""
     if not briefing:
         return ""
     parts: list[str] = []
-    scan = briefing.get("needle_scan") or []
-    if scan:
-        top = ", ".join(f"{s['needle']}({s['hits']})" for s in scan[:20])
-        parts.append(f"Signal map (needle→hits): {top}")
     alerts = briefing.get("alerts") or []
     if alerts:
         parts.append("Alerts: " + "; ".join(
             f"[{a['level']}] {a['title']} @{a['host']}" for a in alerts[:8]
         ))
+    leads = [lead for lead in briefing.get("leads") or [] if not (lead.get("extra") or {}).get("crit_high")]
+    if leads:
+        parts.append("Leads: " + "; ".join(f"[{lead.get('kind')}] {lead.get('subject')}" for lead in leads[:12]))
     ents = briefing.get("entities") or {}
     if ents:
         bits = []
-        for etype in ("process_name", "ipv4", "domain", "domain_user"):
+        for etype in ("host", "user", "process", "ipv4", "domain"):
             vals = [e["value"] for e in (ents.get(etype) or [])[:6]]
             if vals:
                 bits.append(f"{etype}={', '.join(vals)}")
@@ -440,7 +439,7 @@ def _propose_with_model(
     agg_summary = _aggregation_summary(hits)
     top_hits = _top_hits_per_family(hits)
 
-    # WP 4i.9: case briefing signal map — which needles already hit
+    # WP 4i.9: the case briefing's alerts, leads and typed entities
     briefing_ctx = _briefing_context(briefing)
 
     # 4k.5.5: the LLM proposes Elasticsearch queries (the guided loop queries
@@ -456,7 +455,7 @@ def _propose_with_model(
         f"Already searched: {', '.join(already_run) or '(none)'}\n\n"
         f"Incomplete search pages that must be continued before complete coverage claims:\n"
         f"{json.dumps(search_pages or [], ensure_ascii=False, sort_keys=True, default=str)}\n\n"
-        f"Case signal map (needles that already hit in processed evidence):\n"
+        f"Case briefing (alerts, leads, typed entities):\n"
         f"{briefing_ctx or '(no briefing)'}\n\n"
         f"Aggregation summary:\n{agg_summary}\n\n"
         f"Top hits per family:\n{top_hits}\n\n"
@@ -811,8 +810,8 @@ def run_iterative_loop(
     _emit(on_event, iterations[-1])
     append_chat(case_dir, "llm", "mode1_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('total', r0.get('count', 0))} hits")
 
-    # WP 4i.9: compute the case briefing once — proposals ground in the
-    # signal map (which needles already hit) rather than generic vocabulary.
+    # WP 4i.9: compute the case briefing once — proposals ground in its alerts,
+    # leads and typed entities rather than generic vocabulary.
     briefing: dict[str, Any] | None = None
     try:
         from nexus.langgraph.briefing import case_briefing

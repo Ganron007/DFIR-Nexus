@@ -129,7 +129,7 @@ app.command(name="verify-claims", help="Level 1 claim check: citations, entities
 
 # WP 4i.10: headless investigation verbs — the UI stays primary, these keep
 # the spine usable without a browser.
-app.command(name="brief", help="Case briefing — what was processed + signal map")(_brief_cmd)
+app.command(name="brief", help="Case briefing — what was processed, the alerts and the leads")(_brief_cmd)
 app.command(name="hits", help="Parsed hit table for a needle")(_hits_cmd)
 app.command(name="hit", help="Full field dump for one hit (file:line)")(_hit_cmd)
 

@@ -58,12 +58,6 @@ def _case(tmp_path: Path, *, ledger: list[dict] | None = None, evidence: list[di
     return case
 
 
-def _signal_map(case: Path, rows: list[tuple[str, int, str, str]]) -> None:
-    lines = ["needle,hits,source,scanned"]
-    lines += [f"{n},{h},{s},{sc}" for n, h, s, sc in rows]
-    (case / "analysis" / "signal_map.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def _no_es(monkeypatch, families: dict[str, int] | None) -> None:
     """Pin the index's family counts (or make them raise when families is None)."""
     import nexus.langgraph.es_native as es_native
@@ -121,7 +115,6 @@ def test_acceptance_unused_tool_and_uncited_source_both_surfaced(monkeypatch, tm
         ),
         encoding="utf-8",
     )
-    _signal_map(case, [("sdelete", 3, "playbook-strong", "yes"), ("mimikatz", 0, "attack", "yes")])
 
     audit = ca.build_coverage_audit(case)
     assert audit["overall"] == "gaps"
@@ -141,9 +134,8 @@ def test_acceptance_unused_tool_and_uncited_source_both_surfaced(monkeypatch, tm
     assert {"prefetch", "mft"} <= never  # uncited sources surfaced
     assert "hayabusa" not in never  # the cited one is not reported as a gap
 
-    needles = audit["needles"]
-    assert needles["status"] == "ok"
-    assert needles["zero_hit_scanned"] == 1  # mimikatz: genuinely checked, no hit
+    # D460: a keyword count is not coverage; no needle section is audited.
+    assert "needles" not in audit and set(audit["sections"]) == {"tools", "sources"}
 
 
 # ── tools section ────────────────────────────────────────────────────────────
@@ -152,7 +144,6 @@ def test_acceptance_unused_tool_and_uncited_source_both_surfaced(monkeypatch, tm
 def test_tools_unknown_without_a_ledger(monkeypatch, tmp_path):
     case = _case(tmp_path, ledger=None)
     _no_es(monkeypatch, {"hayabusa": 1})
-    _signal_map(case, [("x", 0, "playbook", "yes")])
     audit = ca.build_coverage_audit(case)
     assert audit["tools"]["status"] == "unknown"
     assert "ledger" in audit["tools"]["reason"].lower()
@@ -163,7 +154,6 @@ def test_tools_ok_when_everything_ran(monkeypatch, tmp_path):
     case = _case(tmp_path, ledger=[_LEDGER_OK], evidence=[{"file_path": str(tmp_path)}])
     monkeypatch.setattr(ca, "_artifact_hits", lambda _c: ([], ""))
     _no_es(monkeypatch, {"hayabusa": 5})
-    _signal_map(case, [("x", 1, "playbook", "yes")])
     audit = ca.build_coverage_audit(case)
     assert audit["tools"]["status"] == "ok"
     assert audit["tools"]["counts"]["ok"] == 1
@@ -179,10 +169,9 @@ def test_sections_mirror_the_toplevel_keys(monkeypatch, tmp_path):
     case = _case(tmp_path, ledger=[_LEDGER_OK], evidence=[{"file_path": str(tmp_path)}])
     monkeypatch.setattr(ca, "_artifact_hits", lambda _c: ([], ""))
     _no_es(monkeypatch, {"hayabusa": 5})
-    _signal_map(case, [("x", 1, "playbook", "yes")])
     audit = ca.build_coverage_audit(case)
-    assert set(audit["sections"]) == {"tools", "sources", "needles"}
-    for name in ("tools", "sources", "needles"):
+    assert set(audit["sections"]) == {"tools", "sources"}
+    for name in ("tools", "sources"):
         assert audit["sections"][name] == audit[name]
 
 
@@ -192,7 +181,6 @@ def test_sections_mirror_the_toplevel_keys(monkeypatch, tmp_path):
 def test_sources_unknown_when_elasticsearch_is_down(monkeypatch, tmp_path):
     case = _case(tmp_path, ledger=[_LEDGER_OK])
     _no_es(monkeypatch, None)
-    _signal_map(case, [("x", 0, "playbook", "yes")])
     audit = ca.build_coverage_audit(case)
     assert audit["sources"]["status"] == "unknown"
     assert "unavailable" in audit["sources"]["reason"].lower()
@@ -207,7 +195,6 @@ def test_sources_flags_a_family_cited_but_not_indexed(monkeypatch, tmp_path):
         json.dumps([{"id": "F-1", "evidence": [{"source": "registry_export/x.json:1"}]}]),
         encoding="utf-8",
     )
-    _signal_map(case, [("x", 0, "playbook", "yes")])
     audit = ca.build_coverage_audit(case)
     assert audit["sources"]["cited_not_indexed"] == ["registry_export"]
     assert audit["sources"]["status"] == "gaps"
@@ -224,50 +211,6 @@ def test_sources_reads_families_from_the_evidence_row_source_prefix(tmp_path):
     families, count = ca._finding_citations(case)
     assert count == 1
     assert families == {"hayabusa", "prefetch"}
-
-
-# ── needles section ──────────────────────────────────────────────────────────
-
-
-def test_needles_unknown_without_a_signal_map(tmp_path):
-    case = _case(tmp_path, ledger=[_LEDGER_OK])
-    section = ca._needles_section(case)
-    assert section["status"] == "unknown"
-    assert "signal_map" in section["reason"]
-
-
-def test_needles_reconcile_scanned_zero_hits_against_never_queried(tmp_path):
-    case = _case(tmp_path)
-    _signal_map(
-        case,
-        [
-            ("hit-term", 7, "playbook-strong", "yes"),
-            ("clean-term", 0, "attack", "yes"),
-            ("never-ran", 0, "sigma", "no"),
-        ],
-    )
-    section = ca._needles_section(case)
-    assert section["requested"] == 3
-    assert section["scanned"] == 2
-    assert section["not_scanned"] == 1
-    assert section["zero_hit_scanned"] == 1
-    assert section["not_scanned_needles"] == ["never-ran"]
-    assert section["status"] == "gaps"
-
-
-def test_needles_pick_up_truncation_warnings_from_the_briefing(tmp_path):
-    case = _case(tmp_path)
-    _signal_map(case, [("x", 0, "playbook", "yes")])
-    (case / "analysis" / "briefing.md").write_text(
-        "# Briefing\n\n> WARNING: 2 needle(s) could NOT be queried - their 0-hit rows "
-        "in `signal_map.csv` are marked `scanned=no` and are NOT evidence of absence.\n",
-        encoding="utf-8",
-    )
-    section = ca._needles_section(case)
-    assert any("NOT evidence of absence" in r for r in section["truncated_reasons"])
-
-
-# ── persistence + surfaces ───────────────────────────────────────────────────
 
 
 def test_write_and_load_round_trip(tmp_path):
@@ -290,7 +233,6 @@ def test_summary_lines_never_hide_an_unknown_section(tmp_path):
         "overall": "unknown",
         "tools": {"status": "unknown", "reason": "no ledger", "counts": {}},
         "sources": {"status": "ok"},
-        "needles": {"status": "ok", "requested": 1, "scanned": 1, "not_scanned": 0, "zero_hit_scanned": 1},
         "unavailable": ["tools: no ledger"],
     }
     lines = ca.summary_lines(audit)
@@ -310,7 +252,6 @@ def test_cli_rebuild_and_gate_on_gaps(monkeypatch, tmp_path):
 
     case = _case(tmp_path, ledger=[_LEDGER_PENDING], evidence=[{"file_path": str(tmp_path)}])
     _no_es(monkeypatch, {"hayabusa": 3})
-    _signal_map(case, [("x", 0, "playbook", "yes")])
     result = runner.invoke(app, ["coverage-audit", "--rebuild", "--case", str(case)])
     assert result.exit_code == 1  # gaps are not a pass
     assert "Coverage audit" in result.output
@@ -330,13 +271,11 @@ def test_cli_refuses_without_a_named_case(monkeypatch, tmp_path):
     assert "--case is required" in result.output
 
 
-@pytest.mark.parametrize("missing", ["ledger", "index", "signal_map"])
+@pytest.mark.parametrize("missing", ["ledger", "index"])
 def test_every_missing_input_degrades_to_unknown_not_ok(monkeypatch, tmp_path, missing):
     """No single absent input may produce an overall 'ok'."""
     case = _case(tmp_path, ledger=[_LEDGER_OK] if missing != "ledger" else None)
     _no_es(monkeypatch, None if missing == "index" else {"hayabusa": 1})
-    if missing != "signal_map":
-        _signal_map(case, [("x", 0, "playbook", "yes")])
     monkeypatch.setattr(ca, "_artifact_hits", lambda _c: ([], ""))
     audit = ca.build_coverage_audit(case)
     assert audit["overall"] in {"unknown", "gaps"}

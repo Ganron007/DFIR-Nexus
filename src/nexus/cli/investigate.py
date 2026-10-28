@@ -2,7 +2,7 @@
 
 Headless fallback for the examiner when the UI isn't available:
 
-  nexus brief                    # case briefing (inventory/alerts/signal map)
+  nexus brief                    # case briefing (inventory/alerts/leads)
   nexus hits <needle> [-f fam]   # parsed hit table with field projection
   nexus hit <file:line>          # full field dump of one hit
 
@@ -76,11 +76,11 @@ def brief(
         typer.echo(f"  alerts ({len(alerts)}):")
         for a in alerts[:15]:
             typer.echo(f"    [{a.get('level','').upper():8s}] {a.get('title','')[:60]:60s} {a.get('host','')}")
-    scan = b.get("needle_scan") or []
-    if scan:
-        typer.echo(f"  signal map ({len(scan)} needles with hits):")
-        for s in scan[:25]:
-            typer.echo(f"    {s['needle']:40s} {s['hits']:>4} hits  ({s['source']})")
+    leads = [lead for lead in b.get("leads") or [] if not (lead.get("extra") or {}).get("crit_high")]
+    if leads:
+        typer.echo(f"  leads ({len(leads)} below crit/high):")
+        for lead in leads[:25]:
+            typer.echo(f"    [{str(lead.get('kind') or ''):11s}] {str(lead.get('subject') or '')[:90]}")
     ent = b.get("entities") or {}
     if ent:
         typer.echo("  top entities:")

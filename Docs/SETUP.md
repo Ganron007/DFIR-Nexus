@@ -271,9 +271,9 @@ query proposals + interpretation, and the multi-role / multi-agent work-order
 planning and tool-selection prompts;
 `nexus doctor` lists them under "knowledge sources", and the report shows
 per-stage Insider Threat Matrix coverage. Needle packs
-(`needles/itm_needles.yaml`, `needles/external_needles.yaml`) feed the Mode 1
-signal map — a vocabulary gate keeps bare event IDs and evidence file names
-out of the keyword scan (they belong to typed field checks).
+(`needles/itm_needles.yaml`, `needles/external_needles.yaml`) are the examiner's
+keyword pivots — a vocabulary gate keeps bare event IDs and evidence file names
+out of them (they belong to typed field checks); no mode counts them as signal.
 
 ### 2f. Elasticsearch (N3 index — all modes' retrieval)
 

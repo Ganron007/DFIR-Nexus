@@ -125,7 +125,7 @@ presets**, not separate products or UIs.
 > operator gate pass for this build remains pending. **Mode 1 — LLM** ships
 > the full examiner surface (Explore, persistent Steer Chat with live evidence
 > retrieval, Finding Workbench, Approval Desk, report steering) plus the
-> merged full-run scribe and coverage/interpretation loop. **Mode 2 —
+> coverage/interpretation loop. **Mode 2 —
 > Multi-role** ships the supervised runtime (`nexus mode2`): plan approval,
 > live steering, pause/resume/stop, verifier verdicts, DRAFT staging with
 > lineage. **Mode 3 — Multi-agent** ships the concurrent runtime
@@ -224,8 +224,8 @@ N8 report from APPROVED only
 
 **UI note:** LLM mode shows the guided walkthrough + Suggested Directions;
 the agent modes show the Case Digest card (the digest is also available on the
-LLM Briefing). The deterministic base (inventory, ledger, alerts, signal map,
-entities, intake) is shared by all modes. Directions are an LLM-mode layer —
+LLM Briefing). The deterministic base (inventory, ledger, alerts, leads,
+typed entities, intake) is shared by all modes. Directions are an LLM-mode layer —
 the agent modes never feed directions back.
 
 **Mode 1 is complete when the Portal has:**
@@ -251,8 +251,8 @@ The guided half of Mode 1 is the **product differentiator**, and it has two halv
    deterministic lane, the LLM runs Orient → Verify ×N → Reconcile (round
    artifacts in `analysis/interpret_rounds/`): it receives the **Case Digest** — one deterministic artifact holding
    everything the case knows: scope (what IS and explicitly is **NOT** in
-   evidence), inventory + parser ledger, the signal map **including 0-hit
-   needles as negative evidence**, the alert surface, entities with
+   evidence), inventory + parser ledger, the alert surface (every crit/high
+   lead, each answered by its audit id), the top leads, entities with
    first/last-seen spans, the per-day timeline, and threat intel. It can pull
    raw detail on demand (`es_sample`/`es_search`/`es_aggregate` — the
    ES-native tools; typed `ts` ranges apply) and must
@@ -728,7 +728,7 @@ choose this set.
 
 After the ledger, N2 writes the **evidence gate** (`analysis/lane_gate.json`):
 any unprocessed (`FAIL`) artifact blocks the analysis stages — Mode 1
-full-run/chat, Mode 2 plan/run, Mode 3 run and the interpret/coverage/design
+chat, Mode 2 plan/run, Mode 3 run and the interpret/coverage/design
 pipeline answer **409** until the item is re-run or an examiner records a
 password-verified, audited skip (`nexus lane skip`, the same HMAC
 challenge-response as approvals). The gate is visible in

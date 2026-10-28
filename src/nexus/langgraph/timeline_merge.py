@@ -666,7 +666,7 @@ def rebuild_case_timeline(
     if hits is None:
         from nexus.langgraph.query_pack import attach_hit_fields, n4_hits
 
-        terms, priority_terms = timeline_query_plan(case_dir, intake)
+        terms, priority_terms = timeline_query_plan(case_dir, intake, run_id=run_id)
         hits, _backend = n4_hits(
             case_dir, terms, window, priority_terms=priority_terms,
             run_id=run_id,
@@ -730,24 +730,12 @@ def rebuild_case_timeline(
 def timeline_query_plan(
     case_dir: Path,
     intake: dict[str, str] | None = None,
+    run_id: str = "",
 ) -> tuple[list[str], list[str]]:
-    """Return the exact terms and priorities used for a timeline N4 search."""
+    """Return the exact terms and priorities used for a timeline N4 search: the examiner's query pack
+    (``query_pack.query_pack_terms``, the one keyword vocabulary, D460)."""
     case_dir = Path(case_dir)
     intake = load_case_intake(case_dir) if intake is None else intake
-    from nexus.langgraph.query_pack import (
-        collect_playbook_query_terms,
-        collect_query_terms,
-    )
+    from nexus.langgraph.query_pack import query_pack_terms
 
-    terms = collect_query_terms(intake)
-    if not terms:
-        # Portal-created cases have no intake terms — fall back to the
-        # needles a Mode 1 full-run actually scanned, so the timeline
-        # still populates from real investigation work.
-        run_path = case_dir / "analysis" / "mode1_full_run.json"
-        try:
-            rec = json.loads(run_path.read_text(encoding="utf-8"))
-            terms = [str(t) for t in (rec.get("needles") or []) if str(t).strip()]
-        except (OSError, json.JSONDecodeError, AttributeError):
-            terms = []
-    return terms, collect_playbook_query_terms(intake)
+    return query_pack_terms(case_dir, intake, run_id=run_id)
