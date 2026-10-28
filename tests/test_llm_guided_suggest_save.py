@@ -23,10 +23,11 @@ def _clear_suggestion_cache():
 def _mkcase(tmp_path: Path) -> Path:
     case = tmp_path / "CASE-SUGGEST"
     (case / "analysis").mkdir(parents=True)
+    # The typed inventory as `entity_inventory.build_entity_inventory` writes it (Part 12 FM-2).
     (case / "analysis" / "entity_inventory.json").write_text(json.dumps({
-        "hosts": {"WS01": 5, "DC01": 2},
-        "users": {"fredr": 4},
-        "processes": {"powershell.exe": 3},
+        "host": [{"value": "WS01", "count": 5}, {"value": "DC01", "count": 2}],
+        "user": [{"value": "fredr", "count": 4}],
+        "process": [{"value": "powershell.exe", "count": 3}],
     }), encoding="utf-8")
     entries = [
         {

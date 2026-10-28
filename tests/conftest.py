@@ -414,3 +414,30 @@ def _es_index_probe(request):
             f"  removed={sorted(before - after)}",
             flush=True,
         )
+
+
+@pytest.fixture()
+def hayabusa_rule_leads(monkeypatch):
+    """The leads a Hayabusa timeline of LSASS access, a log clear and a benign process yields on an indexed case.
+
+    One lead per rule, crit/high flagged, each row cited by document id with the rule title and details. Part 12
+    FM-3: the alert surface is the crit/high leads, and a CSV-only test case has no index for the rule-engine
+    leads to read.
+    """
+    from nexus.analysis import leads as leads_mod
+
+    def lead(subject, level, doc_id, crit, details):
+        return leads_mod.Lead(
+            kind="rule_engine", subject=subject, family="hayabusa", detail=f"{subject} fired once",
+            rows=({"doc_id": doc_id, "computer": "WS01", "rule_title": subject, "details": details},),
+            audit_ids=(f"nexus-hayabusa-{doc_id}",), score=1.0,
+            extra={"engine": "hayabusa", "level": level, "crit_high": crit, "count": 1,
+                   "first": "2026-08-10T14:32:01Z", "hosts": ["WS01"]})
+
+    built = [
+        lead("LSASS Memory Access", "crit", "d1", True, "powershell.exe"),
+        lead("Security Log Cleared", "high", "d2", True, "wevtutil"),
+        lead("Benign Process", "low", "d3", False, "notepad.exe"),
+    ]
+    monkeypatch.setattr(leads_mod, "build_leads", lambda case_dir, **kw: list(built))
+    return built

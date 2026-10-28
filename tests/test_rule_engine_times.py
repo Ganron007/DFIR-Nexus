@@ -48,7 +48,8 @@ def test_the_alert_list_gives_utc_times_and_sorts_on_them(tmp_path):
     from nexus.langgraph.briefing import briefing_to_markdown, case_briefing
 
     case = tmp_path / "CASE-D257"
-    _write_hayabusa(case / "extractions" / "hayabusa_alerts.csv")
+    # Part 12 FM-3: the alert list is the crit/high rule-engine leads, read from the run's Hayabusa timeline.
+    _write_hayabusa(case / "runs" / "RUN-1" / "extractions" / "hayabusa" / "evtx-timeline.csv")
     brief = case_briefing(case)
     times = {a["title"]: a["time"] for a in brief["alerts"]}
     # PowerRunner in msedge.exe, record 6459: 2023-01-25 20:26:43.935 +05:30 as Hayabusa wrote it.

@@ -508,23 +508,34 @@ def _typed_entities(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
     return out
 
 
+def _lead_record(lead: dict[str, Any]) -> dict[str, Any]:
+    """A lead as a row to interpret: its family, its own rule title and detail, and its stored rows' text."""
+    rows = [r for r in lead.get("rows") or [] if isinstance(r, dict)]
+    fields = next((r["fields"] for r in rows if isinstance(r.get("fields"), dict)), {})
+    text = " ".join([str(lead.get("subject") or ""), str(lead.get("detail") or "")]
+                    + [str(r.get(k) or "") for r in rows[:3] for k in ("rule_title", "details", "detail")])
+    return {"family": str(lead.get("family") or ""), "text": text, "fields": fields}
+
+
 def alerts_from_leads(case_dir: Path, leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Every crit/high lead as an alert, keyed by its audit id, crit before high, then by time.
 
     Each alert keeps the references of the rows it stands on (``doc_ids``, ``locs``, through
     ``leads.lead_row_refs``). The alert interpretation (what it means, what to check next) is read from
-    the first of those rows, fetched from the index.
+    the first of those rows, fetched from the index; when the index does not return it (a case with no
+    index), from the lead's own record: its rule title, detail and stored rows.
     """
     from nexus.analysis.leads import lead_row_refs, lead_rows_query
 
     alerts: list[dict[str, Any]] = []
+    records: dict[int, dict[str, Any]] = {}
     for lead in leads:
         extra = lead.get("extra") or {}
         if not extra.get("crit_high"):
             continue
         audit_ids = [str(a) for a in lead.get("audit_ids") or [] if a]
         doc_ids, locs = lead_row_refs(lead)
-        alerts.append({
+        alert = {
             "key": audit_ids[0] if audit_ids else str(lead.get("subject") or ""),
             "audit_ids": audit_ids,
             "family": str(lead.get("family") or ""),
@@ -538,30 +549,37 @@ def alerts_from_leads(case_dir: Path, leads: list[dict[str, Any]]) -> list[dict[
             "host": str((extra.get("hosts") or [""])[0] or "")[:60],
             "doc_ids": doc_ids,
             "locs": [f"{f}:{n}" for f, n in locs],
-        })
+        }
+        records[id(alert)] = _lead_record(lead)
+        alerts.append(alert)
     alerts.sort(key=lambda a: (_ALERT_LEVEL_RANK.get(a["level"], 2), a["time"]))
+    if not alerts:
+        return alerts
+    rows: dict[int, dict[str, Any]] = {}
     first_ids = [a["doc_ids"][0] for a in alerts if a["doc_ids"]]
     first_locs = [tuple(a["locs"][0].rpartition(":")[::2]) for a in alerts if not a["doc_ids"] and a["locs"]]
     query = lead_rows_query(first_ids, first_locs)
-    if query is None:
-        return alerts
+    if query is not None:
+        try:
+            from nexus.langgraph.typed_entities import iter_sources
+
+            docs = list(iter_sources(Path(case_dir).name, query,
+                                     ["family", "file", "line", "text", "fields", "host", "ts"]))
+            by_id = {d["_id"]: d for d in docs}
+            by_loc = {(str(d.get("file") or ""), str(d.get("line") or "")): d for d in docs}
+            for alert in alerts:
+                row = (by_id.get(alert["doc_ids"][0]) if alert["doc_ids"] else
+                       by_loc.get(tuple(alert["locs"][0].rpartition(":")[::2])) if alert["locs"] else None)
+                if row:
+                    alert["file"], alert["line"] = str(row.get("file") or ""), str(row.get("line") or "")
+                    rows[id(alert)] = row
+        except Exception as exc:  # noqa: BLE001 - the lead's own record still interprets it
+            log.debug("alert rows unavailable from the index: %s", exc)
     try:
         from nexus.langgraph.interpret import interpret_hits
-        from nexus.langgraph.typed_entities import iter_sources
 
-        docs = list(iter_sources(Path(case_dir).name, query,
-                                 ["family", "file", "line", "text", "fields", "host", "ts"]))
-        by_id = {d["_id"]: d for d in docs}
-        by_loc = {(str(d.get("file") or ""), str(d.get("line") or "")): d for d in docs}
-        cited = []
-        for alert in alerts:
-            row = (by_id.get(alert["doc_ids"][0]) if alert["doc_ids"] else
-                   by_loc.get(tuple(alert["locs"][0].rpartition(":")[::2])) if alert["locs"] else None)
-            if row:
-                alert["file"], alert["line"] = str(row.get("file") or ""), str(row.get("line") or "")
-                cited.append((alert, row))
-        for (alert, _row), interp in zip(cited, interpret_hits(case_dir, [row for _a, row in cited]),
-                                         strict=False):
+        inputs = [rows.get(id(a)) or records[id(a)] for a in alerts]
+        for alert, interp in zip(alerts, interpret_hits(case_dir, inputs), strict=False):
             alert["interpret"] = interp
     except Exception as exc:  # noqa: BLE001 - the interpretation is a reading aid
         log.debug("alert interpretation failed: %s", exc)

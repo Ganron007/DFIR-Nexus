@@ -5,29 +5,6 @@ import json
 from pathlib import Path
 
 
-def _with_rule_leads(monkeypatch) -> None:
-    """The leads the fixture's Hayabusa timeline yields on an indexed case: one per rule, crit/high flagged.
-
-    Part 12 FM-3: the alert surface is the crit/high leads, not the severity rows among the rows a keyword
-    matched; the CSV-only fixture has no index for the rule-engine leads to read.
-    """
-    from nexus.analysis import leads as leads_mod
-
-    def lead(subject, level, doc_id, crit):
-        return leads_mod.Lead(
-            kind="rule_engine", subject=subject, family="hayabusa", detail=f"{subject} fired once",
-            rows=({"doc_id": doc_id, "computer": "WS01", "rule_title": subject},),
-            audit_ids=(f"nexus-hayabusa-{doc_id}",), score=1.0,
-            extra={"engine": "hayabusa", "level": level, "crit_high": crit, "count": 1,
-                   "first": "2026-08-10T14:32:01Z", "hosts": ["WS01"]})
-
-    monkeypatch.setattr(leads_mod, "build_leads", lambda case_dir, **kw: [
-        lead("LSASS Memory Access", "crit", "d1", True),
-        lead("Security Log Cleared", "high", "d2", True),
-        lead("Benign Process", "low", "d3", False),
-    ])
-
-
 def _mkcase(tmp_path: Path) -> Path:
     """Minimal case dir with tools extractions + ledger."""
     case = tmp_path / "CASE-T1"
@@ -58,10 +35,9 @@ def _mkcase(tmp_path: Path) -> Path:
     return case
 
 
-def test_briefing_inventory_alerts_entities(tmp_path, monkeypatch):
+def test_briefing_inventory_alerts_entities(tmp_path, hayabusa_rule_leads):
     from nexus.langgraph.briefing import case_briefing
 
-    _with_rule_leads(monkeypatch)
     b = case_briefing(_mkcase(tmp_path))
     assert set(b["families"]) == {"evtx", "hayabusa"}
     assert b["total_rows"] == 5
@@ -90,10 +66,9 @@ def test_briefing_inventory_alerts_entities(tmp_path, monkeypatch):
     assert b["entities"] == {}
 
 
-def test_briefing_markdown_renders(tmp_path, monkeypatch):
+def test_briefing_markdown_renders(tmp_path, hayabusa_rule_leads):
     from nexus.langgraph.briefing import briefing_to_markdown, case_briefing
 
-    _with_rule_leads(monkeypatch)
     md = briefing_to_markdown(case_briefing(_mkcase(tmp_path)))
     assert "# Case Briefing" in md
     assert "LSASS Memory Access" in md
@@ -111,11 +86,10 @@ def test_briefing_empty_case(tmp_path):
     assert b["needle_scan"] == []
 
 
-def test_briefing_guided_first_pass(tmp_path, monkeypatch):
+def test_briefing_guided_first_pass(tmp_path, hayabusa_rule_leads):
     """WP 4j.3 — walkthrough order: alerts → entities → signals → starts."""
     from nexus.langgraph.briefing import case_briefing
 
-    _with_rule_leads(monkeypatch)
     b = case_briefing(_mkcase(tmp_path))
     walk = b["walkthrough"]
     assert [s["key"] for s in walk] == ["alerts", "entities", "signals", "starting_points"]
@@ -397,13 +371,12 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     assert all(r["exact"] == "yes" for r in records)
 
 
-def test_briefing_artifact_write_failure_is_nonfatal(tmp_path, monkeypatch):
+def test_briefing_artifact_write_failure_is_nonfatal(tmp_path, hayabusa_rule_leads):
     """A read-only case dir must never break the briefing itself."""
     from unittest.mock import patch
 
     from nexus.langgraph.briefing import case_briefing
 
-    _with_rule_leads(monkeypatch)
     case = _mkcase(tmp_path)
     with patch("nexus.langgraph.briefing.Path.write_text", side_effect=OSError("ro fs")):
         b = case_briefing(case)

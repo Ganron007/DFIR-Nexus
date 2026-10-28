@@ -225,7 +225,7 @@ def test_interpret_hit_empty_hit():
     assert out["look_for"] == []
 
 
-def test_briefing_alerts_carry_interpret(tmp_path):
+def test_briefing_alerts_carry_interpret(tmp_path, hayabusa_rule_leads):
     """WP 4j.1 surface: briefing alert rows embed the interpretation."""
     from nexus.langgraph.briefing import case_briefing
 
@@ -245,7 +245,7 @@ def test_briefing_alerts_carry_interpret(tmp_path):
     assert "log_clearing" in cnames
 
 
-def test_briefing_alert_skill_linkage_shape(tmp_path):
+def test_briefing_alert_skill_linkage_shape(tmp_path, hayabusa_rule_leads):
     """WP 4j.2 surface: briefing alert skills expose confirm/refute."""
     from nexus.langgraph.briefing import case_briefing
 
