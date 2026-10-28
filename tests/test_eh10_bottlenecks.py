@@ -20,26 +20,9 @@ def test_entity_inventory_uses_provided_hits(monkeypatch):
         "text": "powershell.exe ran C:\\Tools\\m.exe",
         "host": "ws01", "fields": {"Computer": "WS01", "User": "alice"},
     }]
-    inv = ei.build_entity_inventory("CASE-X", hits=hits)
+    inv = ei.build_entity_inventory("CASE-X", hits=hits, observables={})
     assert any("powershell.exe" in p["value"] for p in inv["processes"])
     assert any(h["value"] == "ws01" for h in inv["hosts"])
-
-
-def test_ti_sweep_uses_provided_hits(monkeypatch):
-    from nexus.langgraph import ti_context
-
-    def _boom(*a, **k):
-        raise AssertionError("do_n4_query must not be called when hits are provided")
-
-    monkeypatch.setattr("nexus.tools.evidence_index.do_n4_query", _boom)
-    hits = [{
-        "family": "suricata", "file": "ingest/artifacts.jsonl", "line": "1",
-        "text": "flow to 8.8.8.8 and evil.example.com",
-    }]
-    sweep = ti_context.sweep_case_iocs("CASE-X", hits=hits)
-    assert sweep["hits_scanned"] == 1
-    assert "8.8.8.8" in (sweep["iocs"].get("ipv4") or []) or \
-        "8.8.8.8" in str(sweep["iocs"])
 
 
 # ── B6: incremental reindex ─────────────────────────────────────────────

@@ -189,14 +189,9 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         ],
     }
 
-    ti_md = ""
-    ti_path = case_dir / "analysis" / "ti_context.md"
-    if ti_path.is_file():
-        try:
-            ti_md = ti_path.read_text(encoding="utf-8", errors="replace")[:20000]
-        except OSError:
-            ti_md = ""
-
+    # D456: no threat-intel block. The digest is built before the run's TI stage (which needs the
+    # leads above), so `analysis/ti_context.md` here was the previous run's; the run's own TI block
+    # reaches the prompt beside the digest.
     return {
         "case_id": case_dir.name,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -216,7 +211,6 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "entity_spans": _entity_spans(case_dir),
         "host_identity": _host_identity(case_dir),
         "timeline": _timeline(case_dir),
-        "ti_context_md": ti_md,
         "hits_examined": brief.get("hits_examined", 0),
         "scan_truncated": brief.get("scan_truncated", False),
         "backend": brief.get("backend", ""),
@@ -520,10 +514,6 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             lines.append("")
             lines.append("## Responder activity " + responder[0])
             lines.extend(responder[1:])
-    ti = digest.get("ti_context_md") or ""
-    if ti:
-        lines.append("")
-        lines.append(ti)
     lines.append("")
     lines.append(
         "EVERY item above must receive a disposition in the interpretation: "
@@ -540,8 +530,7 @@ def write_case_digest(case_dir: Path, digest: dict[str, Any]) -> dict[str, str]:
         analysis.mkdir(parents=True, exist_ok=True)
         json_path = analysis / "case_digest.json"
         md_path = analysis / "case_digest.md"
-        payload = {k: v for k, v in digest.items() if k != "ti_context_md"}
-        json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        json_path.write_text(json.dumps(digest, indent=2, default=str), encoding="utf-8")
         md_path.write_text(render_digest_markdown(digest), encoding="utf-8")
         return {"json": str(json_path), "md": str(md_path)}
     except OSError as exc:

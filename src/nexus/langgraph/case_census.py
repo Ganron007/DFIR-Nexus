@@ -1,4 +1,8 @@
-"""One complete indexed-hit pass shared by TI and the entity inventory."""
+"""One complete indexed-hit pass for the entity inventory.
+
+Threat intel no longer sweeps this stream: its observables come from the typed fields of the
+rows the leads cite (D455, ``ti_context.select_lead_observables``).
+"""
 from __future__ import annotations
 
 import json
@@ -23,14 +27,12 @@ def iter_case_hits(case_id: str) -> Iterator[dict[str, Any]]:
 
 def build_setup_census(case_id: str) -> dict[str, Any]:
     from nexus.langgraph.entity_inventory import EntityAccumulator
-    from nexus.langgraph.ti_context import IOCSweep
+    from nexus.langgraph.ti_context import case_observables
 
-    ti = IOCSweep()
     entities = EntityAccumulator()
     for hit in iter_case_hits(case_id):
-        ti.add_hit(hit)
         entities.add_hit(hit)
-    return {"ti_sweep": ti.result(), "entity_inventory": entities.result()}
+    return {"entity_inventory": entities.result(case_observables(case_id))}
 
 
 def persist_setup_census(case_dir: Path, run_id: str, census: dict[str, Any]) -> Path | None:

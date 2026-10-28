@@ -1949,22 +1949,30 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         except Exception as exc:  # noqa: BLE001 - reported below if the loop cannot run
             digest_error = f"{type(exc).__name__}: {exc}"
             log.warning("case digest build failed: %s", exc)
+        from nexus.analysis.leads import read_leads
         from nexus.langgraph.case_census import build_setup_census, persist_setup_census
+        from nexus.langgraph.ti_context import select_lead_observables
 
-        emit_stage(state, "interpret", "setup", "evidence census (TI and entities)")
+        emit_stage(state, "interpret", "setup", "evidence census (entities) and lead observables")
         census = build_setup_census(case_id)
+        # D455: TI takes the typed observables of the rows this run's leads cite (the digest above
+        # wrote them), never a pattern sweep of the whole case.
+        census["ti_selection"] = select_lead_observables(case_id, read_leads(settings.cases_root / case_id))
         persist_setup_census(settings.cases_root / case_id, str(state.get("run_id") or ""), census)
-        census_counts = {kind: len(values) for kind, values in census["ti_sweep"]["iocs"].items()}
+        selection = census["ti_selection"]
+        lead_counts = {kind: len(values) for kind, values in selection["iocs"].items()}
         emit_stage(state, "interpret", "setup",
-                   f"evidence census complete: rows={census['ti_sweep']['hits_scanned']}; IOCs={census_counts}")
+                   f"evidence census complete: rows={census['entity_inventory']['hits_scanned']}; "
+                   f"lead observables={lead_counts} from {selection['rows_found']}/{selection['lead_rows']} "
+                   f"rows of {selection['leads']} leads")
 
-        # Mode 2 deterministic lane: IOC sweep + TI enrichment. Context only —
+        # Mode 1 deterministic lane: lead observables + TI enrichment. Context only —
         # findings still cite evidence audit_ids (FD-001).
         try:
             from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
 
             emit_stage(state, "interpret", "setup", "threat-intel context")
-            ti_ctx = build_case_ti_context(case_id, sweep=census["ti_sweep"])
+            ti_ctx = build_case_ti_context(selection)
             write_ti_context(settings.cases_root / case_id, ti_ctx)
             ti_block = str(ti_ctx.get("markdown") or "")
         except Exception as exc:  # noqa: BLE001 — TI is best-effort context

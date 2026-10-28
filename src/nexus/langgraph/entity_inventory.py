@@ -1,8 +1,9 @@
 """Deterministic entity inventory — Mode 2 broad-interpretation input.
 
 Censuses every item of interest from the case's indexed evidence rows:
-processes, file paths, users, hosts, network IOCs, hashes, command-line
-hints. The Mode 2 interpret agent must address every item; the gap list
+processes, file paths, users, hosts, command-line hints, and the network
+observables and hashes the typed (ECS) fields hold (D455: never a pattern over
+row text). The Mode 2 interpret agent must address every item; the gap list
 (``compute_coverage_gaps``) marks anything its findings did not mention.
 
 The inventory is investigation scaffolding — findings still cite evidence
@@ -71,25 +72,21 @@ def _top(counts: dict[str, int]) -> list[dict[str, Any]]:
 
 
 class EntityAccumulator:
-    """Entity counters and raw-text network census without retaining hits."""
+    """Entity counters folded over hits without retaining them."""
 
     def __init__(self) -> None:
-        from nexus.langgraph.ti_context import IOCAccumulator
-
         self.hits_scanned = 0
         self.procs: dict[str, int] = {}
         self.paths: dict[str, int] = {}
         self.users: dict[str, int] = {}
         self.hosts: dict[str, int] = {}
         self.commands: dict[str, int] = {}
-        self.network = IOCAccumulator()
 
     def add_hit(self, h: dict[str, Any]) -> None:
         if not isinstance(h, dict):
             return
         self.hits_scanned += 1
         text = str(h.get("text") or "")
-        self.network.add_text(text)
         host = str(h.get("host") or "")
         if host:
             _add(self.hosts, host)
@@ -117,8 +114,8 @@ class EntityAccumulator:
                 _add(self.commands, hint)
 
 
-    def result(self) -> dict[str, Any]:
-        network = self.network.result()
+    def result(self, observables: dict[str, list[str]]) -> dict[str, Any]:
+        """The inventory, with the case's typed observables (``ti_context.case_observables``)."""
         inventory = {
             "hits_scanned": self.hits_scanned,
             "hits_capped": False,
@@ -128,16 +125,8 @@ class EntityAccumulator:
             "users": _top(self.users),
             "hosts": _top(self.hosts),
             "commands": _top(self.commands),
-            "network": {
-                "ipv4": network.get("ipv4", []),
-                "domain": network.get("domain", []),
-                "url": network.get("url", []),
-            },
-            "hashes": {
-                "sha256": network.get("sha256", []),
-                "sha1": network.get("sha1", []),
-                "md5": network.get("md5", []),
-            },
+            "network": {kind: list(observables.get(kind) or []) for kind in ("ipv4", "domain", "url")},
+            "hashes": {kind: list(observables.get(kind) or []) for kind in ("sha256", "sha1", "md5")},
         }
         return inventory
 
@@ -146,16 +135,21 @@ def build_entity_inventory(
     case_id: str,
     *,
     hits: Iterable[dict[str, Any]] | None = None,
+    observables: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """Build the existing complete inventory by folding its input stream."""
     if hits is None:
         from nexus.langgraph.case_census import iter_case_hits
 
         hits = iter_case_hits(case_id)
+    if observables is None:
+        from nexus.langgraph.ti_context import case_observables
+
+        observables = case_observables(case_id)
     accumulator = EntityAccumulator()
     for hit in hits:
         accumulator.add_hit(hit)
-    return accumulator.result()
+    return accumulator.result(observables)
 
 
 def render_inventory_markdown(inv: dict[str, Any]) -> str:

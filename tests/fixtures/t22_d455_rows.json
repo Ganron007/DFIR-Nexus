@@ -1,0 +1,466 @@
+{
+ "case": "CASE-4387EB47 (T22), captured 2026-10-28 for D455",
+ "rows": [
+  {
+   "why": "sha256 census value: a WinSxS catalog file name",
+   "_source": {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/timeline_ntfs.csv",
+    "line": 31043,
+    "text": "\"2018-08-06 18:22:16\",NTFS,MOD,0,0x24ba,0x380a4400,\\1\\Windows\\WinSxS\\Catalogs\\5ead046fc3c3fe0c4042c2124fc1e387d5913802200ee695781845564818226e.cat,\"                      \"",
+    "fields": {
+     "Time": "2018-08-06 18:22:16",
+     "Type": "NTFS",
+     "Action": "MOD",
+     "PID": "0",
+     "Value32": "0x24ba",
+     "Value64": "0x380a4400",
+     "Text": "\\1\\Windows\\WinSxS\\Catalogs\\5ead046fc3c3fe0c4042c2124fc1e387d5913802200ee695781845564818226e.cat"
+    }
+   }
+  },
+  {
+   "why": "sha1 census value: a Firefox cache2 entry name",
+   "_source": {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/timeline_ntfs.csv",
+    "line": 2718,
+    "text": "\"2020-02-20 07:01:49\",NTFS,MOD,0,0x0,0x2ce02000,\\1\\Users\\tdungan\\AppData\\Local\\Mozilla\\Firefox\\Profiles\\sq3wkvle.default\\cache2\\entries\\ABE70CB8CCC48E02D4FE25B1237327D64114666B,\"                         \"",
+    "fields": {
+     "Time": "2020-02-20 07:01:49",
+     "Type": "NTFS",
+     "Action": "MOD",
+     "PID": "0",
+     "Value32": "0x0",
+     "Value64": "0x2ce02000",
+     "Text": "\\1\\Users\\tdungan\\AppData\\Local\\Mozilla\\Firefox\\Profiles\\sq3wkvle.default\\cache2\\entries\\ABE70CB8CCC48E02D4FE25B1237327D64114666B"
+    }
+   }
+  },
+  {
+   "why": "md5 census value: a Windows Installer component ID in a registry key path",
+   "_source": {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/timeline_registry.csv",
+    "line": 39059,
+    "text": "\"2018-05-08 21:56:06\",REG,MOD,0,0x0,0x0,HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Components\\73BA54F8E32E5A940AC29C831F8664AA,\"                                 \"",
+    "fields": {
+     "Time": "2018-05-08 21:56:06",
+     "Type": "REG",
+     "Action": "MOD",
+     "PID": "0",
+     "Value32": "0x0",
+     "Value64": "0x0",
+     "Text": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Components\\73BA54F8E32E5A940AC29C831F8664AA"
+    }
+   }
+  },
+  {
+   "why": "md5 census value: a PDB GUID of a loaded module",
+   "_source": {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/modules.csv",
+    "line": 4652,
+    "text": "3676,ShellExperienceHost.exe,Windows.Graphics.dll,0,0x7b000,0x7ffe905a0000,0x7ffe9061afff,158,3,7,C:\\Windows\\System32\\Windows.Graphics.dll,\"\",\"Microsoft Corporation\",\"WinRT Windows Graphics DLL\",\"10.0.16299.15 (WinBuild.160101.0800)\",\"WinRT Windows Graphics DLL\",\"© Microsoft Corporation. All rights reserved.\",Windows.Graphics.dll,\"Microsoft® Windows® Operating System\",10.0.16299.15,Windows.Graphics.pdb,1,0A312F7D91A45F323E2988AAF603B655,https://msdl.microsoft.com/download/symbols/Windows.Graphics.pdb/0A312F7D91A45F323E2988AAF603B6551/Windows.Graphics.pdb",
+    "fields": {
+     "PID": "3676",
+     "Process": "ShellExperienceHost.exe",
+     "Name": "Windows.Graphics.dll",
+     "Wow64": "0",
+     "Size": "0x7b000",
+     "Start": "0x7ffe905a0000",
+     "End": "0x7ffe9061afff",
+     "#Imports": "158",
+     "#Exports": "3",
+     "#Sections": "7",
+     "Path": "C:\\Windows\\System32\\Windows.Graphics.dll",
+     "VerCompanyName": "Microsoft Corporation",
+     "VerFileDescription": "WinRT Windows Graphics DLL",
+     "VerFileVersion": "10.0.16299.15 (WinBuild.160101.0800)",
+     "VerInternalName": "WinRT Windows Graphics DLL",
+     "VerLegalCopyright": "© Microsoft Corporation. All rights reserved.",
+     "VerOriginalFilename": "Windows.Graphics.dll",
+     "VerProductName": "Microsoft® Windows® Operating System",
+     "VerProductVersion": "10.0.16299.15",
+     "PdbPath": "Windows.Graphics.pdb",
+     "PdbAge": "1",
+     "PdbHexGUID": "0A312F7D91A45F323E2988AAF603B655",
+     "PdbSymbolServer": "https://msdl.microsoft.com/download/symbols/Windows.Graphics.pdb/0A312F7D91A45F323E2988AAF603B6551/Windows.Graphics.pdb"
+    }
+   }
+  },
+  {
+   "why": "md5 census value: a WinSxS PendingRenames temp name",
+   "_source": {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/timeline_ntfs.csv",
+    "line": 8104,
+    "text": "\"2020-02-12 00:05:29\",NTFS,CRE,0,0x0,0xd438800,\\1\\Windows\\WinSxS\\Temp\\PendingRenames\\0ab5c62238e1d50114000000743dd83b.$$_logs_dosvc_fc3849ccffd212dc.cdf-ms,\"                          \"",
+    "fields": {
+     "Time": "2020-02-12 00:05:29",
+     "Type": "NTFS",
+     "Action": "CRE",
+     "PID": "0",
+     "Value32": "0x0",
+     "Value64": "0xd438800",
+     "Text": "\\1\\Windows\\WinSxS\\Temp\\PendingRenames\\0ab5c62238e1d50114000000743dd83b.$$_logs_dosvc_fc3849ccffd212dc.cdf-ms"
+    }
+   }
+  },
+  {
+   "why": "ipv4 census value: a version number",
+   "_source": {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/json/registry.json",
+    "line": 194759,
+    "text": "{\"class\":\"REG\",\"ver\":\"5.19\",\"sys\":\"16299_aa660df4\",\"key\":\"A\\\\{797e1fd7-695f-a8e5-8091-7521b0d53adc}\\\\Root\\\\InventoryApplicationFile\\\\eqnedt32.exe|dc993a584b601e39\",\"type\":\"value\",\"value\":{\"name\":\"BinProductVersion\",\"type\":\"REG_SZ\",\"size\":18,\"data\":\"3.10.0.0\"}}",
+    "fields": {
+     "class": "REG",
+     "ver": "5.19",
+     "sys": "16299_aa660df4",
+     "key": "A\\{797e1fd7-695f-a8e5-8091-7521b0d53adc}\\Root\\InventoryApplicationFile\\eqnedt32.exe|dc993a584b601e39",
+     "type": "value",
+     "ts_none": "true"
+    }
+   }
+  },
+  {
+   "why": "the case's one public address in a typed field",
+   "_source": {
+    "family": "vol",
+    "file": "vol/vol-windows-0df078ab-4db7bdfa.txt",
+    "line": 45,
+    "text": "{\"Created\": null, \"ForeignAddr\": \"52.114.132.73\", \"ForeignPort\": 443, \"LocalAddr\": \"172.16.6.101\", \"LocalPort\": 62465, \"Offset\": 161692355717440, \"Owner\": null, \"PID\": null, \"Proto\": \"TCPv4\", \"State\": \"CLOSED\", \"__children\": []}",
+    "fields": {
+     "ForeignAddr": "52.114.132.73",
+     "ForeignPort": "443",
+     "LocalAddr": "172.16.6.101",
+     "LocalPort": "62465",
+     "Offset": "161692355717440",
+     "Proto": "TCPv4",
+     "State": "CLOSED"
+    },
+    "ecs": {
+     "destination": {
+      "ip": "52.114.132.73",
+      "port": "443"
+     },
+     "source": {
+      "ip": "172.16.6.101",
+      "port": "62465"
+     }
+    }
+   }
+  }
+ ],
+ "lead": {
+  "audit_ids": [
+   "nexus-claudebot-20261027-003"
+  ],
+  "detail": "MemProcFS YARA: 3 rule(s) matched the memory of mcshield.exe (pid 3836, \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe, user SYSTEM): Windows.Ransomware.Clop, Windows.Ransomware.Ryuk, Windows.Trojan.Generic [Windows_Ransomware_Clop_e04959b5, Windows_Ransomware_Ryuk_878bae7e, Windows_Trojan_Generic_9e4bb0ce]",
+  "extra": {
+   "count": 4,
+   "crit_high": true,
+   "engine": "memprocfs-yara",
+   "level": "severity 100",
+   "pid": "3836",
+   "process": "mcshield.exe",
+   "rules": [
+    "Windows_Ransomware_Clop_e04959b5",
+    "Windows_Ransomware_Ryuk_878bae7e",
+    "Windows_Trojan_Generic_9e4bb0ce"
+   ],
+   "software": [
+    {
+     "id": "S0446",
+     "name": "Ryuk"
+    },
+    {
+     "id": "S0611",
+     "name": "Clop"
+    }
+   ],
+   "threats": [
+    "Windows.Ransomware.Clop",
+    "Windows.Ransomware.Ryuk",
+    "Windows.Trojan.Generic"
+   ]
+  },
+  "family": "memprocfs",
+  "kind": "rule_engine",
+  "rows": [
+   {
+    "artifact": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "detail": "CommandLine: \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\" · MatchIndex: 1 · Rule: Windows_Trojan_Generic_9e4bb0ce · Author: Elastic Security · Id: 9e4bb0ce-b1ed-45dc-8d86-943eb76f0bb4 · Fingerprint: 4fb0eafc58972ef6fef87a88e43ae320420d760f545a66aab28dc3a65f629631 · Creation_date: 2025-10-29 · Last_modified: 2026-01-06 · Threat_name: Windows.Trojan.Generic · Reference_sample: 2d93a17f04bf2fcd51c2142043af3840895ae7ba43909a26420c4879d214a3c3 · Severity: 100 · Arch_context: x86, arm64 · Scan_context: file, memory · License: Elastic License v2 · Os: windows · MemoryType: Virtual Memory (VAD) · BaseAddress: 0x000000000b0a0000 · PID: 3836 · ProcessName: mcshield.exe · ProcessPath: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe · User: SYSTEM · Created: 2020-02-18 03:53:47 UTC · ts_none: true",
+    "fields": {
+     "Arch_context": "x86, arm64",
+     "Author": "Elastic Security",
+     "BaseAddress": "0x000000000b0a0000",
+     "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+     "Created": "2020-02-18 03:53:47 UTC",
+     "Creation_date": "2025-10-29",
+     "Fingerprint": "4fb0eafc58972ef6fef87a88e43ae320420d760f545a66aab28dc3a65f629631",
+     "Id": "9e4bb0ce-b1ed-45dc-8d86-943eb76f0bb4",
+     "Last_modified": "2026-01-06",
+     "License": "Elastic License v2",
+     "MatchIndex": "1",
+     "MemoryType": "Virtual Memory (VAD)",
+     "Os": "windows",
+     "PID": "3836",
+     "ProcessName": "mcshield.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+     "Reference_sample": "2d93a17f04bf2fcd51c2142043af3840895ae7ba43909a26420c4879d214a3c3",
+     "Rule": "Windows_Trojan_Generic_9e4bb0ce",
+     "Scan_context": "file, memory",
+     "Severity": "100",
+     "Threat_name": "Windows.Trojan.Generic",
+     "User": "SYSTEM",
+     "ts_none": "true"
+    },
+    "loc": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:51",
+    "source": "memprocfs/memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "time": "2025-10-29",
+    "user": "system"
+   },
+   {
+    "artifact": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "detail": "CommandLine: \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\" · MatchIndex: 2 · Rule: Windows_Ransomware_Ryuk_878bae7e · Tags: beta · Author: Elastic Security · Id: 878bae7e-1e53-4648-93aa-b4075eef256d · Fingerprint: 93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298 · Creation_date: 2020-04-30 · Last_modified: 2021-08-23 · Description: Identifies RYUK ransomware · Threat_name: Windows.Ransomware.Ryuk · Reference: https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk · Severity: 100 · Arch_context: x86, arm64 · Scan_context: file, memory · License: Elastic License v2 · Os: windows · MemoryType: Virtual Memory (VAD) · BaseAddress: 0x000000000b8a0000 · PID: 3836 · ProcessName: mcshield.exe · ProcessPath: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe · User: SYSTEM · Created: 2020-02-18 03:53:47 UTC · ts_none: true",
+    "fields": {
+     "Arch_context": "x86, arm64",
+     "Author": "Elastic Security",
+     "BaseAddress": "0x000000000b8a0000",
+     "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+     "Created": "2020-02-18 03:53:47 UTC",
+     "Creation_date": "2020-04-30",
+     "Description": "Identifies RYUK ransomware",
+     "Fingerprint": "93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298",
+     "Id": "878bae7e-1e53-4648-93aa-b4075eef256d",
+     "Last_modified": "2021-08-23",
+     "License": "Elastic License v2",
+     "MatchIndex": "2",
+     "MemoryType": "Virtual Memory (VAD)",
+     "Os": "windows",
+     "PID": "3836",
+     "ProcessName": "mcshield.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+     "Reference": "https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk",
+     "Rule": "Windows_Ransomware_Ryuk_878bae7e",
+     "Scan_context": "file, memory",
+     "Severity": "100",
+     "Tags": "beta",
+     "Threat_name": "Windows.Ransomware.Ryuk",
+     "User": "SYSTEM",
+     "ts_none": "true"
+    },
+    "loc": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:515",
+    "source": "memprocfs/memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "time": "2020-04-30",
+    "user": "system"
+   },
+   {
+    "artifact": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "detail": "CommandLine: \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\" · MatchIndex: 3 · Rule: Windows_Ransomware_Ryuk_878bae7e · Tags: beta · Author: Elastic Security · Id: 878bae7e-1e53-4648-93aa-b4075eef256d · Fingerprint: 93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298 · Creation_date: 2020-04-30 · Last_modified: 2021-08-23 · Description: Identifies RYUK ransomware · Threat_name: Windows.Ransomware.Ryuk · Reference: https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk · Severity: 100 · Arch_context: x86, arm64 · Scan_context: file, memory · License: Elastic License v2 · Os: windows · MemoryType: Virtual Memory (VAD) · BaseAddress: 0x000000000d840000 · PID: 3836 · ProcessName: mcshield.exe · ProcessPath: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe · User: SYSTEM · Created: 2020-02-18 03:53:47 UTC · ts_none: true",
+    "fields": {
+     "Arch_context": "x86, arm64",
+     "Author": "Elastic Security",
+     "BaseAddress": "0x000000000d840000",
+     "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+     "Created": "2020-02-18 03:53:47 UTC",
+     "Creation_date": "2020-04-30",
+     "Description": "Identifies RYUK ransomware",
+     "Fingerprint": "93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298",
+     "Id": "878bae7e-1e53-4648-93aa-b4075eef256d",
+     "Last_modified": "2021-08-23",
+     "License": "Elastic License v2",
+     "MatchIndex": "3",
+     "MemoryType": "Virtual Memory (VAD)",
+     "Os": "windows",
+     "PID": "3836",
+     "ProcessName": "mcshield.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+     "Reference": "https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk",
+     "Rule": "Windows_Ransomware_Ryuk_878bae7e",
+     "Scan_context": "file, memory",
+     "Severity": "100",
+     "Tags": "beta",
+     "Threat_name": "Windows.Ransomware.Ryuk",
+     "User": "SYSTEM",
+     "ts_none": "true"
+    },
+    "loc": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:586",
+    "source": "memprocfs/memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "time": "2020-04-30",
+    "user": "system"
+   },
+   {
+    "artifact": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "detail": "CommandLine: \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\" · MatchIndex: 4 · Rule: Windows_Ransomware_Clop_e04959b5 · Tags: beta · Author: Elastic Security · Id: e04959b5-f3da-428d-8b56-8a9817fdebe0 · Fingerprint: 7367b90772ce6db0d639835a0a54a994ef8ed351b6dadff42517ed5fbc3d0d1a · Creation_date: 2020-05-03 · Last_modified: 2021-08-23 · Description: Identifies CLOP ransomware in unpacked state · Threat_name: Windows.Ransomware.Clop · Reference: https://malpedia.caad.fkie.fraunhofer.de/details/win.clop · Severity: 100 · Arch_context: x86, arm64 · Scan_context: file, memory · License: Elastic License v2 · Os: windows · MemoryType: Virtual Memory (VAD) · BaseAddress: 0x000000000d840000 · PID: 3836 · ProcessName: mcshield.exe · ProcessPath: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe · User: SYSTEM · Created: 2020-02-18 03:53:47 UTC · ts_none: true",
+    "fields": {
+     "Arch_context": "x86, arm64",
+     "Author": "Elastic Security",
+     "BaseAddress": "0x000000000d840000",
+     "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+     "Created": "2020-02-18 03:53:47 UTC",
+     "Creation_date": "2020-05-03",
+     "Description": "Identifies CLOP ransomware in unpacked state",
+     "Fingerprint": "7367b90772ce6db0d639835a0a54a994ef8ed351b6dadff42517ed5fbc3d0d1a",
+     "Id": "e04959b5-f3da-428d-8b56-8a9817fdebe0",
+     "Last_modified": "2021-08-23",
+     "License": "Elastic License v2",
+     "MatchIndex": "4",
+     "MemoryType": "Virtual Memory (VAD)",
+     "Os": "windows",
+     "PID": "3836",
+     "ProcessName": "mcshield.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+     "Reference": "https://malpedia.caad.fkie.fraunhofer.de/details/win.clop",
+     "Rule": "Windows_Ransomware_Clop_e04959b5",
+     "Scan_context": "file, memory",
+     "Severity": "100",
+     "Tags": "beta",
+     "Threat_name": "Windows.Ransomware.Clop",
+     "User": "SYSTEM",
+     "ts_none": "true"
+    },
+    "loc": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:658",
+    "source": "memprocfs/memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "time": "2020-05-03",
+    "user": "system"
+   }
+  ],
+  "score": 1.0,
+  "subject": "mcshield.exe (pid 3836)"
+ },
+ "lead_docs": [
+  {
+   "family": "memprocfs",
+   "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+   "line": 51,
+   "text": "Match Index:  1\nRule:         Windows_Trojan_Generic_9e4bb0ce\nTags:         \nAuthor:       Elastic Security\nId:           9e4bb0ce-b1ed-45dc-8d86-943eb76f0bb4\nFingerprint:  4fb0eafc58972ef6fef87a88e43ae320420d760f545a66aab28dc3a65f629631\nCreation_date: 2025-10-29\nLast_modified: 2026-01-06\nThreat_name:  Windows.Trojan.Generic\nReference_sample: 2d93a17f04bf2fcd51c2142043af3840895ae7ba43909a26420c4879d214a3c3\nSeverity:     100\nArch_context: x86, arm64\nScan_context: file, memory\nLicense:      Elastic License v2\nOs:           windows\nMemory Type:  Virtual Memory (VAD)\nMemory Tag:   \nBase Address: 0x000000000b0a0000\nPID:          3836\nProcess Name: mcshield.exe\nProcess Path: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\nCommandLine:  \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"\nUser:         SYSTEM\nCreated:      2020-02-18 03:53:47 UTC\n\nMatches:\n[AYAgent.aye]: b21f918, b73bb37\n[mssecess.exe]: b4d1718\n[shell\\open\\command]: b1ef7a1, b25f505, b274c75, b28d4e6, b4026b8, b42827f, b42971e, b42b950, b441a4a, b441a7f, b441c86, b451668, b46c03e, b4be6b9, b4f6482, b4f64ae, b505e90, b50c172, b574301, b733bb2, b79dd4f, b79ddbc, b893872, b8961b0\n[WinSta0\\Default]: b1bc298, b42b8b0, b42b8e1, b440506, b4be7da, b6b69ac\n[%c%c%c%c%c%c]: b1d0975, b27ecf2, b28d63d, b2d7f9b, b485e21, b55eeab, b562f67, b562fa2, b563011, b563050\n\n[AYAgent.aye] b21f918:\n000000000b21f8d0    01 a1 05 8b c1 c4 d1 c4  da 01 31 ff 01 71 3e b5   ..........1..q>.\n000000000b21f8e0    1e ff 00 02 00 0e 4e 61  76 65 72 41 67 65 6e 74   ......NaverAgent\n000000000b21f8f0    2e 65 78 65 0a 4e 53 56  4d 4f 4e 2e 4e 50 43 74   .exe.NSVMON.NPCt\n000000000b21f900    84 02 20 00 c1 04 20 00  e8 ff 74 ff 04 91 02 01   .. ... ...t.....\n000000000b21f910    01 b5 28 ff 01 03 00 0b  41 59 41 67 65 6e 74 2e   ..(.....AYAgent.\n000000000b21f920    61 79 65 0b 56 33 4c 54  72 61 79 2e 65 78 65 0b   aye.V3LTray.exe.\n000000000b21f930    6e 73 61 76 73 76 63 2e  6e 70 63 74 da 01 2c ff   nsavsvc.npct..,.\n000000000b21f940    01 71 3e ff 11 f2 0f ff  00 84 f1 cd cc d6 85 d5   .q>.............\n\n[AYAgent.aye] b73bb37:\n000000000b73baf0    f0 ff 11 c5 0f 00 09 5a  d0 0f 5a 11 0f 0f 0f 0f   .......Z..Z.....\n000000000b73bb00    0f 0f 5a f0 ff 0e c5 0c  00 09 5a d0 0f 0f 0f 5a   ..Z.......Z....Z\n000000000b73bb10    d0 0f 5a f0 07 81 07 07  40 00 7c fb 40 00 da 01   ..Z.....@.|.@...\n000000000b73bb20    2c ff 01 71 3e a1 09 d6  dc d6 d1 c0 c8 96 97 d1   ,..q>...........\n000000000b73bb30    b5 28 8f 00 03 00 0b 41  59 41 67 65 6e 74 2e 61   .(.....AYAgent.a\n000000000b73bb40    79 65 0b 56 33 4c 54 72  61 79 2e 65 78 65 0b 6e   ye.V3LTray.exe.n\n000000000b73bb50    73 61 76 73 76 63 2e 6e  70 63 74 c1 15 ff 00 f1   savsvc.npct.....\n000000000b73bb60    cd cc d6 85 d5 d7 ca c2  d7 c4 c8 85 c6 c4 cb cb   ................\n\n[mssecess.exe] b4d1718:\n000000000b4d16d0    0f 0f 0f 4d 0f 0f 0f 0f  26 61 0f 26 98 0f 0f 0f   ...M....&a.&....\n000000000b4d16e0    0f 0f aa 21 74 83 02 0f  00 7d ff 45 c4 43 4f 01   ...!t....}.E.CO.\n000000000b4d16f0    05 00 0b 33 36 30 74 72  61 79 2e 65 78 65 0b 52   ...360tray.exe.R\n000000000b4d1700    61 76 4d 6f 6e 44 2e 65  78 65 0c 51 55 48 4c 50   avMonD.exe.QUHLP\n000000000b4d1710    53 56 43 2e 45 58 45 0c  6d 73 73 65 63 65 73 73   SVC.EXE.mssecess\n000000000b4d1720    2e 65 78 65 0c 51 51 50  43 54 72 61 79 2e 65 78   .exe.QQPCTray.ex\n000000000b4d1730    65 07 81 07 01 40 00 0e  29 2b 00 d4 08 00 c0 04   e....@..)+......\n000000000b4d1740    00 00 d0 04 00 b0 02 3c  00 27 83 02 06 00 a1 02   .......<.'......\n\n[shell\\open\\command] b1ef7a1:\n000000000b1ef760    42 4d 4c fd 15 d6 14 f9  2d e0 51 2d e0 50 2d e0   BML.....-.Q-.P-.\n000000000b1ef770    52 28 e0 41 2d e8 55 74  ff 04 91 02 01 02 ff 5b   R(.A-.Ut.......[\n000000000b1ef780    c4 59 00 10 07 00 0d 47  00 72 00 61 00 62 00 62   .Y.....G.r.a.b.b\n000000000b1ef790    00 65 00 72 08 43 61 6e  63 65 6c 49 6f 15 25 73   .e.r.CancelIo.%s\n000000000b1ef7a0    5c 73 68 65 6c 6c 5c 6f  70 65 6e 5c 63 6f 6d 6d   \\shell\\open\\comm\n000000000b1ef7b0    61 6e 64 0a 00 00 00 32  30 31 32 00 00 00 0c 43   and....2012....C\n000000000b1ef7c0    72 65 61 74 65 4d 75 74  65 78 41 04 4b 72 69 73   reateMutexA.Kris\n000000000b1ef7d0    0a 78 76 69 64 2d 31 2e  31 2e 33 07 81 07 07 40   .xvid-1.1.3....@\n\n[shell\\open\\command] b25f505:\n000000000b25f4c0    2e 7f 96 65 64 65 a2 97  a6 e6 25 9e a5 07 81 07   . .ede....%.....\n000000000b25f4d0    07 40 00 b5 0b 0f 00 ff  04 91 02 00 02 a1 04 8b   .@..............\n000000000b25f4e0    e6 f7 f1 3c a1 0b 7a 7a  7a 7a f0 4c 0f 0f 5a 5a   ...<..zzzz.L..ZZ\n000000000b25f4f0    35 ff 04 91 02 01 01 83  02 00 02 b5 20 ff 01 02   5........... ...\n000000000b25f500    00 15 25 73 5c 73 68 65  6c 6c 5c 6f 70 65 6e 5c   ..%s\\shell\\open\\\n000000000b25f510    63 6f 6d 6d 61 6e 64 05  25 31 00 25 31 74 ff 49   command.%1.%1t.I\n000000000b25f520    c4 47 ff 02 04 00 06 25  73 25 73 25 73 0c 47 68   .G.....%s%s%s.Gh\n000000000b25f530    30 73 74 20 55 70 64 61  74 65 1d 2f 63 20 6e 65   0st Update./c ne\n\n[shell\\open\\command] b274c75:\n000000000b274c30    07 81 07 07 40 00 4c 3b  10 00 ff 04 91 02 01 03   ....@.L;........\n000000000b274c40    ab 17 ff 00 03 00 05 00  70 64 66 00 05 00 64 6f   ........pdf...do\n000000000b274c50    63 00 06 00 50 4f 53 54  00 74 ff 56 95 54 ff 04   c...POST.t.V.T..\n000000000b274c60    05 02 11 6f 70 65 6e 3d  2e 5c 52 45 43 59 43 4c   ...open=.\\RECYCL\n000000000b274c70    45 52 5c 53 1e 73 68 65  6c 6c 5c 6f 70 65 6e 5c   ER\\S.shell\\open\\\n000000000b274c80    63 6f 6d 6d 61 6e 64 3d  2e 5c 52 45 43 59 43 4c   command=.\\RECYCL\n000000000b274c90    45 52 5c 09 5b 61 75 74  6f 72 75 6e 5d 0b 64 65   ER\\.[autorun].de\n000000000b274ca0    73 6b 74 6f 70 2e 69 6e  69 08 73 69 6f 6e 5c 52   sktop.ini.sion\\R\n\n[shell\\open\\command] b28d4e6:\n000000000b28d4a0    08 50 6f 73 74 70 75 62  69 08 47 65 6e 6f 67 72   .Postpubi.Genogr\n000000000b28d4b0    61 6d 08 74 6f 74 61 71  75 69 6e 74 83 02 00 05   am.totaquint....\n000000000b28d4c0    ff 0d c5 0b ff 01 e8 c4  cd c4 c9 c4 c8 c4 d1 07   ................\n000000000b28d4d0    81 07 07 40 00 17 01 12  00 ff 04 91 02 01 03 b5   ...@............\n000000000b28d4e0    21 ff 03 02 00 12 73 68  65 6c 6c 5c 6f 70 65 6e   !.....shell\\open\n000000000b28d4f0    5c 63 6f 6d 6d 61 6e 64  09 47 61 6d 65 20 4f 76   \\command.Game Ov\n000000000b28d500    65 72 74 da 01 a2 ff 01  71 3e ff 20 c5 1e ff 03   ert.....q>. ....\n000000000b28d510    c8 a5 d0 a5 c8 a5 d0 a5  85 a5 e8 a5 cc a5 c6 a5   ................\n\n[shell\\open\\command] b4026b8:\n000000000b402670    ff 26 c4 24 ff 01 02 00  0f 47 45 54 00 49 6e 65   .&.$.....GET.Ine\n000000000b402680    74 55 52 4c 2f 31 2e 30  0f 2f 61 63 73 3f 6d 6b   tURL/1.0./acs?mk\n000000000b402690    3d 25 73 26 70 72 67 3d  ff 49 c4 47 ff 02 04 00   =%s&prg=.I.G....\n000000000b4026a0    09 73 69 6f 6e 5c 52 75  6e 00 0c 69 65 78 70 6c   .sion\\Run..iexpl\n000000000b4026b0    6f 72 65 2e 65 78 65 12  73 68 65 6c 6c 5c 6f 70   ore.exe.shell\\op\n000000000b4026c0    65 6e 5c 63 6f 6d 6d 61  6e 64 18 68 74 74 70 3a   en\\command.http:\n000000000b4026d0    2f 2f 62 6c 69 6b 61 6e  73 65 61 72 63 68 2e 69   //blikansearch.i\n000000000b4026e0    6e 66 6f 83 02 ff 02 ff  34 c4 32 ff 01 04 00 0b   nfo.....4.2.....\n\n[shell\\open\\command] b42827f:\n000000000b428230    00 17 a5 ec aa 17 14 a7  15 a0 74 ff 04 91 02 01   ..........t.....\n000000000b428240    01 ff 01 74 d2 05 00 e4  24 ff 03 07 81 07 01 00   ...t....$.......\n000000000b428250    80 c6 8a 21 00 80 02 40  00 da 01 2d 83 02 00 09   ...!...@...-....\n000000000b428260    ff 3c c4 3a 00 03 03 00  15 70 6f 6c 69 63 69 65   .<.:.....policie\n000000000b428270    73 5c 45 78 70 6c 6f 72  65 72 5c 52 75 6e 12 73   s\\Explorer\\Run.s\n000000000b428280    68 65 6c 6c 5c 6f 70 65  6e 5c 63 6f 6d 6d 61 6e   hell\\open\\comman\n000000000b428290    64 0c 45 78 70 6c 6f 72  65 72 2e 65 78 65 07 81   d.Explorer.exe..\n000000000b4282a0    07 01 40 00 d9 8a 21 00  da 01 1d a1 08 f5 ca f1   ..@...!.........\n\n[shell\\open\\command] b42971e:\n000000000b4296d0    70 61 74 68 0b 70 6c 75  67 69 6e 31 2e 64 61 74   path.plugin1.dat\n000000000b4296e0    04 5f 6f 6b 5f 0e 5c 43  6c 61 73 73 65 73 5c 48   ._ok_.\\Classes\\H\n000000000b4296f0    54 54 50 5c ff 12 f2 10  00 04 f9 c0 dd d5 c9 ca   TTP\\............\n000000000b429700    d7 c0 d7 8b c0 dd c0 a5  74 b5 3b 00 01 02 00 20   ........t.;.... \n000000000b429710    5c 43 6c 61 73 73 65 73  5c 48 54 54 50 5c 73 68   \\Classes\\HTTP\\sh\n000000000b429720    65 6c 6c 5c 6f 70 65 6e  5c 63 6f 6d 6d 61 6e 64   ell\\open\\command\n000000000b429730    15 77 73 5c 43 75 72 72  65 6e 74 56 65 72 73 69   .ws\\CurrentVersi\n000000000b429740    6f 6e 5c 52 75 6e 07 81  07 01 40 00 e7 95 21 00   on\\Run....@...!.\n\n[shell\\open\\command] b42b950:\n000000000b42b910    49 44 0d 49 4e 46 5c 56  69 64 65 6f 2e 65 78 65   ID.INF\\Video.exe\n000000000b42b920    0a 5b 43 61 70 73 4c 6f  63 6b 5d 10 70 6f 77 32   .[CapsLock].pow2\n000000000b42b930    32 33 33 2e 33 33 32 32  2e 4f 52 47 ff 49 c4 47   233.3322.ORG.I.G\n000000000b42b940    ff 08 05 00 07 57 69 6e  53 74 61 30 15 25 73 5c   .....WinSta0.%s\\\n000000000b42b950    73 68 65 6c 6c 5c 6f 70  65 6e 5c 63 6f 6d 6d 61   shell\\open\\comma\n000000000b42b960    6e 64 06 25 73 25 73 25  73 0b 73 65 6e 73 65 78   nd.%s%s%s.sensex\n000000000b42b970    74 2e 64 6c 6c 11 73 79  73 74 65 6d 33 32 5c 73   t.dll.system32\\s\n000000000b42b980    65 6e 73 2e 64 6c 6c 07  81 07 01 04 00 5e 99 21   ens.dll......^.!\n\n[shell\\open\\command] b441a4a:\n000000000b441a00    5f 00 4c 03 b6 a5 a5 f0  2e 49 26 0f 75 2e d0 ad   _.L......I&.u...\n000000000b441a10    74 ff 01 74 83 02 8e 18  ff 0c f2 0a 2f 00 f6 d1   t..t......../...\n000000000b441a20    d0 c7 f5 c4 d1 cd 47 ff  12 f2 10 1f 00 f6 ea e3   ......G.........\n000000000b441a30    f1 f2 e4 f7 e0 f9 e6 c9  c4 d6 d6 74 ff 33 c4 31   ...........t.3.1\n000000000b441a40    ff 00 03 00 17 68 74 74  70 5c 73 68 65 6c 6c 5c   .....http\\shell\\\n000000000b441a50    6f 70 65 6e 5c 63 6f 6d  6d 61 6e 64 0c 41 63 74   open\\command.Act\n000000000b441a60    69 76 65 20 53 65 74 75  70 07 29 21 56 6f 71 41   ive Setup.)!VoqA\n000000000b441a70    2e ff 3f c4 3d ff 00 04  00 17 68 74 74 70 5c 73   ..?.=.....http\\s\n\n[shell\\open\\command] b441a7f:\n000000000b441a30    f1 f2 e4 f7 e0 f9 e6 c9  c4 d6 d6 74 ff 33 c4 31   ...........t.3.1\n000000000b441a40    ff 00 03 00 17 68 74 74  70 5c 73 68 65 6c 6c 5c   .....http\\shell\\\n000000000b441a50    6f 70 65 6e 5c 63 6f 6d  6d 61 6e 64 0c 41 63 74   open\\command.Act\n000000000b441a60    69 76 65 20 53 65 74 75  70 07 29 21 56 6f 71 41   ive Setup.)!VoqA\n000000000b441a70    2e ff 3f c4 3d ff 00 04  00 17 68 74 74 70 5c 73   ..?.=.....http\\s\n000000000b441a80    68 65 6c 6c 5c 6f 70 65  6e 5c 63 6f 6d 6d 61 6e   hell\\open\\comman\n000000000b441a90    64 0c 41 63 74 69 76 65  20 53 65 74 75 70 08 6b   d.Active Setup.k\n000000000b441aa0    6d 69 70 2e 6e 65 74 0a  6d 73 6d 73 67 73 2e 65   mip.net.msmsgs.e\n\n[shell\\open\\command] b441c86:\n000000000b441c40    8b c1 c4 d1 c4 83 02 24  00 a1 04 e5 a5 a5 65 83   .......$......e.\n000000000b441c50    02 04 00 a1 05 8b d7 d6  d7 c6 3c ff 04 c0 02 02   ..........<.....\n000000000b441c60    01 ff 03 e4 01 00 ff 04  c0 02 02 02 ff 01 74 ff   ..............t.\n000000000b441c70    47 c4 45 ff 06 04 00 08  53 74 75 62 50 61 74 68   G.E.....StubPath\n000000000b441c80    17 68 74 74 70 5c 73 68  65 6c 6c 5c 6f 70 65 6e   .http\\shell\\open\n000000000b441c90    5c 63 6f 6d 6d 61 6e 64  15 5c 49 6e 73 74 61 6c   \\command.\\Instal\n000000000b441ca0    6c 65 64 20 43 6f 6d 70  6f 6e 65 6e 74 73 09 29   led Components.)\n000000000b441cb0    21 56 6f 71 41 2e 49 34  ff 0e f2 0c 50 01 24 0f   !VoqA.I4....P.$.\n\n[shell\\open\\command] b451668:\n000000000b451620    a5 a5 a5 a5 a5 a5 ff 03  e4 01 00 7d a1 07 f2 f6   ...........}....\n000000000b451630    97 ed e0 e9 f5 ff 01 74  ff 43 c4 41 ff 00 03 00   .......t.C.A....\n000000000b451640    08 5c 55 70 64 61 74 65  00 18 5c 49 6e 74 65 72   .\\Update..\\Inter\n000000000b451650    6e 65 74 20 45 78 70 6c  6f 72 65 72 5c 00 2e 64   net Explorer\\..d\n000000000b451660    6c 6c 1a 68 74 74 70 5c  73 68 65 6c 6c 5c 6f 70   ll.http\\shell\\op\n000000000b451670    65 6e 5c 63 6f 6d 6d 61  6e 64 00 77 62 07 81 07   en\\command.wb...\n000000000b451680    01 00 80 7b 8e 22 00 80  02 40 00 da 01 18 a1 0e   ...{.\"...@......\n000000000b451690    e8 d6 f3 cc c1 c0 ca e0  dd d1 8b e1 e9 e9 3c 83   ..............<.\n\n[shell\\open\\command] b46c03e:\n000000000b46bff0    81 07 07 40 00 27 48 24  00 b0 02 3c 00 2a 83 02   ...@.'H$...<.*..\n000000000b46c000    06 00 a1 02 a6 a5 83 02  14 00 a1 02 a3 a5 83 02   ................\n000000000b46c010    3e 00 a5 04 a5 a5 a5 a5  73 ff 04 91 02 00 02 a1   >.......s.......\n000000000b46c020    04 8b e6 f7 f1 ff 04 91  02 01 01 83 02 00 02 b5   ................\n000000000b46c030    36 50 01 03 00 04 2e 50  41 44 15 25 73 5c 73 68   6P.....PAD.%s\\sh\n000000000b46c040    65 6c 6c 5c 6f 70 65 6e  5c 63 6f 6d 6d 61 6e 64   ell\\open\\command\n000000000b46c050    16 48 74 74 70 2f 31 2e  31 20 34 30 33 20 46 6f   .Http/1.1 403 Fo\n000000000b46c060    72 62 69 64 64 65 6e 74  83 02 00 16 ff 3d c4 3b   rbiddent.....=.;\n\n[shell\\open\\command] b4be6b9:\n000000000b4be670    31 32 2e 62 6c 61 63 6b  63 61 6b 65 2e 6e 65 74   12.blackcake.net\n000000000b4be680    ff 78 c4 76 ff 06 04 00  0a 73 45 52 56 69 63 65   .x.v.....sERVice\n000000000b4be690    64 4c 4c 16 43 6f 6e 74  72 6f 6c 53 65 74 5c 73   dLL.ControlSet\\s\n000000000b4be6a0    45 52 56 49 43 45 53 5c  25 73 20 5c 69 65 78 70   ERVICES\\%s \\iexp\n000000000b4be6b0    6c 6f 72 65 2e 65 78 65  5c 73 68 65 6c 6c 5c 6f   lore.exe\\shell\\o\n000000000b4be6c0    70 65 6e 5c 63 6f 6d 6d  61 6e 64 2e 48 41 52 44   pen\\command.HARD\n000000000b4be6d0    57 41 52 45 5c 44 45 53  43 52 49 50 54 49 4f 4e   WARE\\DESCRIPTION\n000000000b4be6e0    5c 53 79 73 74 65 6d 5c  43 65 6e 74 72 61 6c 50   \\System\\CentralP\n\n[shell\\open\\command] b4f6482:\n000000000b4f6440    ff 01 74 ff 24 f2 22 ff  02 f9 e0 dd d5 c9 ca d7   ..t.$.\".........\n000000000b4f6450    c0 d7 f9 e7 d7 ca d2 d6  c0 d7 85 ed c0 c9 d5 c0   ................\n000000000b4f6460    d7 85 ea c7 cf c0 c6 d1  d6 74 ab 28 00 05 02 00   .........t.(....\n000000000b4f6470    07 68 74 74 70 3a 2f 2f  1b 68 74 6d 6c 66 69 6c   .http://.htmlfil\n000000000b4f6480    65 5c 73 68 65 6c 6c 5c  6f 70 65 6e 5c 63 6f 6d   e\\shell\\open\\com\n000000000b4f6490    6d 61 6e 64 ab 2a 00 05  02 00 09 6f 72 65 72 5c   mand.*.....orer\\\n000000000b4f64a0    4d 61 69 6e 1b 68 74 6d  6c 66 69 6c 65 5c 73 68   Main.htmlfile\\sh\n000000000b4f64b0    65 6c 6c 5c 6f 70 65 6e  5c 63 6f 6d 6d 61 6e 64   ell\\open\\command\n\n[shell\\open\\command] b4f64ae:\n000000000b4f6460    d7 85 ea c7 cf c0 c6 d1  d6 74 ab 28 00 05 02 00   .........t.(....\n000000000b4f6470    07 68 74 74 70 3a 2f 2f  1b 68 74 6d 6c 66 69 6c   .http://.htmlfil\n000000000b4f6480    65 5c 73 68 65 6c 6c 5c  6f 70 65 6e 5c 63 6f 6d   e\\shell\\open\\com\n000000000b4f6490    6d 61 6e 64 ab 2a 00 05  02 00 09 6f 72 65 72 5c   mand.*.....orer\\\n000000000b4f64a0    4d 61 69 6e 1b 68 74 6d  6c 66 69 6c 65 5c 73 68   Main.htmlfile\\sh\n000000000b4f64b0    65 6c 6c 5c 6f 70 65 6e  5c 63 6f 6d 6d 61 6e 64   ell\\open\\command\n000000000b4f64c0    07 81 07 01 40 00 04 e6  2c 00 ff 01 74 83 02 00   ....@...,...t...\n000000000b4f64d0    03 e5 0e fb a4 c2 8d 83  a2 e3 a2 cc a2 c9 a0 c0   ................\n\n[shell\\open\\command] b505e90:\n000000000b505e50    0c 68 74 74 70 3a 2f 2f  79 6d 71 2e 61 04 2e 65   .http://ymq.a..e\n000000000b505e60    78 65 04 4f 50 45 4e ff  46 95 44 ff 01 07 00 04   xe.OPEN.F.D.....\n000000000b505e70    72 61 2e 65 06 6d 2f 74  73 69 74 06 2e 63 6f 00   ra.e.m/tsit..co.\n000000000b505e80    6f 6f 07 5c 74 73 69 74  72 61 17 68 74 74 70 5c   oo.\\tsitra.http\\\n000000000b505e90    73 68 65 6c 6c 5c 6f 70  65 6e 5c 63 6f 6d 6d 61   shell\\open\\comma\n000000000b505ea0    6e 64 06 2e 77 72 73 2e  6d 05 61 66 66 49 44 47   nd..wrs.m.affIDG\n000000000b505eb0    83 02 00 04 ff 38 c4 36  ff 01 05 01 05 5c 6d 72   .....8.6.....\\mr\n000000000b505ec0    6f 66 0f 26 63 6f 6e 66  69 67 76 65 72 73 69 6f   of.&configversio\n\n[shell\\open\\command] b50c172:\n000000000b50c130    01 74 ff 22 c4 20 ff 01  03 00 09 11 05 04 1f 02   .t.\". ..........\n000000000b50c140    05 1e 7e 19 08 1b 07 38  31 24 33 38 23 08 02 25   ..~....81$38#..%\n000000000b50c150    3e 39 35 20 7e 35 ff 04  91 02 01 01 83 02 20 01   >95 ~5........ .\n000000000b50c160    ff 3a c4 38 c0 00 04 00  1b 68 74 6d 6c 66 69 6c   .:.8.....htmlfil\n000000000b50c170    65 5c 73 68 65 6c 6c 5c  6f 70 65 6e 5c 63 6f 6d   e\\shell\\open\\com\n000000000b50c180    6d 61 6e 64 07 2d 6e 6f  68 6f 6d 65 09 52 45 53   mand.-nohome.RES\n000000000b50c190    53 44 54 44 4f 53 05 52  49 4e 47 30 83 02 70 60   SDTDOS.RING0..p`\n000000000b50c1a0    ff 32 c4 30 50 02 04 00  0a 63 66 60 22 20 24 7e   .2.0P....cf`\" $~\n\n[shell\\open\\command] b574301:\n000000000b5742c0    6c 53 65 74 5c 53 65 72  76 69 63 65 73 5c 25 73   lSet\\Services\\%s\n000000000b5742d0    11 25 73 5c 64 72 69 76  65 72 73 5c 25 73 2e 73   .%s\\drivers\\%s.s\n000000000b5742e0    79 73 ff 53 c4 51 ff 01  04 00 28 53 6f 66 74 77   ys.S.Q....(Softw\n000000000b5742f0    61 72 65 5c 43 6c 61 73  73 65 73 5c 68 74 74 70   are\\Classes\\http\n000000000b574300    5c 73 68 65 6c 6c 5c 6f  70 65 6e 5c 63 6f 6d 6d   \\shell\\open\\comm\n000000000b574310    61 6e 64 08 74 65 73 74  2e 63 6d 64 0e 47 65 74   and.test.cmd.Get\n000000000b574320    50 72 6f 63 41 64 64 72  65 73 73 0b 66 69 72 65   ProcAddress.fire\n000000000b574330    66 6f 78 2e 65 78 65 da  01 0d ff 32 95 30 ff 01   fox.exe....2.0..\n\n[shell\\open\\command] b733bb2:\n000000000b733b70    da 01 20 ff 01 71 3e a1  07 e4 97 e5 a5 f2 8f e5   .. ..q>.........\n000000000b733b80    83 02 a0 06 ff 01 74 ff  5a c4 58 ff 06 04 00 0b   ......t.Z.X.....\n000000000b733b90    43 3a 5c 52 45 43 59 43  4c 45 52 28 53 4f 46 54   C:\\RECYCLER(SOFT\n000000000b733ba0    57 41 52 45 5c 43 6c 61  73 73 65 73 5c 48 54 54   WARE\\Classes\\HTT\n000000000b733bb0    50 5c 73 68 65 6c 6c 5c  6f 70 65 6e 5c 63 6f 6d   P\\shell\\open\\com\n000000000b733bc0    6d 61 6e 64 15 53 4f 46  54 57 41 52 45 5c 4b 61   mand.SOFTWARE\\Ka\n000000000b733bd0    73 70 65 72 73 6b 79 4c  61 62 08 6c 6f 63 6b 2e   sperskyLab.lock.\n000000000b733be0    64 61 74 07 81 07 01 40  00 b0 ee 3f 00 d4 10 00   dat....@...?....\n\n[shell\\open\\command] b79dd4f:\n000000000b79dd00    a8 25 00 35 13 ed 5a 81  6d d1 9f fe ff 12 e0 10   .%.5..Z.m.......\n000000000b79dd10    10 00 0c 00 a8 94 00 4f  d1 b5 7f 57 20 26 43 b5   .......O.. W &C.\n000000000b79dd20    ff 12 e0 10 10 00 01 34  8c f7 ff ff 24 13 5e c6   .......4....$.^.\n000000000b79dd30    ef eb 5d c4 74 ff 01 74  ff 04 91 02 01 03 ff 6b   ..].t..t.......k\n000000000b79dd40    c4 69 ff 04 08 02 06 71  71 2e 65 78 65 13 5c 73   .i.....qq.exe.\\s\n000000000b79dd50    68 65 6c 6c 5c 6f 70 65  6e 5c 63 6f 6d 6d 61 6e   hell\\open\\comman\n000000000b79dd60    64 07 34 6a 34 6a 2e 63  6e 08 37 66 37 66 2e 63   d.4j4j.cn.7f7f.c\n000000000b79dd70    6f 6d 0c 77 77 77 2e 35  32 65 65 2e 63 6f 6d 0b   om.www.52ee.com.\n\n[shell\\open\\command] b79ddbc:\n000000000b79dd70    6f 6d 0c 77 77 77 2e 35  32 65 65 2e 63 6f 6d 0b   om.www.52ee.com.\n000000000b79dd80    6d 61 73 6b 73 74 78 2e  65 78 65 0c 65 78 70 6c   maskstx.exe.expl\n000000000b79dd90    6f 72 65 72 2e 65 78 65  12 38 37 31 43 35 33 38   orer.exe.871C538\n000000000b79dda0    30 2d 34 32 41 30 2d 31  30 36 39 ff 52 c4 50 ff   0-42A0-1069.R.P.\n000000000b79ddb0    04 06 00 06 71 71 2e 65  78 65 13 5c 73 68 65 6c   ....qq.exe.\\shel\n000000000b79ddc0    6c 5c 6f 70 65 6e 5c 63  6f 6d 6d 61 6e 64 07 34   l\\open\\command.4\n000000000b79ddd0    6a 34 6a 2e 63 6e 08 72  72 35 35 2e 63 6f 6d 0c   j4j.cn.rr55.com.\n000000000b79dde0    65 78 70 6c 6f 72 65 72  2e 65 78 65 12 38 37 31   explorer.exe.871\n\n[shell\\open\\command] b893872:\n000000000b893830    65 08 41 75 74 6f 70 6c  61 79 07 81 07 01 00 80   e.Autoplay......\n000000000b893840    02 70 4d 00 80 02 10 00  c1 09 ff 00 c4 d0 d1 ca   .pM.............\n000000000b893850    d7 d0 cb 74 83 02 0b 00  ff 3a c4 38 90 00 02 00   ...t.....:.8....\n000000000b893860    10 71 75 65 64 61 73 74  65 20 6d 61 6d 61 6e 64   .quedaste mamand\n000000000b893870    6f 22 73 68 65 6c 6c 5c  6f 70 65 6e 5c 63 6f 6d   o\"shell\\open\\com\n000000000b893880    6d 61 6e 64 3d 54 77 61  69 6e 33 32 2e 64 6c 6c   mand=Twain32.dll\n000000000b893890    2e 65 78 65 07 81 07 01  04 00 15 70 4d 00 d4 80   .exe.......pM...\n000000000b8938a0    35 00 00 00 37 00 00 00  48 00 00 00 57 00 00 00   5...7...H...W...\n\n[shell\\open\\command] b8961b0:\n000000000b896170    6e 69 08 61 63 61 64 2e  66 61 73 07 81 07 01 40   ni.acad.fas....@\n000000000b896180    00 50 7b 4d 00 ff 04 91  02 01 02 ff 01 74 83 02   .P{M.........t..\n000000000b896190    40 00 b5 42 80 00 03 00  0d 63 3a 5c 61 6d 73 74   @..B.....c:\\amst\n000000000b8961a0    75 62 2e 65 78 65 1b 5c  65 78 65 66 69 6c 65 5c   ub.exe.\\exefile\\\n000000000b8961b0    73 68 65 6c 6c 5c 6f 70  65 6e 5c 63 6f 6d 6d 61   shell\\open\\comma\n000000000b8961c0    6e 64 13 63 3a 5c 61 6d  73 74 75 62 2e 65 78 65   nd.c:\\amstub.exe\n000000000b8961d0    20 25 31 20 25 32 07 81  07 01 40 00 63 7b 4d 00    %1 %2....@.c{M.\n000000000b8961e0    21 ff 04 91 02 01 01 83  02 1e 39 a1 0f a5 da b9   !.........9.....\n\n[WinSta0\\Default] b1bc298:\n000000000b1bc250    17 43 3a 5c 57 49 4e 44  4f 57 53 5c 54 65 6d 70   .C:\\WINDOWS\\Temp\n000000000b1bc260    5c 73 65 72 76 63 69 65  05 69 2e 65 78 65 04 48   \\servcie.i.exe.H\n000000000b1bc270    54 54 50 74 83 02 00 01  ff 14 f2 12 50 01 8a d6   TTPt........P...\n000000000b1bc280    cd ca d2 c4 d7 d1 cc c6  c9 c0 8b c4 d6 d5 74 ff   ..............t.\n000000000b1bc290    1f c4 1d 50 01 02 00 0f  57 69 6e 53 74 61 30 5c   ...P....WinSta0\\\n000000000b1bc2a0    44 65 66 61 75 6c 74 08  43 3a 5c 58 2e 65 78 65   Default.C:\\X.exe\n000000000b1bc2b0    07 81 07 07 40 00 76 6d  03 00 da 01 1e ff 01 71   ....@.vm.......q\n000000000b1bc2c0    3e ff 43 c4 41 ff 03 05  00 07 6f 78 6f 64 64 6f   >.C.A.....oxoddo\n\n[WinSta0\\Default] b42b8b0:\n000000000b42b870    5c 2a 2e 65 78 65 09 5b  61 75 74 4f 72 55 6e 5d   \\*.exe.[autOrUn]\n000000000b42b880    ff 4a c4 48 ff 02 04 00  18 4c 24 5f 52 61 73 44   .J.H.....L$_RasD\n000000000b42b890    65 66 61 75 6c 74 43 72  65 64 65 6e 74 69 61 6c   efaultCredential\n000000000b42b8a0    73 0d 52 61 73 44 69 61  6c 50 61 72 61 6d 73 0f   s.RasDialParams.\n000000000b42b8b0    57 69 6e 53 74 61 30 5c  44 65 66 61 75 6c 74 0c   WinSta0\\Default.\n000000000b42b8c0    58 68 6a 6d 6a 20 53 68  65 6e 6a 69 ff 2e c4 2c   Xhjmj Shenji...,\n000000000b42b8d0    ff 02 03 00 0b 5c 73 79  73 6c 6f 67 2e 64 61 74   .....\\syslog.dat\n000000000b42b8e0    0f 57 69 6e 53 74 61 30  5c 44 65 66 61 75 6c 74   .WinSta0\\Default\n\n[WinSta0\\Default] b42b8e1:\n000000000b42b8a0    73 0d 52 61 73 44 69 61  6c 50 61 72 61 6d 73 0f   s.RasDialParams.\n000000000b42b8b0    57 69 6e 53 74 61 30 5c  44 65 66 61 75 6c 74 0c   WinSta0\\Default.\n000000000b42b8c0    58 68 6a 6d 6a 20 53 68  65 6e 6a 69 ff 2e c4 2c   Xhjmj Shenji...,\n000000000b42b8d0    ff 02 03 00 0b 5c 73 79  73 6c 6f 67 2e 64 61 74   .....\\syslog.dat\n000000000b42b8e0    0f 57 69 6e 53 74 61 30  5c 44 65 66 61 75 6c 74   .WinSta0\\Default\n000000000b42b8f0    0b 7a 68 6f 6e 67 6a 69  65 7a 68 65 ff 3e c4 3c   .zhongjiezhe.>.<\n000000000b42b900    ff 08 04 00 0d 44 69 61  6c 50 61 72 61 6d 73 55   .....DialParamsU\n000000000b42b910    49 44 0d 49 4e 46 5c 56  69 64 65 6f 2e 65 78 65   ID.INF\\Video.exe\n\n[WinSta0\\Default] b440506:\n000000000b4404c0    01 25 71 02 02 25 81 7f  ff 08 a1 06 01 00 00 00   .%q..%. ........\n000000000b4404d0    02 00 3e ff 01 74 ff 46  c4 44 ff 01 05 00 10 44   ..>..t.F.D.....D\n000000000b4404e0    6e 73 46 6c 75 73 68 52  65 73 6f 6c 76 65 72 0c   nsFlushResolver.\n000000000b4404f0    5c 73 76 63 68 6f 73 74  2e 65 78 65 08 4a 69 61   \\svchost.exe.Jia\n000000000b440500    6e 67 4d 69 6e 0f 57 69  6e 53 74 61 30 5c 44 65   ngMin.WinSta0\\De\n000000000b440510    66 61 75 6c 74 08 44 4f  53 20 6d 6f 64 65 07 81   fault.DOS mode..\n000000000b440520    07 01 40 00 5b 18 22 00  b0 02 3c 00 2a 83 02 06   ..@.[.\"...<.*...\n000000000b440530    00 a1 02 a9 a5 83 02 14  00 a1 02 a3 a5 ff 04 91   ................\n\n[WinSta0\\Default] b4be7da:\n000000000b4be790    41 31 34 46 39 2d 31 42  41 31 07 55 70 6c 2e 75   A14F9-1BA1.Upl.u\n000000000b4be7a0    70 67 da 01 2c 84 02 50  00 ff 45 c4 43 ff 00 06   pg..,..P..E.C...\n000000000b4be7b0    00 09 ab ad b4 a8 b4 ac  f1 bb b3 04 25 73 25 73   ............%s%s\n000000000b4be7c0    0b 4d 6f 7a 69 6c 6c 61  2f 34 2e 30 0c 28 63 6f   .Mozilla/4.0.(co\n000000000b4be7d0    6d 70 61 74 69 62 6c 65  29 0f 57 69 6e 53 74 61   mpatible).WinSta\n000000000b4be7e0    30 5c 44 65 66 61 75 6c  74 06 54 72 6b 57 6b 73   0\\Default.TrkWks\n000000000b4be7f0    07 81 07 01 00 80 39 ea  28 00 80 02 40 00 ff 12   ......9.(...@...\n000000000b4be800    e0 10 20 0f 4c f2 30 00  00 0b a8 5e 3c 9c 02 28   .. .L.0....^<..(\n\n[WinSta0\\Default] b6b69ac:\n000000000b6b6960    02 00 20 ff 01 74 ff 08  df 06 09 00 4c ac 08 00   .. ..t......L...\n000000000b6b6970    07 81 07 01 00 80 51 3f  39 00 80 02 40 00 da 01   ......Q?9...@...\n000000000b6b6980    18 a5 0b d6 d6 c9 c1 d7  96 97 8b c1 c9 c9 a5 09   ................\n000000000b6b6990    d2 c4 cb c6 d5 8b c1 c9  c9 74 ff 01 74 ff 04 91   .........t..t...\n000000000b6b69a0    02 01 01 ff 46 c4 44 ff  03 05 02 0f 57 69 6e 53   ....F.D.....WinS\n000000000b6b69b0    74 61 30 5c 44 65 66 61  75 6c 74 0b 73 76 63 68   ta0\\Default.svch\n000000000b6b69c0    6f 73 74 2e 65 78 65 0e  77 65 66 65 64 2e 62 69   ost.exe.wefed.bi\n000000000b6b69d0    7a 2f 63 67 69 2d 08 36  39 2e 35 30 2e 31 37 0b   z/cgi-.69.50.17.\n\n[%c%c%c%c%c%c] b1d0975:\n000000000b1d0930    30 2e 63 6f 6d 3a 38 38  38 74 da 01 0c ff 01 71   0.com:888t.....q\n000000000b1d0940    3e ff 42 c4 40 00 01 04  00 18 53 59 53 54 45 4d   >.B.@.....SYSTEM\n000000000b1d0950    5c 43 75 72 72 65 6e 74  43 6f 6e 74 72 6f 6c 53   \\CurrentControlS\n000000000b1d0960    65 74 04 42 49 54 53 0c  43 6f 6e 6e 65 63 74 47   et.BITS.ConnectG\n000000000b1d0970    72 6f 75 70 10 25 63 25  63 25 63 25 63 25 63 25   roup.%c%c%c%c%c%\n000000000b1d0980    63 2e 65 78 65 07 81 07  07 40 00 f4 73 04 00 b0   c.exe....@..s...\n000000000b1d0990    02 3c 00 2a 83 02 06 00  a1 01 a1 da 01 31 ff 01   .<.*.........1..\n000000000b1d09a0    71 3e 84 02 30 00 b5 2d  00 01 05 00 02 2f 63 03   q>..0..-...../c.\n\n[%c%c%c%c%c%c] b27ecf2:\n000000000b27ecb0    8b 84 d7 c6 84 ff 04 91  02 01 04 ff 5f c4 5d ff   ............_.].\n000000000b27ecc0    06 04 00 20 4e 54 20 4c  4d 20 53 65 63 75 72 69   ... NT LM Securi\n000000000b27ecd0    74 79 20 53 75 70 70 6f  72 74 20 50 72 6f 76 69   ty Support Provi\n000000000b27ece0    64 65 72 73 0c 35 36 6d  79 2e 6e 65 74 3a 35 32   ders.56my.net:52\n000000000b27ecf0    30 10 25 63 25 63 25 63  25 63 25 63 25 63 2e 65   0.%c%c%c%c%c%c.e\n000000000b27ed00    78 65 19 53 79 73 74 65  6d 5c 43 65 6e 74 72 61   xe.System\\Centra\n000000000b27ed10    6c 50 72 6f 63 65 73 73  6f 72 5c 30 07 81 07 07   lProcessor\\0....\n000000000b27ed20    40 80 c2 15 11 00 80 02  40 00 ff 04 91 02 00 01   @.......@.......\n\n[%c%c%c%c%c%c] b28d63d:\n000000000b28d5f0    45 6e 61 62 6c 65 64 3a  4d 69 63 72 6f 73 6f 66   Enabled:Microsof\n000000000b28d600    74 20 28 52 29 20 49 6e  74 65 72 6e 65 74 61 6c   t (R) Internetal\n000000000b28d610    20 49 45 78 70 6c 6f 72  65 22 6c 69 63 79 5c 53    IExplore\"licy\\S\n000000000b28d620    74 61 6e 64 61 72 64 50  72 6f 66 69 6c 65 5c 41   tandardProfile\\A\n000000000b28d630    75 74 68 6f 72 69 7a 65  64 41 70 70 10 25 63 25   uthorizedApp.%c%\n000000000b28d640    63 25 63 25 63 25 63 25  63 2e 65 78 65 0e 47 45   c%c%c%c%c.exe.GE\n000000000b28d650    54 20 2f 20 48 54 54 50  2f 31 2e 31 07 81 07 07   T / HTTP/1.1....\n000000000b28d660    40 00 37 04 12 00 ff 04  91 02 01 03 ab 36 ff 03   @.7..........6..\n\n[%c%c%c%c%c%c] b2d7f9b:\n000000000b2d7f50    02 01 03 ff 22 f2 20 ff  00 c6 c8 c1 85 8a c6 85   ....\". .........\n000000000b2d7f60    d5 cc cb c2 85 94 97 92  8b 95 8b 95 8b 94 85 88   ................\n000000000b2d7f70    cb 85 94 83 c1 c0 c9 74  ff 31 c4 2f ff 09 05 00   .......t.1./....\n000000000b2d7f80    04 5b 25 73 5d 04 6f 70  65 6e 04 2e 76 62 73 0a   .[%s].open..vbs.\n000000000b2d7f90    50 6f 72 74 4e 75 6d 62  65 72 10 25 63 25 63 25   PortNumber.%c%c%\n000000000b2d7fa0    63 25 63 25 63 25 63 2e  65 78 65 07 81 07 01 40   c%c%c%c.exe....@\n000000000b2d7fb0    00 25 d7 17 00 b0 02 3c  00 2a 83 02 06 00 a1 02   .%.....<.*......\n000000000b2d7fc0    ad a5 ff 04 91 02 00 03  a1 03 e7 f6 f6 83 02 10   ................\n\n[%c%c%c%c%c%c] b485e21:\n000000000b485de0    3c ff 0c f2 0a ff 00 5a  b0 0f 0f 0f 0f f5 4d 74   <......Z......Mt\n000000000b485df0    83 02 07 00 01 ff 13 f2  11 ff 01 f5 cd 0f 0f 0f   ................\n000000000b485e00    0f cf 0f 5a b0 0f 0f 0f  0f cf 74 83 02 02 00 7d   ...Z......t....}\n000000000b485e10    ff 41 c4 3f ff 01 05 00  07 61 67 6d 6b 69 73 32   .A.?.....agmkis2\n000000000b485e20    10 25 63 25 63 25 63 25  63 25 63 25 63 2e 65 78   .%c%c%c%c%c%c.ex\n000000000b485e30    65 08 5c 63 6d 64 2e 65  78 65 0e 5c 74 65 72 6d   e.\\cmd.exe.\\term\n000000000b485e40    73 72 76 5f 74 2e 64 6c  6c 09 31 32 37 2e 30 2e   srv_t.dll.127.0.\n000000000b485e50    30 2e 31 07 81 07 01 00  80 6d 67 27 00 80 02 00   0.1......mg'....\n\n[%c%c%c%c%c%c] b55eeab:\n000000000b55ee60    4d 0f 0f 5a 5a 2c 74 83  02 07 00 01 ff 03 eb 01   M..ZZ,t.........\n000000000b55ee70    4c 01 ff 17 f2 15 ff 00  cd 0f 0f 0f a5 cd 0f 0f   L...............\n000000000b55ee80    0f a5 5a b0 0f 0f 0f a5  f5 5a b0 74 db 01 02 83   ..Z......Z.t....\n000000000b55ee90    02 01 00 7d 84 02 ff 00  ab 27 4f 01 03 00 0b 43   ...}.....'O....C\n000000000b55eea0    72 65 61 74 65 46 69 6c  65 41 10 25 63 25 63 25   reateFileA.%c%c%\n000000000b55eeb0    63 25 63 25 63 25 63 2e  64 6c 6c 05 57 69 6e 37   c%c%c%c.dll.Win7\n000000000b55eec0    00 74 da 01 02 ff 0e f2  0c ff 00 4d 0f 0f 5a 5a   .t.........M..ZZ\n000000000b55eed0    26 61 8d 96 65 74 01 ff  03 eb 01 4c 01 ff 06 f2   &a..et.....L....\n\n[%c%c%c%c%c%c] b562f67:\n000000000b562f20    72 65 2e 65 78 65 0a 42  72 72 6f 77 20 48 6f 73   re.exe.Brrow Hos\n000000000b562f30    74 ff 26 f2 24 ff 01 f6  fc f6 f1 e0 e8 f9 e6 d0   t.&.$...........\n000000000b562f40    d7 d7 c0 cb d1 e6 ca cb  d1 d7 ca c9 f6 c0 d1 f9   ................\n000000000b562f50    f6 c0 d7 d3 cc c6 c0 d6  f9 f2 02 79 00 55 ff 39   ...........y.U.9\n000000000b562f60    95 37 4f 02 03 00 10 25  63 25 63 25 63 25 63 25   .7O....%c%c%c%c%\n000000000b562f70    63 25 63 2e 65 78 65 15  45 78 70 6c 6f 72 65 72   c%c.exe.Explorer\n000000000b562f80    5c 69 65 78 70 6c 6f 72  65 2e 65 78 65 0b 39 44   \\iexplore.exe.9D\n000000000b562f90    6d 6f 6b 30 71 6e 71 65  67 ff 39 95 37 4f 02 03   mok0qnqeg.9.7O..\n\n[%c%c%c%c%c%c] b562fa2:\n000000000b562f60    95 37 4f 02 03 00 10 25  63 25 63 25 63 25 63 25   .7O....%c%c%c%c%\n000000000b562f70    63 25 63 2e 65 78 65 15  45 78 70 6c 6f 72 65 72   c%c.exe.Explorer\n000000000b562f80    5c 69 65 78 70 6c 6f 72  65 2e 65 78 65 0b 39 44   \\iexplore.exe.9D\n000000000b562f90    6d 6f 6b 30 71 6e 71 65  67 ff 39 95 37 4f 02 03   mok0qnqeg.9.7O..\n000000000b562fa0    00 10 25 63 25 63 25 63  25 63 25 63 25 63 2e 65   ..%c%c%c%c%c%c.e\n000000000b562fb0    78 65 15 45 78 70 6c 6f  72 65 72 5c 69 65 78 70   xe.Explorer\\iexp\n000000000b562fc0    6c 6f 72 65 2e 65 78 65  0b 42 61 69 64 75 73 70   lore.exe.Baidusp\n000000000b562fd0    69 64 65 72 3e 83 02 00  03 ff 46 95 44 70 01 05   ider>.....F.Dp..\n\n[%c%c%c%c%c%c] b563011:\n000000000b562fd0    69 64 65 72 3e 83 02 00  03 ff 46 95 44 70 01 05   ider>.....F.Dp..\n000000000b562fe0    00 0c 69 65 78 70 6c 6f  72 65 2e 65 78 65 0f 65   ..iexplore.exe.e\n000000000b562ff0    78 65 2e 63 25 63 25 63  25 63 25 63 25 5c 07 57   xe.c%c%c%c%c%\\.W\n000000000b563000    69 6e 45 78 65 63 09 68  72 61 25 75 2e 64 6c 6c   inExec.hra%u.dll\n000000000b563010    10 25 63 25 63 25 63 25  63 25 63 25 63 2e 65 78   .%c%c%c%c%c%c.ex\n000000000b563020    65 83 02 00 03 ff 39 95  37 2f 01 04 00 10 25 63   e.....9.7/....%c\n000000000b563030    25 63 25 63 25 63 25 63  63 6e 2e 65 78 65 09 68   %c%c%c%ccn.exe.h\n000000000b563040    72 61 25 75 2e 64 6c 6c  06 2f 63 20 64 65 6c 10   ra%u.dll./c del.\n\n[%c%c%c%c%c%c] b563050:\n000000000b563010    10 25 63 25 63 25 63 25  63 25 63 25 63 2e 65 78   .%c%c%c%c%c%c.ex\n000000000b563020    65 83 02 00 03 ff 39 95  37 2f 01 04 00 10 25 63   e.....9.7/....%c\n000000000b563030    25 63 25 63 25 63 25 63  63 6e 2e 65 78 65 09 68   %c%c%c%ccn.exe.h\n000000000b563040    72 61 25 75 2e 64 6c 6c  06 2f 63 20 64 65 6c 10   ra%u.dll./c del.\n000000000b563050    25 63 25 63 25 63 25 63  25 63 25 63 2e 65 78 65   %c%c%c%c%c%c.exe\n000000000b563060    07 81 07 01 04 00 16 e1  33 00 d4 08 80 62 83 00   ........3....b..\n000000000b563070    80 62 83 00 c1 13 ff 00  e6 c0 d7 d1 ed c0 c9 d5   .b..............\n000000000b563080    f6 c0 d1 d0 d5 8b c0 dd  c0 74 ff 13 8c 11 00 1c   .........t......\n\n---------------------------------------------------------------------------------------",
+   "fields": {
+    "MatchIndex": "1",
+    "Rule": "Windows_Trojan_Generic_9e4bb0ce",
+    "Author": "Elastic Security",
+    "Id": "9e4bb0ce-b1ed-45dc-8d86-943eb76f0bb4",
+    "Fingerprint": "4fb0eafc58972ef6fef87a88e43ae320420d760f545a66aab28dc3a65f629631",
+    "Creation_date": "2025-10-29",
+    "Last_modified": "2026-01-06",
+    "Threat_name": "Windows.Trojan.Generic",
+    "Reference_sample": "2d93a17f04bf2fcd51c2142043af3840895ae7ba43909a26420c4879d214a3c3",
+    "Severity": "100",
+    "Arch_context": "x86, arm64",
+    "Scan_context": "file, memory",
+    "License": "Elastic License v2",
+    "Os": "windows",
+    "MemoryType": "Virtual Memory (VAD)",
+    "BaseAddress": "0x000000000b0a0000",
+    "PID": "3836",
+    "ProcessName": "mcshield.exe",
+    "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+    "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+    "User": "SYSTEM",
+    "Created": "2020-02-18 03:53:47 UTC",
+    "ts_none": "true"
+   }
+  },
+  {
+   "family": "memprocfs",
+   "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+   "line": 515,
+   "text": "Match Index:  2\nRule:         Windows_Ransomware_Ryuk_878bae7e\nTags:         beta\nAuthor:       Elastic Security\nId:           878bae7e-1e53-4648-93aa-b4075eef256d\nFingerprint:  93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298\nCreation_date: 2020-04-30\nLast_modified: 2021-08-23\nDescription:  Identifies RYUK ransomware\nThreat_name:  Windows.Ransomware.Ryuk\nReference:    https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk\nSeverity:     100\nArch_context: x86, arm64\nScan_context: file, memory\nLicense:      Elastic License v2\nOs:           windows\nMemory Type:  Virtual Memory (VAD)\nMemory Tag:   \nBase Address: 0x000000000b8a0000\nPID:          3836\nProcess Name: mcshield.exe\nProcess Path: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\nCommandLine:  \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"\nUser:         SYSTEM\nCreated:      2020-02-18 03:53:47 UTC\n\nMatches:\n[RyukReadMe.html]: ba9d184, ba9e456, ba9fad2, baa0aff\n\n[RyukReadMe.html] ba9d184:\n000000000ba9d140    ff 03 05 00 12 63 00 73  00 72 00 73 00 73 00 2e   .....c.s.r.s.s..\n000000000ba9d150    00 65 00 78 00 65 00 18  65 00 78 00 70 00 6c 00   .e.x.e..e.x.p.l.\n000000000ba9d160    6f 00 72 00 65 00 72 00  2e 00 65 00 78 00 65 00   o.r.e.r...e.x.e.\n000000000ba9d170    12 6c 00 73 00 61 00 61  00 73 00 2e 00 65 00 78   .l.s.a.a.s...e.x\n000000000ba9d180    00 65 00 1e 52 00 79 00  75 00 6b 00 52 00 65 00   .e..R.y.u.k.R.e.\n000000000ba9d190    61 00 64 00 4d 00 65 00  2e 00 68 00 74 00 6d 00   a.d.M.e...h.t.m.\n000000000ba9d1a0    6c 00 08 2e 00 52 00 59  00 4b 00 07 81 07 07 40   l....R.Y.K.....@\n000000000ba9d1b0    80 1a 18 7d 00 80 02 00  20 d4 08 00 d0 00 00 00   ...}.... .......\n\n[RyukReadMe.html] ba9e456:\n000000000ba9e410    04 a5 a5 a5 a5 ff 04 91  02 01 02 ff 2f f2 2d ff   ............/.-.\n000000000ba9e420    07 d1 ca ce c0 cb 85 c1  ca c0 d6 85 cb ca d1 85   ................\n000000000ba9e430    cd c4 d3 c0 85 d1 cd c0  85 d6 d5 c0 c6 cc c3 cc   ................\n000000000ba9e440    c0 c1 85 d5 d7 cc d3 cc  c9 c0 c2 c0 74 ff 73 c4   ............t.s.\n000000000ba9e450    71 ff 03 05 00 1e 52 00  79 00 75 00 6b 00 52 00   q.....R.y.u.k.R.\n000000000ba9e460    65 00 61 00 64 00 4d 00  65 00 2e 00 68 00 74 00   e.a.d.M.e...h.t.\n000000000ba9e470    6d 00 6c 00 22 5c 00 53  00 79 00 73 00 74 00 65   m.l.\"\\.S.y.s.t.e\n000000000ba9e480    00 6d 00 33 00 32 00 5c  00 63 00 6d 00 64 00 2e   .m.3.2.\\.c.m.d..\n\n[RyukReadMe.html] ba9fad2:\n000000000ba9fa90    ff 04 91 02 01 02 ff 30  f2 2e ff 07 d1 ca ce c0   .......0........\n000000000ba9faa0    cb 85 c1 ca c0 d6 85 cb  ca d1 85 cd c4 d3 c0 85   ................\n000000000ba9fab0    d1 cd c0 85 d6 d5 c0 c6  cc c3 cc c0 c1 85 d5 d7   ................\n000000000ba9fac0    cc d3 cc c9 c0 c2 c0 8b  74 ff 73 c4 71 ff 07 05   ........t.s.q...\n000000000ba9fad0    00 1e 52 00 79 00 75 00  6b 00 52 00 65 00 61 00   ..R.y.u.k.R.e.a.\n000000000ba9fae0    64 00 4d 00 65 00 2e 00  68 00 74 00 6d 00 6c 00   d.M.e...h.t.m.l.\n000000000ba9faf0    22 5c 00 53 00 79 00 73  00 74 00 65 00 6d 00 33   \"\\.S.y.s.t.e.m.3\n000000000ba9fb00    00 32 00 5c 00 63 00 6d  00 64 00 2e 00 65 00 78   .2.\\.c.m.d...e.x\n\n[RyukReadMe.html] baa0aff:\n000000000baa0ab0    42 47 74 83 02 6c 00 a1  04 a5 a5 a5 a5 ff 04 91   BGt..l..........\n000000000baa0ac0    02 01 02 ff 30 f2 2e ff  07 d1 ca ce c0 cb 85 c1   ....0...........\n000000000baa0ad0    ca c0 d6 85 cb ca d1 85  cd c4 d3 c0 85 d1 cd c0   ................\n000000000baa0ae0    85 d6 d5 c0 c6 cc c3 cc  c0 c1 85 d5 d7 cc d3 cc   ................\n000000000baa0af0    c9 c0 c2 c0 8b 74 ff 57  95 55 ff 1f 05 00 1e 52   .....t.W.U.....R\n000000000baa0b00    00 79 00 75 00 6b 00 52  00 65 00 61 00 64 00 4d   .y.u.k.R.e.a.d.M\n000000000baa0b10    00 65 00 2e 00 68 00 74  00 6d 00 6c 00 08 31 39   .e...h.t.m.l..19\n000000000baa0b20    32 2e 31 36 38 2e 08 2e  00 52 00 59 00 4b 00 0e   2.168....R.Y.K..\n\n---------------------------------------------------------------------------------------",
+   "fields": {
+    "MatchIndex": "2",
+    "Rule": "Windows_Ransomware_Ryuk_878bae7e",
+    "Tags": "beta",
+    "Author": "Elastic Security",
+    "Id": "878bae7e-1e53-4648-93aa-b4075eef256d",
+    "Fingerprint": "93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298",
+    "Creation_date": "2020-04-30",
+    "Last_modified": "2021-08-23",
+    "Description": "Identifies RYUK ransomware",
+    "Threat_name": "Windows.Ransomware.Ryuk",
+    "Reference": "https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk",
+    "Severity": "100",
+    "Arch_context": "x86, arm64",
+    "Scan_context": "file, memory",
+    "License": "Elastic License v2",
+    "Os": "windows",
+    "MemoryType": "Virtual Memory (VAD)",
+    "BaseAddress": "0x000000000b8a0000",
+    "PID": "3836",
+    "ProcessName": "mcshield.exe",
+    "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+    "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+    "User": "SYSTEM",
+    "Created": "2020-02-18 03:53:47 UTC",
+    "ts_none": "true"
+   }
+  },
+  {
+   "family": "memprocfs",
+   "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+   "line": 586,
+   "text": "Match Index:  3\nRule:         Windows_Ransomware_Ryuk_878bae7e\nTags:         beta\nAuthor:       Elastic Security\nId:           878bae7e-1e53-4648-93aa-b4075eef256d\nFingerprint:  93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298\nCreation_date: 2020-04-30\nLast_modified: 2021-08-23\nDescription:  Identifies RYUK ransomware\nThreat_name:  Windows.Ransomware.Ryuk\nReference:    https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk\nSeverity:     100\nArch_context: x86, arm64\nScan_context: file, memory\nLicense:      Elastic License v2\nOs:           windows\nMemory Type:  Virtual Memory (VAD)\nMemory Tag:   \nBase Address: 0x000000000d840000\nPID:          3836\nProcess Name: mcshield.exe\nProcess Path: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\nCommandLine:  \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"\nUser:         SYSTEM\nCreated:      2020-02-18 03:53:47 UTC\n\nMatches:\n[RyukReadMe.html]: de27516\n[RyukReadMe.txt]: de15a16, de26c12, de274f9\n\n[RyukReadMe.html] de27516:\n000000000de274d0    51 00 55 00 45 00 5f 00  49 00 44 00 5f 00 44 00   Q.U.E._.I.D._.D.\n000000000de274e0    4f 00 5f 00 4e 00 4f 00  54 00 5f 00 52 00 45 00   O._.N.O.T._.R.E.\n000000000de274f0    4d 00 4f 00 56 00 45 00  1c 52 00 79 00 75 00 6b   M.O.V.E..R.y.u.k\n000000000de27500    00 52 00 65 00 61 00 64  00 4d 00 65 00 2e 00 74   .R.e.a.d.M.e...t\n000000000de27510    00 78 00 74 00 1e 52 00  79 00 75 00 6b 00 52 00   .x.t..R.y.u.k.R.\n000000000de27520    65 00 61 00 64 00 4d 00  65 00 2e 00 68 00 74 00   e.a.d.M.e...h.t.\n000000000de27530    6d 00 6c 00 07 81 09 07  40 80 fe 22 7c 00 f7 00   m.l.....@..\"|...\n000000000de27540    80 02 00 20 b0 02 3c 00  2a 83 02 1a 00 a1 02 ac   ... ..<.*.......\n\n[RyukReadMe.txt] de15a16:\n000000000de159d0    d1 c0 c8 96 97 f9 c6 c8  c1 8b c0 dd c0 74 ff 52   .............t.R\n000000000de159e0    c4 50 ff 03 02 00 2e 55  00 4e 00 49 00 51 00 55   .P.....U.N.I.Q.U\n000000000de159f0    00 45 00 5f 00 49 00 44  00 5f 00 44 00 4f 00 5f   .E._.I.D._.D.O._\n000000000de15a00    00 4e 00 4f 00 54 00 5f  00 52 00 45 00 4d 00 4f   .N.O.T._.R.E.M.O\n000000000de15a10    00 56 00 45 00 1c 52 00  79 00 75 00 6b 00 52 00   .V.E..R.y.u.k.R.\n000000000de15a20    65 00 61 00 64 00 4d 00  65 00 2e 00 74 00 78 00   e.a.d.M.e...t.x.\n000000000de15a30    74 00 07 81 09 01 00 80  2e 8e 7b 00 51 00 80 02   t.........{.Q...\n000000000de15a40    02 00 d4 20 e2 48 02 00  e2 48 02 00 de ad 00 00   ... .H...H......\n\n[RyukReadMe.txt] de26c12:\n000000000de26bd0    e3 c4 ce c0 e8 d0 d1 c0  dd 74 ff 52 95 50 ff 04   .........t.R.P..\n000000000de26be0    02 00 2e 55 00 4e 00 49  00 51 00 55 00 45 00 5f   ...U.N.I.Q.U.E._\n000000000de26bf0    00 49 00 44 00 5f 00 44  00 4f 00 5f 00 4e 00 4f   .I.D._.D.O._.N.O\n000000000de26c00    00 54 00 5f 00 52 00 45  00 4d 00 4f 00 56 00 45   .T._.R.E.M.O.V.E\n000000000de26c10    00 1c 52 00 79 00 75 00  6b 00 52 00 65 00 61 00   ..R.y.u.k.R.e.a.\n000000000de26c20    64 00 4d 00 65 00 2e 00  74 00 78 00 74 00 07 81   d.M.e...t.x.t...\n000000000de26c30    09 07 40 80 a5 15 7c 00  ea 00 80 02 00 20 b0 02   ..@...|...... ..\n000000000de26c40    3c 00 2a 83 02 06 00 a1  01 a0 83 02 14 00 a1 02   <.*.............\n\n[RyukReadMe.txt] de274f9:\n000000000de274b0    73 00 61 00 61 00 73 00  2e 00 65 00 78 00 65 00   s.a.a.s...e.x.e.\n000000000de274c0    74 ff 71 95 6f ff 05 03  01 2e 55 00 4e 00 49 00   t.q.o.....U.N.I.\n000000000de274d0    51 00 55 00 45 00 5f 00  49 00 44 00 5f 00 44 00   Q.U.E._.I.D._.D.\n000000000de274e0    4f 00 5f 00 4e 00 4f 00  54 00 5f 00 52 00 45 00   O._.N.O.T._.R.E.\n000000000de274f0    4d 00 4f 00 56 00 45 00  1c 52 00 79 00 75 00 6b   M.O.V.E..R.y.u.k\n000000000de27500    00 52 00 65 00 61 00 64  00 4d 00 65 00 2e 00 74   .R.e.a.d.M.e...t\n000000000de27510    00 78 00 74 00 1e 52 00  79 00 75 00 6b 00 52 00   .x.t..R.y.u.k.R.\n000000000de27520    65 00 61 00 64 00 4d 00  65 00 2e 00 68 00 74 00   e.a.d.M.e...h.t.\n\n---------------------------------------------------------------------------------------",
+   "fields": {
+    "MatchIndex": "3",
+    "Rule": "Windows_Ransomware_Ryuk_878bae7e",
+    "Tags": "beta",
+    "Author": "Elastic Security",
+    "Id": "878bae7e-1e53-4648-93aa-b4075eef256d",
+    "Fingerprint": "93a501463bb2320a9ab824d70333da2b6f635eb5958d6f8de43fde3a21de2298",
+    "Creation_date": "2020-04-30",
+    "Last_modified": "2021-08-23",
+    "Description": "Identifies RYUK ransomware",
+    "Threat_name": "Windows.Ransomware.Ryuk",
+    "Reference": "https://malpedia.caad.fkie.fraunhofer.de/details/win.ryuk",
+    "Severity": "100",
+    "Arch_context": "x86, arm64",
+    "Scan_context": "file, memory",
+    "License": "Elastic License v2",
+    "Os": "windows",
+    "MemoryType": "Virtual Memory (VAD)",
+    "BaseAddress": "0x000000000d840000",
+    "PID": "3836",
+    "ProcessName": "mcshield.exe",
+    "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+    "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+    "User": "SYSTEM",
+    "Created": "2020-02-18 03:53:47 UTC",
+    "ts_none": "true"
+   }
+  },
+  {
+   "family": "memprocfs",
+   "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+   "line": 658,
+   "text": "Match Index:  4\nRule:         Windows_Ransomware_Clop_e04959b5\nTags:         beta\nAuthor:       Elastic Security\nId:           e04959b5-f3da-428d-8b56-8a9817fdebe0\nFingerprint:  7367b90772ce6db0d639835a0a54a994ef8ed351b6dadff42517ed5fbc3d0d1a\nCreation_date: 2020-05-03\nLast_modified: 2021-08-23\nDescription:  Identifies CLOP ransomware in unpacked state\nThreat_name:  Windows.Ransomware.Clop\nReference:    https://malpedia.caad.fkie.fraunhofer.de/details/win.clop\nSeverity:     100\nArch_context: x86, arm64\nScan_context: file, memory\nLicense:      Elastic License v2\nOs:           windows\nMemory Type:  Virtual Memory (VAD)\nMemory Tag:   \nBase Address: 0x000000000d840000\nPID:          3836\nProcess Name: mcshield.exe\nProcess Path: \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\nCommandLine:  \"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"\nUser:         SYSTEM\nCreated:      2020-02-18 03:53:47 UTC\n\nMatches:\n[CIopReadMe.txt]: de2e87a\n\n[CIopReadMe.txt] de2e87a:\n000000000de2e830    00 01 ff 0f f2 0d ff 01  cd a5 a5 e5 a5 4d 0f 0f   .............M..\n000000000de2e840    0f 0f 2e 74 83 02 05 00  01 ff 0b f2 09 3f 00 4d   ...t.........?.M\n000000000de2e850    0f 0f 0f 0f 2e 90 74 ff  0f f2 0d ff 01 cf a5 cf   ......t.........\n000000000de2e860    5a 5a 73 28 e0 0f 62 e0  74 83 02 0c 00 7d c2 49   ZZs(..b.t....}.I\n000000000de2e870    ff 01 02 22 25 00 73 00  5c 00 43 00 49 00 6f 00   ...\"%.s.\\.C.I.o.\n000000000de2e880    70 00 52 00 65 00 61 00  64 00 4d 00 65 00 2e 00   p.R.e.a.d.M.e...\n000000000de2e890    74 00 78 00 74 00 22 25  00 73 00 5c 00 43 00 6c   t.x.t.\"%.s.\\.C.l\n000000000de2e8a0    00 6f 00 70 00 52 00 65  00 61 00 64 00 4d 00 65   .o.p.R.e.a.d.M.e\n\n---------------------------------------------------------------------------------------",
+   "fields": {
+    "MatchIndex": "4",
+    "Rule": "Windows_Ransomware_Clop_e04959b5",
+    "Tags": "beta",
+    "Author": "Elastic Security",
+    "Id": "e04959b5-f3da-428d-8b56-8a9817fdebe0",
+    "Fingerprint": "7367b90772ce6db0d639835a0a54a994ef8ed351b6dadff42517ed5fbc3d0d1a",
+    "Creation_date": "2020-05-03",
+    "Last_modified": "2021-08-23",
+    "Description": "Identifies CLOP ransomware in unpacked state",
+    "Threat_name": "Windows.Ransomware.Clop",
+    "Reference": "https://malpedia.caad.fkie.fraunhofer.de/details/win.clop",
+    "Severity": "100",
+    "Arch_context": "x86, arm64",
+    "Scan_context": "file, memory",
+    "License": "Elastic License v2",
+    "Os": "windows",
+    "MemoryType": "Virtual Memory (VAD)",
+    "BaseAddress": "0x000000000d840000",
+    "PID": "3836",
+    "ProcessName": "mcshield.exe",
+    "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+    "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+    "User": "SYSTEM",
+    "Created": "2020-02-18 03:53:47 UTC",
+    "ts_none": "true"
+   }
+  }
+ ]
+}

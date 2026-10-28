@@ -64,10 +64,10 @@ def test_written_ti_context_keeps_each_provider_failure_reason(tmp_path):
         {"provider": "otx", "status": "error", "error": "ReadTimeout: no exception message supplied"},
         {"provider": "shodan", "status": "error", "error": "HTTPStatusError: 429 Too Many Requests"},
     ]
-    sweep = {"hits_scanned": 1, "hits_capped": False, "iocs": {"ipv4": ["8.8.8.8"]}}
+    selection = {"leads": 1, "lead_rows": 1, "rows_found": 1, "iocs": {"ipv4": ["8.8.8.8"]}, "sources": {}}
     results = [{"value": "8.8.8.8", "ioc_type": "ip", "malicious_count": 0,
                 "providers_queried": ["otx", "shodan"], "results": failures}]
-    context = {"markdown": render_ti_markdown(sweep, results)}
+    context = {"markdown": render_ti_markdown(selection, {}, results)}
     path = write_ti_context(tmp_path, context)
     assert path
     written = path.read_text(encoding="utf-8")

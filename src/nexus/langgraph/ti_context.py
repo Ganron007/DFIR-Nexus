@@ -1,8 +1,11 @@
-"""Deterministic IOC sweep + TI enrichment — Mode 2 interpretation & steering.
+"""Lead observables + TI enrichment — Mode 1 interpretation & steering.
 
-Extracts hashes / IPs / domains / URLs from the case's indexed evidence rows,
-runs the TI router (local-capable; external only when providers are
-configured), and renders a compact context block for the LLM.
+Takes hashes / public IPs / domains / URLs from the typed (ECS) fields of the
+evidence rows the case's leads cite (D455), checks hashes against the local
+known-good baseline, runs the TI router on the rest (local-capable; external
+only when providers are configured), and renders a compact context block for
+the LLM. ``extract_iocs`` types values in examiner-written text, which has no
+fields.
 
 TI results are INVESTIGATION CONTEXT — never case evidence (FD-001).
 Findings must still cite the evidence rows' audit_ids.
@@ -157,43 +160,187 @@ def _ordered_iocs(iocs: dict[str, list[str]]) -> list[str]:
     return ordered
 
 
-class IOCSweep:
-    """TI's text-plus-fields census, incrementally folded over indexed hits."""
-
-    def __init__(self) -> None:
-        self.hits_scanned = 0
-        self.iocs = IOCAccumulator()
-
-    def add_hit(self, hit: dict[str, Any]) -> None:
-        if not isinstance(hit, dict):
-            return
-        self.hits_scanned += 1
-        self.iocs.add_text(str(hit.get("text") or ""))
-        fields = hit.get("fields") or {}
-        if isinstance(fields, dict):
-            for value in fields.values():
-                if value:
-                    self.iocs.add_text(str(value))
-
-    def result(self) -> dict[str, Any]:
-        return {"hits_scanned": self.hits_scanned, "hits_capped": False,
-                "iocs": self.iocs.result(), "error": ""}
+#: D455: an evidence observable is named by the ECS field that holds it (the index's field-meaning
+#: layer, `data/schema/ecs_map.yaml`), never by the shape of a string. A pattern sweep of every row
+#: took WinSxS catalog names, installer component IDs, PDB GUIDs, version numbers and the user's
+#: browsing history for 8,337 IOCs on one memory image (T22, 2026-10-28). A path matches by its tail
+#: (`process.hash.sha256`, `file.hash.md5`); `winlog.event_data.*` is the event's own raw data, typed
+#: only through the map's per-event copies. The TI router types an address as IPv4 only.
+OBSERVABLE_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("sha256", ("hash.sha256",)),
+    ("sha1", ("hash.sha1",)),
+    ("md5", ("hash.md5",)),
+    ("ipv4", ("destination.ip", "source.ip")),
+    ("domain", ("dns.question.name", "destination.domain", "url.domain")),
+    ("url", ("url.full",)),
+)
+OBSERVABLE_KINDS = tuple(kind for kind, _ in OBSERVABLE_FIELDS)
+_HASH_LENGTHS = {"sha256": 64, "sha1": 40, "md5": 32}
+_HEX_RE = re.compile(r"[0-9a-f]+")
 
 
-def sweep_case_iocs(
-    case_id: str = "",
-    *,
-    hits: Iterable[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Census the complete hit stream without retaining rows or text lists."""
-    if hits is None:
-        from nexus.langgraph.case_census import iter_case_hits
+def observable_kind(path: str) -> str | None:
+    """The observable kind an ECS field path means, or None."""
+    path = path[len("ecs."):] if path.startswith("ecs.") else path
+    if path.startswith("winlog."):
+        return None
+    for kind, tails in OBSERVABLE_FIELDS:
+        if any(path == tail or path.endswith("." + tail) for tail in tails):
+            return kind
+    return None
 
-        hits = iter_case_hits(case_id)
-    accumulator = IOCSweep()
-    for hit in hits:
-        accumulator.add_hit(hit)
-    return accumulator.result()
+
+def _typed_value(kind: str, value: Any) -> str:
+    """The value as the observable its field names, or "" when it is not one (a placeholder,
+    a private address, a hash of the wrong length)."""
+    text = str(value or "").strip()
+    if kind in _HASH_LENGTHS:
+        text = text.lower()
+        return text if len(text) == _HASH_LENGTHS[kind] and _HEX_RE.fullmatch(text) else ""
+    if kind == "ipv4":
+        try:
+            address = ipaddress.ip_address(text)
+        except ValueError:
+            return ""
+        return text if address.version == 4 and not _is_private_ip(text) else ""
+    if kind == "domain":
+        text = text.lower().strip(".")
+        return text if "." in text and " " not in text else ""
+    if kind == "url":
+        return text if re.match(r"https?://", text, re.IGNORECASE) else ""
+    return ""
+
+
+def observables_from_ecs(ecs: Any, prefix: str = "") -> dict[str, set[str]]:
+    """Every observable one stored ``ecs`` sub-document holds, by field meaning."""
+    found: dict[str, set[str]] = {kind: set() for kind in OBSERVABLE_KINDS}
+    if not isinstance(ecs, dict):
+        return found
+    for key, value in ecs.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            for kind, values in observables_from_ecs(value, path).items():
+                found[kind] |= values
+            continue
+        kind = observable_kind(path)
+        if kind is None:
+            continue
+        for item in value if isinstance(value, list) else [value]:
+            typed = _typed_value(kind, item)
+            if typed:
+                found[kind].add(typed)
+    return found
+
+
+def _iter_sources(case_id: str, query: dict[str, Any], source: list[str]) -> Iterable[dict[str, Any]]:
+    """Every matching stored document of the case's index; a failed request raises."""
+    from nexus.langgraph.case_index import _client, index_name
+
+    name = index_name(case_id)
+    search_after: list[Any] | None = None
+    with _client() as client:
+        while True:
+            body: dict[str, Any] = {"size": 1000, "query": query, "_source": source,
+                                    "sort": ["_doc"], "track_total_hits": False}
+            if search_after:
+                body["search_after"] = search_after
+            response = client.post(f"/{name}/_search", json=body)
+            if response.status_code >= 400:
+                raise RuntimeError(f"observable search failed: {response.status_code} {response.text[:300]}")
+            page = response.json().get("hits", {}).get("hits", [])
+            for hit in page:
+                yield hit.get("_source") or {}
+            if len(page) < body["size"]:
+                return
+            search_after = page[-1].get("sort")
+            if not search_after:
+                raise RuntimeError("observable search page omitted its search_after cursor")
+
+
+def _sorted_observables(found: dict[str, set[str]]) -> dict[str, list[str]]:
+    return {kind: sorted(found.get(kind) or ()) for kind in OBSERVABLE_KINDS}
+
+
+def case_observables(case_id: str) -> dict[str, list[str]]:
+    """The whole case's observables from its typed fields (the entity inventory's network and hashes)."""
+    from nexus.langgraph import es_native as es
+
+    fields = sorted(field for field in es._field_types(case_id) if observable_kind(field))
+    found: dict[str, set[str]] = {kind: set() for kind in OBSERVABLE_KINDS}
+    if not fields:
+        return _sorted_observables(found)
+    query = {"bool": {"should": [{"exists": {"field": field}} for field in fields],
+                      "minimum_should_match": 1}}
+    for doc in _iter_sources(case_id, query, ["ecs"]):
+        for kind, values in observables_from_ecs(doc.get("ecs")).items():
+            found[kind] |= values
+    return _sorted_observables(found)
+
+
+def lead_locations(leads: Iterable[dict[str, Any]]) -> dict[tuple[str, str], list[str]]:
+    """(file, line) of every evidence row the leads cite -> the subjects of the leads citing it."""
+    cited: dict[tuple[str, str], list[str]] = {}
+    for lead in leads:
+        subject = str(lead.get("subject") or "")
+        for row in lead.get("rows") or []:
+            loc = str((row or {}).get("loc") or "")
+            file, sep, line = loc.rpartition(":")
+            if not sep or not file or not line:
+                continue
+            subjects = cited.setdefault((file, line), [])
+            if subject and subject not in subjects:
+                subjects.append(subject)
+    return cited
+
+
+def select_lead_observables(case_id: str, leads: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """The observables in the index rows the case's leads cite (D455, operator 2026-10-28)."""
+    leads = list(leads)
+    cited = lead_locations(leads)
+    found: dict[str, set[str]] = {kind: set() for kind in OBSERVABLE_KINDS}
+    sources: dict[str, list[str]] = {}
+    rows_found = 0
+    pairs = sorted(cited)
+    for start in range(0, len(pairs), 200):
+        chunk = pairs[start:start + 200]
+        query = {"bool": {"should": [
+            {"bool": {"filter": [{"term": {"file": file}}, {"term": {"line": line}}]}}
+            for file, line in chunk
+        ], "minimum_should_match": 1}}
+        for doc in _iter_sources(case_id, query, ["file", "line", "ecs"]):
+            rows_found += 1
+            subjects = cited.get((str(doc.get("file") or ""), str(doc.get("line") or ""))) or []
+            for kind, values in observables_from_ecs(doc.get("ecs")).items():
+                found[kind] |= values
+                for value in values:
+                    listed = sources.setdefault(value, [])
+                    listed.extend(s for s in subjects if s not in listed)
+    return {"leads": len(leads), "lead_rows": len(cited), "rows_found": rows_found,
+            "iocs": _sorted_observables(found), "sources": sources}
+
+
+def known_good_hashes(values: Iterable[str]) -> dict[str, list[str]]:
+    """Hashes the local known-good baseline holds -> its file paths. Never leaves the machine."""
+    hashes = [v for v in values if len(v) in _HASH_LENGTHS.values()]
+    if not hashes:
+        return {}
+    from nexus.config import settings
+    from nexus.triage.db import KnownGoodDB
+
+    path = settings.data_root / "triage" / "known_good.db"
+    if not path.exists():
+        return {}
+    db = KnownGoodDB(path, read_only=True)
+    db.connect()
+    try:
+        out: dict[str, list[str]] = {}
+        for value in hashes:
+            rows = db.lookup_hash(value)
+            if rows:
+                out[value] = sorted({str(r.get("path_normalized") or "") for r in rows})
+        return out
+    finally:
+        db.close()
 
 
 def enrich_iocs(iocs: list[str]) -> list[dict[str, Any]]:
@@ -248,52 +395,53 @@ def _result_line(res: dict[str, Any]) -> str:
     return line
 
 
-def render_ti_markdown(sweep: dict[str, Any], results: list[dict[str, Any]]) -> str:
-    """Compact markdown block: the IOC census + provider verdicts."""
-    iocs: dict[str, list[str]] = sweep.get("iocs") or {}
+def render_ti_markdown(selection: dict[str, Any], known_good: dict[str, list[str]],
+                       results: list[dict[str, Any]]) -> str:
+    """Compact markdown block: the lead observables, the local known-good ones, provider verdicts."""
+    iocs: dict[str, list[str]] = selection.get("iocs") or {}
+    sources: dict[str, list[str]] = selection.get("sources") or {}
     lines = [
         "# Threat-intel context (context, never evidence — FD-001)",
         "",
-        f"Scanned {sweep.get('hits_scanned', 0)} indexed evidence row(s)."
-        + (
-            " WARNING: capped sample — this is a LOWER BOUND, not a complete census."
-            if sweep.get("hits_capped")
-            else ""
-        ),
+        "Observables by field meaning (hash, public address, DNS name, domain and URL fields) in the "
+        f"{selection.get('lead_rows', 0)} evidence row(s) cited by {selection.get('leads', 0)} lead(s); "
+        f"{selection.get('rows_found', 0)} of those rows are in the index. "
+        "Any other value is looked up on demand with ti_lookup.",
+        "Observables: " + ", ".join(f"{kind}={len(iocs.get(kind) or [])}" for kind in OBSERVABLE_KINDS)
+        + f"; in the local known-good baseline (not sent out): {len(known_good)}.",
     ]
-    census = ", ".join(
-        f"{kind}={len(iocs.get(kind) or [])}" for kind in
-        ("sha256", "sha1", "md5", "ipv4", "domain", "url")
-    )
-    lines.append(f"IOC census: {census}")
+
+    def _leads(value: str) -> str:
+        subjects = sources.get(value) or []
+        return f" — leads: {'; '.join(subjects[:3])}" if subjects else ""
+
     if results:
         lines.append("")
         lines.append("## Provider verdicts")
-        lines.extend(_result_line(r) for r in results)
+        lines.extend(_result_line(r) + _leads(str(r.get("value") or "")) for r in results)
     else:
         lines.append("")
-        lines.append("No TI lookups run (no IOCs found, or providers unavailable).")
+        lines.append("No provider lookups run (no lead observable outside the known-good baseline).")
+    if known_good:
+        lines.append("")
+        lines.append("## Known-good (local baseline)")
+        lines.extend(f"- {value} → {', '.join(paths[:2])}{_leads(value)}"
+                     for value, paths in sorted(known_good.items()))
     return "\n".join(lines) + "\n"
 
 
-def build_case_ti_context(
-    case_id: str,
-    *,
-    hits: Iterable[dict[str, Any]] | None = None,
-    sweep: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Sweep the case's evidence for IOCs and enrich every extracted IOC."""
-    if sweep is not None and hits is not None:
-        raise ValueError("supply the census or hits, not both")
-    if sweep is None:
-        sweep = sweep_case_iocs(case_id, hits=hits)
-    ordered = _ordered_iocs(sweep.get("iocs") or {})
-    results = enrich_iocs(ordered)
+def build_case_ti_context(selection: dict[str, Any]) -> dict[str, Any]:
+    """Enrich the selected lead observables the local known-good baseline does not hold."""
+    ordered = _ordered_iocs(selection.get("iocs") or {})
+    known_good = known_good_hashes(ordered)
+    lookups = [value for value in ordered if value not in known_good]
+    results = enrich_iocs(lookups) if lookups else []
     return {
-        "sweep": sweep,
-        "iocs": ordered,
+        "selection": selection,
+        "known_good": known_good,
+        "iocs": lookups,
         "results": results,
-        "markdown": render_ti_markdown(sweep, results),
+        "markdown": render_ti_markdown(selection, known_good, results),
     }
 
 

@@ -66,10 +66,8 @@ def test_n4_tool_does_not_reparse_indexed_fields(tmp_path, monkeypatch):
     assert reparsed == [], "indexed fields must not be reconstructed from source files"
 
 
-@pytest.mark.parametrize("builder", ["ti", "entities"])
-def test_census_consumes_each_hit_without_retaining_the_input_rows(builder):
+def test_census_consumes_each_hit_without_retaining_the_input_rows():
     from nexus.langgraph.entity_inventory import build_entity_inventory
-    from nexus.langgraph.ti_context import sweep_case_iocs
 
     class TrackedHit(dict):
         pass
@@ -85,47 +83,40 @@ def test_census_consumes_each_hit_without_retaining_the_input_rows(builder):
             peak = max(peak, sum(ref() is not None for ref in refs))
             yield hit
 
-    build = sweep_case_iocs if builder == "ti" else build_entity_inventory
-    result = build("CASE-STREAM", hits=hits())
+    result = build_entity_inventory("CASE-STREAM", hits=hits(), observables={})
     assert result["hits_scanned"] == 200
     assert peak <= 3, f"retained {peak} input rows instead of folding the stream"
-    if builder == "ti":
-        assert result["iocs"]["ipv4"] == ["8.8.8.8"]
-    else:
-        assert result["network"]["ipv4"] == ["8.8.8.8"]
-        assert result["processes"] == [{"value": "powershell.exe", "count": 200}]
+    assert result["processes"] == [{"value": "powershell.exe", "count": 200}]
 
 
-def test_ti_and_entity_network_keep_their_existing_evidence_scopes():
+def test_entity_network_comes_from_typed_fields_not_row_text():
+    """D455: an address in row text is not typed by its shape; the typed observables are."""
     from nexus.langgraph.entity_inventory import build_entity_inventory
-    from nexus.langgraph.ti_context import sweep_case_iocs
 
     hits = [{"text": "powershell.exe 8.8.8.8", "fields": {"RemoteAddress": "1.1.1.1"}}]
-    ti = sweep_case_iocs("CASE-STREAM", hits=iter(hits))
-    inv = build_entity_inventory("CASE-STREAM", hits=iter(hits))
-    assert ti["iocs"]["ipv4"] == ["1.1.1.1", "8.8.8.8"]
-    assert inv["network"]["ipv4"] == ["8.8.8.8"]
+    typed = {"ipv4": ["52.114.132.73"], "sha256": [], "sha1": [], "md5": [], "domain": [], "url": []}
+    inv = build_entity_inventory("CASE-STREAM", hits=iter(hits), observables=typed)
+    assert inv["network"] == {"ipv4": ["52.114.132.73"], "domain": [], "url": []}
+    assert inv["hashes"] == {"sha256": [], "sha1": [], "md5": []}
 
 
-def test_hash_substring_exclusion_is_global_across_stream_rows():
-    from nexus.langgraph.ti_context import sweep_case_iocs
+def test_hash_substring_exclusion_is_global_across_examiner_texts():
+    from nexus.langgraph.ti_context import extract_iocs
 
     short = "a" * 32
     longer = short + "b" * 32
-    hits = ({"text": text} for text in (short, longer))
-    result = sweep_case_iocs("CASE-STREAM", hits=hits)
-    assert result["iocs"]["sha256"] == [longer]
-    assert result["iocs"]["md5"] == []
+    result = extract_iocs([short, longer])
+    assert result["sha256"] == [longer]
+    assert result["md5"] == []
 
 
 def test_setup_census_shares_one_complete_hit_stream(monkeypatch):
-    from nexus.langgraph import case_census
+    from nexus.langgraph import case_census, ti_context
     from nexus.langgraph.entity_inventory import build_entity_inventory
-    from nexus.langgraph.ti_context import sweep_case_iocs
 
     rows = [{"text": "powershell.exe 8.8.8.8", "fields": {"User": "alice", "RemoteAddress": "1.1.1.1"}}]
-    expected_ti = sweep_case_iocs("CASE-STREAM", hits=rows)
-    expected_entities = build_entity_inventory("CASE-STREAM", hits=rows)
+    typed = {"ipv4": ["52.114.132.73"], "sha256": [], "sha1": [], "md5": [], "domain": [], "url": []}
+    expected_entities = build_entity_inventory("CASE-STREAM", hits=rows, observables=typed)
     scans = []
 
     def stream(case_id):
@@ -133,10 +124,10 @@ def test_setup_census_shares_one_complete_hit_stream(monkeypatch):
         yield from rows
 
     monkeypatch.setattr(case_census, "iter_case_hits", stream)
+    monkeypatch.setattr(ti_context, "case_observables", lambda case_id: typed)
     result = case_census.build_setup_census("CASE-STREAM")
     assert scans == ["CASE-STREAM"]
-    assert result["ti_sweep"] == expected_ti
-    assert result["entity_inventory"] == expected_entities
+    assert result == {"entity_inventory": expected_entities}
 
 
 def test_setup_census_propagates_a_failed_stream_instead_of_refetching(monkeypatch):
