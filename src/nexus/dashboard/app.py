@@ -4712,38 +4712,6 @@ async def health(request):
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
 
 
-async def api_mode2_orchestrator(request):
-    """POST /portal/api/mode2/orchestrator - run the multi-agent orchestrator (WP 3.21).
-
-    Body: {hits? (optional — agents run their own queries if not provided)}
-    Dispatches EvidenceAgents that run real N4 queries on assigned families,
-    extract entities, correlate across families, detect attack patterns, and
-    build a narrative. Examiner reviews proposals — nothing is auto-staged.
-    """
-    case_dir = _get_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "No active case"}, status_code=404)
-    gated = _lane_gate_error(case_dir)
-    if gated:
-        return gated
-    from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.orchestrator import run_orchestrator
-
-    try:
-        model = get_model()
-    except Exception:
-        model = None
-
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-
-    hits = body.get("hits") or None
-    result = run_orchestrator(case_dir, model=model, hits=hits)
-    return JSONResponse(result)
-
-
 async def api_mode_mapping(request):
     """GET /portal/api/mode-mapping?product_mode=1 — map product mode to pipeline mode (WP 3.8).
 
@@ -8149,7 +8117,6 @@ def create_dashboard():
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Legacy Phase-3 orchestrator (now a Mode 2 surface)
-        _mode_route("/portal/api/mode2/orchestrator", api_mode2_orchestrator, ["POST"]),
         # Legacy agent DRAFT finding (now a Mode 2 surface)
         _mode_route("/portal/api/mode2/draft-finding", api_mode2_draft_finding, ["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)

@@ -136,20 +136,3 @@ def _mkcase(tmp_path: Path) -> Path:
     )
     (case / "CASE.yaml").write_text("question: was lsass dumped\n", encoding="utf-8")
     return case
-
-
-def test_agent_run_records_skill_provenance(tmp_path):
-    from nexus.langgraph.orchestrator import run_orchestrator
-
-    result = run_orchestrator(_mkcase(tmp_path))
-    runs = result["agent_runs"]
-    assert runs
-    prov_runs = [r for r in runs if r.get("skill_provenance")]
-    assert prov_runs, "expected at least one agent to report skill provenance"
-    prov = prov_runs[0]["skill_provenance"][0]
-    assert prov["skill"] and prov["version"]
-    step_recs = [sr for r in runs for sr in (r.get("skill_results") or [])]
-    assert step_recs, "expected skill step results"
-    sr = step_recs[0]
-    assert sr.get("skill_version"), "step result must carry the skill version"
-    assert "skill_citations" in sr

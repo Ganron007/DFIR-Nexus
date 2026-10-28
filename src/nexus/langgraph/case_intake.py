@@ -89,6 +89,18 @@ def responder_lines(intake: dict[str, Any]) -> list[str]:
     return lines
 
 
+#: The examiner's words that make a case an insider case: they select the data-staging playbook and the Insider
+#: Threat Matrix for the pattern role (Part 12 FM-11). One definition for both.
+_INSIDER_WORDS = ("staging", "exfil", "insider", "data theft")
+
+
+def insider_intake(ctx: dict[str, Any] | None) -> bool:
+    """Whether the examiner's intake names an insider case (hypothesis, description or question)."""
+    ctx = ctx or {}
+    text = " ".join(str(ctx.get(k) or "") for k in ("hypothesis", "description", "question")).lower()
+    return any(word in text for word in _INSIDER_WORDS)
+
+
 def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:
     """Playbooks named by the examiner, plus hypothesis keyword hints."""
     ctx = ctx or {}
@@ -99,7 +111,7 @@ def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:
     ).lower()
     if any(k in hyp for k in ("usb", "removable", "thumb drive")):
         names.append("usb_activity")
-    if any(k in hyp for k in ("staging", "exfil", "insider", "data theft")):
+    if insider_intake(ctx):
         names.append("data_staging")
     if any(
         k in hyp

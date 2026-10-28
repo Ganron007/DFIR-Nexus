@@ -31,7 +31,6 @@ __all__ = [
     "indexed_families",
     "record_query",
     "record_queries",
-    "record_needle_scan",
     "build_family_ledger",
     "unexamined_families",
     "settle_blockers",
@@ -295,50 +294,15 @@ def record_queries(case_dir: Path, entries: Iterable[Mapping[str, Any]]) -> None
                          run_id=str(entry.get("run_id") or ""))
 
 
-def record_needle_scan(
-    case_dir: Path,
-    *,
-    run_id: str = "",
-    families: Iterable[str] = (),
-    scanned: int = 0,
-    failed: Iterable[str] = (),
-) -> int:
-    """Persist the briefing needle scan as executed queries (WO-1C item 7).
-
-    The briefing scan is an execution record: it queried the index for each
-    needle across every indexed family. Crediting it here is what lets a run's
-    ledger show a family as ``examined`` by the needle source instead of
-    "no query was run against this family" — which is what it said before,
-    even though the scan had run.
-
-    A needle the scan could not query (``failed``) is recorded as a FAIL, never
-    as an examined family: an unqueried needle is not "checked, absent".
-    """
-    fams = [str(f).strip() for f in families if str(f).strip()]
-    if not fams or scanned <= 0:
-        return 0
-    failed_set = {str(f).strip().lower() for f in failed if str(f).strip()}
-    entries: list[dict[str, Any]] = []
-    for family in fams:
-        entries.append({
-            "run_id": run_id,
-            "query": {"term": {"family": family}},
-            "status": "FAIL" if family.lower() in failed_set else "OK",
-            "rows": 0,
-            "audit_id": "",
-        })
-    record_queries(case_dir, entries)
-    return len(entries)
-
-
 def _executed_queries(case_dir: Path, run_id: str = "") -> list[dict[str, Any]]:
     """Every executed query the ledger may credit, scoped to ``run_id``.
 
     A run's ledger is built from **its own** execution records. When a run_id
     is given, only that run's rows are returned — never a fallback to the
     whole file: another run's work must not credit this one (KR4). Rows with no
-    run_id (the briefing needle scan, which runs once per case before any
-    mode) are shared, because they are case-level facts, not one run's work.
+    run_id are case-level facts shared by every run. The briefing's keyword scan
+    is not one: a word matched across the index examines no family (Part 12
+    FM-10), and crediting it made every family read as examined in every run.
     """
     case_dir = Path(case_dir)
     out: list[dict[str, Any]] = []

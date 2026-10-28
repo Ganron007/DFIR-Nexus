@@ -847,7 +847,7 @@ def _supervisor_with_model(
                 "You supervise a concurrent forensic investigation. Choose the "
                 "seats to spawn for the next superstep. Roles: evidence (one per "
                 "indexed family), correlation (cross-family), pattern "
-                "(ITM/ATT&CK/ATLAS/MBC). Reply with ONE JSON object only: "
+                "(maps established activity to ATT&CK; ITM for an insider intake). Reply with ONE JSON object only: "
                 '{"spawns":[{"role":"evidence|correlation|pattern",'
                 '"family":"<family or empty>","why":"one clause"}]}. '
                 f"At most {max_agents} seats. Evidence families must come from "

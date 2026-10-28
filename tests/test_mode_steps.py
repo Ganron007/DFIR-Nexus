@@ -17,7 +17,6 @@ The step contracts, read from the handlers themselves rather than assumed:
   ``plan``         proposes items from ledger SKIPs + extras + FD-006 needs
   ``execute``      {extras, queries}; extras persist to intake; queries read-only
   ``draft-finding`` {hits, title}; stages DRAFT; the agent NEVER approves
-  ``orchestrator`` runs agents; nothing auto-staged
   ``run/*``        plan, status, events, steer, pause, resume, stop, stage
 
 **Mode 3**
@@ -125,8 +124,7 @@ def test_no_mode_route_ever_writes_an_approved_finding(client, c1, c2, c3, tmp_p
         (c2, [("POST", "/portal/api/mode2/plan", {"question": "what ran?"}),
               ("POST", "/portal/api/mode2/execute", {}),
               ("POST", "/portal/api/mode2/draft-finding",
-               {"title": "probe", "hits": []}),
-              ("POST", "/portal/api/mode2/orchestrator", {})]),
+               {"title": "probe", "hits": []})]),
         (c3, [("POST", "/portal/api/mode3/run/stage", {}),
               ("GET", "/portal/api/mode3/run/board", None)]),
     ):
@@ -399,13 +397,6 @@ def test_m2_run_status_and_events_are_readable(client, c2):
     for path in ("/portal/api/mode2/run/status", "/portal/api/mode2/run/events"):
         r = client.get(path, headers=_h(client, c2))
         assert r.status_code in (200, 404), f"{path}: {r.status_code} {r.text[:160]}"
-
-
-def test_m2_orchestrator_stages_nothing(client, c2):
-    before = _findings(client, c2)
-    r = client.post("/portal/api/mode2/orchestrator", json={}, headers=_h(client, c2))
-    assert r.status_code in (200, 400, 409), r.text
-    assert len(_findings(client, c2)) == len(before), "orchestrator auto-staged"
 
 
 # ===========================================================================

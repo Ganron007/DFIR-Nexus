@@ -2560,34 +2560,6 @@ snapshot of the generated report to `analysis/report_rounds/round-NNNN.md`;
 
 ---
 
-### POST /portal/api/mode2/orchestrator
-**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged. **Legacy Phase-3 simulation:** the product multi-role surface is §11 (`/mode2/run/*`); the concurrent multi-agent runtime is §11b (`/mode3/run/*`).
-
-**Request:**
-```json
-{
-  "hits": []
-}
-```
-- `hits` (optional — defaults to current N4 hits from case intake if omitted)
-
-**Response 200:**
-```json
-{
-  "ok": true,
-  "specialists": [
-    {"agent": "evtx_specialist", "findings": [...], "rag_cited": [...]},
-    {"agent": "registry_specialist", "findings": [...], "rag_cited": [...]}
-  ],
-  "synthesis": "Cross-family correlation: ...",
-  "total_findings": 3
-}
-```
-
-**Response 404:** `{"error": "No active case"}`
-
----
-
 ## Common Error Patterns
 
 | Status Code | Condition | Body |

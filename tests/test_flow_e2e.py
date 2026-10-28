@@ -217,19 +217,6 @@ def test_full_loop_design_flow(flow_env, monkeypatch):
     assert search["count"] > 0, search
     hit = search["hits"][0]
 
-    # 5.5. Agentic run — the real Mode 2 surface on the real evidence.
-    # D5 = C (operator 2026-10-09): the case does the evidence work once and
-    # every mode is an analysis run on it, so a Mode 2 run may start on a case
-    # stored as Mode 1. This is not an authority grant: the orchestrator runs
-    # read-only and its claims stage as DRAFT exactly like any other mode's.
-    # The orchestrator's own behaviour is covered by the Mode 2 runtime tests.
-    r = client.post(
-        "/portal/api/mode2/orchestrator",
-        headers=headers,
-        json={"max_agents": 4, "max_iterations": 2},
-    )
-    assert r.status_code != 409, r.text
-
     # 6. Bookmark -> promote -> DRAFT with lane audit ids (heuristic scribe, no network)
     r = client.post("/portal/api/workbench/add", headers=headers, json={"hit": hit, "note": "flow e2e"})
     assert r.status_code == 200, r.text

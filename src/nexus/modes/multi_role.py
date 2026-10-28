@@ -533,10 +533,11 @@ _CORRELATION_BRIEF = (
     "investigating. Verify each link with a tool call before asserting it."
 )
 _PATTERN_BRIEF = (
-    "You are the pattern agent. Match the evidence against the case's "
-    "framework registries (ITM/ATT&CK/ATLAS/MBC) through rag_search, "
-    "and verify the required evidence rows exist with "
-    "es_search/es_aggregate. Do not force a pattern when the required evidence is missing."
+    "You are the pattern agent. Map the activity the evidence and correlation work established to MITRE "
+    "ATT&CK techniques (and to the Insider Threat Matrix when the work order says the examiner names an "
+    "insider case) through rag_search, and verify each technique's required evidence rows exist with "
+    "es_search/es_aggregate. Map established activity only; mapping is a reporting step, not a hunt. Do not "
+    "force a technique when the required evidence is missing."
 )
 _VERIFIER_BRIEF = (
     "You are the verifier. Re-check each claim you are given with tools and classify "
@@ -589,7 +590,7 @@ ROLES: dict[str, AgentRole] = {
     ),
     "pattern": AgentRole(
         name="pattern",
-        description="ITM/ATT&CK/ATLAS/MBC pattern matching.",
+        description="ATT&CK mapping of established activity (ITM for an insider case).",
         tools=("es_mappings", "es_search", "es_aggregate", "run_record", "rag_search"),
         brief=_PATTERN_BRIEF,
         system_prompt=(
@@ -1932,10 +1933,15 @@ def plan_work_orders(
         acceptance="corroborated entities/chains with audit_ids or explicit none",
         skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
     ))
+    from nexus.langgraph.case_intake import insider_intake
+    from nexus.langgraph.query_pack import load_case_intake
+
+    frameworks = ("ATT&CK techniques and the Insider Threat Matrix (the examiner names an insider case)"
+                  if insider_intake(load_case_intake(case_dir)) else "ATT&CK techniques")
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
         role="pattern",
-        task=(f"Match the evidence against ITM/ATT&CK/ATLAS/MBC patterns for: "
+        task=(f"Map the activity the earlier orders established to {frameworks} for: "
               f"{question or '(no examiner question)'}"),
         why="Framework-grounded pattern check after correlation",
         priority_tools=("rag_search", "es_search", "es_aggregate"),

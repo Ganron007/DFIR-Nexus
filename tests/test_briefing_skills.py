@@ -206,46 +206,6 @@ def test_skills_match_families_keywords():
     assert skills_for(families={"nonexistent_family"}, keywords={"nonexistentword"}) == []
 
 
-def test_agent_executes_skill_steps(tmp_path):
-    from nexus.langgraph.orchestrator import run_orchestrator
-
-    case = _mkcase(tmp_path)
-    result = run_orchestrator(case)
-    runs = result["agent_runs"]
-    assert runs
-    # the timeline agent owns evtx/hayabusa and should have executed skills
-    timeline = next((r for r in runs if r["agent"] == "timeline"), runs[0])
-    assert timeline["skills_used"], "expected skills to be selected"
-    assert len(timeline["skill_results"]) >= 3
-    # every skill step recorded with hits_found
-    for sr in timeline["skill_results"]:
-        assert "hits_found" in sr and "query" in sr
-    # lsass skill step should have hit on our synthetic hayabusa row
-    lsass_hits = [sr for sr in timeline["skill_results"]
-                  if sr["skill"] == "lsass_credential_access" and sr["hits_found"] > 0]
-    assert lsass_hits, "lsass skill found no hits on synthetic evidence"
-
-
-def test_negative_evidence_recorded(tmp_path):
-    """Steps that find nothing record the skill's negative statement."""
-    from nexus.langgraph.orchestrator import run_orchestrator
-
-    case = _mkcase(tmp_path)
-    # Remove the lsass hit so the lsass-access steps find nothing
-    (case / "extractions" / "hayabusa_alerts.csv").write_text(
-        "Timestamp,Computer,Channel,EventID,Level,RuleTitle,OtherDetails\n"
-        "2026-08-10 14:40:00,WS01,Sec,4688,low,Benign Process,notepad.exe\n",
-        encoding="utf-8",
-    )
-    result = run_orchestrator(case)
-    negs = []
-    for r in result["agent_runs"]:
-        negs.extend(r.get("negative_evidence") or [])
-    # at least one skill step found nothing and recorded negative evidence
-    assert negs, "expected negative evidence to be recorded for empty steps"
-    assert any("negative_evidence" in n for n in negs)
-
-
 def test_briefing_route_excludes_llm_directions(tmp_path, monkeypatch):
     """The deterministic briefing must never block on the LLM — ``directions``
     is fetched lazily via a separate endpoint (was an inline 50s+ call)."""

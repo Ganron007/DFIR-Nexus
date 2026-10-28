@@ -112,7 +112,7 @@ def source_activity(
         }
 
     add("needles", ran=True, count=0,
-        note="the briefing needle scan runs on every indexed family")
+        note="the examiner's keyword scan; a search aid, never an observation of absence")
 
     add("rules", ran=bool(rules_note.get("detections")) or bool(engines),
         count=int((rules_note or {}).get("detections") or 0),
@@ -166,8 +166,11 @@ def absence_statement(
 
     examined_by = sorted({s for line in coverage for s in (line.get("examined_by") or [])})
     not_examined = [str(line.get("family")) for line in coverage if not line.get("examined")]
-    ran = [s["label"] for s in sources.values() if s["ran"]]
-    never_ran = [s["label"] for s in sources.values() if not s["ran"] and s["enabled"]]
+    # The keyword scan is the examiner's search aid, not an observation: a word with no hits is not "not
+    # observed" (Part 12 FM-3). It stays in the source table, and out of the sentence.
+    observing = {key: s for key, s in sources.items() if key != "needles"}
+    ran = [s["label"] for s in observing.values() if s["ran"]]
+    never_ran = [s["label"] for s in observing.values() if not s["ran"] and s["enabled"]]
     disabled = [s["label"] for s in sources.values() if not s["enabled"]]
 
     from nexus.analysis.layers import disabled_names, layer_status

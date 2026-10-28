@@ -13,22 +13,6 @@ import pytest
 REPO_TEXT = r"copy C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\01-windows to D:\out"
 
 
-def test_langgraph_entities_ignore_path_segments():
-    from nexus.langgraph.entities import extract_entities
-
-    hits = [{
-        "family": "hayabusa",
-        "file": "a.csv",
-        "line": 1,
-        "text": REPO_TEXT + r" and CORP\fredr logged on",
-    }]
-    ents = extract_entities(hits)
-    values = [e["value"] for e in ents.get("domain_user", [])]
-    assert r"CORP\fredr" in values
-    assert not any(v.startswith(("STUDY", "CADRE", "Evidence-files", "evtx")) for v in values)
-    assert not any("Github" in v for v in values)
-
-
 def test_is_needle_like_filters_paths_labels_and_numbers():
     from nexus.langgraph.query_pack import is_needle_like
 

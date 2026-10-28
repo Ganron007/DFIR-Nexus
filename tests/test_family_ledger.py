@@ -23,7 +23,6 @@ import pytest
 
 from nexus.analysis.family_ledger import (
     build_family_ledger,
-    record_needle_scan,
     record_query,
     settle_blockers,
     unexamined_families,
@@ -154,41 +153,16 @@ def test_an_empty_ledger_does_not_block_settlement(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# The briefing needle scan is an execution record
+# The briefing keyword scan is not an examination (Part 12 FM-10)
 # ---------------------------------------------------------------------------
 
-def test_the_needle_scan_credits_the_families_it_scanned(tmp_path: Path):
-    """The briefing scan queried the index across every indexed family. Before
-    this, the ledger said 'no query was run against this family' for a family
-    the scan had just examined."""
-    _write_digest(tmp_path, {"evtxecmd": 100, "vol": 500})
-    recorded = record_needle_scan(
-        tmp_path, families=["evtxecmd", "vol"], scanned=12)
-    assert recorded == 2
-    ledger = build_family_ledger(tmp_path, run_id="")
-    assert ledger["families_examined"] == 2
-    assert unexamined_families(ledger) == []
-    assert settle_blockers(ledger) == []
+def test_the_briefing_does_not_credit_families_as_examined(tmp_path: Path, monkeypatch):
+    """A keyword matched across the index examines no family: the briefing records no query for one."""
+    from nexus.langgraph.briefing import case_briefing
 
-
-def test_a_needle_that_could_not_be_queried_is_a_failure(tmp_path: Path):
-    """An unqueried needle is never 'checked, absent'."""
-    _write_digest(tmp_path, {"evtxecmd": 100, "vol": 500})
-    record_needle_scan(
-        tmp_path, families=["evtxecmd", "vol"], scanned=12, failed=["vol"])
-    ledger = build_family_ledger(tmp_path, run_id="")
-    vol = next(r for r in ledger["families"] if r["family"] == "vol")
-    assert vol["examined"] is False
-    assert vol["queries_failed"] == 1
-    assert "vol" in settle_blockers(ledger)
-
-
-def test_a_scan_that_ran_no_needles_records_nothing(tmp_path: Path):
-    """Nothing was queried, so nothing is credited."""
     _write_digest(tmp_path, {"evtxecmd": 100})
-    assert record_needle_scan(tmp_path, families=["evtxecmd"], scanned=0) == 0
+    case_briefing(tmp_path)
     assert _read_ledger_rows(tmp_path) == []
-
 
 def test_the_ledger_renders_a_markdown_table_for_the_report(tmp_path: Path):
     from nexus.analysis.family_ledger import render_family_ledger_markdown

@@ -81,17 +81,6 @@ def test_sigma_context_splits_typed_hints():
     assert "artifact files: system.evtx" in block
 
 
-def test_orchestrator_sigma_context_has_no_numeric_needles():
-    from nexus.langgraph.orchestrator import _sigma_for_family
-
-    block = _sigma_for_family(["hayabusa"])
-    assert "Detection fields:" in block
-    for line in block.splitlines():
-        if line.startswith("Detection fields:"):
-            tokens = [t.strip() for t in line.split(":", 1)[1].split(",")]
-            assert not any(t.isdigit() for t in tokens), line
-
-
 def test_suggestion_vocabulary_helper_routes_hints():
     from nexus.dashboard.app import _gate_suggestion_vocabulary
 
@@ -144,23 +133,6 @@ def test_llm_proposed_needles_are_gated():
     assert "mimikatz" in needles and "psexec" in needles
     assert "4656" not in needles and "4624" not in needles
     assert "security.evtx" not in needles
-
-
-def test_attack_for_family_uses_real_technique_and_typed_hints():
-    from nexus.langgraph.orchestrator import _attack_for_family
-
-    families = ["evtxecmd", "hayabusa", "prefetch", "recmd", "memory", "lnk", "jumplists"]
-    block = _attack_for_family(families)
-    assert "--- T" in block
-    header = [ln for ln in block.splitlines() if ln.startswith("--- ")][0]
-    technique = header.split("--- ", 1)[1].split(" ")[0]
-    assert technique != "T", "technique_id key bug: expected the real technique"
-    assert "Needles:" in block
-    needles_line = [ln for ln in block.splitlines() if ln.startswith("Needles:")][0]
-    assert not any(
-        tok.strip().isdigit() for tok in needles_line.split(":", 1)[1].split(",")
-    )
-    assert "Event IDs (typed probe):" in block
 
 
 def test_mode2_bare_needle_fallback_gated():
