@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 from nexus.integration.dfir_report import build_dfir_markdown, write_findings_preview
-from nexus.langgraph.agents.evidence import cite_block, finding
 
 
 def _art(**kw):
@@ -23,19 +22,6 @@ def _art(**kw):
     )
     defaults.update(kw)
     return Artifact(**defaults)
-
-
-def test_cite_block_includes_ips():
-    text = cite_block([_art()])
-    assert "192.168.77.10" in text
-    assert "WS01" in text
-
-
-def test_finding_helper_has_description_body():
-    f = finding("SMB lateral", [_art()], severity="high", lead="Lateral SMB observed.")
-    assert "Lateral SMB" in f["description"]
-    assert "192.168.77.10" in f["description"]
-    assert "T1021.002" in f["technique_ids"]
 
 
 def test_dfir_markdown_sections():
@@ -377,7 +363,6 @@ def test_dated_timeline_drops_generic_jsonl():
     assert "DataOverwrite" in dated[0]["description"]
     assert len(untimed) == 1
     assert "wevtutil" in untimed[0]["description"]
-
 
 
 def _legacy_hit_finding(fid: str, needle: str, rows: list[dict]) -> dict:

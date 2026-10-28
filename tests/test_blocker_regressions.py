@@ -517,19 +517,7 @@ class TestBlocker16CLIFixes:
 # Blocker #17 — LangGraph fixes
 # ---------------------------------------------------------------------------
 class TestBlocker17LangGraph:
-    """Pipeline must have checkpointer; interrupt_payload must be preserved."""
-
-    def test_pipeline_state_has_interrupt_payload(self) -> None:
-        from nexus.langgraph.types import PipelineState
-        state = PipelineState()
-        assert hasattr(state, "interrupt_payload")
-        assert state.interrupt_payload is None
-
-    def test_pipeline_state_dict_has_interrupt(self) -> None:
-        from nexus.langgraph.types import PipelineState
-        state = PipelineState(interrupt_payload={"test": True})
-        d = state.to_dict()
-        assert "interrupt_payload" in d
+    """The pipeline extra carries LangGraph (Mode 1's interpret graph, Mode 3's board)."""
 
     def test_pyproject_has_pipeline_extra(self) -> None:
         pyproject = Path(__file__).parent.parent / "pyproject.toml"

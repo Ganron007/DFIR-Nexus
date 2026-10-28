@@ -359,35 +359,6 @@ def lane_case_golden() -> None:
     rec("case", "approve", False, "HITL — examiner password only (not claimed)")
 
 
-def lane_m3_heuristic() -> None:
-    try:
-        from datetime import datetime
-
-        from nexus.case import CaseManager
-        from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-        from nexus.langgraph.pipeline import run_analysis_without_interrupt
-
-        arts = [
-            Artifact(
-                id=Artifact.new_id(),
-                artifact_type=ArtifactType.NETWORK_CONNECTION,
-                source=ArtifactSource.ZEEK,
-                timestamp=datetime.now(UTC),
-                severity=Severity.INFORMATIONAL,
-                description="live monitor conn",
-                host="monitor",
-            )
-        ]
-        db = Path.home() / ".nexus" / "cases.db"
-        # CaseManager path from settings
-        from nexus.config import settings
-        cm = CaseManager(settings.cases_root / "cases.db")
-        state = run_analysis_without_interrupt("E2E-M3", arts, cm, case_name="E2E-M3")
-        rec("mode-M3", "heuristic pipeline", True, f"type={type(state).__name__}")
-    except Exception as exc:
-        rec("mode-M3", "heuristic pipeline", False, f"{type(exc).__name__}: {exc}")
-
-
 def lane_http_m5() -> None:
     # start server on 4509
     env = os.environ.copy()
@@ -488,7 +459,6 @@ def main() -> int:
     print("=== case ===")
     lane_case_golden()
     print("=== M3 ===")
-    lane_m3_heuristic()
     print("=== M5 http ===")
     lane_http_m5()
     print("=== lab ===")

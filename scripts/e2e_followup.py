@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,23 +58,6 @@ if hay and evtx:
         rec(bool(rh.get("success")), "HayabusaImporter", f"artifacts={rh.get('artifacts')} src={rh.get('source')}")
 else:
     rec(False, "Hayabusa csv-timeline", "missing binary or evtx")
-
-# M3
-try:
-    from nexus.case import CaseManager
-    from nexus.config import settings
-    from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-    from nexus.langgraph.pipeline import run_analysis_without_interrupt
-    arts = [Artifact(
-        id=Artifact.new_id(), artifact_type=ArtifactType.NETWORK,
-        source=ArtifactSource.ZEEK, timestamp=datetime.now(UTC),
-        severity=Severity.INFORMATIONAL, description="json zeek", host="monitor",
-    )]
-    cm = CaseManager(settings.cases_root / "cases.db")
-    state = run_analysis_without_interrupt("E2E-M3b", arts, cm, case_name="E2E-M3b")
-    rec(True, "M3 heuristic pipeline", type(state).__name__)
-except Exception as exc:
-    rec(False, "M3 heuristic pipeline", f"{type(exc).__name__}: {exc}")
 
 # DRAFT with interpretation
 from nexus.app import create_server, in_process_tools

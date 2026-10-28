@@ -527,18 +527,6 @@ def lane_cli(case_id: str | None) -> None:
 
 
 def lane_modes() -> None:
-    # M3 heuristic
-    try:
-        from nexus.ingest.schemas import ArtifactType
-        from nexus.langgraph.pipeline import run_analysis_without_interrupt
-        state = run_analysis_without_interrupt(
-            case_id="matrix",
-            artifacts=[{"type": ArtifactType.NETWORK, "path": str(first("04-network/monitor-live/conn.log"))}],
-        )
-        rec("MODE", "M3 heuristic pipeline", True, f"type={type(state).__name__} {str(state)[:200]}")
-    except Exception as exc:
-        rec("MODE", "M3 heuristic pipeline", False, f"{type(exc).__name__}: {exc}")
-
     # M4 LLM ping + optional full pipeline
     try:
         from nexus.llm.router import get_model

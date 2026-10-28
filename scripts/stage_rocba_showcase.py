@@ -296,11 +296,8 @@ def main() -> int:
         "",
         "## Next: case run",
         "",
-        "```text",
-        "python scripts/e2e_rocba_showcase.py",
-        "```",
-        "",
-        "Produces a DFIR Report–style narrative from **only** this pack.",
+        "Register this pack in a case and run the modes (`nexus interpret`, `nexus mode2 run`,",
+        "`nexus mode3 run`); `nexus report generate` writes the report from approved findings.",
         "",
     ]
     (OUT / "MANIFEST.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
