@@ -24,7 +24,6 @@ log = logging.getLogger(__name__)
 # Host filesystem paths are CONTENT (paths inside the parsed artifacts), not
 # "top entities" and not evidence files — Mode 1 shows a labelled summary of
 # them instead of dumping system paths into the entity list.
-_ENTITY_CONTENT_PATH_TYPES = frozenset({"windows_path", "posix_path"})
 #: The levels that make a row an "alert". `crit` is Hayabusa's spelling for its
 #: top level — omitting it here dropped all 27 critical detections out of the
 #: digest's alert surface, which is what Mode 1 reconciles (WO-R1F item 1; the
@@ -502,13 +501,23 @@ def _index_census(case_dir: Path) -> dict[str, Any]:
         return {}
 
 
-def _entity_source_file(ent: dict[str, Any]) -> str:
-    """Case-relative evidence file where the entity was first seen."""
-    for hit in ent.get("hits") or []:
-        rel = str(hit.get("file") or "").strip()
-        if rel:
-            return rel
-    return ""
+def _typed_entities(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """The case's typed entities and observables, in the briefing's shape (never raises)."""
+    try:
+        from nexus.langgraph.typed_entities import ENTITY_FIELDS, OBSERVABLE_KINDS, case_entities
+
+        typed = case_entities(Path(case_dir).name)
+    except Exception as exc:  # noqa: BLE001 - the briefing must render without the index
+        log.debug("typed entities unavailable: %s", exc)
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for kind in [k for k, _ in ENTITY_FIELDS] + list(OBSERVABLE_KINDS):
+        items = typed.get(kind) or []
+        if items:
+            out[kind] = [{"value": i["value"], "hits": i["count"], "families": i["families"],
+                          "source_file": i["source_file"], "source_family": (i["families"] or [""])[0]}
+                         for i in items]
+    return out
 
 
 def case_briefing(case_dir: Path) -> dict[str, Any]:
@@ -524,7 +533,6 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         entities    — every extracted entity per type with family coverage
         intake      — question / subjects / hypothesis / suspicion echo
     """
-    from nexus.langgraph.entities import extract_entities
     from nexus.langgraph.query_pack import attach_hit_fields, n4_hits
 
     case_dir = Path(case_dir)
@@ -783,59 +791,22 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         log.debug("alert interpretation failed: %s", exc)
 
-    # --- complete entity inventory (content host paths are summarized) ---
-    raw_entities = extract_entities(hits)
-    entities: dict[str, list[dict[str, Any]]] = {}
-    path_entities: list[dict[str, Any]] = []
-    for etype, elist in raw_entities.items():
-        if etype in _ENTITY_CONTENT_PATH_TYPES:
-            path_entities.extend(elist)
-            continue
-        ranked = sorted(elist, key=lambda e: (-len(e.get("families") or []), -len(e.get("hits") or [])))
-        entities[etype] = [
-            {
-                "value": e["value"],
-                "hits": len(e.get("hits") or []),
-                "families": e.get("families") or [],
-                # Provenance: the case-relative evidence file the entity was
-                # found in — an entity must stick to its evidence, not float.
-                "source_file": _entity_source_file(e),
-                "source_family": (e.get("families") or [""])[0],
-            }
-            for e in ranked
-        ]
+    # --- typed entities, hosts and time range: the whole index by field meaning (Part 12 FM-7) ---
+    # They came from the rows a keyword happened to match, typed by pattern: hosts, accounts and the
+    # time range followed the needle list, not the evidence.
+    entities = _typed_entities(case_dir) if families else {}
     paths_summary: dict[str, Any] = {"distinct": 0, "families": [], "examples": []}
-    if path_entities:
-        ranked_paths = sorted(path_entities, key=lambda e: -len(e.get("hits") or []))
-        paths_summary = {
-            "distinct": len(path_entities),
-            "families": sorted({f for e in path_entities for f in (e.get("families") or [])}),
-            "examples": [str(e.get("value") or "") for e in ranked_paths[:3]],
-        }
-
-    # --- hosts + time range ---
-    hosts = sorted({str(h.get("host") or "") for h in hits if h.get("host")})
-    # Each row's time in UTC by the index's rule (D257): min/max over the tools' own columns compared
-    # Hayabusa's lane-host times with EvtxECmd's UTC ones as strings.
-    times = [t for t in (row_time(h) for h in hits) if t]
-    time_range = {"start": min(times) if times else "", "end": max(times) if times else ""}
-
-    # --- index census fallback ---
-    # Playbook needles are threat-specific: a case can hold real evidence yet
-    # have zero needle hits (e.g. benign RDP/RDS logs). Hosts/entities/time
-    # range must still reflect what the index holds — a false "0 hosts" reads
-    # as "nothing was processed" and hides the evidence entirely.
-    census_source = "needle_hits"
-    if families and (not hosts or not entities or not time_range.get("start")):
-        census = _index_census(case_dir)
-        if census:
-            census_source = "index"
-            if not hosts and census.get("hosts"):
-                hosts = census["hosts"]
-            if not entities and census.get("entities"):
-                entities = census["entities"]
-            if not time_range.get("start") and census.get("time_range", {}).get("start"):
-                time_range = census["time_range"]
+    census = _index_census(case_dir) if families else {}
+    hosts = list(census.get("hosts") or [])
+    time_range = dict(census.get("time_range") or {"start": "", "end": ""})
+    census_source = "index"
+    if not hosts and not time_range.get("start") and hits:
+        # A case with no Elasticsearch index: the scanned rows' own host and time fields (typed at index
+        # time, never read from their text), labelled as the rows they come from.
+        hosts = sorted({str(h.get("host") or "") for h in hits if h.get("host")})
+        times = [t for t in (row_time(h) for h in hits) if t]
+        time_range = {"start": min(times) if times else "", "end": max(times) if times else ""}
+        census_source = "needle_hits"
 
     # --- intake echo ---
     intake: dict[str, str] = {}
@@ -1348,7 +1319,7 @@ def llm_directions(
         ) or "none"),
         "Top entities: " + (" | ".join(
             f"{t}={', '.join(e['value'] for e in (ents.get(t) or [])[:5])}"
-            for t in ("process_name", "ipv4", "domain", "domain_user")
+            for t in ("process", "executable", "user", "ipv4", "domain")
             if ents.get(t)
         ) or "none"),
         f"Intake: question={intake.get('question', '(none)')} "

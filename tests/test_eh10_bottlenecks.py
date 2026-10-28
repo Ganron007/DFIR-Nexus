@@ -8,23 +8,6 @@ from pathlib import Path
 
 # ── B5: shared wide scan ────────────────────────────────────────────────
 
-def test_entity_inventory_uses_provided_hits(monkeypatch):
-    from nexus.langgraph import entity_inventory as ei
-
-    def _boom(*a, **k):
-        raise AssertionError("do_n4_query must not be called when hits are provided")
-
-    monkeypatch.setattr("nexus.tools.evidence_index.do_n4_query", _boom)
-    hits = [{
-        "family": "hayabusa", "file": "f.csv", "line": "2",
-        "text": "powershell.exe ran C:\\Tools\\m.exe",
-        "host": "ws01", "fields": {"Computer": "WS01", "User": "alice"},
-    }]
-    inv = ei.build_entity_inventory("CASE-X", hits=hits, observables={})
-    assert any("powershell.exe" in p["value"] for p in inv["processes"])
-    assert any(h["value"] == "ws01" for h in inv["hosts"])
-
-
 # ── B6: incremental reindex ─────────────────────────────────────────────
 
 def _mkcase(tmp_path: Path) -> Path:

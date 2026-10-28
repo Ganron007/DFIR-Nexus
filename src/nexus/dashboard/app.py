@@ -4015,18 +4015,21 @@ async def api_timeline_rebuild(request):
 
 
 async def api_entities(request):
-    """POST /portal/api/entities — extract entities from current N4 hits.
+    """POST /portal/api/entities — the typed entities of the rows a query matches.
 
     Body: {query?: "<DSL>", needles?: "a,b,c"} — needles merge into the DSL
-    like /explore/search. An empty request scans all in-window hits
-    (match-all) so the pivot page populates on arrival.
+    like /explore/search. An empty request covers every row so the pivot page
+    populates on arrival. Values come from the typed fields (the envelope host
+    and user, ECS process, address, DNS, URL and hash fields) by aggregation,
+    never from patterns over the rows' text (Part 12 FM-7).
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
-    from nexus.analysis.entities import extract_entities
-    from nexus.langgraph.query_pack import _parse_needles, n4_query
+    from nexus.langgraph.case_index import es_aggregate
+    from nexus.langgraph.query_pack import _parse_needles
+    from nexus.langgraph.typed_entities import OBSERVABLE_KINDS, typed_fields, typed_value
 
     query_text = str(body.get("query") or "").strip()
     needles = _parse_needles(str(body.get("needles") or ""))
@@ -4035,11 +4038,28 @@ async def api_entities(request):
     elif needles:
         query_text = " OR ".join(needles)
 
-    result = n4_query(case_dir, query_text, limit=None, match_all=True)
-    if result.get("error"):
-        return JSONResponse({"error": result["error"]}, status_code=400)
-    texts = [h.get("text", "") for h in result.get("hits", [])]
-    return JSONResponse({"entities": extract_entities(texts), "total": result.get("count", 0)})
+    entities: dict[str, dict[str, int]] = {}
+    total = 0
+    fields_by_kind = typed_fields(Path(case_dir).name)
+    if not any(fields_by_kind.values()):
+        return JSONResponse({"entities": {}, "total": 0,
+                             "note": "typed entities need the case's Elasticsearch index"})
+    for kind, fields in fields_by_kind.items():
+        counts: dict[str, int] = {}
+        for field in fields:
+            result = es_aggregate(Path(case_dir), query_text, field=field, top=0, match_all=not query_text)
+            if result is None:
+                return JSONResponse({"error": f"the index could not aggregate {field} for this query"},
+                                    status_code=400)
+            total = max(total, int(result.get("rows_scanned") or 0))
+            for item in result.get("top") or []:
+                raw = item.get("value")
+                value = typed_value(kind, raw) if kind in OBSERVABLE_KINDS else str(raw or "").strip()
+                if value:
+                    counts[value] = counts.get(value, 0) + int(item.get("count") or 0)
+        if counts:
+            entities[kind] = dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:12])
+    return JSONResponse({"entities": entities, "total": total})
 
 
 # Mode 1 suggested questions — LLM-generated (validated, grounded in the case)
@@ -4079,11 +4099,9 @@ def _mode1_suggest_context(case_dir: Path) -> dict[str, Any]:
                 encoding="utf-8"
             )
         )
-        for key in ("hosts", "users", "processes"):
-            values = inv.get(key) or {}
-            if isinstance(values, dict):
-                ranked = sorted(values.items(), key=lambda kv: -int(kv[1] or 0))
-                ctx[key] = [str(k) for k, _v in ranked[:5]]
+        for key, kind in (("hosts", "host"), ("users", "user"), ("processes", "process")):
+            ctx[key] = [str(item.get("value")) for item in (inv.get(kind) or [])[:5]
+                        if isinstance(item, dict) and item.get("value")]
     except Exception:  # noqa: BLE001
         pass
     for entry in reversed(_mode1_chat_entries(case_dir)):

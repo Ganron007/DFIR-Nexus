@@ -262,7 +262,7 @@ def test_case_entity_vocabulary_from_digest(tmp_path):
             "host": [{"value": "WS01", "count": 12}, {"value": "DC01", "count": 3}],
             "user": [{"value": "alice", "count": 5}],
         },
-        "entities": {"processes": [{"value": "m.exe", "hits": 4}]},
+        "entities": {"executable": [{"value": "m.exe", "hits": 4}]},
     }), encoding="utf-8")
     vocab = _case_entity_vocabulary(tmp_path)
     assert vocab["hosts"] == ["WS01", "DC01"]

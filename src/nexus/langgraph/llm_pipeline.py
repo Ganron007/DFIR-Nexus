@@ -1953,7 +1953,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         from nexus.langgraph.case_census import build_setup_census, persist_setup_census
         from nexus.langgraph.ti_context import select_lead_observables
 
-        emit_stage(state, "interpret", "setup", "evidence census (entities) and lead observables")
+        emit_stage(state, "interpret", "setup", "typed entities and lead observables")
         census = build_setup_census(case_id)
         # D455: TI takes the typed observables of the rows this run's leads cite (the digest above
         # wrote them), never a pattern sweep of the whole case.
@@ -1961,10 +1961,10 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         persist_setup_census(settings.cases_root / case_id, str(state.get("run_id") or ""), census)
         selection = census["ti_selection"]
         lead_counts = {kind: len(values) for kind, values in selection["iocs"].items()}
+        typed_counts = {kind: len(census["entity_inventory"].get(kind) or []) for kind in ("host", "user", "process")}
         emit_stage(state, "interpret", "setup",
-                   f"evidence census complete: rows={census['entity_inventory']['hits_scanned']}; "
-                   f"lead observables={lead_counts} from {selection['rows_found']}/{selection['lead_rows']} "
-                   f"rows of {selection['leads']} leads")
+                   f"typed entities: {typed_counts}; lead observables={lead_counts} from "
+                   f"{selection['rows_found']}/{selection['lead_rows']} rows of {selection['leads']} leads")
 
         # Mode 1 deterministic lane: lead observables + TI enrichment. Context only —
         # findings still cite evidence audit_ids (FD-001).
@@ -1977,8 +1977,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             ti_block = str(ti_ctx.get("markdown") or "")
         except Exception as exc:  # noqa: BLE001 — TI is best-effort context
             log.warning("TI context build failed: %s", exc)
-        # Deterministic entity census — the interpret agent must address every
-        # item (broad, extensive coverage; gaps are listed after staging).
+        # The typed entity inventory: a reference of what the typed fields hold, never a checklist
+        # (Part 12 FM-2).
         inv: dict[str, Any] = {}
         try:
             from nexus.langgraph.entity_inventory import (
@@ -2430,16 +2430,14 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
     # examiner's preview of DRAFTs is `nexus report generate`. The draft report was half of every
     # Mode 1 run (21 of 42 minutes on 2026-10-14).
 
-    # Mode 1 verdict: coverage gaps vs the entity inventory + digest
-    # reconciliation + interpretation.md (deterministic skeleton + optional
-    # LLM executive verdict).
+    # Mode 1 verdict: digest reconciliation + interpretation.md (deterministic skeleton + optional
+    # LLM executive verdict). The entity inventory is a reference, not a list findings must mention
+    # (Part 12 FM-2).
     try:
         from nexus.config import settings as _settings
-        from nexus.langgraph.entity_inventory import compute_coverage_gaps
         from nexus.langgraph.interpretation import write_interpretation_summary
 
         case_dir = _settings.cases_root / str(state.get("case_id") or "")
-        gaps: list[dict[str, str]] = []
         staged: list[dict[str, Any]] = []
         findings_path = case_dir / "findings.json"
         if findings_path.is_file():
@@ -2447,10 +2445,6 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             if isinstance(loaded, list):
                 staged = [f for f in loaded
                           if isinstance(f, dict) and str(f.get("id")) in run_finding_ids]
-        inv_path = case_dir / "analysis" / "entity_inventory.json"
-        if inv_path.is_file():
-            inv = json.loads(inv_path.read_text(encoding="utf-8"))
-            gaps = compute_coverage_gaps(inv, staged)
         reconciliation: dict[str, Any] = {}
         digest_path = case_dir / "analysis" / "case_digest.json"
         if digest_path.is_file():
@@ -2461,13 +2455,13 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
             )
         emit_stage(state, "interpretation", "running", "the executive verdict")
         out = await write_interpretation_summary(
-            case_dir, findings=staged, gaps=gaps, reconciliation=reconciliation, model=model,
+            case_dir, findings=staged, reconciliation=reconciliation, model=model,
             run_id=str(state.get("run_id") or ""), dispositions=dispositions,
         )
         emit_stage(state, "interpretation", "done", str(out or ""))
         if out:
             log_msg.append(
-                f"Wrote {out.name} (gaps={len(gaps)}, "
+                f"Wrote {out.name} ("
                 f"reconciliation_unaddressed={len(reconciliation.get('unaddressed') or [])})"
             )
     except Exception as exc:  # noqa: BLE001 — verdict is best-effort

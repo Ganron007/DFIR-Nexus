@@ -673,9 +673,10 @@ def _validate_dsl(query: str) -> dict[str, Any]:
 
 
 def _propose_heuristic(hits: list[dict], already_run: list[str]) -> dict:
-    """Deterministic fallback: mine hit terms + entities for new needles."""
-    from nexus.analysis.entities import extract_entities
+    """Deterministic fallback: mine hit terms and the hits' hosts for new needles.
 
+    A host is the row's typed envelope field; values are never typed from the row text (Part 12 FM-7).
+    """
     candidates: list[str] = []
     seen = {t.lower() for t in already_run}
     for h in hits:
@@ -684,17 +685,14 @@ def _propose_heuristic(hits: list[dict], already_run: list[str]) -> dict:
             if t and t not in seen and not t.isdigit():
                 candidates.append(t)
                 seen.add(t)
-    entities = extract_entities([str(h.get("text", "")) for h in hits])
-    for exe in list(entities.get("processes", {}))[:3]:
-        if exe.lower() not in seen:
-            candidates.append(exe)
-            seen.add(exe.lower())
-    for ip in list(entities.get("ips", {}))[:2]:
-        candidates.append(ip)
-        seen.add(ip.lower())
+    for h in hits:
+        host = str(h.get("host") or "").strip()
+        if host and host.lower() not in seen:
+            candidates.append(host)
+            seen.add(host.lower())
     return {
         "needles": candidates[:_MAX_NEEDLES_PER_PROPOSAL],
-        "rationale": "Derived from hit terms and extracted entities (deterministic fallback).",
+        "rationale": "Derived from hit terms and the hits' hosts (deterministic fallback).",
         "source": "heuristic",
     }
 

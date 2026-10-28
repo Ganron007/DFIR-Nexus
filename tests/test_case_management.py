@@ -286,27 +286,50 @@ def _seed_extraction_csv(case_id, tmp_path, rows):
     )
 
 
-def test_entities_empty_request_scans_all_and_needles_filter(client, tmp_path):
+def test_entities_empty_request_scans_all_and_needles_filter(client, tmp_path, monkeypatch):
     """4j.5n: the Entities page posts {needles} — it must reach the query,
-    and an empty request must match-all (WP 4b.9: page populates on mount)."""
+    and an empty request must match-all (WP 4b.9: page populates on mount).
+    Part 12 FM-7: the values come from the typed fields by aggregation, never
+    from patterns over the rows' text."""
+    from nexus.langgraph import case_index, typed_entities
+
     case_id = _create(client, "Entities Case")["case_id"]
     hdr = {"X-Nexus-Case": case_id}
-    _seed_extraction_csv(
-        case_id, tmp_path,
-        "2026-08-10T15:00:00Z,WS01,sdelete.exe ran\n"
-        "2026-08-10T15:01:00Z,WS01,beacon to https://evil-c2.example.com/x\n",
-    )
+    calls = []
+
+    def aggregate(case_dir, dsl, field="host", top=0, match_all=False, **kwargs):
+        calls.append((dsl, field, match_all))
+        values = {"ecs.process.name": [{"value": "sdelete.exe", "count": 1}],
+                  "ecs.destination.ip": [{"value": "10.0.0.5", "count": 1},
+                                         {"value": "93.184.216.34", "count": 1}]}
+        return {"rows_scanned": 1 if dsl else 2, "top": values.get(field, [])}
+
+    monkeypatch.setattr(typed_entities, "typed_fields", lambda case: {
+        "process": ["ecs.process.name"], "ipv4": ["ecs.destination.ip"], "host": []})
+    monkeypatch.setattr(case_index, "es_aggregate", aggregate)
 
     r = client.post("/portal/api/entities", json={}, headers=hdr)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["total"] >= 2, body
-    assert "sdelete.exe" in body["entities"]["processes"]
+    assert body["total"] == 2, body
+    # A private address in a typed field is not an observable.
+    assert body["entities"] == {"process": {"sdelete.exe": 1}, "ipv4": {"93.184.216.34": 1}}
+    assert all(match_all and dsl == "" for dsl, _field, match_all in calls)
 
     # needles= is a real filter, not a dead parameter.
+    calls.clear()
     r = client.post("/portal/api/entities", json={"needles": "evil-c2"}, headers=hdr)
     assert r.status_code == 200, r.text
     assert r.json()["total"] == 1
+    assert {dsl for dsl, _field, _all in calls} == {"evil-c2"}
+
+
+def test_entities_without_a_typed_index_say_so(client):
+    case_id = _create(client, "Entities No Index")["case_id"]
+    r = client.post("/portal/api/entities", json={}, headers={"X-Nexus-Case": case_id})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"entities": {}, "total": 0,
+                        "note": "typed entities need the case's Elasticsearch index"}
 
 
 def test_iocs_unified_store_and_extended_extraction(client, tmp_path):

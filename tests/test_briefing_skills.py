@@ -57,8 +57,9 @@ def test_briefing_inventory_alerts_entities(tmp_path):
         f["field"] for f in b["needle_facts"] if f["needle"] == "4624"
     }
     assert scan.get("lsass", 0) >= 1
-    # entities extracted
-    assert "domain" in b["entities"] or "ipv4" in b["entities"]
+    # Part 12 FM-7: entities come from typed index fields only; a case with no index has none,
+    # and nothing is typed from the rows' text (10.0.0.5 and 192.168.1.9 sit in the CSV).
+    assert b["entities"] == {}
 
 
 def test_briefing_markdown_renders(tmp_path):
@@ -417,12 +418,19 @@ def test_briefing_index_census_fallback_when_no_needle_hits(tmp_path, monkeypatc
         return None
 
     monkeypatch.setattr("nexus.langgraph.case_index.es_aggregate", fake_agg)
+    from nexus.langgraph import typed_entities
+
+    monkeypatch.setattr(typed_entities, "case_entities", lambda case_id: {
+        "fields": {}, "host": [{"value": "EC2AMAZ-JET8PQL", "count": 1, "families": ["evtxecmd"],
+                                "source_file": "evtxecmd_rdp.csv"}],
+        "user": [{"value": "administrator", "count": 1, "families": ["evtxecmd"],
+                  "source_file": "evtxecmd_rdp.csv"}]})
     brief = bmod.case_briefing(case)
     assert brief["census_source"] == "index"
     assert brief["hits_examined"] == 0          # honest: no needle hits
     assert "EC2AMAZ-JET8PQL" in brief["hosts"]
-    assert brief["entities"]["hosts"][0]["value"] == "EC2AMAZ-JET8PQL"
-    assert brief["entities"]["users"][0]["value"] == "administrator"
+    assert brief["entities"]["host"][0]["value"] == "EC2AMAZ-JET8PQL"
+    assert brief["entities"]["user"][0]["value"] == "administrator"
     assert brief["time_range"]["start"] == "2024-11-14T03:22:50"
     md = bmod.briefing_to_markdown(brief)
     assert "index census" in md
@@ -532,29 +540,22 @@ def test_briefing_scans_every_curated_needle(tmp_path, monkeypatch):
     assert len(actual) == len(terms)
     assert dropped == []
 
-def test_top_entities_exclude_host_content_paths(tmp_path):
-    """windows_path/posix_path are paths INSIDE artifacts (host filesystem
-    content), not top entities and not evidence files — Mode 1 shows a
-    labelled summary instead, and real entities carry their evidence file."""
+def test_top_entities_are_typed_and_never_paths(tmp_path, monkeypatch):
+    """Part 12 FM-7: the briefing's entities are the typed fields' values with their evidence file;
+    a path inside an artifact (host filesystem content) is never typed as an entity from text."""
+    from nexus.langgraph import typed_entities
     from nexus.langgraph.briefing import case_briefing
 
     case = _mkcase(tmp_path)
-    ext = case / "extractions"
-    (ext / "mft.csv").write_text(
+    (case / "extractions" / "mft.csv").write_text(
         "TimeCreated,Path,Computer\n"
         "2026-08-10 14:35:00,C:\\Windows\\System32\\lsass.exe,WS01\n",
         encoding="utf-8",
     )
+    monkeypatch.setattr(typed_entities, "case_entities", lambda case_id: {
+        "fields": {}, "process": [{"value": "lsass.exe", "count": 1, "families": ["vol"],
+                                   "source_file": "vol/pslist.txt"}]})
     b = case_briefing(case)
-    assert "windows_path" not in b["entities"], (
-        "host filesystem paths must not be listed as top entities"
-    )
-    assert "posix_path" not in b["entities"]
-    summary = b["paths_summary"]
-    assert summary["distinct"] >= 1
-    assert any("lsass" in ex.lower() for ex in summary["examples"])
-    assert summary["families"]
-    # Real entities carry provenance: the evidence file they came from.
-    proc = b["entities"].get("process_name") or []
-    assert proc, "lsass.exe must still be a process_name entity"
-    assert any(e.get("source_file") for e in proc)
+    assert set(b["entities"]) == {"process"}
+    assert b["entities"]["process"][0]["source_file"] == "vol/pslist.txt"
+    assert b["paths_summary"]["distinct"] == 0

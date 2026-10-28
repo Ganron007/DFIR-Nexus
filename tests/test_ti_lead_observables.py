@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from nexus.langgraph import ti_context
+from nexus.langgraph.typed_entities import OBSERVABLE_KINDS, observable_kind, observables_from_ecs
 
 _FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "t22_d455_rows.json").read_text(encoding="utf-8"))
 _ROWS = [r["_source"] for r in _FIXTURE["rows"]]
@@ -35,7 +36,7 @@ def test_the_pattern_rule_typed_every_captured_row_as_an_ioc():
 
 
 def test_only_a_typed_field_makes_an_observable():
-    typed = [{k: sorted(v) for k, v in ti_context.observables_from_ecs(s.get("ecs")).items() if v}
+    typed = [{k: sorted(v) for k, v in observables_from_ecs(s.get("ecs")).items() if v}
              for s in _ROWS]
     assert typed[:6] == [{}] * 6
     # The netscan row's private local address is not an observable; its public remote one is.
@@ -56,26 +57,45 @@ def test_only_a_typed_field_makes_an_observable():
     ("ecs.file.path", None),
 ])
 def test_observable_kind_is_the_field_meaning(path, kind):
-    assert ti_context.observable_kind(path) == kind
+    assert observable_kind(path) == kind
 
 
 def _fake_index(monkeypatch, docs):
-    """The index as the observable reader sees it: the captured stored documents."""
+    """The index as the lead-row reader sees it: the captured stored documents."""
     def iter_sources(case_id, query, source):
-        clauses = query["bool"]["should"]
-        if "exists" in clauses[0]:
-            wanted = {c["exists"]["field"] for c in clauses}
-            for doc in docs:
-                if any(ti_context.observable_kind(f) for f in wanted) and doc.get("ecs"):
-                    yield doc
-            return
         pairs = {(c["bool"]["filter"][0]["term"]["file"], str(c["bool"]["filter"][1]["term"]["line"]))
-                 for c in clauses}
+                 for c in query["bool"]["should"]}
         for doc in docs:
             if (doc["file"], str(doc["line"])) in pairs:
                 yield doc
 
-    monkeypatch.setattr(ti_context, "_iter_sources", iter_sources)
+    monkeypatch.setattr(ti_context, "iter_sources", iter_sources)
+
+
+def _fake_aggregations(monkeypatch, docs, types):
+    """The typed fields' exact aggregations, computed from the captured stored documents."""
+    from nexus.langgraph import es_native, typed_entities
+
+    def value_of(doc, field):
+        node = doc
+        for part in field.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        return node
+
+    def counts(case_id, field, query):
+        found = {}
+        for doc in docs:
+            value = value_of(doc, field)
+            if value not in (None, ""):
+                entry = found.setdefault(str(value), {"value": str(value), "count": 0, "families": [],
+                                                      "source_file": doc["file"]})
+                entry["count"] += 1
+                if doc["family"] not in entry["families"]:
+                    entry["families"].append(doc["family"])
+        return list(found.values())
+
+    monkeypatch.setattr(es_native, "_field_types", lambda case_id: types)
+    monkeypatch.setattr(typed_entities, "_field_value_counts", counts)
 
 
 def test_a_real_lead_selects_only_the_rows_it_cites(monkeypatch):
@@ -83,7 +103,7 @@ def test_a_real_lead_selects_only_the_rows_it_cites(monkeypatch):
     selection = ti_context.select_lead_observables("CASE-4387EB47", [_LEAD])
     assert (selection["leads"], selection["lead_rows"], selection["rows_found"]) == (1, 4, 4)
     # The YARA rows name a process and a rule, no typed observable; the netscan row is not cited.
-    assert selection["iocs"] == {kind: [] for kind in ti_context.OBSERVABLE_KINDS}
+    assert selection["iocs"] == {kind: [] for kind in OBSERVABLE_KINDS}
     assert ti_context.lead_locations([_LEAD]) == {
         (row["loc"].rpartition(":")[0], row["loc"].rpartition(":")[2]): [_LEAD["subject"]]
         for row in _LEAD["rows"]
@@ -91,13 +111,21 @@ def test_a_real_lead_selects_only_the_rows_it_cites(monkeypatch):
 
 
 def test_the_case_inventory_takes_the_same_typed_fields(monkeypatch):
-    from nexus.langgraph import es_native
+    """FM-2/FM-7: the inventory is the typed fields' values; the rows' text types nothing."""
+    from nexus.langgraph.entity_inventory import build_entity_inventory, render_inventory_markdown
 
-    _fake_index(monkeypatch, _ROWS)
-    monkeypatch.setattr(es_native, "_field_types", lambda case_id: {
-        "ecs.destination.ip": "ip", "ecs.source.ip": "ip", "ecs.process.name": "keyword", "fields.Text": "text"})
-    assert ti_context.case_observables("CASE-4387EB47") == {
-        "sha256": [], "sha1": [], "md5": [], "ipv4": ["52.114.132.73"], "domain": [], "url": []}
+    _fake_aggregations(monkeypatch, _ROWS, {
+        "ecs.destination.ip": "keyword", "ecs.source.ip": "keyword", "ecs.process.name": "keyword",
+        "fields.Text": "text", "host": "keyword", "user": "keyword"})
+    inv = build_entity_inventory("CASE-4387EB47")
+    assert inv["ipv4"] == [{"value": "52.114.132.73", "count": 1, "families": ["vol"],
+                            "source_file": _ROWS[6]["file"]}]
+    for kind in ("sha256", "sha1", "md5", "domain", "url", "process", "executable", "host", "user"):
+        assert inv[kind] == [], kind
+    assert inv["fields"]["ipv4"] == ["ecs.destination.ip", "ecs.source.ip"]
+    rendered = render_inventory_markdown(inv)
+    assert "EVERY" not in rendered and "a reference, not a checklist" in rendered
+    assert "- ipv4: 1 distinct (ecs.destination.ip, ecs.source.ip)" in rendered
 
 
 def test_known_good_hashes_never_reach_a_provider(monkeypatch):
@@ -116,7 +144,7 @@ def test_known_good_hashes_never_reach_a_provider(monkeypatch):
 def test_no_lead_observable_means_no_provider_call(monkeypatch):
     monkeypatch.setattr(ti_context, "enrich_iocs", lambda values: pytest.fail("no lookup expected"))
     selection = {"leads": 191, "lead_rows": 285, "rows_found": 285, "sources": {},
-                 "iocs": {kind: [] for kind in ti_context.OBSERVABLE_KINDS}}
+                 "iocs": {kind: [] for kind in OBSERVABLE_KINDS}}
     context = ti_context.build_case_ti_context(selection)
     assert context["results"] == []
     assert "285 evidence row(s) cited by 191 lead(s)" in context["markdown"]

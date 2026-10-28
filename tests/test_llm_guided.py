@@ -64,8 +64,8 @@ class TestIterativeLoop:
         case_dir = _make_case(tmp_path)
         mock_nl.return_value = {"needles": ["sdelete"], "window": "", "source": "heuristic"}
         mock_n4.side_effect = [
-            {"hits": [{"family": "hayabusa", "file": "t.csv", "line": "1", "text": "sdelete.exe run", "terms": "sdelete"}], "count": 1, "backend": "csv", "error": None},
-            {"hits": [{"family": "hayabusa", "file": "t.csv", "line": "2", "text": "sdelete42.tmp renamed", "terms": "sdelete"}], "count": 1, "backend": "csv", "error": None},
+            {"hits": [{"family": "hayabusa", "file": "t.csv", "line": "1", "text": "sdelete.exe run", "terms": "sdelete", "host": "WS01"}], "count": 1, "backend": "csv", "error": None},
+            {"hits": [{"family": "hayabusa", "file": "t.csv", "line": "2", "text": "sdelete42.tmp renamed", "terms": "sdelete", "host": "WS01"}], "count": 1, "backend": "csv", "error": None},
         ]
         result = run_iterative_loop(case_dir, "Was sdelete used?", model=None, max_iterations=1)
         assert not result.get("error")

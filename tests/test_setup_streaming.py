@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import weakref
 from pathlib import Path
 
 import pytest
@@ -66,40 +65,6 @@ def test_n4_tool_does_not_reparse_indexed_fields(tmp_path, monkeypatch):
     assert reparsed == [], "indexed fields must not be reconstructed from source files"
 
 
-def test_census_consumes_each_hit_without_retaining_the_input_rows():
-    from nexus.langgraph.entity_inventory import build_entity_inventory
-
-    class TrackedHit(dict):
-        pass
-
-    refs = []
-    peak = 0
-
-    def hits():
-        nonlocal peak
-        for _index in range(200):
-            hit = TrackedHit(text="powershell.exe 8.8.8.8", fields={"User": "alice"})
-            refs.append(weakref.ref(hit))
-            peak = max(peak, sum(ref() is not None for ref in refs))
-            yield hit
-
-    result = build_entity_inventory("CASE-STREAM", hits=hits(), observables={})
-    assert result["hits_scanned"] == 200
-    assert peak <= 3, f"retained {peak} input rows instead of folding the stream"
-    assert result["processes"] == [{"value": "powershell.exe", "count": 200}]
-
-
-def test_entity_network_comes_from_typed_fields_not_row_text():
-    """D455: an address in row text is not typed by its shape; the typed observables are."""
-    from nexus.langgraph.entity_inventory import build_entity_inventory
-
-    hits = [{"text": "powershell.exe 8.8.8.8", "fields": {"RemoteAddress": "1.1.1.1"}}]
-    typed = {"ipv4": ["52.114.132.73"], "sha256": [], "sha1": [], "md5": [], "domain": [], "url": []}
-    inv = build_entity_inventory("CASE-STREAM", hits=iter(hits), observables=typed)
-    assert inv["network"] == {"ipv4": ["52.114.132.73"], "domain": [], "url": []}
-    assert inv["hashes"] == {"sha256": [], "sha1": [], "md5": []}
-
-
 def test_hash_substring_exclusion_is_global_across_examiner_texts():
     from nexus.langgraph.ti_context import extract_iocs
 
@@ -110,40 +75,37 @@ def test_hash_substring_exclusion_is_global_across_examiner_texts():
     assert result["md5"] == []
 
 
-def test_setup_census_shares_one_complete_hit_stream(monkeypatch):
-    from nexus.langgraph import case_census, ti_context
-    from nexus.langgraph.entity_inventory import build_entity_inventory
+def test_setup_census_is_the_typed_inventory_of_its_case(monkeypatch):
+    """Part 12 FM-2: the census reads typed fields; it no longer streams and pattern-types every row."""
+    from nexus.config import settings
+    from nexus.langgraph import case_census, query_pack, typed_entities
 
-    rows = [{"text": "powershell.exe 8.8.8.8", "fields": {"User": "alice", "RemoteAddress": "1.1.1.1"}}]
-    typed = {"ipv4": ["52.114.132.73"], "sha256": [], "sha1": [], "md5": [], "domain": [], "url": []}
-    expected_entities = build_entity_inventory("CASE-STREAM", hits=rows, observables=typed)
-    scans = []
-
-    def stream(case_id):
-        scans.append(case_id)
-        yield from rows
-
-    monkeypatch.setattr(case_census, "iter_case_hits", stream)
-    monkeypatch.setattr(ti_context, "case_observables", lambda case_id: typed)
-    result = case_census.build_setup_census("CASE-STREAM")
-    assert scans == ["CASE-STREAM"]
-    assert result == {"entity_inventory": expected_entities}
+    case = settings.cases_root / "CASE-CENSUS"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: CASE-CENSUS\n", encoding="utf-8")
+    typed = {"source": "typed", "fields": {}, "host": [{"value": "ws01", "count": 3}]}
+    asked = []
+    monkeypatch.setattr(typed_entities, "case_entities", lambda case_id: asked.append(case_id) or typed)
+    monkeypatch.setattr(query_pack, "iter_all_hits",
+                        lambda *a, **k: pytest.fail("the census must not stream every row"))
+    assert case_census.build_setup_census("CASE-CENSUS") == {"entity_inventory": typed}
+    assert asked == ["CASE-CENSUS"]
 
 
-def test_setup_census_propagates_a_failed_stream_instead_of_refetching(monkeypatch):
-    from nexus.langgraph import case_census
+def test_setup_census_propagates_a_failed_typed_search(monkeypatch):
+    from nexus.config import settings
+    from nexus.langgraph import case_census, typed_entities
 
-    scans = []
+    case = settings.cases_root / "CASE-CENSUS"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: CASE-CENSUS\n", encoding="utf-8")
 
-    def stream(case_id):
-        scans.append(case_id)
-        yield {"text": "8.8.8.8"}
-        raise RuntimeError("exhaustive search failed: retained transport failure")
+    def failed(case_id):
+        raise RuntimeError("typed-field search failed: 503")
 
-    monkeypatch.setattr(case_census, "iter_case_hits", stream)
-    with pytest.raises(RuntimeError, match="exhaustive search failed"):
-        case_census.build_setup_census("CASE-STREAM")
-    assert scans == ["CASE-STREAM"]
+    monkeypatch.setattr(typed_entities, "case_entities", failed)
+    with pytest.raises(RuntimeError, match="typed-field search failed"):
+        case_census.build_setup_census("CASE-CENSUS")
 
 
 def test_stream_identity_dedup_is_exact_and_temporary_files_close(tmp_path, monkeypatch):
@@ -175,8 +137,8 @@ def test_setup_census_is_retained_in_its_run_before_enrichment(tmp_path):
     case = tmp_path / "CASE-CENSUS"
     case.mkdir()
     run = create_run(case, mode="interpret")
-    census = {"ti_sweep": {"hits_scanned": 2, "iocs": {"ipv4": ["8.8.8.8"]}},
-              "entity_inventory": {"processes": [{"value": "powershell.exe", "count": 2}]}}
+    census = {"ti_selection": {"leads": 1, "lead_rows": 2, "rows_found": 2, "iocs": {"ipv4": ["8.8.8.8"]}},
+              "entity_inventory": {"process": [{"value": "powershell.exe", "count": 2}]}}
     path = persist_setup_census(case, run.run_id, census)
     assert path == run.analysis / "setup_census.json"
     assert json.loads(path.read_text(encoding="utf-8")) == census
@@ -189,9 +151,9 @@ def test_setup_census_is_retained_in_its_run_before_enrichment(tmp_path):
 
 
 @pytest.mark.parametrize("active", ["absent", "other"])
-def test_setup_stream_binds_its_run_case_without_the_global_pointer(active, monkeypatch):
+def test_setup_census_binds_its_run_case_without_the_global_pointer(active, monkeypatch):
     from nexus.config import settings
-    from nexus.langgraph import case_census, query_pack
+    from nexus.langgraph import case_census, typed_entities
 
     case = settings.cases_root / "CASE-CENSUS"
     case.mkdir()
@@ -200,27 +162,19 @@ def test_setup_stream_binds_its_run_case_without_the_global_pointer(active, monk
         import os
 
         Path(os.environ["NEXUS_ACTIVE_CASE_FILE"]).write_text("CASE-OTHER", encoding="utf-8")
-    observed = []
-    row = {"text": "8.8.8.8", "fields": {"Computer": "WS01"}}
-
-    def stream(bound, *args, **kwargs):
-        observed.append((bound, kwargs))
-        yield row
-
-    monkeypatch.setattr(query_pack, "iter_all_hits", stream)
-    assert list(case_census.iter_case_hits(case.name)) == [row]
-    assert observed == [(case, {"match_all": True})]
+    asked = []
+    monkeypatch.setattr(typed_entities, "case_entities", lambda case_id: asked.append(case_id) or {})
+    case_census.build_setup_census(case.name)
+    assert asked == ["CASE-CENSUS"]
 
 
-def test_setup_stream_rejects_an_invalid_case_without_reading(monkeypatch):
-    from nexus.langgraph import case_census, query_pack
+def test_setup_census_rejects_an_invalid_case_without_reading(monkeypatch):
+    from nexus.langgraph import case_census, typed_entities
 
-    def forbidden(*args, **kwargs):
-        pytest.fail("invalid case reached the evidence stream")
-
-    monkeypatch.setattr(query_pack, "iter_all_hits", forbidden)
+    monkeypatch.setattr(typed_entities, "case_entities",
+                        lambda case_id: pytest.fail("an invalid case reached the index"))
     with pytest.raises(ValueError):
-        list(case_census.iter_case_hits("../CASE-OTHER"))
+        case_census.build_setup_census("../CASE-OTHER")
 
 
 @pytest.mark.parametrize("empty_fields", [False, True])

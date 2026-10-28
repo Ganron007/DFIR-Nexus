@@ -118,7 +118,7 @@ def _case_entity_vocabulary(case_dir: Path) -> dict[str, list[str]]:
             vocab["users"] = [
                 str(i.get("value")) for i in (spans.get("user") or []) if i.get("value")
             ][:8]
-            procs = (digest.get("entities") or {}).get("processes") or []
+            procs = (digest.get("entities") or {}).get("executable") or (digest.get("entities") or {}).get("process") or []
             vocab["executables"] = [
                 str(p.get("value")) for p in procs if p.get("value")
             ][:8]
@@ -132,13 +132,14 @@ def _case_entity_vocabulary(case_dir: Path) -> dict[str, list[str]]:
             try:
                 inv = json.loads(inv_path.read_text(encoding="utf-8"))
                 vocab["hosts"] = [
-                    str(h.get("value")) for h in (inv.get("hosts") or []) if h.get("value")
+                    str(h.get("value")) for h in (inv.get("host") or []) if h.get("value")
                 ][:8]
                 vocab["users"] = [
-                    str(u.get("value")) for u in (inv.get("users") or []) if u.get("value")
+                    str(u.get("value")) for u in (inv.get("user") or []) if u.get("value")
                 ][:8]
                 vocab["executables"] = [
-                    str(p.get("value")) for p in (inv.get("processes") or []) if p.get("value")
+                    str(p.get("value")) for p in (inv.get("executable") or inv.get("process") or [])
+                    if p.get("value")
                 ][:8]
             except (OSError, ValueError, TypeError):
                 pass

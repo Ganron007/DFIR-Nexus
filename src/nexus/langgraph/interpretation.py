@@ -1,7 +1,7 @@
 """Mode 2 interpretation verdict — analysis/interpretation.md.
 
 Assembled after findings are staged: a deterministic skeleton (facts:
-findings, entity coverage, TI, gaps) plus an optional LLM executive
+findings, the digest reconciliation, TI) plus an optional LLM executive
 verdict paragraph. The briefing endpoint merges this file so the examiner
 sees the Mode 2 verdict, not only the deterministic briefing.
 """
@@ -37,13 +37,12 @@ async def write_interpretation_summary(
     case_dir: Path,
     *,
     findings: list[dict[str, Any]] | None = None,
-    gaps: list[dict[str, str]] | None = None,
     reconciliation: dict[str, Any] | None = None,
     model: Any = None,
     run_id: str = "",
     dispositions: list[dict[str, Any]] | None = None,
 ) -> Path | None:
-    """Write analysis/interpretation.md: verdict + coverage + gaps + TI.
+    """Write analysis/interpretation.md: verdict + reconciliation + TI.
 
     ``reconciliation`` (deterministic) lists digest items no finding mentions —
     the verdict MUST address them; they are also written into the file so the
@@ -56,7 +55,6 @@ async def write_interpretation_summary(
     analysis = case_dir / "analysis"
     analysis.mkdir(parents=True, exist_ok=True)
     findings = findings if findings is not None else _load_findings(case_dir)
-    gaps = gaps or []
     reconciliation = reconciliation or {}
     dispositions = [d for d in dispositions or [] if isinstance(d, dict)]
 
@@ -66,13 +64,9 @@ async def write_interpretation_summary(
     inv_count = 0
     if inv_path.is_file():
         try:
-            inv = json.loads(inv_path.read_text(encoding="utf-8"))
-            for key in ("processes", "paths", "users", "hosts", "commands"):
-                inv_count += len(inv.get(key) or [])
-            net = inv.get("network") or {}
-            inv_count += sum(len(net.get(k) or []) for k in ("ipv4", "domain", "url"))
-            hashes = inv.get("hashes") or {}
-            inv_count += sum(len(hashes.get(k) or []) for k in ("sha256", "sha1", "md5"))
+            from nexus.langgraph.entity_inventory import inventory_size
+
+            inv_count = inventory_size(json.loads(inv_path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             inv_count = 0
 
@@ -82,7 +76,7 @@ async def write_interpretation_summary(
         "",
         *([f"- Run: `{run_id}` (this run's own findings only)"] if run_id else []),
         f"- Findings staged (DRAFT): **{len(findings)}**",
-        f"- Entity inventory items: **{inv_count}** — unaddressed by findings: **{len(gaps)}**",
+        f"- Typed entities in the index: **{inv_count}** (a reference, not a checklist)",
     ]
     unaddressed = list(reconciliation.get("unaddressed") or [])
     # Scan-coverage honesty: reconciliation runs over capped/sliced digest
@@ -148,16 +142,6 @@ async def write_interpretation_summary(
             lines.append(
                 f"| {_md_cell(item.get('kind'), 20)} | {_md_cell(item.get('value'))} |"
             )
-    if gaps:
-        lines.append("")
-        lines.append("## Coverage gaps (not yet explained by any finding)")
-        lines.append("")
-        lines.append("| Entity type | Value |")
-        lines.append("|-------------|-------|")
-        for g in gaps[:25]:
-            lines.append(
-                f"| {_md_cell(g.get('kind'), 24)} | {_md_cell(g.get('value'))} |"
-            )
     if ti_md:
         lines.append("")
         lines.append(ti_md)
@@ -169,7 +153,6 @@ async def write_interpretation_summary(
             f"(confidence {f.get('confidence')})"
             for f in findings[:12]
         )
-        gaps_line = ", ".join(f"{g['kind']}:{g['value']}" for g in gaps[:12]) or "(none)"
         # Keep the verdict prompt inside the model's window too.
         try:
             from nexus.langgraph.prompt_budget import budget_chars
@@ -208,7 +191,6 @@ async def write_interpretation_summary(
         )
         verdict_user = (
             f"Findings:\n{summary_lines or '(none staged)'}\n\n"
-            f"Coverage gaps: {gaps_line}\n\n"
             f"Digest reconciliation (unaddressed items):\n"
             f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
             f"Dispositions the analysis already gave (use them; do not re-judge without rows):\n"

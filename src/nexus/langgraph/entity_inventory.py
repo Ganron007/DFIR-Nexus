@@ -1,198 +1,59 @@
-"""Deterministic entity inventory — Mode 2 broad-interpretation input.
+"""Typed entity inventory: the case's hosts, users, processes and observables, by field meaning.
 
-Censuses every item of interest from the case's indexed evidence rows:
-processes, file paths, users, hosts, command-line hints, and the network
-observables and hashes the typed (ECS) fields hold (D455: never a pattern over
-row text). The Mode 2 interpret agent must address every item; the gap list
-(``compute_coverage_gaps``) marks anything its findings did not mention.
+Built by ``typed_entities.case_entities``: exact Elasticsearch aggregations over the index's typed fields (the
+envelope host and user, ECS process, address, DNS, URL and hash fields), never patterns over row text (Part 12
+FM-2, FM-7). On T22 the pattern census listed 1,416 "processes", 5,197 "paths" and 2,603 "users" under "address
+EVERY item" (825K characters); the typed fields hold 4 hosts, 30 users and 73 process names.
 
-The inventory is investigation scaffolding — findings still cite evidence
-rows' audit_ids (FD-001).
+The inventory is a reference for the loop, not a checklist: the loop aggregates or searches a typed field itself
+for the rows behind a value. It is written to ``analysis/entity_inventory.json`` for the examiner. It is
+investigation scaffolding; findings still cite evidence rows' audit_ids (FD-001).
 """
 from __future__ import annotations
 
 import json
 import logging
-import re
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph import typed_entities
+from nexus.langgraph.typed_entities import ENTITY_FIELDS, OBSERVABLE_KINDS
+
 log = logging.getLogger(__name__)
 
-_EXE_RE = re.compile(r"[A-Za-z0-9_\-.]+\.exe\b", re.IGNORECASE)
-_PATH_RE = re.compile(r"[A-Za-z]:\\[^\s\",;'<>|]{3,}")
-_USER_RE = re.compile(
-    r"(?:SrcUser|TgtUser|TargetUser|SourceUser|UserName|AccountName|user|account)"
-    r"\s*[:=]\s*([A-Za-z0-9_.\\$-]{2,})",
-    re.IGNORECASE,
-)
-_CMD_HINTS = (
-    "powershell", "cmd.exe", "wmic", "rundll32", "regsvr32", "mshta",
-    "certutil", "bitsadmin", "curl", "wget", "nltest", "net.exe",
-    "vssadmin", "wbadmin", "schtasks", "wevtutil", "icacls",
-)
-def _looks_like_path(value: str) -> bool:
-    """True when a value is a filesystem path (or a path fragment).
-
-    ``C:\\STUDY\\Github\\...`` and every ``dir\\leaf`` piece of it match the
-    generic DOMAIN\\user shape — reject path context, not accounts.
-    """
-    v = str(value or "").strip()
-    if not v:
-        return False
-    if v.startswith(("\\\\", "/")) or re.match(r"^[A-Za-z]:[\\/]", v):
-        return True
-    return v.count("\\") >= 2
+#: The kinds the prompt lists whole: who, where and what ran. The others are listed by count and field, for the
+#: loop to aggregate: a browser history or a Sysmon log can type thousands of URLs or hashes.
+_LISTED = ("host", "user", "process")
+KINDS = tuple(kind for kind, _ in ENTITY_FIELDS) + OBSERVABLE_KINDS
 
 
-def _add(counts: dict[str, int], value: str) -> None:
-    v = (value or "").strip().strip(".,;:()[]\"'")
-    if not v or v.lower() in ("n/a", "na", "null", "none", "-", "unknown"):
-        return
-    if "|" in v or v.endswith(":"):
-        return  # regex artifacts like "SourceUser:  | TargetUser"
-    counts[v] = counts.get(v, 0) + 1
+def build_entity_inventory(case_id: str) -> dict[str, Any]:
+    """The case's typed entities and observables with their row counts."""
+    return typed_entities.case_entities(case_id)
 
 
-def _add_path(counts: dict[str, int], value: str) -> None:
-    """Host paths only — the case rung/evidence source paths are not artifacts."""
-    v = (value or "").strip().strip(".,;:()[]\"'")
-    if len(v) < 12 or v.endswith("\\"):
-        return
-    low = v.lower()
-    if "\\cases\\" in low or "evidence-files" in low or "\\runs\\" in low:
-        return
-    counts[v] = counts.get(v, 0) + 1
-
-
-def _top(counts: dict[str, int]) -> list[dict[str, Any]]:
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))
-    return [{"value": v, "count": c} for v, c in ranked]
-
-
-class EntityAccumulator:
-    """Entity counters folded over hits without retaining them."""
-
-    def __init__(self) -> None:
-        self.hits_scanned = 0
-        self.procs: dict[str, int] = {}
-        self.paths: dict[str, int] = {}
-        self.users: dict[str, int] = {}
-        self.hosts: dict[str, int] = {}
-        self.commands: dict[str, int] = {}
-
-    def add_hit(self, h: dict[str, Any]) -> None:
-        if not isinstance(h, dict):
-            return
-        self.hits_scanned += 1
-        text = str(h.get("text") or "")
-        host = str(h.get("host") or "")
-        if host:
-            _add(self.hosts, host)
-        fields = h.get("fields") or {}
-        if isinstance(fields, dict):
-            for key, value in fields.items():
-                key_low = str(key).lower()
-                str_value = str(value or "")
-                if key_low in ("computer", "host", "hostname"):
-                    _add(self.hosts, str_value)
-                elif "user" in key_low or "account" in key_low:
-                    found = _USER_RE.findall(str_value)
-                    for u in found or [str_value]:
-                        if _looks_like_path(str(u)):
-                            continue  # C:\STUDY\Github\... is a directory, not an account
-                        _add(self.users, u)
-                text += " " + str_value
-        for m in _EXE_RE.findall(text):
-            _add(self.procs, m.lower())
-        for m in _PATH_RE.findall(text):
-            _add_path(self.paths, m)
-        low = text.lower()
-        for hint in _CMD_HINTS:
-            if hint in low:
-                _add(self.commands, hint)
-
-
-    def result(self, observables: dict[str, list[str]]) -> dict[str, Any]:
-        """The inventory, with the case's typed observables (``ti_context.case_observables``)."""
-        inventory = {
-            "hits_scanned": self.hits_scanned,
-            "hits_capped": False,
-            "error": "",
-            "processes": _top(self.procs),
-            "paths": _top(self.paths),
-            "users": _top(self.users),
-            "hosts": _top(self.hosts),
-            "commands": _top(self.commands),
-            "network": {kind: list(observables.get(kind) or []) for kind in ("ipv4", "domain", "url")},
-            "hashes": {kind: list(observables.get(kind) or []) for kind in ("sha256", "sha1", "md5")},
-        }
-        return inventory
-
-
-def build_entity_inventory(
-    case_id: str,
-    *,
-    hits: Iterable[dict[str, Any]] | None = None,
-    observables: dict[str, list[str]] | None = None,
-) -> dict[str, Any]:
-    """Build the existing complete inventory by folding its input stream."""
-    if hits is None:
-        from nexus.langgraph.case_census import iter_case_hits
-
-        hits = iter_case_hits(case_id)
-    if observables is None:
-        from nexus.langgraph.ti_context import case_observables
-
-        observables = case_observables(case_id)
-    accumulator = EntityAccumulator()
-    for hit in hits:
-        accumulator.add_hit(hit)
-    return accumulator.result(observables)
+def inventory_size(inv: dict[str, Any]) -> int:
+    """How many distinct typed values the inventory holds."""
+    return sum(len(inv.get(kind) or []) for kind in KINDS)
 
 
 def render_inventory_markdown(inv: dict[str, Any]) -> str:
-    """Compact prompt/markdown block for the interpret agent."""
+    """The inventory's prompt block: what the typed fields hold, never an obligation."""
     lines = [
-        "# Entity inventory (deterministic census — address EVERY item)",
+        "# Typed entities (by field meaning; a reference, not a checklist)",
         "",
-        f"Scanned {inv.get('hits_scanned', 0)} indexed row(s)."
-        + (
-            " WARNING: capped sample — coverage may be incomplete."
-            if inv.get("hits_capped")
-            else ""
-        ),
+        f"From {inv.get('source') or 'the typed index fields'}. For the rows behind a value, aggregate or "
+        "search the field named.",
     ]
-
-    def _line(label: str, items: list[Any]) -> None:
-        if not items:
-            return
-        rendered = []
-        for item in items:
-            if isinstance(item, dict):
-                rendered.append(f"{item.get('value')} ({item.get('count')})")
-            else:
-                rendered.append(str(item))
-        lines.append(f"- {label}: " + ", ".join(rendered))
-
-    _line("Processes/executables", list(inv.get("processes") or []))
-    _line("Hosts", list(inv.get("hosts") or []))
-    _line("Users/accounts", list(inv.get("users") or []))
-    _line("Paths", list(inv.get("paths") or []))
-    _line("Command hints", list(inv.get("commands") or []))
-    net = inv.get("network") or {}
-    for kind in ("ipv4", "domain", "url"):
-        _line(f"Network/{kind}", list(net.get(kind) or []))
-    hashes = inv.get("hashes") or {}
-    for kind in ("sha256", "sha1", "md5"):
-        _line(f"Hashes/{kind}", list(hashes.get(kind) or []))
-    lines.append("")
-    lines.append(
-        "For EVERY item above: cite the evidence row(s) that show it and "
-        "classify it (known-good / likely-benign / suspicious / unknown). "
-        "Items with no further signal must still appear — state the assessment."
-    )
+    fields = inv.get("fields") or {}
+    for kind in KINDS:
+        items = inv.get(kind) or []
+        named = ", ".join(fields.get(kind) or []) or "no typed field in this index"
+        if kind in _LISTED and items:
+            lines.append(f"- {kind} ({len(items)}; {named}): "
+                         + ", ".join(f"{item['value']} ({item['count']})" for item in items))
+        else:
+            lines.append(f"- {kind}: {len(items)} distinct ({named})")
     return "\n".join(lines) + "\n"
 
 
@@ -207,42 +68,3 @@ def write_entity_inventory(case_dir: Path, inv: dict[str, Any]) -> Path | None:
     except OSError as exc:
         log.warning("entity inventory write failed: %s", exc)
         return None
-
-
-def _iter_significant(inv: dict[str, Any]) -> list[tuple[str, str]]:
-    """(kind, value) pairs worth coverage-checking, most significant first."""
-    out: list[tuple[str, str]] = []
-    for item in (inv.get("processes") or []):
-        out.append(("process", str(item.get("value") or "")))
-    for item in (inv.get("hosts") or []):
-        out.append(("host", str(item.get("value") or "")))
-    for item in (inv.get("users") or []):
-        out.append(("user", str(item.get("value") or "")))
-    for item in (inv.get("paths") or []):
-        out.append(("path", str(item.get("value") or "")))
-    for item in (inv.get("commands") or []):
-        out.append(("command", str(item.get("value") or "")))
-    net = inv.get("network") or {}
-    for kind in ("ipv4", "domain", "url"):
-        for value in (net.get(kind) or []):
-            out.append((kind, str(value)))
-    hashes = inv.get("hashes") or {}
-    for kind in ("sha256", "sha1", "md5"):
-        for value in (hashes.get(kind) or []):
-            out.append((kind, str(value)))
-    return [(k, v) for k, v in out if v]
-
-
-def compute_coverage_gaps(inv: dict[str, Any], findings: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Items in the inventory never mentioned by any staged finding."""
-    blob = " ".join(
-        " ".join(str(f.get(k) or "") for k in
-                 ("title", "observation", "interpretation", "evidence"))
-        for f in findings or []
-        if isinstance(f, dict)
-    ).lower()
-    gaps: list[dict[str, str]] = []
-    for kind, value in _iter_significant(inv):
-        if value.lower() not in blob:
-            gaps.append({"kind": kind, "value": value})
-    return gaps

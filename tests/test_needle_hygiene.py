@@ -29,30 +29,6 @@ def test_langgraph_entities_ignore_path_segments():
     assert not any("Github" in v for v in values)
 
 
-def test_analysis_entities_ignore_path_segments():
-    from nexus.analysis.entities import extract_entities
-
-    out = extract_entities([REPO_TEXT + r" user CORP\fredr"])
-    assert r"CORP\fredr" in out["users"]
-    assert all("STUDY" not in u and "CADRE" not in u and "Nexus" not in u for u in out["users"])
-
-
-def test_entity_inventory_ignores_path_valued_fields():
-    from nexus.langgraph.entity_inventory import build_entity_inventory
-
-    inv = build_entity_inventory(
-        "CASE-HYGIENE",
-        hits=[{
-            "family": "evtxecmd",
-            "file": "a.csv",
-            "line": 1,
-            "text": "row",
-            "fields": {"UserName": r"C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\out"},
-        }],
-    )
-    assert all("STUDY" not in u for u in (inv.get("users") or {}))
-
-
 def test_is_needle_like_filters_paths_labels_and_numbers():
     from nexus.langgraph.query_pack import is_needle_like
 
