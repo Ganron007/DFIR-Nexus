@@ -36,12 +36,14 @@ def _annotation(annotation):
                      type(None): "null"}[annotation]} if annotation in (str, int, float, bool, type(None)) else {}
 
 
-def response_schema(case_id, parameters, required, string_fields, *, allowed_tools=()):
+def response_schema(case_id, parameters, required, string_fields, *, allowed_tools=(), extra_properties=None):
     """An argument grammar, not a query language or an answer/finding schema.
 
     Final domain objects retain their caller-defined keys. Every reply carries
     tool_calls (empty for a final answer), so a free final branch cannot bypass
     argument constraints. Tools without a field catalog can still introspect it.
+    ``extra_properties`` declares a caller's own required keys beside tool_calls (Mode 1's plan: its
+    hypotheses or notes): under strict decoding a key the schema does not declare is not generated.
     """
     types = es._field_types(case_id)
     definitions: dict[str, Any] = query_definitions(types)
@@ -120,9 +122,10 @@ def response_schema(case_id, parameters, required, string_fields, *, allowed_too
             args["anyOf"] = variants
         calls.append(_object({"tool": {"const": tool}, "args": args,
                               "why": {"type": "string"}}, ["tool", "args"]))
+    extra = dict(extra_properties or {})
     return {"type": "object", "properties": {
-        "tool_calls": {"type": "array", "items": {"anyOf": calls}},
-    }, "required": ["tool_calls"], "additionalProperties": True, "$defs": definitions}
+        "tool_calls": {"type": "array", "items": {"anyOf": calls}}, **extra,
+    }, "required": ["tool_calls", *extra], "additionalProperties": True, "$defs": definitions}
 
 
 def supports_generation_schema(model):

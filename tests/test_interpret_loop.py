@@ -950,3 +950,81 @@ def test_the_extra_reconcile_pass_asks_for_findings_in_the_staging_shape(tmp_pat
     for prompt in (extra_call, next(s for s in sent if "write the final findings JSON" in s)):
         assert "A finding covers an alert when its audit_ids include the alert's audit_id" in prompt
         assert "benign = the rows show legitimate activity" in prompt
+
+
+# ── The schema-bound plan (orient and verify under the read loop's tool-call grammar) ──
+
+
+class SchemaModel:
+    """An OpenAI-compatible transport: replies are generated under the bound response_format."""
+
+    _llm_type = "openai-chat"
+
+    def __init__(self, responses: list[str]):
+        self.responses = list(responses)
+        self.formats: list[Any] = []
+
+    def bind(self, response_format=None):
+        self.formats.append(response_format)
+        return self
+
+    def invoke(self, messages):
+        return SimpleNamespace(content=self.responses.pop(0) if self.responses else "{}")
+
+    async def ainvoke(self, messages):
+        return self.invoke(messages)
+
+
+#: T22's first planned query (2026-10-28, run d4cc7f9b), as the model meant it: its free-form reply closed the
+#: item one brace early, twice, and the run ended.
+_T22_QUERY = {"query": {"bool": {"must": [
+    {"wildcard": {"text.wc": {"value": "*Ransomware.Clop*", "case_insensitive": True}}},
+    {"term": {"host": "base-rd-01.shieldbase.lan"}}]}}, "sort": [{"ts": "asc"}], "size": 25}
+
+
+def test_a_schema_capable_model_plans_with_tool_calls_under_the_read_schema(tmp_path):
+    orient = json.dumps({
+        "hypotheses": [{"id": "H1", "statement": "The Clop YARA hits are McAfee's own signatures", "why": "AV"}],
+        "tool_calls": [{"tool": "es_search", "args": _T22_QUERY, "why": "the Clop rows on the host"}],
+    })
+    verify = json.dumps({"notes": [{"hypothesis": "H1", "status": "confirmed", "evidence": "row 51 in mcshield"},
+                                   {"hypothesis": "L1", "status": "refuted", "evidence": "signature data"},
+                                   {"hypothesis": "L2", "status": "refuted", "evidence": "lab note"}],
+                         "tool_calls": []})
+    model = SchemaModel([orient, verify, _findings_all_addressed()])
+    execute = FakeExecutor()
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "2"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=execute,
+    ))
+    # Orient and verify are each bound to the read loop's strict schema.
+    plan_formats = [f for f in model.formats if f]
+    assert len(plan_formats) >= 2
+    assert all(f["type"] == "json_schema" and f["json_schema"]["strict"] for f in plan_formats)
+    tools = plan_formats[0]["json_schema"]["schema"]["properties"]["tool_calls"]["items"]["anyOf"]
+    assert {t["properties"]["tool"]["const"] for t in tools} == {"es_search", "es_aggregate", "run_record"}
+    # Each reply's own keys are declared: under strict decoding an undeclared key is not generated.
+    assert plan_formats[0]["json_schema"]["schema"]["required"] == ["tool_calls", "hypotheses"]
+    assert plan_formats[1]["json_schema"]["schema"]["required"] == ["tool_calls", "notes"]
+    # The planned call runs as written, through the run's own executor.
+    assert execute.calls[0] == ("es_search", {**_T22_QUERY, "case_id": "CASE-TEST"})
+    assert result["stop_reason"] == "settled"
+
+
+def test_a_schema_capable_verify_plans_its_next_round_with_tool_calls(tmp_path):
+    orient = json.dumps({"hypotheses": [{"id": "H1", "statement": "s", "why": "w"}],
+                         "tool_calls": [{"tool": "es_search", "args": _T22_QUERY, "why": "w"}]})
+    more = json.dumps({"notes": [{"hypothesis": "H1", "status": "partial", "evidence": "one row"}],
+                       "tool_calls": [{"tool": "es_aggregate",
+                                       "args": {"aggs": {"by_proc": {"terms": {"field": "fields.ProcessName.kw"}}}},
+                                       "why": "which processes"}]})
+    model = SchemaModel([orient, more, _verify_settled(), _findings_all_addressed()])
+    execute = FakeExecutor()
+    asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "3"}},
+        digest=_digest(), digest_md="# Digest", sections=[], execute=execute,
+    ))
+    assert ("es_aggregate", {"aggs": {"by_proc": {"terms": {"field": "fields.ProcessName.kw"}}},
+                             "case_id": "CASE-TEST"}) in execute.calls

@@ -357,6 +357,17 @@ def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
                     "why": str(entry.get("why") or "")[:200],
                 })
 
+    # The schema-bound plan: the read loop's tool calls, run as they are written.
+    for call in _as_list(data.get("tool_calls")):
+        if len(plan["items"]) >= _MAX_PLAN_ITEMS:
+            break
+        if isinstance(call, dict) and str(call.get("tool") or "") in _PLAN_TOOLS:
+            plan["items"].append({
+                "kind": "read",
+                "tool": str(call["tool"]),
+                "args": dict(call.get("args") or {}) if isinstance(call.get("args"), dict) else {},
+                "why": str(call.get("why") or "")[:200],
+            })
     for kind in ("queries", "aggregations", "aggregates", "samples", "tools"):
         key_kind = {
             "queries": "query", "aggregations": "aggregate",
@@ -451,6 +462,65 @@ async def _call_model(model: Any, messages: list[dict[str, str]]) -> str:
 
         response = await asyncio.to_thread(model.invoke, messages)
     return str(getattr(response, "content", response))
+
+
+#: The read tools a plan's queries use, in the read loop's own grammar (``tool_generation.response_schema``).
+_PLAN_TOOLS = ("es_search", "es_aggregate", "run_record")
+
+
+def _string_object(names: tuple[str, ...], required: tuple[str, ...]) -> dict[str, Any]:
+    return {"type": "object", "properties": {n: {"type": "string"} for n in names},
+            "required": list(required), "additionalProperties": False}
+
+
+#: The keys each plan reply declares beside its tool calls: under strict decoding an undeclared key is not
+#: generated (a real T22 orient replay under the bare tool-call schema returned one query and no hypotheses).
+ORIENT_KEYS = {"hypotheses": {"type": "array", "items": _string_object(("id", "statement", "why"), ("id", "statement"))}}
+VERIFY_KEYS = {"notes": {"type": "array", "items": _string_object(
+    ("hypothesis", "status", "evidence", "family"), ("hypothesis", "status", "evidence"))}}
+
+
+def _plan_format(model: Any, case_id: str, keys: dict[str, Any]) -> dict[str, Any] | None:
+    """The schema-constrained contract for a plan reply, or None on a transport without one.
+
+    Orient and verify write Elasticsearch query JSON. Written free-form, the orient plan failed to parse on 7 of
+    24 replies before the corrective retry, and on T22 (2026-10-28) the retry failed too and the run ended: the
+    model closed a query item one brace early. The read loop's tool-call grammar under the provider's strict JSON
+    schema is now their contract: the plan's queries are ``tool_calls`` and the hypotheses or notes ride beside
+    them. A transport without schema support keeps the free-form plan, as the read loop does.
+    """
+    from nexus.langgraph.context_loop import _REQUIRED_ARGS, _STRING_FIELDS_BY_TOOL, _TOOL_ARGS
+    from nexus.langgraph.tool_generation import (
+        generation_format,
+        response_schema,
+        supports_generation_schema,
+    )
+
+    if not supports_generation_schema(model):
+        return None
+    return generation_format(model, response_schema(
+        case_id, _TOOL_ARGS, _REQUIRED_ARGS, _STRING_FIELDS_BY_TOOL, allowed_tools=_PLAN_TOOLS,
+        extra_properties=keys))
+
+
+async def _call_plan(model: Any, messages: list[dict[str, str]], response_format: dict[str, Any] | None) -> str:
+    """One plan call, bound to its schema through the read loop's call when the transport supports it.
+
+    A reply that breaks its schema is returned whole, for the caller's corrective retry to read.
+    """
+    if response_format is None:
+        return await _call_model(model, messages)
+    import asyncio
+
+    from nexus.langgraph.context_loop import _call_model as call_bound
+
+    try:
+        return await asyncio.to_thread(call_bound, model, messages, response_format=response_format)
+    except Exception as exc:
+        text = getattr(exc, "model_response_text", None)
+        if text is None:
+            raise
+        return str(text)
 
 
 def _looks_like_findings_json(text: str) -> bool:
@@ -622,22 +692,36 @@ async def run_interpret_loop(
     evidence_blocks: list[str] = []
 
     # ── Round 0 — Orient ────────────────────────────────────────────────
+    plan_format = _plan_format(model, case_id, ORIENT_KEYS)
+    verify_format = _plan_format(model, case_id, VERIFY_KEYS) if plan_format else None
+    if plan_format:
+        plan_shape = (
+            '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
+            '"tool_calls":[{"tool":"es_search|es_aggregate|run_record","args":{"query":{"match_all":{}},"size":20},"why":"..."}]}\n'
+            "RULES:\n"
+            "- Max 6 tool_calls: es_search for rows, es_aggregate for counts and distributions; only "
+            "families and fields that actually exist in the digest and the field sheet.\n")
+        plan_keys = "hypotheses and tool_calls"
+    else:
+        plan_shape = (
+            '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
+            '"queries":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."}],'
+            '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
+            '"samples":[{"family":"","field":"","value":"","n":8,"why":""}],'
+            '"tools":[{"tool":"run_record|forensic_rag_search",'
+            '"args":{},"why":"..."}]}\n'
+            "RULES:\n"
+            "- Max 6 query/aggregate/sample items total; only families and fields "
+            "that actually exist in the digest and the field sheet.\n")
+        plan_keys = "hypotheses, queries, aggregates, samples and tools"
     orient_system = (
         "You are the lead DFIR analyst orienting an evidence interpretation. "
         "You have the deterministic CASE DIGEST (everything the case holds: the "
-        "top leads, each with the [audit_id ...] of the call that holds its rows, "
-        "the signal map including 0-hit needles as negative evidence, and the "
-        "scope of what is NOT in evidence). Your queries fetch the rows.\n"
+        "alert surface, every crit/high lead with the [audit_id ...] of the call "
+        "that holds its rows, the top leads, and the scope of what is NOT in "
+        "evidence). Your queries fetch the rows.\n"
         "Return ONLY JSON:\n"
-        '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
-        '"queries":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."}],'
-        '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
-        '"samples":[{"family":"","field":"","value":"","n":8,"why":""}],'
-        '"tools":[{"tool":"run_record|forensic_rag_search",'
-        '"args":{},"why":"..."}]}\n'
-        "RULES:\n"
-        "- Max 6 query/aggregate/sample items total; only families and fields "
-        "that actually exist in the digest and the field sheet.\n"
+        + plan_shape +
         "- ES query JSON only: bool/term/terms/range/match/match_phrase/"
         "multi_match/wildcard/exists/prefix/match_all. Time filters are "
         '{"range":{"ts":{"gte":...,"lte":...}}} (ts is canonical UTC; '
@@ -720,10 +804,10 @@ async def run_interpret_loop(
         (1, "examiner_intake", intake_block),
     ], system=orient_system)
     _progress("orient", f"planning hypotheses and queries ({rounds_total} round(s) allowed)")
-    raw = await _call_model(model, [
+    raw = await _call_plan(model, [
         {"role": "system", "content": orient_system},
         {"role": "user", "content": packed + "\n\nProduce the plan JSON."},
-    ])
+    ], plan_format)
     plan_data = _parse_json_blob(raw)
     plan = _normalize_plan(plan_data)
     orient_retry = False
@@ -735,15 +819,14 @@ async def run_interpret_loop(
         orient_retry = True
         _persist_round(case_dir, "round-0-orient-unparsed", {"raw": raw, "chars": len(raw)})
         _progress("orient", f"the plan reply ({len(raw)} chars) did not parse; one corrective retry")
-        raw = await _call_model(model, [
+        raw = await _call_plan(model, [
             {"role": "system", "content": orient_system},
             {"role": "user", "content": (
                 packed + "\n\nYour previous reply could not be read as the plan JSON"
-                + _where_it_broke(raw) + ". Return ONLY "
-                "one JSON object with the keys hypotheses, queries, aggregates, samples and tools. "
+                + _where_it_broke(raw) + f". Return ONLY one JSON object with the keys {plan_keys}. "
                 "Every value must be valid JSON: no comments, no trailing commas and no '...' "
                 "placeholders; close every { and [ you open.")},
-        ])
+        ], plan_format)
         plan_data = _parse_json_blob(raw)
         plan = _normalize_plan(plan_data)
     # Part 12 FM-9: every crit/high alert is a hypothesis with its own id, answered by id.
@@ -785,6 +868,8 @@ async def run_interpret_loop(
                 "field": item.get("field") or "", "value": item.get("value") or "",
                 "n": item.get("n") or 8,
             }
+        if kind == "read":
+            return str(item["tool"]), {**dict(item.get("args") or {}), "case_id": case_id}
         if kind == "tool":
             tool = str(item.get("tool") or "")
             payload = dict(item.get("args") or {})
@@ -851,20 +936,23 @@ async def run_interpret_loop(
             "round": round_no, "kind": "verify", "entries": entries,
         })
 
+        next_key = "tool_calls" if verify_format else "next"
         verify_system = (
             f"You are verifying hypotheses against the ACTUAL rows returned by "
             f"the queries just executed (round {round_no} of up to "
             f"{rounds_total}). The rows below are the only evidence.\n"
             "Return ONLY JSON:\n"
             '{"notes":[{"hypothesis":"H1","status":"confirmed|refuted|unknown|partial",'
-            '"evidence":"one sentence naming the rows (family/host/ts/needle)","family":"..."}],'
-            '"next":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."},'
-            '{"tool":"run_record|forensic_rag_search","args":{},"why":"..."}]}\n'
-            "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
+            '"evidence":"one sentence naming the rows (family/host/ts)","family":"..."}],'
+            + ('"tool_calls":[{"tool":"es_search|es_aggregate|run_record","args":{"query":{"match_all":{}},"size":20},"why":"..."}]}\n'
+               if verify_format else
+               '"next":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."},'
+               '{"tool":"run_record|forensic_rag_search","args":{},"why":"..."}]}\n')
+            + f"RULES: one note per hypothesis. Plan `{next_key}` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
             "If a search result says `has_more: true`, preserve its query and "
             "continue with the supplied `search_after` cursor before treating "
-            "that search as complete. If everything is settled, next = []. "
+            f"that search as complete. If everything is settled, {next_key} = []. "
             "No prose outside the JSON."
             + query_guidance
         )
@@ -876,29 +964,29 @@ async def run_interpret_loop(
             (1, "round_results", results_block),
         ]
         packed = _packed(f"interpret-verify-{round_no}", plus_sections, system=verify_system)
-        raw = await _call_model(model, [
+        raw = await _call_plan(model, [
             {"role": "system", "content": verify_system},
             {"role": "user", "content": packed + "\n\nProduce the notes JSON."},
-        ])
+        ], verify_format)
         data = _parse_json_blob(raw)
         verify_retry = False
-        if raw.strip() and not (isinstance(data, dict) and ("notes" in data or "next" in data)):
+        if raw.strip() and not (isinstance(data, dict) and ("notes" in data or next_key in data)):
             # Same failure as the orient reply: unreadable notes used to read as "nothing more to
             # query", so the loop settled on a round it never verified.
             verify_retry = True
             _progress(f"round {round_no}/{rounds_total}",
                       "the verification reply did not parse; one corrective retry")
-            raw = await _call_model(model, [
+            raw = await _call_plan(model, [
                 {"role": "system", "content": verify_system},
                 {"role": "user", "content": (
                     packed + "\n\nYour previous reply could not be read as the notes JSON"
                     + _where_it_broke(raw) + ". "
-                    "Return ONLY one JSON object with the keys notes and next. Every value must "
+                    f"Return ONLY one JSON object with the keys notes and {next_key}. Every value must "
                     "be valid JSON: no comments, no trailing commas and no '...' placeholders; close "
                     "every { and [ you open.")},
-            ])
+            ], verify_format)
             data = _parse_json_blob(raw)
-        if raw.strip() and not (isinstance(data, dict) and ("notes" in data or "next" in data)):
+        if raw.strip() and not (isinstance(data, dict) and ("notes" in data or next_key in data)):
             _persist_round(case_dir, f"round-{round_no}-notes", {
                 "round": round_no, "kind": "notes", "notes": [], "next": [],
                 "raw": raw, "corrective_retry_used": verify_retry, "unparsed": True,
@@ -910,6 +998,8 @@ async def run_interpret_loop(
         notes = _notes_from(data)
         notes_all.extend(notes)
         next_list = _as_list(data.get("next")) if isinstance(data, dict) else []
+        if verify_format:
+            next_list = []
         next_plan = _normalize_plan({
             "queries": [
                 i for i in next_list
@@ -935,6 +1025,7 @@ async def run_interpret_loop(
                 i for i in next_list
                 if isinstance(i, dict) and i.get("tool")
             ],
+            "tool_calls": _as_list(data.get("tool_calls")) if verify_format and isinstance(data, dict) else [],
         })
         _persist_round(case_dir, f"round-{round_no}-notes", {
             "round": round_no, "kind": "notes", "notes": notes,
