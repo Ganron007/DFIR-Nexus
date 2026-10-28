@@ -24,6 +24,7 @@ decisions and outputs only.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -101,6 +102,42 @@ def _short(text: Any, limit: int = 500) -> str:
     return " ".join(str(text or "").split())[:limit]
 
 
+#: How a worker or seat settles an open question (D208). One contract for Modes 2 and 3 (Part 12 FM-9):
+#: a question is answered by its id, never by a later note whose text happens to contain it.
+QUESTION_STATUSES = ("answered", "unanswerable", "duplicate")
+QUESTION_ID_RE = re.compile(r"\bQ[0-9a-f]{6}\b", re.IGNORECASE)
+QUESTION_CONTRACT = (
+    'For an open question listed with its id that your work settles, return "question_dispositions":'
+    '[{"question":"<its id>","status":"' + "|".join(QUESTION_STATUSES) + '","basis":"one clause",'
+    '"audit_ids":["..."]}]: answered cites the calls that answer it, duplicate names in basis the question '
+    'it repeats.'
+)
+
+
+def norm_key(value: Any) -> str:
+    return " ".join(str(value or "").split()).lower()
+
+
+def question_id(text: Any) -> str:
+    """An open question's id: the same in every round, resume and order."""
+    return "Q" + hashlib.sha1(norm_key(text).encode("utf-8")).hexdigest()[:6]
+
+
+def settled_question_ids(parsed: Any) -> set[str]:
+    """The question ids a worker's or seat's ``question_dispositions`` settle; an answer must cite calls."""
+    settled: set[str] = set()
+    for disp in (parsed.get("question_dispositions") or []) if isinstance(parsed, dict) else []:
+        if not isinstance(disp, dict):
+            continue
+        status = str(disp.get("status") or "").strip().lower()
+        if status not in QUESTION_STATUSES or (status == "answered" and not disp.get("audit_ids")):
+            continue
+        named = str(disp.get("question") or "")
+        match = QUESTION_ID_RE.search(named)
+        settled.add(("Q" + match.group(0)[1:].lower()) if match else question_id(named))
+    return settled
+
+
 _STOPWORDS = {
     "what", "when", "where", "which", "who", "whom", "whose", "why", "how",
     "does", "did", "was", "were", "has", "have", "had", "the", "and", "for",
@@ -166,12 +203,13 @@ def _digest_summary(brief: dict[str, Any], *, limit: int = 2400) -> str:
     lines: list[str] = []
     alerts = brief.get("alerts") or []
     if alerts:
-        lines.append(f"ALERT SURFACE ({len(alerts)} crit/high):")
+        lines.append(f"ALERT SURFACE ({len(alerts)} crit/high leads):")
         for alert in alerts[:20]:
             lines.append(
                 f"- [{str(alert.get('level') or '').upper()}] "
                 f"{alert.get('family', '')} · {alert.get('title', '')} · "
                 f"{alert.get('host', '')} {alert.get('time', '')}"
+                + (f" [audit_id {alert['key']}]" if alert.get("key") else "")
             )
     leads = brief.get("top_leads") or []
     if leads:
@@ -203,15 +241,18 @@ def _digest_summary(brief: dict[str, Any], *, limit: int = 2400) -> str:
 
 
 def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """A worker's open questions and new pivot entities (WO-R1F item 7c).
+    """A worker's open questions, by id, and new pivot entities (WO-R1F item 7c).
 
     Read from the results already on the state — the same `parsed` bodies the
-    assess node counts. Questions already answered by a later worker are dropped,
-    and an entity a later worker already used is not pivoted on twice.
+    assess node counts. A question is settled by a later worker's
+    ``question_dispositions`` naming its id (Part 12 FM-9: it used to count as
+    answered when any note's text contained it). An entity a later worker
+    already used is not pivoted on twice. Each open question is returned as
+    ``"<id>: <text>"`` so the follow-up order can be answered by id.
     """
-    questions: list[str] = []
+    questions: dict[str, str] = {}
+    settled: set[str] = set()
     entities: list[str] = []
-    answered: set[str] = set()
     seen_entities: set[str] = set()
     for result in state.get("results") or []:
         parsed = result.get("parsed") or {}
@@ -219,8 +260,11 @@ def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
             continue
         for q in parsed.get("next_questions") or []:
             text = " ".join(str(q).split())
-            if text:
-                questions.append(text)
+            named = {"Q" + found[1:].lower() for found in QUESTION_ID_RE.findall(text)}
+            if not text or named & questions.keys():
+                continue  # it restates a question already open
+            questions.setdefault(question_id(text), text)
+        settled |= settled_question_ids(parsed)
         # Entities a worker named: in the explicit `entities` list or in its
         # candidate findings' host/account fields.
         for ent in parsed.get("entities") or []:
@@ -234,17 +278,7 @@ def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
                 text = " ".join(str(cand.get(key) or "").split())
                 if text:
                     entities.append(text)
-        for note in parsed.get("notes") or []:
-            if isinstance(note, dict) and note.get("statement"):
-                answered.add(" ".join(str(note["statement"]).split()).lower())
-    # A question is answered when a note's statement mentions it.
-    open_q: list[str] = []
-    for q in questions:
-        low = q.lower()
-        if any(low in statement or statement in low for statement in answered):
-            continue
-        if q not in open_q:
-            open_q.append(q)
+    open_q = [f"{qid}: {text}" for qid, text in questions.items() if qid not in settled]
     pivots: list[str] = []
     for ent in entities:
         key = ent.lower()
@@ -532,7 +566,8 @@ ROLES: dict[str, AgentRole] = {
             '"confidence":"LOW|MEDIUM|HIGH",'
             '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
             '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
-            '"not_checked":["..."]},"next_questions":["..."]}. '
+            '"not_checked":["..."]},"next_questions":["..."],"question_dispositions":[...]}. '
+            + QUESTION_CONTRACT + " "
             "A candidate is one claim about the evidence. The benign alternative "
             "you weighed and what would refute the claim go in that candidate's "
             "benign_alternative and refutation fields, never as candidates of their "
@@ -549,7 +584,7 @@ ROLES: dict[str, AgentRole] = {
         brief=_CORRELATION_BRIEF,
         system_prompt=(
             _CORRELATION_BRIEF + " Return JSON with keys: corroborated_entities, chains, "
-            "unexplained, next_questions, coverage."
+            "unexplained, next_questions, question_dispositions, coverage. " + QUESTION_CONTRACT
         ),
     ),
     "pattern": AgentRole(
@@ -559,7 +594,7 @@ ROLES: dict[str, AgentRole] = {
         brief=_PATTERN_BRIEF,
         system_prompt=(
             _PATTERN_BRIEF + " Return JSON with keys: patterns, evidence, "
-            "caveats, next_questions, coverage."
+            "caveats, next_questions, question_dispositions, coverage. " + QUESTION_CONTRACT
         ),
     ),
     "verifier": AgentRole(
@@ -1278,7 +1313,9 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
-        '"not_checked":["..."]},"next_questions":["..."]}'
+        '"not_checked":["..."]},"next_questions":["..."],'
+        '"question_dispositions":[{"question":"...","status":"answered|unanswerable|duplicate",'
+        '"basis":"...","audit_ids":["..."]}]}'
     ),
     "correlation": (
         '{"corroborated_entities":["..."],"chains":[{"entities":["..."],'
@@ -1288,6 +1325,8 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"next_questions":["..."],'
+        '"question_dispositions":[{"question":"...","status":"answered|unanswerable|duplicate",'
+        '"basis":"...","audit_ids":["..."]}],'
         '"coverage":{"checked":["..."],"not_checked":["..."]}}'
     ),
     "pattern": (
@@ -1297,6 +1336,8 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"caveats":["..."],"next_questions":["..."],'
+        '"question_dispositions":[{"question":"...","status":"answered|unanswerable|duplicate",'
+        '"basis":"...","audit_ids":["..."]}],'
         '"coverage":{"checked":["..."],"not_checked":["..."]}}'
     ),
     "verifier": (
@@ -2600,8 +2641,9 @@ def run_mode2(
                 "supported: " + "; ".join(inferred[:6]) + ".")
         if next_questions:
             task_parts.append(
-                "OPEN QUESTIONS from earlier workers — answer each or state why "
-                "it cannot be answered: " + "; ".join(next_questions[:6]) + ".")
+                "OPEN QUESTIONS from earlier workers, by id — settle each in "
+                "question_dispositions (answered with the calls that answer it, or "
+                "unanswerable with why): " + "; ".join(next_questions[:6]) + ".")
         if pivots:
             task_parts.append(
                 "NEW ENTITIES to pivot on — check their parentage, persistence, "

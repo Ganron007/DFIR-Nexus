@@ -72,115 +72,89 @@ def _resolve_rounds(state: Mapping[str, Any], case_dir: Path, explicit: int | No
     return max(1, min(int(value), 5))
 
 
-def _lead_key(value: Any) -> str:
-    """Normalized lead subject — the same key Mode 3 disposes on
-    (``multi_agent._norm_key``)."""
-    return " ".join(str(value or "").split()).lower()
-
-
 def _crit_high_leads(digest: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The digest's crit/high leads, in digest order.
+    """The digest's alerts (every crit/high lead), each with a hypothesis id ``L<n>``.
 
-    WO-R1F item 1 hands every mode the same ``top_leads``; this reads the same
-    list so Mode 1's settle rule and Mode 3's disposition contract key on
-    identical subjects. A lead with ``crit_high`` false and a level below
-    ``high`` is not gating.
+    One set for Mode 1's settle rule, the reconciliation and Mode 3's agenda: the briefing's
+    ``alerts_from_leads``. The id is how a verification note answers a lead (Part 12 FM-9); the
+    subject used to be matched as a substring of any note's text, so wording settled a lead.
     """
     out: list[dict[str, Any]] = []
-    for lead in digest.get("leads") or digest.get("top_leads") or []:
-        if not isinstance(lead, Mapping):
+    for alert in digest.get("alerts") or []:
+        if not isinstance(alert, Mapping):
             continue
-        level = str(lead.get("level") or "").strip().lower()
-        crit_high = bool(lead.get("crit_high")) or level in ("crit", "critical", "high")
-        if not crit_high:
-            continue
-        subject = str(lead.get("subject") or "").strip()
+        subject = str(alert.get("title") or "").strip()
         if not subject:
             continue
         out.append({
+            "id": f"L{len(out) + 1}",
             "subject": subject,
-            "kind": str(lead.get("kind") or ""),
-            "level": level or "high",
-            "detail": str(lead.get("detail") or "")[:200],
+            "key": str(alert.get("key") or ""),
+            "kind": str(alert.get("kind") or ""),
+            "level": str(alert.get("level") or "high").lower(),
+            "detail": str(alert.get("detail") or "")[:200],
+            "doc_ids": [str(d) for d in alert.get("doc_ids") or [] if d],
+            "locs": [str(loc) for loc in alert.get("locs") or [] if loc],
         })
     return out
+
+
+def _lead_hypotheses(digest: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """One hypothesis per crit/high alert, so every verify round answers it by its id."""
+    return [{
+        "id": lead["id"],
+        "statement": (f"[{lead['level'].upper()}] {lead['subject']}: {lead['detail']} "
+                      f"[audit_id {lead['key']}] - what its rows show (malicious, benign, or not "
+                      "decidable from this evidence)"),
+        "why": "a crit/high alert",
+    } for lead in _crit_high_leads(digest)]
+
+
+def _note_id(note: Mapping[str, Any]) -> str:
+    """The hypothesis id a note answers: its leading token ("L3", "L3:", "L3 - ...")."""
+    head = str(note.get("hypothesis") or "").strip().split()
+    return head[0].rstrip(":.,").upper() if head else ""
 
 
 def _undispositioned_crit_leads(
     digest: Mapping[str, Any],
     notes: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Crit/high leads with no disposition that cites their own rows.
+    """Crit/high leads no verification note has answered by id.
 
-    The contract is Mode 3's (``multi_agent._dispositioned_keys``): a lead is
-    dispositioned when a verification note names its subject **and** carries
-    evidence text, when the note's status is ``confirmed``/``refuted``/
-    ``partial`` with a family, or when an explicit coverage gap names it. A
-    bare ``{"hypothesis": ..., "status": "unknown"}`` with no evidence and no
-    family is not a disposition — that is exactly the hole D47 found.
+    A note answers lead ``L<n>`` when its hypothesis is that id and it either states what the
+    rows showed (``confirmed``/``refuted``/``partial``/``unknown`` with evidence text) or says
+    why the lead cannot be decided (``refuted``/``insufficient``). A bare
+    ``{"hypothesis": "L1", "status": "unknown"}`` with no evidence is not an answer (D47).
     """
-    if not digest.get("leads") and not digest.get("top_leads"):
-        return []
-    dispositions: list[dict[str, Any]] = []
+    answered: set[str] = set()
     for note in notes or []:
-        hypothesis = str(note.get("hypothesis") or "")
-        evidence = str(note.get("evidence") or "").strip()
         status = str(note.get("status") or "").strip().lower()
-        if not hypothesis:
-            continue
-        # A note that names the subject and cites rows is a disposition.
-        if evidence and status in ("confirmed", "refuted", "partial", "unknown"):
-            dispositions.append(note)
-            continue
-        # "insufficient"/"unknown" with no rows is a disposition ONLY when it
-        # states a reason in the hypothesis text (e.g. "no rows for X").
-        if status in ("refuted", "insufficient") and hypothesis:
-            dispositions.append(note)
-    blob_parts = [
-        f"{str(n.get('hypothesis') or '')} {str(n.get('evidence') or '')} "
-        f"{str(n.get('family') or '')}"
-        for n in dispositions
-    ]
-    blob = " ".join(blob_parts).lower()
-    out: list[dict[str, Any]] = []
-    for lead in _crit_high_leads(digest):
-        subject = _lead_key(lead["subject"])
-        if not subject:
-            continue
-        if subject in blob:
-            continue
-        # The subject may appear as an FQDN/short-name pair, or as the
-        # basename of a path (`C:\Tools\x.exe` vs `x.exe`).
-        candidates = {subject}
-        if "." in subject:
-            candidates.add(subject.split(".", 1)[0])
-        for token in re.split(r"[\\/]", subject):
-            if len(token) >= 3:
-                candidates.add(token)
-        if any(c in blob for c in candidates):
-            continue
-        out.append(lead)
-    return out
+        evidence = str(note.get("evidence") or "").strip()
+        has_rows = evidence and status in ("confirmed", "refuted", "partial", "unknown")
+        if has_rows or status in ("refuted", "insufficient"):
+            answered.add(_note_id(note))
+    return [lead for lead in _crit_high_leads(digest) if lead["id"] not in answered]
 
 
 def _replan_for_leads(leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Plan items that pull the rows for each undispositioned crit/high lead.
+    """Plan items that read each unanswered lead's own rows, by the references it cites.
 
-    One item per lead, capped at the plan-item limit, so the next round gathers
-    the evidence the settle rule demands instead of ending without it.
+    One item per lead, capped at the plan-item limit. It used to sample rows matching the
+    subject's file name as a keyword (Part 12 FM-9).
     """
+    from nexus.analysis.leads import lead_rows_query
+
     items: list[dict[str, Any]] = []
     for lead in leads[:_MAX_PLAN_ITEMS]:
-        subject = str(lead["subject"])
-        needle = subject.split("\\")[-1].split("/")[-1]
+        locs = [tuple(loc.rpartition(":")[::2]) for loc in lead.get("locs") or []]
+        query = lead_rows_query(list(lead.get("doc_ids") or []), [loc for loc in locs if all(loc)])
+        if query is None:
+            continue
         items.append({
-            "kind": "sample",
-            "family": "",
-            "field": "",
-            "value": needle,
-            "n": 8,
-            "why": f"WO-R2F item 7: crit/high lead {subject!r} has no "
-                   f"disposition citing rows",
+            "kind": "es_query",
+            "es": {"query": query, "size": len(lead.get("doc_ids") or []) + len(locs)},
+            "why": f"crit/high alert {lead['id']} {lead['subject']!r}: the rows it stands on",
         })
     return items
 
@@ -772,14 +746,15 @@ async def run_interpret_loop(
         ])
         plan_data = _parse_json_blob(raw)
         plan = _normalize_plan(plan_data)
-    hypotheses = plan["hypotheses"]
+    # Part 12 FM-9: every crit/high alert is a hypothesis with its own id, answered by id.
+    hypotheses = plan["hypotheses"] + _lead_hypotheses(digest)
     _progress("orient", f"{len(hypotheses)} hypothesis(es), {len(plan['items'])} query item(s) planned")
     _persist_round(case_dir, "round-0-orient", {
         "round": 0, "kind": "orient", "hypotheses": hypotheses,
         "items": plan["items"], "raw_chars": len(raw), "raw": raw,
         "corrective_retry_used": orient_retry,
     })
-    if not hypotheses and not plan["items"]:
+    if not plan["hypotheses"] and not plan["items"]:
         raise RuntimeError(
             f"the orient reply could not be read as a plan ({len(raw)} chars"
             + (", after one corrective retry" if orient_retry else "")
@@ -1011,25 +986,25 @@ async def run_interpret_loop(
         "Return ONE JSON object: {\"findings\": [...], \"dispositions\": [...]}.\n"
         "HARD RULES:\n"
         "- findings hold claims the rows support, and nothing else.\n"
-        "- dispositions answer for each DIGEST RECONCILIATION item that no finding covers: "
-        "{\"item\": the item as listed, \"status\": "
+        "- dispositions answer for each ALERT SURFACE item (listed with [audit_id X]) that no "
+        "finding covers: {\"item\": that audit_id, \"status\": "
         + "|".join(DISPOSITION_STATUSES)
         + ", \"reason\": why, from the rows and notes, \"audit_ids\": the markers it rests "
-        "on, or []}. Negative evidence, a census, a scope note and a threat-intel verdict that "
-        "no row supports are dispositions, never findings.\n"
-        "- Every DIGEST RECONCILIATION item is covered by a finding or has a disposition. "
+        "on, or []}. A census, a scope note and a threat-intel verdict that no row supports are "
+        "dispositions, never findings.\n"
+        "- Every ALERT SURFACE item is covered by a finding or has a disposition. "
         "Silence is a failure.\n"
         # D217: with no status for "part of a finding", run d1a28c66 disposed a service install it
-        # tied to the beacon as benign ("subsumed by H1 beacon").
-        "- A finding covers an item only when its observation names the item: an item that is "
-        "part of a finding's activity is named in that finding's observation, never disposed. "
+        # tied to the beacon as benign ("subsumed by H1 beacon"). Part 12 FM-9: coverage is by audit id,
+        # never by the finding's wording.
+        "- A finding covers an alert when its audit_ids include the alert's audit_id and its "
+        "observation describes that activity: an alert that is part of a finding's activity is "
+        "cited by that finding, never disposed. "
         "benign = the rows show legitimate activity (say which); coverage_gap = the evidence "
         "needed is not in this case; not_examined = not queried in this run; refuted = rows "
         "contradict it.\n"
         "- Absent evidence classes are SCOPE - never phrase them as "
-        "'no compromise'.\n"
-        "- Checked needles with 0 hits are negative evidence: name them in "
-        "the relevant finding's observation, or in a disposition.\n"
+        "'no compromise'. A search that matched nothing is not evidence of absence.\n"
         "- Each finding: title, severity (critical|high|medium|low|info, judged from "
         "the evidence), entity {\"type\",\"value\"} (the one thing it is about, "
         "e.g. {\"type\":\"event_id\",\"value\":\"1004\"}), observation, interpretation (non-empty), "
@@ -1114,8 +1089,8 @@ async def run_interpret_loop(
     if unaddressed_final:
         _progress("reconcile",
                   f"one extra pass for {len(unaddressed_final)} unaddressed digest item(s)")
-        items_block ="\n".join(
-            f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed_final[:40]
+        items_block = "\n".join(
+            f"- [{i.get('kind')}] {i.get('value')} [audit_id {i.get('key')}]" for i in unaddressed_final
         )
         # The same rules and finding shape as the first pass (D213): the extra pass named neither, so
         # agnes-3.0-flash returned its findings as {id, title, detail, severity} and none could stage
@@ -1133,9 +1108,9 @@ async def run_interpret_loop(
         extra_system = (
             findings_system
             + "\nTHIS PASS: the findings listed under findings_so_far (F1, F2, ...) are written. They "
-            "left the DIGEST RECONCILIATION items listed under unaddressed_items unanswered. For each "
+            "left the ALERT SURFACE items listed under unaddressed_items unanswered. For each "
             "item: when it is part of the activity of a finding in findings_so_far, return that finding "
-            "whole, its observation naming the item, with \"revises\": its id; when the rows support a "
+            "whole, citing the item's audit_id, with \"revises\": its id; when the rows support a "
             "claim no finding in findings_so_far makes, write a new finding with no \"revises\"; "
             "otherwise give the item a disposition. Never return a finding of findings_so_far again "
             "without \"revises\", and never revise one finding twice."

@@ -158,45 +158,46 @@ def _ordered_iocs(iocs: dict[str, list[str]]) -> list[str]:
     return ordered
 
 
-def lead_locations(leads: Iterable[dict[str, Any]]) -> dict[tuple[str, str], list[str]]:
-    """(file, line) of every evidence row the leads cite -> the subjects of the leads citing it."""
-    cited: dict[tuple[str, str], list[str]] = {}
+def lead_references(leads: Iterable[dict[str, Any]]) -> tuple[dict[str, list[str]], dict[tuple[str, str], list[str]]]:
+    """Every evidence row the leads cite, by document id and by (file, line) -> the subjects citing it."""
+    from nexus.analysis.leads import lead_row_refs
+
+    by_id: dict[str, list[str]] = {}
+    by_loc: dict[tuple[str, str], list[str]] = {}
     for lead in leads:
         subject = str(lead.get("subject") or "")
-        for row in lead.get("rows") or []:
-            loc = str((row or {}).get("loc") or "")
-            file, sep, line = loc.rpartition(":")
-            if not sep or not file or not line:
-                continue
-            subjects = cited.setdefault((file, line), [])
+        doc_ids, locs = lead_row_refs(lead)
+        for key, table in [(d, by_id) for d in doc_ids] + [(loc, by_loc) for loc in locs]:
+            subjects = table.setdefault(key, [])
             if subject and subject not in subjects:
                 subjects.append(subject)
-    return cited
+    return by_id, by_loc
 
 
 def select_lead_observables(case_id: str, leads: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """The observables in the index rows the case's leads cite (D455, operator 2026-10-28)."""
+    from nexus.analysis.leads import lead_rows_query
+
     leads = list(leads)
-    cited = lead_locations(leads)
+    by_id, by_loc = lead_references(leads)
     found: dict[str, set[str]] = {kind: set() for kind in OBSERVABLE_KINDS}
     sources: dict[str, list[str]] = {}
     rows_found = 0
-    pairs = sorted(cited)
-    for start in range(0, len(pairs), 200):
-        chunk = pairs[start:start + 200]
-        query = {"bool": {"should": [
-            {"bool": {"filter": [{"term": {"file": file}}, {"term": {"line": line}}]}}
-            for file, line in chunk
-        ], "minimum_should_match": 1}}
+    ids, locs = sorted(by_id), sorted(by_loc)
+    for start in range(0, max(len(ids), len(locs)), 200):
+        query = lead_rows_query(ids[start:start + 200], locs[start:start + 200])
+        if query is None:
+            continue
         for doc in iter_sources(case_id, query, ["file", "line", "ecs"]):
             rows_found += 1
-            subjects = cited.get((str(doc.get("file") or ""), str(doc.get("line") or ""))) or []
+            subjects = (by_id.get(str(doc.get("_id") or ""))
+                        or by_loc.get((str(doc.get("file") or ""), str(doc.get("line") or ""))) or [])
             for kind, values in observables_from_ecs(doc.get("ecs")).items():
                 found[kind] |= values
                 for value in values:
                     listed = sources.setdefault(value, [])
                     listed.extend(s for s in subjects if s not in listed)
-    return {"leads": len(leads), "lead_rows": len(cited), "rows_found": rows_found,
+    return {"leads": len(leads), "lead_rows": len(by_id) + len(by_loc), "rows_found": rows_found,
             "iocs": {kind: sorted(found[kind]) for kind in OBSERVABLE_KINDS}, "sources": sources}
 
 

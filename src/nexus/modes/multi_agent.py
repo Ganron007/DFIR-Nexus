@@ -13,7 +13,6 @@ A new multi-agent case stores ``investigation_mode: 3``.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import logging
 import os
@@ -30,7 +29,9 @@ from nexus.langgraph.model_json import loads_model_json
 from nexus.langgraph.prompt_budget import budget_chars, case_window
 from nexus.langgraph.subject import attach_subjects
 from nexus.llm.egress import egress_bound
+from nexus.modes.multi_role import QUESTION_ID_RE as _QUESTION_ID
 from nexus.modes.multi_role import (
+    QUESTION_STATUSES,
     EventSink,
     WorkOrder,
     _question_keywords,
@@ -38,8 +39,10 @@ from nexus.modes.multi_role import (
     _skill_procedure_block,
     attack_method_block,
     new_event,
+    question_id,
     stage_run_candidates,
 )
+from nexus.modes.multi_role import norm_key as _norm_key
 
 log = logging.getLogger(__name__)
 
@@ -1005,7 +1008,6 @@ def _claim_is_coverage_only(claim: dict[str, Any]) -> bool:
     the coverage report instead — otherwise every seat's first inventory
     statement becomes a candidate and the board fills with noise.
     """
-    import re
 
     entity = str(claim.get("entity_value") or "").strip().lower()
     value = str(claim.get("value") or "").strip().lower()
@@ -1421,16 +1423,6 @@ def _open_agenda(
     }
 
 
-#: How a seat settles an open question on the board (D208).
-QUESTION_STATUSES = ("answered", "unanswerable", "duplicate")
-_QUESTION_ID = re.compile(r"\bQ[0-9a-f]{6}\b", re.IGNORECASE)
-
-
-def question_id(text: Any) -> str:
-    """An open question's id on the board: the same in every superstep, resume and board order."""
-    return "Q" + hashlib.sha1(_norm_key(text).encode("utf-8")).hexdigest()[:6]
-
-
 def _ground_confirmed_verdicts(entry: dict[str, Any], case_dir: Path | None, *, run_id: str, sink: Any) -> None:
     """A verifier seat's confirmation whose basis names an event its cited calls did not return is
     downgraded to unverifiable, so it adds no "Verifier:" basis to a candidate (D238)."""
@@ -1558,10 +1550,6 @@ def _pivot_entities(board: list[dict[str, Any]]) -> list[dict[str, str]]:
         for (etype, evalue) in first
         if (etype, evalue) not in picked_up and (etype, evalue) not in consumed
     ]
-
-
-def _norm_key(value: Any) -> str:
-    return " ".join(str(value or "").split()).lower()
 
 
 def _board_gaps(board: list[dict[str, Any]]) -> list[str]:

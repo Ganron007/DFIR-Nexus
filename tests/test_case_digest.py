@@ -8,7 +8,6 @@ from pathlib import Path
 from nexus.langgraph import prompt_budget
 from nexus.langgraph.case_digest import (
     _classify,
-    _signal_map,
     build_case_digest,
     reconciliation_checklist,
     render_digest_markdown,
@@ -118,9 +117,8 @@ def _fake_brief() -> dict:
         "hosts": ["ws01"],
         "time_range": {"start": "2024-01-01T00:00:00", "end": "2024-01-02T00:00:00"},
         "alerts": [
-            {"level": "high", "family": "hayabusa", "title": "Mimikatz detected",
-             "host": "ws01", "time": "2024-01-01T10:00:00"},
-            {"level": "low", "family": "zeek", "title": "Weird DNS", "host": "ws01", "time": ""},
+            {"key": "nexus-a-20260101-001", "audit_ids": ["nexus-a-20260101-001"], "level": "high",
+             "family": "hayabusa", "title": "Mimikatz detected", "host": "ws01", "time": "2024-01-01T10:00:00"},
         ],
         "entities": {"processes": [{"value": "m.exe", "hits": 5}]},
         "intake": {"question": "What did m.exe do?"},
@@ -137,52 +135,33 @@ def test_classify_scope(tmp_path):
     assert "memory_dump" in classes["memory"]
 
 
-def test_signal_map_zero_hits_are_negative_evidence(tmp_path):
+def test_the_digest_carries_no_keyword_needle_counts_or_negative_evidence(tmp_path, monkeypatch):
+    """Part 12 FM-3: substring counts of keywords (T22: `ual` 11,020 hits from "virtual") are not facts
+    about the case, and a word with no hits is not negative evidence. The examiner's signal_map.csv stays
+    on disk; the digest no longer reads it."""
+    monkeypatch.setattr("nexus.langgraph.briefing.case_briefing", lambda case_dir: _fake_brief())
+    monkeypatch.setattr("nexus.langgraph.case_index.es_aggregate", lambda *a, **k: None)
     analysis = tmp_path / "analysis"
     analysis.mkdir(parents=True)
     (analysis / "signal_map.csv").write_text(
-        "needle,hits,source,scanned,exact\nmimikatz,4,playbook,yes,yes\nsdelete,0,playbook,yes,yes\n",
+        "needle,hits,source,scanned,exact\nual,11020,intake,yes,yes\nhashdump,0,playbook,yes,yes\n",
         encoding="utf-8",
     )
-    smap = _signal_map(tmp_path, {})
-    assert [r["needle"] for r in smap["with_hits"]] == ["mimikatz"]
-    assert smap["zero_hit"] == ["sdelete"]
-    assert smap["scanned"] == 2
-    assert smap["unscanned"] == []
+    digest = build_case_digest(tmp_path)
+    md = render_digest_markdown(digest)
+    assert "signal_map" not in digest
+    for text in ("Signal map", "Negative evidence", "ual(", "hashdump", "EVERY item above"):
+        assert text not in md, text
 
 
-def test_a_zero_counted_in_a_capped_sample_is_not_negative_evidence(tmp_path):
-    """IC-13: a map counted inside the scan's capped window (or written before the `exact` column) said
-    "checked, 0 hits" for lsass on CASE-C5B04D31, whose index holds 18,977 rows naming it."""
-    analysis = tmp_path / "analysis"
-    analysis.mkdir(parents=True)
-    (analysis / "signal_map.csv").write_text(
-        "needle,hits,source,scanned,exact\nshell,89,sigma,yes,no\nlsass,0,playbook,yes,no\n", encoding="utf-8")
-    smap = _signal_map(tmp_path, {})
-    assert smap["exact"] is False and smap["zero_hit"] == [] and smap["not_in_sample"] == ["lsass"]
-    md = render_digest_markdown({"case_id": "CASE-X", "signal_map": smap, "scope": {}, "inventory": {}})
-    assert "AT LEAST these counts" in md and "shell(89+)" in md
-    assert "Negative evidence" not in md and "NOT evidence of absence" in md
-
-
-def test_signal_map_unscanned_is_not_negative_evidence(tmp_path):
-    """scanned=no must never masquerade as 'checked, absent'."""
-    analysis = tmp_path / "analysis"
-    analysis.mkdir(parents=True)
-    (analysis / "signal_map.csv").write_text(
-        "needle,hits,source,scanned,exact\n"
-        "mimikatz,4,playbook,yes,yes\n"
-        "sdelete,0,playbook,yes,yes\n"
-        "rdp,0,playbook,no,yes\n",
-        encoding="utf-8",
-    )
-    smap = _signal_map(tmp_path, {})
-    assert smap["zero_hit"] == ["sdelete"]
-    assert smap["unscanned"] == ["rdp"]
-    md = render_digest_markdown({
-        "case_id": "CASE-X", "signal_map": smap, "scope": {}, "inventory": {},
-    })
-    assert "NOT scanned" in md and "rdp" in md
+def test_the_ledger_counts_a_repeated_message_once():
+    """Part 12 FM-12: T22's digest printed one Volatility WARN eight times."""
+    warn = {"tool": "vol", "status": "WARN",
+            "reason": "process-list walk returned nothing while psscan saw 134 process(es)"}
+    md = render_digest_markdown({"case_id": "CASE-X", "ledger": {"ok": 0, "skip": 0, "fail": 0,
+                                                                  "entries": [warn] * 8}})
+    assert md.count("process-list walk returned nothing") == 1
+    assert "- WARN: vol x8 — process-list walk" in md
 
 
 def test_build_digest_scopes_absent_classes(tmp_path, monkeypatch):
@@ -207,17 +186,12 @@ def test_render_and_write_digest(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "nexus.langgraph.case_index.es_aggregate", lambda *a, **k: None
     )
-    analysis = tmp_path / "analysis"
-    analysis.mkdir(parents=True)
-    (analysis / "signal_map.csv").write_text(
-        "needle,hits,source,scanned,exact\nmimikatz,4,playbook,yes,yes\nsdelete,0,playbook,yes,yes\n",
-        encoding="utf-8",
-    )
     digest = build_case_digest(tmp_path)
     md = render_digest_markdown(digest)
     assert "Case Digest" in md
     assert "NOT in evidence" in md
-    assert "Negative evidence" in md
+    assert "[audit_id nexus-a-20260101-001]" in md
+    assert "a finding that cites its audit_id, or a disposition naming that audit_id" in md
     paths = write_case_digest(tmp_path, digest)
     assert Path(paths["json"]).is_file()
     assert Path(paths["md"]).is_file()
@@ -225,40 +199,31 @@ def test_render_and_write_digest(tmp_path, monkeypatch):
     assert loaded["case_id"] == digest["case_id"]
 
 
-def test_reconciliation_flags_unmentioned_items():
-    digest = {
-        "alerts": [
-            {"level": "high", "title": "Mimikatz detected", "host": "ws01"},
-            {"level": "critical", "title": "Ransomware note", "host": "ws01"},
-        ],
-        "signal_map": {"with_hits": [{"needle": "psexec", "hits": 9}]},
-    }
-    findings = [{"title": "Mimikatz detected on ws01", "interpretation": "credential theft"}]
-    result = reconciliation_checklist(digest, findings)
-    unaddressed = [i["value"] for i in result["unaddressed"]]
-    assert any("Ransomware note" in u for u in unaddressed)
-    assert any("psexec" in u for u in unaddressed)
-    assert not any("Mimikatz" in u for u in unaddressed)
+_ALERTS = [
+    {"key": "nexus-a-20260101-001", "audit_ids": ["nexus-a-20260101-001"], "level": "high",
+     "title": "Mimikatz detected", "host": "ws01"},
+    {"key": "nexus-a-20260101-002", "audit_ids": ["nexus-a-20260101-002"], "level": "critical",
+     "title": "Ransomware note", "host": "ws01"},
+]
 
 
-def test_reconciliation_ignores_structural_keys():
-    """A finding with evidence rows must not accidentally 'mention' a needle
-    named like a dict key (source/detail/time/artifact)."""
-    digest = {
-        "alerts": [{"level": "high", "title": "source", "host": "ws01"}],
-        "signal_map": {"with_hits": [{"needle": "detail", "hits": 5}]},
-    }
-    findings = [{
-        "title": "Unrelated finding",
-        "observation": "something else",
-        "interpretation": "unrelated",
-        "evidence": [{"time": "2024-01-01", "source": "hayabusa",
-                      "artifact": "evtx", "detail": "unrelated row"}],
-    }]
-    result = reconciliation_checklist(digest, findings)
-    kinds = {i["kind"] for i in result["unaddressed"]}
-    assert "alert" in kinds and "needle" in kinds
-    assert len(result["unaddressed"]) == 2
+def test_reconciliation_answers_alerts_by_audit_id_not_wording():
+    """Part 12 FM-9: an alert is addressed by a finding that cites its rows, not by a title its text repeats."""
+    findings = [
+        {"title": "Mimikatz detected on ws01", "interpretation": "credential theft", "audit_ids": []},
+        {"title": "Unrelated wording", "audit_ids": ["nexus-a-20260101-002"]},
+    ]
+    result = reconciliation_checklist({"alerts": _ALERTS}, findings)
+    assert [i["key"] for i in result["addressed"]] == ["nexus-a-20260101-002"]
+    assert [i["key"] for i in result["unaddressed"]] == ["nexus-a-20260101-001"]
+    assert result["alerts_total"] == 2 and "needles_with_hits" not in result
+
+
+def test_reconciliation_takes_a_disposition_by_its_audit_id():
+    dispositions = [{"item": "nexus-a-20260101-001", "status": "benign", "reason": "test tool", "audit_ids": []}]
+    result = reconciliation_checklist({"alerts": _ALERTS}, [], dispositions)
+    assert [i["key"] for i in result["dispositioned"]] == ["nexus-a-20260101-001"]
+    assert [i["key"] for i in result["unaddressed"]] == ["nexus-a-20260101-002"]
 
 
 def test_pack_sections_duplicate_names_not_double_counted():
@@ -402,24 +367,14 @@ def test_interpretation_file_includes_reconciliation(tmp_path):
         tmp_path,
         findings=[{"title": "F1", "interpretation": "i", "confidence": "HIGH"}],
         reconciliation={
-            "addressed": [{"kind": "alert", "value": "F1"}],
-            "unaddressed": [{"kind": "needle", "value": "psexec (9 hits)"}],
+            "addressed": [{"kind": "alert", "key": "a1", "value": "[HIGH] F1 (ws01)"}],
+            "unaddressed": [{"kind": "alert", "key": "a2", "value": "[CRITICAL] Ransomware note (ws01)"}],
             "alerts_total": 2,
-            "needles_with_hits": 3,
         },
         model=None,
     ))
     assert out is not None
     text = Path(out).read_text(encoding="utf-8")
     assert "Reconciliation" in text
-    assert "psexec (9 hits)" in text
-
-def test_digest_render_flags_truncated_scan():
-    """The digest must tell the LLM when hit counts are lower bounds."""
-    md = render_digest_markdown({
-        "case_id": "CASE-X",
-        "scan_stats": {"truncated": True, "truncated_reasons": ["result cap", "2 capped file(s)"]},
-        "signal_map": {}, "scope": {}, "inventory": {},
-    })
-    assert "LOWER BOUNDS" in md
-    assert "result cap" in md
+    assert "Ransomware note" in text
+    assert "1 addressed / 0 dispositioned / 1 unaddressed** of 2 crit/high alerts" in text

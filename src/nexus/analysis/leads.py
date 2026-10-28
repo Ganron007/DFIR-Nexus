@@ -887,3 +887,37 @@ def read_leads(case_dir: Path | str) -> list[dict[str, Any]]:
         if isinstance(item, dict):
             out.append(item)
     return out
+
+
+def lead_row_refs(lead: Any) -> tuple[list[str], list[tuple[str, str]]]:
+    """The index documents a lead's rows are: by document id, or by (file, line).
+
+    A rule-engine lead's rows carry the document id (``doc_id``, the index ``_id``); a memory-scanner or
+    analytic lead's rows carry their location (``loc``, ``file:line``). Every reader of a lead's own rows
+    (threat-intel selection, the alert surface, Mode 1's settle replan) resolves them through this one rule
+    (Part 12 FM-9; D455's selection first read only ``loc`` and so missed every rule-engine lead's rows).
+    """
+    doc_ids: list[str] = []
+    locs: list[tuple[str, str]] = []
+    rows = lead.get("rows") if isinstance(lead, dict) else getattr(lead, "rows", ())
+    for row in rows or ():
+        if not isinstance(row, dict):
+            continue
+        doc_id = str(row.get("doc_id") or "").strip()
+        if doc_id:
+            if doc_id not in doc_ids:
+                doc_ids.append(doc_id)
+            continue
+        file, sep, line = str(row.get("loc") or "").rpartition(":")
+        if sep and file and line and (file, line) not in locs:
+            locs.append((file, line))
+    return doc_ids, locs
+
+
+def lead_rows_query(doc_ids: list[str], locs: list[tuple[str, str]]) -> dict[str, Any] | None:
+    """The Elasticsearch query that matches exactly these rows, or None when there are none."""
+    should: list[dict[str, Any]] = []
+    if doc_ids:
+        should.append({"ids": {"values": list(doc_ids)}})
+    should += [{"bool": {"filter": [{"term": {"file": file}}, {"term": {"line": line}}]}} for file, line in locs]
+    return {"bool": {"should": should, "minimum_should_match": 1}} if should else None

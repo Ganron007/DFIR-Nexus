@@ -48,7 +48,7 @@ def test_digest_summary_is_capped_and_never_raises():
 
 
 def test_replan_inputs_surface_open_questions_and_pivots():
-    from nexus.modes.multi_role import _replan_inputs
+    from nexus.modes.multi_role import _replan_inputs, question_id
 
     state = {
         "results": [
@@ -57,24 +57,37 @@ def test_replan_inputs_surface_open_questions_and_pivots():
         ]
     }
     questions, pivots = _replan_inputs(state)
-    assert questions == ["Who launched cmd.exe on ws01?"]
+    assert questions == [f"{question_id('Who launched cmd.exe on ws01?')}: Who launched cmd.exe on ws01?"]
     assert "cmd.exe" in pivots
     assert "172.16.6.12" in pivots
 
 
-def test_replan_inputs_drop_a_question_a_later_worker_answered():
-    """A question already answered must not become a new order forever."""
-    from nexus.modes.multi_role import _replan_inputs
+def test_replan_inputs_drop_a_question_a_later_worker_settled_by_its_id():
+    """A question settled by id must not become a new order forever; a note that merely repeats its words
+    does not settle it (Part 12 FM-9)."""
+    from nexus.modes.multi_role import _replan_inputs, question_id
 
-    state = {
-        "results": [
-            {"parsed": {"next_questions": ["Who launched cmd.exe on ws01?"]}},
-            {"parsed": {"notes": [{"statement":
-                                   "Who launched cmd.exe on ws01? confirmed via evtxecmd"}]}},
-        ]
-    }
-    questions, _pivots = _replan_inputs(state)
-    assert questions == []
+    qid = question_id("Who launched cmd.exe on ws01?")
+    asked = {"parsed": {"next_questions": ["Who launched cmd.exe on ws01?"]}}
+    wording = {"parsed": {"notes": [{"statement": "Who launched cmd.exe on ws01? confirmed via evtxecmd"}]}}
+    assert _replan_inputs({"results": [asked, wording]})[0] == [f"{qid}: Who launched cmd.exe on ws01?"]
+    no_calls = {"parsed": {"question_dispositions": [{"question": qid, "status": "answered", "audit_ids": []}]}}
+    assert _replan_inputs({"results": [asked, no_calls]})[0] != []
+    answered = {"parsed": {"question_dispositions": [
+        {"question": qid, "status": "answered", "basis": "4688 parent", "audit_ids": ["nexus-a-1"]}]}}
+    assert _replan_inputs({"results": [asked, answered]})[0] == []
+    unanswerable = {"parsed": {"question_dispositions": [
+        {"question": f"{qid} (who launched it)", "status": "unanswerable", "basis": "no process auditing"}]}}
+    assert _replan_inputs({"results": [asked, unanswerable]})[0] == []
+
+
+def test_a_question_that_restates_an_open_id_is_not_a_new_question():
+    from nexus.modes.multi_role import _replan_inputs, question_id
+
+    qid = question_id("Who launched cmd.exe on ws01?")
+    state = {"results": [{"parsed": {"next_questions": ["Who launched cmd.exe on ws01?",
+                                                          f"{qid} remains open: check 4688"]}}]}
+    assert _replan_inputs(state)[0] == [f"{qid}: Who launched cmd.exe on ws01?"]
 
 
 def test_replan_inputs_are_bounded():

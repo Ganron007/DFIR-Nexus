@@ -21,21 +21,9 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# Host filesystem paths are CONTENT (paths inside the parsed artifacts), not
-# "top entities" and not evidence files — Mode 1 shows a labelled summary of
-# them instead of dumping system paths into the entity list.
-#: The levels that make a row an "alert". `crit` is Hayabusa's spelling for its
-#: top level — omitting it here dropped all 27 critical detections out of the
-#: digest's alert surface, which is what Mode 1 reconciles (WO-R1F item 1; the
-#: same `crit` miss as `rule_leads._LEVEL_SCORE`).
-_ALERT_LEVELS = {"critical", "crit", "high"}
-#: Levels that sort above `high`, in order.
+#: Alert levels that sort above `high`, in order. An alert is a crit/high lead (`alerts_from_leads`); the
+#: leads spell Hayabusa's top level `crit` (rule_leads._LEVEL_SCORE).
 _ALERT_LEVEL_RANK = {"critical": 0, "crit": 0, "high": 1}
-_ALERT_FAMILY_HINTS = (
-    "hayabusa", "zircolite", "deepblue", "sigma",
-    # imported network/agent detections (ingest artifact store)
-    "suricata", "zeek", "sysdig", "falco", "security_onion",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +508,66 @@ def _typed_entities(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
     return out
 
 
+def alerts_from_leads(case_dir: Path, leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every crit/high lead as an alert, keyed by its audit id, crit before high, then by time.
+
+    Each alert keeps the references of the rows it stands on (``doc_ids``, ``locs``, through
+    ``leads.lead_row_refs``). The alert interpretation (what it means, what to check next) is read from
+    the first of those rows, fetched from the index.
+    """
+    from nexus.analysis.leads import lead_row_refs, lead_rows_query
+
+    alerts: list[dict[str, Any]] = []
+    for lead in leads:
+        extra = lead.get("extra") or {}
+        if not extra.get("crit_high"):
+            continue
+        audit_ids = [str(a) for a in lead.get("audit_ids") or [] if a]
+        doc_ids, locs = lead_row_refs(lead)
+        alerts.append({
+            "key": audit_ids[0] if audit_ids else str(lead.get("subject") or ""),
+            "audit_ids": audit_ids,
+            "family": str(lead.get("family") or ""),
+            "kind": str(lead.get("kind") or ""),
+            "engine": str(extra.get("engine") or ""),
+            "level": str(extra.get("level") or "high").lower(),
+            "title": str(lead.get("subject") or "")[:160],
+            "detail": str(lead.get("detail") or "")[:300],
+            "count": int(extra.get("count") or 0),
+            "time": str(extra.get("first") or "")[:40],
+            "host": str((extra.get("hosts") or [""])[0] or "")[:60],
+            "doc_ids": doc_ids,
+            "locs": [f"{f}:{n}" for f, n in locs],
+        })
+    alerts.sort(key=lambda a: (_ALERT_LEVEL_RANK.get(a["level"], 2), a["time"]))
+    first_ids = [a["doc_ids"][0] for a in alerts if a["doc_ids"]]
+    first_locs = [tuple(a["locs"][0].rpartition(":")[::2]) for a in alerts if not a["doc_ids"] and a["locs"]]
+    query = lead_rows_query(first_ids, first_locs)
+    if query is None:
+        return alerts
+    try:
+        from nexus.langgraph.interpret import interpret_hits
+        from nexus.langgraph.typed_entities import iter_sources
+
+        docs = list(iter_sources(Path(case_dir).name, query,
+                                 ["family", "file", "line", "text", "fields", "host", "ts"]))
+        by_id = {d["_id"]: d for d in docs}
+        by_loc = {(str(d.get("file") or ""), str(d.get("line") or "")): d for d in docs}
+        cited = []
+        for alert in alerts:
+            row = (by_id.get(alert["doc_ids"][0]) if alert["doc_ids"] else
+                   by_loc.get(tuple(alert["locs"][0].rpartition(":")[::2])) if alert["locs"] else None)
+            if row:
+                alert["file"], alert["line"] = str(row.get("file") or ""), str(row.get("line") or "")
+                cited.append((alert, row))
+        for (alert, _row), interp in zip(cited, interpret_hits(case_dir, [row for _a, row in cited]),
+                                         strict=False):
+            alert["interpret"] = interp
+    except Exception as exc:  # noqa: BLE001 - the interpretation is a reading aid
+        log.debug("alert interpretation failed: %s", exc)
+    return alerts
+
+
 def case_briefing(case_dir: Path) -> dict[str, Any]:
     """Deterministic case briefing.
 
@@ -732,64 +780,19 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         for term, n in sorted(fact_counts.items(), key=lambda kv: -kv[1])
     ]
 
-    # --- alerts: severity rows from detection families ---
+    # --- alerts: every crit/high lead, the one set every mode answers (Part 12 FM-3) ---
+    # They were the severity rows among the rows a keyword happened to match, so a critical detection whose
+    # text named no needle never reached the alert surface; the leads read every detection.
     from nexus.langgraph.evidence_rows import row_time
 
-    alerts: list[dict[str, Any]] = []
-    alert_hits: list[dict[str, Any]] = []
-    for h in hits:
-        fam = str(h.get("family") or "").lower()
-        if not any(k in fam for k in _ALERT_FAMILY_HINTS):
-            continue
-        fields = h.get("fields") or {}
-        level = str(
-            fields.get("Level") or fields.get("level") or fields.get("Severity")
-            or fields.get("severity") or ""
-        ).lower()
-        if level not in _ALERT_LEVELS:
-            continue
-        alerts.append(
-            {
-                "family": fam,
-                "level": level,
-                "title": str(
-                    fields.get("RuleTitle")
-                    or fields.get("Title")
-                    or fields.get("RuleName")
-                    or fields.get("description")
-                    or fields.get("rule")
-                    or ""
-                )[:160],
-                # The row's time in UTC by the index's rule (D257): Hayabusa's Timestamp is written in the
-                # lane host's zone, and the alert list sorts on this value.
-                "time": row_time(h)[:40],
-                "host": str(h.get("host") or fields.get("Computer") or "")[:60],
-                "file": str(h.get("file") or ""),
-                "line": str(h.get("line") or ""),
-            }
-        )
-        alert_hits.append(h)
-    pairs = sorted(
-        zip(alerts, alert_hits, strict=False),
-        # Rank before ordering, so a `crit` row is never pushed below a `high`
-        # one by file order (WO-R1F items 1 and 7d).
-        key=lambda p: (_ALERT_LEVEL_RANK.get(p[0]["level"], 2), p[0]["time"]),
-    )
-    alerts = [a for a, _h in pairs]
-    alert_hits = [h for _a, h in pairs]
-
-    # WP 4j.1: interpretation on every alert — what it means + what to check
-    # next, from the matching skill + playbook caveats (no RAG here; the
-    # on-demand /hit/interpret endpoint carries the methodology chunk).
     try:
-        from nexus.langgraph.interpret import interpret_hits
+        from nexus.analysis.leads import build_leads
 
-        for alert, interp in zip(
-            alerts, interpret_hits(case_dir, alert_hits), strict=False
-        ):
-            alert["interpret"] = interp
-    except Exception as exc:  # noqa: BLE001
-        log.debug("alert interpretation failed: %s", exc)
+        built_leads = build_leads(case_dir)
+        leads_error = ""
+    except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
+        built_leads, leads_error = [], str(exc)[:200]
+    alerts = alerts_from_leads(case_dir, [lead.to_dict() for lead in built_leads])
 
     # --- typed entities, hosts and time range: the whole index by field meaning (Part 12 FM-7) ---
     # They came from the rows a keyword happened to match, typed by pattern: hosts, accounts and the
@@ -923,18 +926,13 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
     # asking - rarity, an unexpected parent, a first sighting, a volume burst -
     # not only the rows a keyword happened to match. A lead is not a finding and
     # stages nothing.
-    try:
-        from nexus.analysis.leads import build_leads
-
-        leads = build_leads(case_dir)
-        out["leads"] = [lead.to_dict() for lead in leads[:60]]
-        by_kind: dict[str, int] = {}
-        for lead in leads:
-            by_kind[lead.kind] = by_kind.get(lead.kind, 0) + 1
-        out["lead_counts"] = {"total": len(leads), "by_kind": by_kind}
-    except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
-        out["leads"] = []
-        out["lead_counts"] = {"total": 0, "by_kind": {}, "error": str(exc)[:200]}
+    out["leads"] = [lead.to_dict() for lead in built_leads[:60]]
+    by_kind: dict[str, int] = {}
+    for lead in built_leads:
+        by_kind[lead.kind] = by_kind.get(lead.kind, 0) + 1
+    out["lead_counts"] = {"total": len(built_leads), "by_kind": by_kind}
+    if leads_error:
+        out["lead_counts"]["error"] = leads_error
 
     # WO-K7: absence honesty. "No findings" collapses three different situations
     # into one sentence; the briefing carries the honest form instead - which

@@ -45,13 +45,19 @@ class ScriptedModel:
         return SimpleNamespace(content=content)
 
 
+#: The digest's alerts are its crit/high leads, keyed by the audit id of the rows they stand on (Part 12 FM-9).
+A1 = "nexus-a-20240101-001"
+A2 = "nexus-a-20240101-002"
+
+
 def _digest() -> dict[str, Any]:
     return {
         "alerts": [
-            {"level": "high", "title": "Mimikatz detected", "host": "ws01"},
-            {"level": "critical", "title": "Ransomware note", "host": "ws01"},
+            {"key": A1, "audit_ids": [A1], "level": "high", "title": "Mimikatz detected",
+             "host": "ws01", "doc_ids": ["doc-mimikatz"]},
+            {"key": A2, "audit_ids": [A2], "level": "critical", "title": "Ransomware note",
+             "host": "ws01", "doc_ids": ["doc-ransom"]},
         ],
-        "signal_map": {"with_hits": [{"needle": "psexec", "hits": 9}]},
         "scope": {"explicitly_absent": ["memory images"]},
     }
 
@@ -68,7 +74,11 @@ def _orientation() -> str:
 def _verify_settled() -> str:
     return json.dumps({
         "notes": [{"hypothesis": "H1", "status": "confirmed",
-                   "evidence": "hayabusa row 2024-01-01 ws01 mimikatz", "family": "hayabusa"}],
+                   "evidence": "hayabusa row 2024-01-01 ws01 mimikatz", "family": "hayabusa"},
+                  {"hypothesis": "L1", "status": "confirmed",
+                   "evidence": "hayabusa row 2024-01-01 ws01 mimikatz", "family": "hayabusa"},
+                  {"hypothesis": "L2", "status": "refuted",
+                   "evidence": "the note is a lab file named in the intake", "family": "hayabusa"}],
         "next": [],
     })
 
@@ -85,11 +95,11 @@ def _findings_all_addressed() -> str:
         {"title": "Mimikatz detected on ws01", "observation": "credential dumping",
          "interpretation": "credential theft", "confidence": "HIGH",
          "confidence_justification": "two artifacts",
-         "audit_ids": ["n4_query-test-20260918-001"]},
+         "audit_ids": ["n4_query-test-20260918-001", A1]},
         {"title": "Assessed benign: Ransomware note", "observation": "ransomware note on ws01",
          "interpretation": "benign: lab note file", "confidence": "LOW",
          "confidence_justification": "context",
-         "audit_ids": ["n4_query-test-20260918-001"]},
+         "audit_ids": ["n4_query-test-20260918-001", A2]},
         {"title": "psexec lateral movement", "observation": "psexec 9 hits",
          "interpretation": "admin tooling", "confidence": "MEDIUM",
          "confidence_justification": "counts",
@@ -411,13 +421,13 @@ def test_loop_reconciliation_extra_pass(tmp_path):
     incomplete = json.dumps([
         {"title": "Mimikatz detected on ws01", "observation": "credential dumping",
          "interpretation": "theft", "confidence": "HIGH",
-         "confidence_justification": "x", "audit_ids": ["n4_query-test-20260918-001"]},
+         "confidence_justification": "x", "audit_ids": ["n4_query-test-20260918-001", A1]},
     ])
     extra = json.dumps([
         {"title": "Assessed benign: Ransomware note", "observation": "note",
          "interpretation": "benign lab note", "confidence": "LOW",
          "confidence_justification": "context",
-         "audit_ids": ["n4_query-test-20260918-001"]},
+         "audit_ids": ["n4_query-test-20260918-001", A2]},
         {"title": "psexec lateral movement", "observation": "9 hits",
          "interpretation": "admin tooling", "confidence": "MEDIUM",
          "confidence_justification": "counts",
@@ -468,47 +478,13 @@ def test_loop_tool_error_does_not_kill_round(tmp_path):
 # ── D47 (WO-R2F item 7): the settle rule and staged severity ─────────────
 
 
-def _digest_with_crit_leads() -> dict[str, Any]:
-    """A digest whose crit/high leads must each get a disposition."""
-    return {
-        "alerts": [
-            {"level": "high", "title": "Mimikatz detected", "host": "ws01"},
-            {"level": "critical", "title": "Ransomware note", "host": "ws01"},
-        ],
-        "signal_map": {"with_hits": [{"needle": "psexec", "hits": 9}]},
-        "scope": {"explicitly_absent": ["memory images"]},
-        "leads": [
-            {"kind": "rule_engine", "subject": "mimikatz.exe", "level": "critical",
-             "detail": "mimikatz 3 hits", "crit_high": True},
-            {"kind": "rule_engine", "subject": "ransomware", "level": "high",
-             "detail": "ransomware 3 hits", "crit_high": True},
-        ],
-    }
-
-
-def _seed_leads(tmp_path, digest) -> None:
-    """Write the real leads.jsonl the digest's crit/high leads come from."""
-    (tmp_path / "analysis").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "analysis" / "leads.jsonl").write_text(
-        "\n".join(json.dumps({
-            "kind": lead["kind"], "subject": lead["subject"],
-            "family": "hayabusa", "detail": lead["detail"], "score": 9.0,
-            "rows": [], "audit_ids": [],
-            "extra": {"crit_high": True, "level": lead["level"],
-                      "engine": "hayabusa", "count": 3},
-        }) for lead in digest["leads"]) + "\n",
-        encoding="utf-8",
-    )
-
-
 def test_a_crit_lead_without_a_disposition_blocks_settle(tmp_path):
     """D47: a round that plans no further queries may NOT settle while a
     crit/high lead has no disposition citing its own rows."""
-    _seed_leads(tmp_path, _digest_with_crit_leads())
-    # The model tries to settle on round 1; only H1 (mimikatz) has a
-    # disposition with evidence, so the `ransomware` crit lead is open.
+    # The model tries to settle on round 1; only L1 (mimikatz) is answered by its id, so the
+    # ransomware alert (L2) is open.
     settled = json.dumps({
-        "notes": [{"hypothesis": "H1", "status": "confirmed",
+        "notes": [{"hypothesis": "L1", "status": "confirmed",
                    "evidence": "hayabusa row 2024-01-01 ws01 mimikatz",
                    "family": "hayabusa"}],
         "next": [],
@@ -520,29 +496,24 @@ def test_a_crit_lead_without_a_disposition_blocks_settle(tmp_path):
     result = asyncio.run(run_interpret_loop(
         case_dir=tmp_path, case_id="CASE-TEST", model=model,
         state={"case_context": {"interpret_rounds": "3"}},
-        digest=_digest_with_crit_leads(), digest_md="# Digest",
+        digest=_digest(), digest_md="# Digest",
         sections=[(1, "query_pack", "family:hayabusa ...")], execute=execute,
     ))
     # It did not settle on round 1: the open crit lead forced another round.
     assert result["rounds_run"] > 1
     assert result["stop_reason"] != "settled" or result["rounds_run"] >= 3
-    # The evidence for the open lead was actually pulled, not just claimed.
-    pulled = " ".join(
-        str(payload.get("value") or payload.get("dsl") or "")
-        for _name, payload in execute.calls
-    )
-    assert "ransomware" in pulled
+    # The open lead's own rows were read by their document ids, not sampled by a keyword (FM-9).
+    assert "doc-ransom" in json.dumps([payload for _name, payload in execute.calls])
 
 
 def test_a_dispositioned_crit_lead_lets_the_loop_settle(tmp_path):
     """The mirror: once every crit lead is dispositioned, the early stop works."""
-    _seed_leads(tmp_path, _digest_with_crit_leads())
     settled = json.dumps({
         "notes": [
-            {"hypothesis": "H1", "status": "confirmed",
+            {"hypothesis": "L1", "status": "confirmed",
              "evidence": "hayabusa row 2024-01-01 ws01 mimikatz",
              "family": "hayabusa"},
-            {"hypothesis": "H2", "status": "confirmed",
+            {"hypothesis": "L2: the ransomware note", "status": "confirmed",
              "evidence": "hayabusa row 2024-01-02 ws01 ransomware note",
              "family": "hayabusa"},
         ],
@@ -552,7 +523,7 @@ def test_a_dispositioned_crit_lead_lets_the_loop_settle(tmp_path):
     result = asyncio.run(run_interpret_loop(
         case_dir=tmp_path, case_id="CASE-TEST", model=model,
         state={"case_context": {"interpret_rounds": "3"}},
-        digest=_digest_with_crit_leads(), digest_md="# Digest",
+        digest=_digest(), digest_md="# Digest",
         sections=[], execute=FakeExecutor(),
     ))
     assert result["stop_reason"] == "settled"
@@ -563,14 +534,15 @@ def test_undispositioned_crit_leads_ignores_a_bare_unknown_note(tmp_path):
     """A note with no evidence text is not a disposition — the D47 hole."""
     from nexus.langgraph.interpret_loop import _undispositioned_crit_leads
 
-    leads = [{"subject": "ransomware", "level": "high", "crit_high": True}]
-    digest = {"leads": leads}
-    bare = [{"hypothesis": "H2 ransomware", "status": "unknown", "evidence": ""}]
-    assert _undispositioned_crit_leads(digest, bare) == [
-        {"subject": "ransomware", "kind": "", "level": "high", "detail": ""}
-    ]
+    digest = {"alerts": [{"key": A2, "title": "ransomware", "level": "high", "doc_ids": ["doc-ransom"]}]}
+    bare = [{"hypothesis": "L1", "status": "unknown", "evidence": ""}]
+    assert [lead["id"] for lead in _undispositioned_crit_leads(digest, bare)] == ["L1"]
+    # Naming the subject is not answering it: the note must carry the lead's id (FM-9).
+    wording = [{"hypothesis": "H2 ransomware", "status": "confirmed",
+                "evidence": "hayabusa row ws01 ransomware", "family": "hayabusa"}]
+    assert [lead["id"] for lead in _undispositioned_crit_leads(digest, wording)] == ["L1"]
     with_rows = [{
-        "hypothesis": "H2 ransomware", "status": "confirmed",
+        "hypothesis": "L1", "status": "confirmed",
         "evidence": "hayabusa row ws01 ransomware", "family": "hayabusa",
     }]
     assert _undispositioned_crit_leads(digest, with_rows) == []
@@ -821,10 +793,10 @@ def test_the_persisted_orient_record_holds_the_system_message_too(tmp_path):
     assert model.calls[0][0]["content"] in text
 
 
-def _claim(title: str, observation: str) -> dict:
+def _claim(title: str, observation: str, *alerts: str) -> dict:
     return {"title": title, "observation": observation, "interpretation": "supported by rows",
             "confidence": "MEDIUM", "confidence_justification": "rows",
-            "audit_ids": ["n4_query-test-20260918-001"]}
+            "audit_ids": ["n4_query-test-20260918-001", *alerts]}
 
 
 def test_dispositions_are_kept_apart_from_findings(tmp_path):
@@ -834,9 +806,9 @@ def test_dispositions_are_kept_apart_from_findings(tmp_path):
     from nexus.langgraph.hunt_parser import parse_hunt_candidates
 
     reply = json.dumps({
-        "findings": [_claim("Mimikatz detected on ws01", "credential dumping"),
+        "findings": [_claim("Mimikatz detected on ws01", "credential dumping", A1),
                      _claim("psexec lateral movement", "psexec 9 hits")],
-        "dispositions": [{"item": "[CRITICAL] Ransomware note (ws01)", "status": "Benign",
+        "dispositions": [{"item": A2, "status": "Benign",
                           "reason": "a lab note file", "audit_ids": ["n4_query-test-20260918-001"]}],
     })
     model = ScriptedModel([_orientation(), _verify_settled(), reply])
@@ -847,7 +819,7 @@ def test_dispositions_are_kept_apart_from_findings(tmp_path):
     ))
     assert result["findings_emitted"] == 2
     assert result["unaddressed"] == []
-    assert result["dispositions"] == [{"item": "[CRITICAL] Ransomware note (ws01)", "status": "benign",
+    assert result["dispositions"] == [{"item": A2, "status": "benign",
                                        "reason": "a lab note file",
                                        "audit_ids": ["n4_query-test-20260918-001"]}]
     staged = [c["title"] for c in parse_hunt_candidates(result["messages"])]
@@ -861,11 +833,10 @@ def test_dispositions_are_kept_apart_from_findings(tmp_path):
 
 
 def test_the_extra_pass_answers_with_dispositions_not_findings(tmp_path):
-    first = json.dumps({"findings": [_claim("Mimikatz detected on ws01", "credential dumping")],
+    first = json.dumps({"findings": [_claim("Mimikatz detected on ws01", "credential dumping", A1)],
                         "dispositions": []})
     extra = json.dumps({"findings": [], "dispositions": [
-        {"item": "[CRITICAL] Ransomware note (ws01)", "status": "benign", "reason": "lab file"},
-        {"item": "psexec (9 hits)", "status": "coverage_gap", "reason": "no 7045 rows in scope"},
+        {"item": A2, "status": "benign", "reason": "lab file"},
     ]})
     model = ScriptedModel([_orientation(), _verify_settled(), first, extra])
     result = asyncio.run(run_interpret_loop(
@@ -875,7 +846,7 @@ def test_the_extra_pass_answers_with_dispositions_not_findings(tmp_path):
     ))
     assert result["findings_emitted"] == 1
     assert result["unaddressed"] == []
-    assert [d["status"] for d in result["dispositions"]] == ["benign", "coverage_gap"]
+    assert [d["status"] for d in result["dispositions"]] == ["benign"]
     assert "give the item a disposition" in model.calls[3][0]["content"]
 
 
@@ -891,13 +862,12 @@ def test_the_extra_pass_sees_the_findings_so_far_and_revises_one_instead_of_rest
             sent.append("\n".join(str(m.get("content") or "") for m in messages))
             return await super().ainvoke(messages)
 
-    first = json.dumps({"findings": [_claim("Mimikatz detected on ws01", "credential dumping")],
+    first = json.dumps({"findings": [_claim("Mimikatz detected on ws01", "credential dumping", A1)],
                         "dispositions": []})
     extra = json.dumps({"findings": [
         {**_claim("Mimikatz detected on ws01, then psexec to the file server",
-                  "credential dumping, then psexec 9 hits from the same account"), "revises": "F1"},
-    ], "dispositions": [{"item": "[CRITICAL] Ransomware note (ws01)", "status": "benign",
-                         "reason": "lab file"}]})
+                  "credential dumping, then psexec 9 hits from the same account", A1), "revises": "F1"},
+    ], "dispositions": [{"item": A2, "status": "benign", "reason": "lab file"}]})
     result = asyncio.run(run_interpret_loop(
         case_dir=tmp_path, case_id="CASE-TEST",
         model=_Recording([_orientation(), _verify_settled(), first, extra]),
@@ -964,7 +934,7 @@ def test_the_extra_reconcile_pass_asks_for_findings_in_the_staging_shape(tmp_pat
         "observation": "psexec 9 hits", "interpretation": "remote service execution",
         "confidence": "MEDIUM", "confidence_justification": "counts",
         "audit_ids": ["n4_query-test-20260918-001"]}],
-        "dispositions": [{"item": "Ransomware note", "status": "benign", "reason": "lab note file",
+        "dispositions": [{"item": A2, "status": "benign", "reason": "lab note file",
                           "audit_ids": ["n4_query-test-20260918-001"]}]})
     result = asyncio.run(run_interpret_loop(
         case_dir=tmp_path, case_id="CASE-TEST",
@@ -974,9 +944,9 @@ def test_the_extra_reconcile_pass_asks_for_findings_in_the_staging_shape(tmp_pat
     ))
     extra_call = next(s for s in sent if "THIS PASS" in s)
     assert "observation, interpretation (non-empty)" in extra_call
-    assert "Negative evidence, a census, a scope note" in extra_call
+    assert "A census, a scope note and a threat-intel verdict" in extra_call
     assert result["findings_emitted"] == 2, "the extra pass's finding stages beside the first"
     # D217: each status is defined, and an item that belongs to a finding is named in it, not disposed.
     for prompt in (extra_call, next(s for s in sent if "write the final findings JSON" in s)):
-        assert "A finding covers an item only when its observation names the item" in prompt
+        assert "A finding covers an alert when its audit_ids include the alert's audit_id" in prompt
         assert "benign = the rows show legitimate activity" in prompt

@@ -2,10 +2,12 @@
 
 Operator rule (2026-09-17): *feed the LLM everything, in however efficient a
 form.* The digest is that form: every deterministic fact the case holds —
-signal map **including 0-hit needles** (negative evidence), the alert surface,
-entities with first/last seen, coverage/ledger, timeline shape, threat intel,
+the alert surface (every crit/high lead, keyed by its audit id), the top
+leads, typed entities with first/last seen, coverage/ledger, timeline shape,
 and an explicit **scope statement** (what artifact classes exist — and what
-does not: no disk/memory/network when that is the truth).
+does not: no disk/memory/network when that is the truth). Keyword-needle
+counts are not facts about the case and are not in it (Part 12 FM-3); the
+run's threat-intel block reaches the prompt beside it (D456).
 
 It is compact at the aggregate level and complete at the case level; raw
 detail is pulled on demand (`n4_sample`/`n4_query`). Built from the briefing
@@ -66,61 +68,6 @@ def _classify(families: list[str]) -> dict[str, list[str]]:
         "memory": memory,
         "linux": sorted(pick(_LINUX_FAMILIES)),
         "disk_timeline": sorted(pick(_DISK_FAMILIES)),
-    }
-
-
-def _signal_map(case_dir: Path, brief: dict[str, Any]) -> dict[str, Any]:
-    """Every scanned needle with its count — 0-hit needles are evidence too.
-
-    A needle the scan could NOT query (``scanned=no``) is never presented as
-    "checked, absent": it goes into ``unscanned`` and is excluded from the
-    negative-evidence list.
-    """
-    rows: list[dict[str, Any]] = []
-    csv_path = case_dir / "analysis" / "signal_map.csv"
-    if csv_path.is_file():
-        try:
-            import csv as _csv
-
-            with csv_path.open(encoding="utf-8", errors="replace") as fh:
-                for row in _csv.DictReader(fh):
-                    needle = str(row.get("needle") or "").strip()
-                    if not needle:
-                        continue
-                    rows.append({
-                        "needle": needle,
-                        "hits": int(row.get("hits") or 0),
-                        "source": str(row.get("source") or ""),
-                        "scanned": str(row.get("scanned") or "yes").lower() != "no",
-                        # IC-13: a map written before the column, or from the capped window, is not exact.
-                        "exact": str(row.get("exact") or "no").lower() == "yes",
-                    })
-        except (OSError, ValueError):
-            rows = []
-    if not rows:
-        rows = [
-            {"needle": s["needle"], "hits": int(s.get("hits") or 0),
-             "source": str(s.get("source") or ""), "scanned": True}
-            for s in (brief.get("needle_scan") or [])
-        ]
-    with_hits = sorted([r for r in rows if r["hits"] > 0], key=lambda r: -r["hits"])
-    # IC-13: a 0 is negative evidence only when it is the index's own count. A 0 inside the scan's capped
-    # window said "checked, 0 hits" for lsass, procdump and sekurlsa on CASE-C5B04D31 (18,977 rows name lsass).
-    exact = bool(rows) and all(r.get("exact") for r in rows)
-    zero_hit = sorted(
-        [r for r in rows if r["hits"] == 0 and r.get("scanned", True)],
-        key=lambda r: r["needle"],
-    )
-    unscanned = sorted(
-        [r["needle"] for r in rows if not r.get("scanned", True)],
-    )
-    return {
-        "scanned": len(rows),
-        "exact": exact,
-        "with_hits": with_hits[:150],
-        "zero_hit": [r["needle"] for r in zero_hit][:400] if exact else [],
-        "not_in_sample": [] if exact else [r["needle"] for r in zero_hit][:400],
-        "unscanned": unscanned[:400],
     }
 
 
@@ -203,7 +150,6 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "hosts": brief.get("hosts") or [],
         "time_range": brief.get("time_range") or {},
         "intake": brief.get("intake") or {},
-        "signal_map": _signal_map(case_dir, brief),
         "scan_stats": brief.get("scan_stats") or {},
         "alerts": brief.get("alerts") or [],
         "top_leads": top_leads(case_dir),
@@ -390,71 +336,35 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
         # Every job, OK ones counted by tool and every other one whole (D216). The first 20 of 92 rows
         # used to be listed with no word of the rest: the memory jobs (MemProcFS, 31 Volatility runs)
         # came last and never showed, while the triage discovery's SKIP naming the memory image came
-        # first, and Mode 1 recorded the memory image as unprocessed.
+        # first, and Mode 1 recorded the memory image as unprocessed. A repeated message is one line with
+        # its count (Part 12 FM-12: T22 printed one Volatility WARN eight times).
         entries = led.get("entries") or []
         ok: dict[str, int] = {}
+        others: dict[tuple[str, str, str], int] = {}
         for entry in entries:
-            if str(entry.get("status") or "").upper() == "OK":
-                tool = str(entry.get("tool") or "")
+            status = str(entry.get("status") or "").upper()
+            tool = str(entry.get("tool") or "")
+            if status == "OK":
                 ok[tool] = ok.get(tool, 0) + 1
+            else:
+                key = (str(entry.get("status") or ""), tool, str(entry.get("reason") or ""))
+                others[key] = others.get(key, 0) + 1
         if ok:
             lines.append("- OK: " + ", ".join(
                 f"{tool} x{n}" if n > 1 else tool for tool, n in sorted(ok.items())))
-        for entry in entries:
-            if str(entry.get("status") or "").upper() != "OK":
-                reason = f" — {entry.get('reason')}" if entry.get("reason") else ""
-                lines.append(f"- {entry.get('status', '')}: {entry.get('tool', '')}{reason}")
-    smap = digest.get("signal_map") or {}
-    with_hits = smap.get("with_hits") or []
-    if with_hits:
-        lines.append("")
-        lines.append(
-            f"## Signal map — needles with hits ({len(with_hits)} shown; "
-            + ("exact row counts on the index)" if smap.get("exact") else
-               "AT LEAST these counts: counted inside the scan's capped sample, not on the whole index)"))
-        lines.append(
-            ", ".join(f"{r['needle']}({r['hits']}{'' if smap.get('exact') else '+'})" for r in with_hits[:80])
-        )
-    not_in_sample = smap.get("not_in_sample") or []
-    if not_in_sample:
-        lines.append("")
-        lines.append(
-            f"## Not found in the sampled window ({len(not_in_sample)} needles; NOT evidence of absence: "
-            "the index was not counted):")
-        lines.append(", ".join(not_in_sample[:120]))
-    zero = smap.get("zero_hit") or []
-    if zero:
-        lines.append("")
-        lines.append(
-            f"## Negative evidence — checked, 0 hits ({len(zero)} needles)"
-        )
-        lines.append(", ".join(zero[:120]))
-    unscanned = smap.get("unscanned") or []
-    if unscanned:
-        lines.append("")
-        lines.append(
-            f"## NOT scanned — never queried ({len(unscanned)} needles; "
-            "their absence is NOT evidence of absence):"
-        )
-        lines.append(", ".join(unscanned[:120]))
-    stats = digest.get("scan_stats") or {}
-    if stats.get("truncated"):
-        lines.append("")
-        lines.append(
-            ("> The alert list below is drawn from the scan's capped sample (the needle counts above are "
-             "exact) — the scan was truncated by: " if smap.get("exact") else
-             "> Hit counts here are LOWER BOUNDS — the scan was truncated by: ")
-            + "; ".join(stats.get("truncated_reasons") or ["unknown cap"])
-            + ("." if smap.get("exact") else ". Do not treat counts as exact.")
-        )
+        for (status, tool, reason), n in others.items():
+            lines.append(f"- {status}: {tool}{' x' + str(n) if n > 1 else ''}"
+                         + (f" — {reason}" if reason else ""))
     alerts = digest.get("alerts") or []
     if alerts:
+        # Every crit/high lead, each with the audit id of the rows it stands on (Part 12 FM-3, FM-9).
         lines.append("")
-        lines.append(f"## Alert surface ({len(alerts)} high/critical)")
-        for a in alerts[:60]:
+        lines.append(f"## Alert surface ({len(alerts)} crit/high leads; each is answered by its audit id)")
+        for a in alerts:
+            count = f" x{a['count']}" if a.get("count") else ""
             lines.append(
-                f"- [{str(a.get('level', '')).upper()}] {a.get('family', '')} · "
-                f"{a.get('title', '')} · {a.get('host', '')} {a.get('time', '')}"
+                f"- [{str(a.get('level', '')).upper()}] {a.get('family', '')} · {a.get('title', '')}{count} · "
+                f"{a.get('host', '')} {a.get('time', '')} [audit_id {a.get('key', '')}]"
             )
     top_leads = digest.get("top_leads") or []
     if top_leads:
@@ -516,9 +426,9 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             lines.extend(responder[1:])
     lines.append("")
     lines.append(
-        "EVERY item above must receive a disposition in the interpretation: "
-        "backed by evidence rows, assessed benign with a reason, or recorded "
-        "as a coverage gap. Absence of an artifact class is SCOPE, not a verdict."
+        "Each alert above is answered in the interpretation: a finding that cites its audit_id, or a "
+        "disposition naming that audit_id (benign, refuted, coverage_gap or not_examined, with the reason "
+        "from the rows). Absence of an artifact class is SCOPE, not a verdict."
     )
     return "\n".join(lines) + "\n"
 
@@ -538,74 +448,55 @@ def write_case_digest(case_dir: Path, digest: dict[str, Any]) -> dict[str, str]:
         return {}
 
 
+def _cited(item: dict[str, Any]) -> set[str]:
+    """Every audit id a finding or disposition cites."""
+    ids = {str(a) for a in item.get("audit_ids") or [] if a}
+    for key in ("artifacts", "evidence"):
+        for entry in item.get(key) or []:
+            if isinstance(entry, dict) and entry.get("audit_id"):
+                ids.add(str(entry["audit_id"]))
+    return ids
+
+
 def reconciliation_checklist(digest: dict[str, Any],
                              findings: list[dict[str, Any]],
                              dispositions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Deterministic addressed/dispositioned/unaddressed check of the digest.
+    """Which alerts a finding answers (addressed), a disposition answers (dispositioned), or nothing does.
 
-    Every alert ≥ high and every high-count needle must be mentioned by at
-    least one finding (addressed) or answered by a disposition that names it
-    (dispositioned, D193); anything else is an explicit gap the verdict must
-    address (never silently omitted).
+    An alert is a crit/high lead, keyed by the audit id of the rows it stands on. It is addressed when a
+    finding cites one of its audit ids and dispositioned when a disposition cites one or names its key
+    (Part 12 FM-3, FM-9). It used to be "addressed" when the first 48 characters of its title occurred in
+    any finding's text, beside the 40 keyword needles a finding had to "mention".
     """
-    answered = " ".join(
-        f"{d.get('item') or ''} {d.get('reason') or ''}"
-        for d in dispositions or [] if isinstance(d, dict)
-    ).lower()
-    parts: list[str] = []
+    finding_ids: set[str] = set()
     for f in findings or []:
-        if not isinstance(f, dict):
-            continue
-        parts.extend(
-            str(f.get(k) or "") for k in ("title", "observation", "interpretation")
-        )
-        # Evidence VALUES only — never the dict structure, or every finding
-        # with an evidence row would "mention" needles like source/detail.
-        for ev in (f.get("evidence") or []):
-            if isinstance(ev, dict):
-                parts.append(str(ev.get("detail") or ""))
-            elif isinstance(ev, str):
-                parts.append(ev)
-    blob = " ".join(parts).lower()
+        if isinstance(f, dict):
+            finding_ids |= _cited(f)
+    answered: set[str] = set()
+    for d in dispositions or []:
+        if isinstance(d, dict):
+            answered |= _cited(d) | {" ".join(str(d.get("item") or "").split())}
 
     unaddressed: list[dict[str, str]] = []
     addressed: list[dict[str, str]] = []
     dispositioned: list[dict[str, str]] = []
-    seen: set[str] = set()
-
-    def _place(key: str, item: dict[str, str]) -> None:
-        if key in blob:
+    for alert in digest.get("alerts") or []:
+        keys = {str(a) for a in alert.get("audit_ids") or [] if a} | {str(alert.get("key") or "")}
+        keys.discard("")
+        item = {
+            "kind": "alert",
+            "key": str(alert.get("key") or ""),
+            "value": f"[{str(alert.get('level', '')).upper()}] {alert.get('title', '')} ({alert.get('host', '')})",
+        }
+        if keys & finding_ids:
             addressed.append(item)
-        elif key in answered:
+        elif keys & answered:
             dispositioned.append(item)
         else:
             unaddressed.append(item)
-
-    for alert in (digest.get("alerts") or [])[:60]:
-        title = str(alert.get("title") or "").strip()
-        key = title[:48].lower()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        item = {
-            "kind": "alert",
-            "value": f"[{str(alert.get('level', '')).upper()}] {title} ({alert.get('host', '')})",
-        }
-        _place(key, item)
-
-    high_needles = [r for r in (digest.get("signal_map") or {}).get("with_hits", []) if r.get("hits", 0) >= 3]
-    for row in high_needles[:40]:
-        needle = str(row.get("needle") or "").lower()
-        if not needle or needle in seen:
-            continue
-        seen.add(needle)
-        item = {"kind": "needle", "value": f"{row.get('needle')} ({row.get('hits')} hits)"}
-        _place(needle, item)
-
     return {
         "addressed": addressed,
         "dispositioned": dispositioned,
-        "unaddressed": unaddressed[:40],
+        "unaddressed": unaddressed,
         "alerts_total": len(digest.get("alerts") or []),
-        "needles_with_hits": len((digest.get("signal_map") or {}).get("with_hits") or []),
     }

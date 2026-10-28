@@ -79,32 +79,13 @@ async def write_interpretation_summary(
         f"- Typed entities in the index: **{inv_count}** (a reference, not a checklist)",
     ]
     unaddressed = list(reconciliation.get("unaddressed") or [])
-    # Scan-coverage honesty: reconciliation runs over capped/sliced digest
-    # lists — never claim complete coverage when the scan was truncated.
-    scan_truncated = False
-    scan_reasons: list[str] = []
-    try:
-        digest_path = analysis / "case_digest.json"
-        if digest_path.is_file():
-            digest = json.loads(digest_path.read_text(encoding="utf-8"))
-            scan_stats = digest.get("scan_stats") or {}
-            scan_truncated = bool(scan_stats.get("truncated"))
-            scan_reasons = list(scan_stats.get("truncated_reasons") or [])
-    except (OSError, ValueError):
-        scan_truncated = False
     if reconciliation:
+        # The alerts are every crit/high lead, answered by audit id (Part 12 FM-3, FM-9); the keyword
+        # needles and the needle scan's truncation are no longer part of the reconciliation.
         lines.append(
-            f"- Digest reconciliation: **{len(reconciliation.get('addressed') or [])} "
+            f"- Alert reconciliation: **{len(reconciliation.get('addressed') or [])} "
             f"addressed / {len(reconciliation.get('dispositioned') or [])} dispositioned / "
-            f"{len(unaddressed)} unaddressed** "
-            f"(alerts {reconciliation.get('alerts_total', 0)}, "
-            f"needles with hits {reconciliation.get('needles_with_hits', 0)})"
-        )
-    if scan_truncated:
-        lines.append(
-            "- **SCAN COVERAGE: TRUNCATED** ("
-            + "; ".join(scan_reasons or ["cap reached"])
-            + ") — counts and reconciliation are LOWER BOUNDS."
+            f"{len(unaddressed)} unaddressed** of {reconciliation.get('alerts_total', 0)} crit/high alerts"
         )
     # The verdict goes right after the header bullets, however many there are; a fixed index put
     # it between them (2026-10-14).
@@ -195,15 +176,7 @@ async def write_interpretation_summary(
             f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
             f"Dispositions the analysis already gave (use them; do not re-judge without rows):\n"
             f"{disposition_lines or '(none)'}\n\n"
-            + (
-                "SCAN COVERAGE WARNING: the briefing scan was truncated ("
-                + "; ".join(scan_reasons or ["cap reached"])
-                + "). Counts are lower bounds and unreconciled items may "
-                "be an artifact of the cap — say so in the verdict.\n\n"
-                if scan_truncated
-                else ""
-            )
-            + f"Threat intel:\n{ti_md[:1500] or '(none)'}"
+            f"Threat intel:\n{ti_md[:1500] or '(none)'}"
         )
         # WP 10.53: prefer the bounded tool loop so the verdict can verify its
         # own coverage (run_record/aggregations) before answering.

@@ -117,7 +117,7 @@ def _post(case_id: str, body: dict[str, Any]) -> dict[str, Any]:
 
 
 def iter_sources(case_id: str, query: dict[str, Any], source: list[str]) -> Iterable[dict[str, Any]]:
-    """Every matching stored document of the case's index; a failed request raises."""
+    """Every matching stored document of the case's index, with its ``_id``; a failed request raises."""
     search_after: list[Any] | None = None
     while True:
         body: dict[str, Any] = {"size": _PAGE, "query": query, "_source": source,
@@ -126,7 +126,7 @@ def iter_sources(case_id: str, query: dict[str, Any], source: list[str]) -> Iter
             body["search_after"] = search_after
         page = _post(case_id, body).get("hits", {}).get("hits", [])
         for hit in page:
-            yield hit.get("_source") or {}
+            yield {**(hit.get("_source") or {}), "_id": str(hit.get("_id") or "")}
         if len(page) < _PAGE:
             return
         search_after = page[-1].get("sort")

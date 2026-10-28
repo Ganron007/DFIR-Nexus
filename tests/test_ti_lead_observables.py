@@ -61,12 +61,17 @@ def test_observable_kind_is_the_field_meaning(path, kind):
 
 
 def _fake_index(monkeypatch, docs):
-    """The index as the lead-row reader sees it: the captured stored documents."""
+    """The index as the lead-row reader sees it: the captured stored documents, by `_id` or (file, line)."""
     def iter_sources(case_id, query, source):
-        pairs = {(c["bool"]["filter"][0]["term"]["file"], str(c["bool"]["filter"][1]["term"]["line"]))
-                 for c in query["bool"]["should"]}
+        ids, pairs = set(), set()
+        for clause in query["bool"]["should"]:
+            if "ids" in clause:
+                ids |= set(clause["ids"]["values"])
+            else:
+                terms = clause["bool"]["filter"]
+                pairs.add((terms[0]["term"]["file"], str(terms[1]["term"]["line"])))
         for doc in docs:
-            if (doc["file"], str(doc["line"])) in pairs:
+            if doc.get("_id") in ids or (doc["file"], str(doc["line"])) in pairs:
                 yield doc
 
     monkeypatch.setattr(ti_context, "iter_sources", iter_sources)
@@ -104,10 +109,23 @@ def test_a_real_lead_selects_only_the_rows_it_cites(monkeypatch):
     assert (selection["leads"], selection["lead_rows"], selection["rows_found"]) == (1, 4, 4)
     # The YARA rows name a process and a rule, no typed observable; the netscan row is not cited.
     assert selection["iocs"] == {kind: [] for kind in OBSERVABLE_KINDS}
-    assert ti_context.lead_locations([_LEAD]) == {
-        (row["loc"].rpartition(":")[0], row["loc"].rpartition(":")[2]): [_LEAD["subject"]]
-        for row in _LEAD["rows"]
-    }
+    by_id, by_loc = ti_context.lead_references([_LEAD])
+    assert by_id == {}
+    assert by_loc == {(row["loc"].rpartition(":")[0], row["loc"].rpartition(":")[2]): [_LEAD["subject"]]
+                      for row in _LEAD["rows"]}
+
+
+def test_a_rule_engine_lead_is_read_by_its_document_ids(monkeypatch):
+    """A Hayabusa lead's rows carry the index `_id`, not a location: D455's first selection read only
+    locations and so missed every rule-engine lead's rows (captured from T12, CASE-7FA5756A)."""
+    from nexus.analysis.leads import lead_row_refs
+
+    t12 = json.loads((Path(__file__).parent / "fixtures" / "t12_hayabusa_crit_lead.json").read_text(encoding="utf-8"))
+    doc_ids, locs = lead_row_refs(t12["lead"])
+    assert len(doc_ids) == 5 and locs == []
+    _fake_index(monkeypatch, t12["docs"])
+    selection = ti_context.select_lead_observables("CASE-7FA5756A", [t12["lead"]])
+    assert (selection["lead_rows"], selection["rows_found"]) == (5, 5)
 
 
 def test_the_case_inventory_takes_the_same_typed_fields(monkeypatch):
