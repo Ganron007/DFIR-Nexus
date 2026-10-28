@@ -3148,6 +3148,11 @@ async def _finalize_if_unfinished(
         snapshot = await _snapshot(compiled, cfg)
         pending = list(getattr(snapshot, "next", ()) or ()) if snapshot else []
     state = _final_state(initial, result)
+    # A node's error decides the record even when the graph went on to the approval interrupt: T22's
+    # interpret failed and was finalized `failed`, then the pause overwrote it as "interrupted: awaiting
+    # approval" with nothing staged (2026-10-28, run d4cc7f9b).
+    if str((result if isinstance(result, dict) else {}).get("error") or state.get("error") or "").strip():
+        pending = []
     try:
         from nexus.langgraph.pipeline_runs import finalize_run
 
