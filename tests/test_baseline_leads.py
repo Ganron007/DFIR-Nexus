@@ -217,3 +217,18 @@ def test_findevil_ratings_are_the_pinned_wiki_pages():
     assert findevil_rating("PE_PATCHED") == "HIGH" and findevil_rating("pe_nolink") == "HIGH"
     assert findevil_rating("HIGH_ENTROPY") == "MEDIUM" and findevil_rating("YR_TROJAN") == "MEDIUM"
     assert findevil_rating("PE_INJECT") == "LOW" and findevil_rating("NOT_A_TYPE") == ""
+
+
+def test_t22_an_object_memory_yara_match_names_its_object_not_a_process():
+    """D461: T22's vulnerable-driver match is object memory (a kernel driver, no PID, no process). Grouped by
+    process it became the lead "? (pid ?)", which no Mode 1 note could name. It names the MemoryTag object."""
+    t22 = json.loads((FIXTURE.parent / "t22_yara_matches.json").read_text(encoding="utf-8"))["docs"]
+    leads = memory_verdict_leads_from(t22["yara_t22_mnemosyne_object"] + t22["yara_t22_mcshield_process"], [])
+    by_subject = {lead.subject: lead for lead in leads}
+    assert set(by_subject) == {"FILE:[\Windows\Mnemosyne.sys]", "mcshield.exe (pid 3836)"}
+    driver = by_subject["FILE:[\Windows\Mnemosyne.sys]"]
+    assert driver.detail.startswith("MemProcFS YARA: 1 rule(s) matched object memory FILE:[\Windows\Mnemosyne.sys]")
+    assert "?" not in driver.detail and driver.extra["object"] == "FILE:[\Windows\Mnemosyne.sys]"
+    assert driver.extra["process"] == "" and driver.extra["level"] == "severity 50"
+    mcshield = by_subject["mcshield.exe (pid 3836)"]
+    assert "the memory of mcshield.exe (pid 3836" in mcshield.detail and mcshield.extra["object"] == ""

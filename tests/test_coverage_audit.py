@@ -65,24 +65,15 @@ def _signal_map(case: Path, rows: list[tuple[str, int, str, str]]) -> None:
 
 
 def _no_es(monkeypatch, families: dict[str, int] | None) -> None:
-    """Pin the family aggregation (or make it raise when families is None)."""
-    import nexus.langgraph.case_index as ci
+    """Pin the index's family counts (or make them raise when families is None)."""
+    import nexus.langgraph.es_native as es_native
 
-    def fake_agg(*_a, **_k):
+    def fake_counts(_case_id):
         if families is None:
             raise RuntimeError("cluster unreachable")
-        return {
-            "field": "family",
-            "rows_scanned": sum(families.values()),
-            "values_seen": len(families),
-            "distinct": len(families),
-            "distinct_approximate": True,
-            "top": [{"value": f, "count": c} for f, c in families.items()],
-            "buckets": None,
-            "backend": "elasticsearch",
-        }
+        return dict(families)
 
-    monkeypatch.setattr(ci, "es_aggregate", fake_agg)
+    monkeypatch.setattr(es_native, "family_doc_counts", fake_counts)
 
 
 # ── acceptance ───────────────────────────────────────────────────────────────

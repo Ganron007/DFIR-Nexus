@@ -627,13 +627,15 @@ ROLES: dict[str, AgentRole] = {
             "\"confidence_justification\":\"...\",\"audit_ids\":[\"...\"],"
             "\"merges\":[\"<candidate_id>\"],"
             "\"attack_ids\":[\"...\"],\"itm_stage\":\"...\","
-            "\"itm_objects\":\"...\"}],\"gaps\":[\"...\"],"
+            "\"itm_objects\":\"...\"}],"
             "\"timeline\":[{\"ts\":\"...\",\"event\":\"...\",\"audit_ids\":[\"...\"]}],"
             "\"attack_chain\":[{\"tactic\":\"...\",\"technique\":\"T....\",\"what\":\"...\","
             "\"audit_ids\":[\"...\"]}],\"entities\":[{\"type\":\"...\",\"value\":\"...\","
-            "\"role\":\"...\"}],\"open_questions\":[\"...\"],"
-            "\"coverage\":{...}}. Compose the case an examiner reads: the timeline in time order, the attack "
-            "chain stage by stage, who and what acted, and what the evidence has not answered. An absence, an "
+            "\"role\":\"...\"}],\"open_questions\":[\"...\"]}. Compose the case an examiner reads: the timeline "
+            "in time order, the attack chain stage by stage, who and what acted, and what the evidence has not "
+            "answered. What the run examined is the coverage you are given (what the seats checked, did not "
+            "check, could not answer, and their caveats): never say evidence was absent or unavailable unless "
+            "it says so. An absence, an "
             "inventory or a row count is context for the narrative, never a finding. A finding is a claim "
             "about the evidence: a benign "
             "alternative or a refutation test belongs in its interpretation, never "
@@ -855,6 +857,35 @@ def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
             "category": subject["category"], "evidence": rows,
         })))
     return keys
+
+
+#: Seats whose reply composes the run's results rather than examining the evidence.
+_COMPOSING_ROLES = ("synthesis", "reporter")
+
+
+def run_coverage(results: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """What the run's examining seats said they checked, did not check, and qualified (D463).
+
+    The one account of a run's coverage: the seats that ran the queries state it with the rows in hand.
+    The synthesis seat composes the case from it and writes no second account. It used to, from the
+    verdicts alone: T22-R1z3d Mode 2's record said "no network connection data was available" while its
+    pattern seat had read all 36 ESTABLISHED connections in MemProcFS net.csv.
+    """
+    out: dict[str, list[str]] = {"checked": [], "not_checked": [], "caveats": []}
+
+    def items(value: Any) -> list[str]:
+        values = value if isinstance(value, list) else [value] if isinstance(value, str) else []
+        return [" ".join(str(v).split()) for v in values if str(v).strip()]
+
+    for result in results:
+        if not isinstance(result, dict) or str(result.get("role") or "") in _COMPOSING_ROLES:
+            continue
+        parsed = result.get("parsed") if isinstance(result.get("parsed"), dict) else {}
+        coverage = parsed.get("coverage") if isinstance(parsed.get("coverage"), dict) else {}
+        out["checked"] += items(coverage.get("checked"))
+        out["not_checked"] += items(coverage.get("not_checked"))
+        out["caveats"] += items(parsed.get("caveats"))
+    return {key: list(dict.fromkeys(values)) for key, values in out.items()}
 
 
 #: Severity order, for the severity a merged claim carries.
@@ -1352,7 +1383,9 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"confidence_justification":"...","audit_ids":["..."],"merges":["<candidate_id>"],'
         '"attack_ids":["..."],"itm_stage":"...","itm_objects":"..."}],'
-        '"gaps":["..."],"coverage":{"checked":["..."],"not_checked":["..."]}}'
+        '"timeline":[{"ts":"...","event":"...","audit_ids":["..."]}],'
+        '"attack_chain":[{"tactic":"...","technique":"T....","what":"...","audit_ids":["..."]}],'
+        '"entities":[{"type":"...","value":"...","role":"..."}],"open_questions":["..."]}'
     ),
     "reporter": (
         '{"summary":"...","sections":[{"title":"...","body":"..."}],'
@@ -1600,7 +1633,7 @@ def _record_order_family_queries(
     the worker actually ran, with its audit id, the rows it returned and
     whether it failed. A planned-but-unexecuted query is never credited.
     """
-    from nexus.analysis.family_ledger import record_queries
+    from nexus.analysis.family_ledger import families_read, record_queries
 
     entries: list[dict[str, Any]] = []
     for call in tool_calls or []:
@@ -1632,6 +1665,7 @@ def _record_order_family_queries(
             "status": status,
             "rows": rows,
             "audit_id": str(call.get("audit_id") or ""),
+            "families": families_read(summary.get("hits")),
         })
     if entries:
         record_queries(case_dir, entries)
@@ -2712,16 +2746,18 @@ def run_mode2(
         ]
         # Each candidate is named, so synthesis can say which it merges and their calls follow (D225).
         candidates = [{**candidate, "candidate_id": f"C{n}"} for n, candidate in enumerate(candidates, 1)]
+        coverage = run_coverage(state.get("results") or [])
         if candidates:
             order = WorkOrder(
                 order_id=WorkOrder.new_id(),
                 role="synthesis",
                 task=("Build the narrative and final DRAFT candidates from the "
-                      "verified evidence:\n"
+                      "verified evidence and the run's coverage:\n"
                       + _pack(json.dumps({
                           "question": question,
                           "verdicts": state.get("verdicts") or [],
                           "candidates": candidates,
+                          "coverage": coverage,
                           "examiner_feedback": state.get("examiner_feedback") or {},
                       }, default=str), case_dir)),
                 why="Final narrative + DRAFT candidate findings",
@@ -2731,6 +2767,7 @@ def run_mode2(
                 order, case_dir=case_dir, model=model, run_id=run_id,
                 sink=sink, context={
                     "verdicts": state.get("verdicts") or [],
+                    "coverage": coverage,
                     "examiner_feedback": state.get("examiner_feedback") or {},
                 },
             )
@@ -2828,11 +2865,13 @@ def run_mode2(
                         {"skill": u["skill"], "version": u["version"], "role": u["role"]}
                         for u in used
                     ]
-            state["gaps"] = list(dict.fromkeys([*(state.get("gaps") or []), *(parsed.get("gaps") or [])]))
-            state["coverage"] = parsed.get("coverage") or {}
         else:
             state["candidates"] = []
             state["narrative"] = ""
+        # The run's coverage and its unchecked items are what the examining seats recorded (D463).
+        state["coverage"] = coverage
+        state["gaps"] = list(dict.fromkeys([*(state.get("gaps") or []),
+                                            *(f"not checked: {item}" for item in coverage["not_checked"])]))
         # A run whose every work order failed to parse has not converged - it
         # never ran. Reporting "completed / converged" from a dead model is the
         # silent-degradation shape this project forbids: seen live, four orders

@@ -1,0 +1,65 @@
+{
+ "source": "CASE-4387EB47 (tiny case T22) Elasticsearch index nexus-case-case-4387eb47, MemProcFS findevil/yara.txt documents copied verbatim 2026-10-28 (family, file, line, fields)",
+ "docs": {
+  "yara_t22_mnemosyne_object": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "line": 1,
+    "fields": {
+     "MatchIndex": "0",
+     "Rule": "Windows_VulnDriver_AgileRiskManagement_66938a5b",
+     "Author": "Elastic Security",
+     "Id": "66938a5b-66a0-4c69-b6a8-7e717abad5c0",
+     "Fingerprint": "95d4ed904bdafe8b3d5dc39d1c9cb8319e0b6f3ec360f58dd0d6e36ea0f106f6",
+     "Creation_date": "2026-05-22",
+     "Last_modified": "2026-07-29",
+     "Description": "Subject: Agile Risk Management LLC",
+     "Threat_name": "Windows.VulnDriver.AgileRiskManagement",
+     "Reference_sample": "2ccd04383dc2f1f777b7712c6f8ee6d05afac98d22cad8e96f5172ba9c5c53b0",
+     "Severity": "50",
+     "Arch_context": "x86",
+     "Scan_context": "file",
+     "License": "Elastic License v2",
+     "Os": "windows",
+     "Type": "Object Memory",
+     "MemoryTag": "FILE:[\\Windows\\Mnemosyne.sys]",
+     "BaseAddress": "0xffff930ef18ead60",
+     "ts_none": "true"
+    }
+   }
+  ],
+  "yara_t22_mcshield_process": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "line": 51,
+    "fields": {
+     "MatchIndex": "1",
+     "Rule": "Windows_Trojan_Generic_9e4bb0ce",
+     "Author": "Elastic Security",
+     "Id": "9e4bb0ce-b1ed-45dc-8d86-943eb76f0bb4",
+     "Fingerprint": "4fb0eafc58972ef6fef87a88e43ae320420d760f545a66aab28dc3a65f629631",
+     "Creation_date": "2025-10-29",
+     "Last_modified": "2026-01-06",
+     "Threat_name": "Windows.Trojan.Generic",
+     "Reference_sample": "2d93a17f04bf2fcd51c2142043af3840895ae7ba43909a26420c4879d214a3c3",
+     "Severity": "100",
+     "Arch_context": "x86, arm64",
+     "Scan_context": "file, memory",
+     "License": "Elastic License v2",
+     "Os": "windows",
+     "MemoryType": "Virtual Memory (VAD)",
+     "BaseAddress": "0x000000000b0a0000",
+     "PID": "3836",
+     "ProcessName": "mcshield.exe",
+     "ProcessPath": "\\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+     "CommandLine": "\"C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe\"",
+     "User": "SYSTEM",
+     "Created": "2020-02-18 03:53:47 UTC",
+     "ts_none": "true"
+    }
+   }
+  ]
+ }
+}

@@ -582,7 +582,7 @@ def _record_loop_query(
     """
     if tool_name not in ("es_search", "es_aggregate", "es_sample"):
         return
-    from nexus.analysis.family_ledger import record_query
+    from nexus.analysis.family_ledger import families_read, record_query
 
     query = payload.get("query") if isinstance(payload.get("query"), dict) else None
     if query is None:
@@ -595,6 +595,7 @@ def _record_loop_query(
         rows=int(entry.get("count") or 0),
         audit_id=str(entry.get("audit_id") or ""),
         run_id=run_id,
+        families=families_read(entry.get("hits")),
     )
 
 

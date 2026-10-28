@@ -424,19 +424,19 @@ def test_every_seat_kind_receives_its_task(tmp_path, monkeypatch):
         assert ("lead_disposition" in first) == bool(spawn.get("lead")), kind
 
 
-def test_run_record_keeps_settle_blockers_and_role_gaps(tmp_path):
+def test_run_record_keeps_settle_blockers_and_role_gaps(tmp_path, monkeypatch):
     """D129: what join finds at settlement reaches the run record.
 
-    The case's digest inventory names two populated families and no query ran against either,
+    The case's index holds two populated families and no query ran against either,
     so the real family ledger names both as unexamined. Join used to write them onto its input
     state, which LangGraph discards, and the record's gaps were then overwritten.
     """
+    from nexus.langgraph import es_native
     from nexus.modes.multi_agent import run_mode3
 
     case = _case(tmp_path)
-    (case / "analysis" / "case_digest.json").write_text(
-        json.dumps({"inventory": {"evtxecmd": 10, "vol": 5}}), encoding="utf-8"
-    )
+    # The index's own family counts, at the one place the ledger reads them (D462).
+    monkeypatch.setattr(es_native, "family_doc_counts", lambda _case_id: {"evtxecmd": 10, "vol": 5})
 
     def seat_fn(spawn, _board, step):
         return {

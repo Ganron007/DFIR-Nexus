@@ -1,0 +1,112 @@
+{
+ "source": "CASE-4387EB47 (tiny case T22) run records of T22-R1z3d, copied verbatim 2026-10-28: Mode 1 RUN-20261028T141233333689Z-interpret-a6e7c6d5 round-1 verify entry 0, and Mode 2 M2-20261028T142946-d9ca87 order 0's call nexus-claudebot-20261028-034; each keeps only the keys the family-ledger writers read (hits reduced to family/file/line)",
+ "mode1_verify_entry": {
+  "params": {
+   "query": {
+    "wildcard": {
+     "text.wc": {
+      "value": "*Windows_Ransomware_Clop*",
+      "case_insensitive": true
+     }
+    }
+   },
+   "size": 20
+  },
+  "count": 5,
+  "audit_id": "nexus-claudebot-20261028-016",
+  "error": "",
+  "hits": [
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/findevil.csv",
+    "line": "5"
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/findevil.txt",
+    "line": "6"
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "line": "658"
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara_rules.txt",
+    "line": "80"
+   },
+   {
+    "family": "memprocfs",
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/json/general.json",
+    "line": "431443"
+   }
+  ]
+ },
+ "mode2_tool_call": {
+  "tool": "es_search",
+  "args": {
+   "query": {
+    "match_all": {}
+   },
+   "size": 10
+  },
+  "audit_id": "nexus-claudebot-20261028-034",
+  "summary": {
+   "total": 1737335,
+   "returned": 10,
+   "hits": [
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5222"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5223"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5224"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5225"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5226"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5227"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5228"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5229"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5230"
+    },
+    {
+     "family": "memprocfs",
+     "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+     "line": "5231"
+    }
+   ]
+  }
+ }
+}

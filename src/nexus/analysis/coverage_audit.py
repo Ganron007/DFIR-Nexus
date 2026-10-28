@@ -288,39 +288,12 @@ def _sources_section(case_dir: Path) -> dict[str, Any]:
     out["cited_families"] = sorted(cited)
 
     try:
-        from nexus.langgraph.case_index import es_aggregate
+        from nexus.langgraph.es_native import family_doc_counts
 
-        agg = es_aggregate(case_dir, field="family", top=200, match_all=True)
+        indexed = {fam: docs for fam, docs in family_doc_counts(case_dir.name).items() if fam}
     except Exception as exc:  # noqa: BLE001
         out["reason"] = f"per-family index counts unavailable: {exc}"
         return out
-
-    # `es_aggregate` returns either `top: [{value, count}]` (terms path) or
-    # `buckets: {key: count}` (time-bucket path). Read both.
-    indexed: dict[str, int] = {}
-    if isinstance(agg, dict):
-        for item in agg.get("top") or []:
-            if not isinstance(item, dict):
-                continue
-            key = str(item.get("value") or item.get("key") or "").strip()
-            if not key:
-                continue
-            try:
-                indexed[key] = int(item.get("count") or item.get("doc_count") or 0)
-            except (TypeError, ValueError):
-                indexed[key] = 0
-        buckets = agg.get("buckets")
-        if isinstance(buckets, dict):
-            for key, count in buckets.items():
-                name = str(key).strip()
-                if not name:
-                    continue
-                try:
-                    indexed[name] = int(count or 0)
-                except (TypeError, ValueError):
-                    indexed[name] = 0
-        out["backend"] = str(agg.get("backend") or "")
-        out["indexed_rows"] = int(agg.get("rows_scanned") or 0)
 
     if not indexed:
         state = case_dir / "analysis" / "index_state.json"

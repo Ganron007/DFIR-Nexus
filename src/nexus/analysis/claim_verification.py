@@ -850,50 +850,29 @@ def _es_searcher(case_dir: Path):
         cache[key] = count
         return count
 
-    fam_cache: dict[str, int | None] = {}
+    measured: list[dict[str, int] | None] = []
 
     def family_count(family: str) -> int | None:
-        """Exact row count for one parser family, read from the index.
+        """Exact row count for one parser family: the index's own count (``es_native.family_doc_counts``).
 
-        Uses the mapped ``family`` field rather than a text query, so the number
+        Read from the mapped ``family`` field rather than a text query, so the number
         is the family total and not a phrase that happens to appear in it.
         """
         key = (family or "").strip().lower()
         if not key:
             return None
-        if key not in fam_cache:
-            fam_cache[key] = _es_family_count(case_id, key)
-        return fam_cache[key]
+        if not measured:
+            from nexus.langgraph.es_native import family_doc_counts
+
+            try:
+                measured.append({name.lower(): n for name, n in family_doc_counts(case_id).items()})
+            except Exception:  # noqa: BLE001 - a count hook must never break the run
+                measured.append(None)
+        counts = measured[0]
+        return None if counts is None else counts.get(key, 0)
 
     search.family_count = family_count  # type: ignore[attr-defined]
     return search
-
-
-def _es_family_count(case_id: str, family: str) -> int | None:
-    """Total docs in this case's index whose ``family`` matches. None on failure."""
-    import json as _json
-    import urllib.error
-    import urllib.request
-
-    try:
-        from nexus.langgraph.case_index import es_url, index_name
-
-        name = index_name(case_id)
-        base = es_url()
-        if not name or not base:
-            return None
-        body = _json.dumps({"size": 0, "query": {"term": {"family": family}}}).encode()
-        req = urllib.request.Request(
-            f"{base}/{name}/_count", data=body, method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            payload = _json.loads(resp.read().decode())
-        return int(payload.get("count") or 0)
-    except (urllib.error.URLError, OSError, ValueError, TypeError):
-        return None
-    except Exception:  # noqa: BLE001 - a count hook must never break the run
-        return None
 
 
 def verify_case(

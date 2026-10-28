@@ -1,0 +1,284 @@
+{
+ "source": "CASE-4387EB47 (tiny case T22) Mode 2 run M2-20261028T142946-d9ca87 (T22-R1z3d), analysis/mode2_runs record copied verbatim 2026-10-28: every result's role and order id, and its parsed coverage, caveats and gaps (the other parsed keys dropped)",
+ "results": [
+  {
+   "role": "evidence",
+   "order_id": "wo-41f6a9ea7684",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "memprocfs/findevil/yara.txt (all 4 match blocks for mcshield + Mnemosyne)",
+      "memprocfs/forensic/csv/yara.csv (rows 3-6, mcshield YARA detail)",
+      "memprocfs/forensic/csv/findevil.csv (rows 2-5, 22)",
+      "memprocfs/forensic/csv/drivers.csv (mnemosyne entry)",
+      "memprocfs/forensic/csv/devices.csv (Mnemosyne device)",
+      "memprocfs/forensic/csv/eventlog.csv (mnemosyne 7045/4697 history)",
+      "memprocfs/forensic/json/general.json (evil entries)",
+      "run_record (17 tools, parsers ran)"
+     ],
+     "not_checked": [
+      "check_driver for mnemosyne (not in role tool allowlist)",
+      "check_file hash for mnemosyne.sys binary (no hash available in evidence)",
+      "check_file for mcshield.exe binary hash",
+      "vol family (connections, processes, users) for corroborating process-tree context",
+      "network/netflow for C2 or exfil correlated to these detections",
+      "file-system scan for RyukReadMe.html / CIopReadMe.txt actually on disk (would confirm real ransomware vs AV signature store)"
+     ]
+    }
+   }
+  },
+  {
+   "role": "evidence",
+   "order_id": "wo-2fee3f30714e",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "vol pslist for mcshield.exe (PID, PPID, CreateTime, threads, SessionId, Wow64)",
+      "Event 7045 service registration for McAfee McShield",
+      "NTFS timeline for mcshield.exe/dll and McAfee product files",
+      "Registry timeline for HKLM\\SYSTEM\\ControlSet001\\Services\\McShield\\TriggerInfo",
+      "check_service for McShield and McAfee McShield (baseline verdict)",
+      "check_file for C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe (baseline verdict)",
+      "run_record (17 parsers, all OK)",
+      "Previous WO YARA false-positive determination for mcshield.exe memory matches"
+     ],
+     "not_checked": [
+      "mcshield.exe binary SHA-256 hash (no hash available in evidence to verify against McAfee release)",
+      "Network connections from mcshield.exe (vol netstat not specifically queried for PID 3836)",
+      "Prefetch/AmCache for historical mcshield.exe execution (not in available families)"
+     ]
+    }
+   }
+  },
+  {
+   "role": "evidence",
+   "order_id": "wo-02466a6e8625",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "memprocfs/forensic/csv/findevil.csv lines 18-19 (the 2 DRIVER_PATH rows)",
+      "memprocfs/forensic/csv/drivers.csv (SysmonDrv line 91, mnemosyne line 30)",
+      "memprocfs/forensic/csv/devices.csv (SysmonDrv line 295, Mnemosyne line 372)",
+      "memprocfs/forensic/csv/eventlog.csv (Sysmon GPO events, SYSMON TRACE ETW, mnemosyne 7045/4697 history)",
+      "run_record (17 parsers OK)",
+      "Previous WO YARA/VulnDriver context for mnemosyne (nexus-claudebot-20261028-064/066)"
+     ],
+     "not_checked": [
+      "check_file binary hash for SysmonDrv.sys and Mnemosyne.sys (no SHA-256 in evidence to test against vendor releases)",
+      "check_driver for mnemosyne (not in role tool allowlist)",
+      "Network/IOCTL correlation to test for active exploitation of mnemosyne's known vulnerability",
+      "Kernel-mode process creation or code-injection events near driver load addresses"
+     ]
+    }
+   }
+  },
+  {
+   "role": "evidence",
+   "order_id": "wo-566fbcbf8a55",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "memprocfs/forensic/csv/findevil.csv lines 6-8 (the 3 HIGH_ENTROPY rows, full content)",
+      "memprocfs/forensic/csv/findevil.csv lines 6-17 (all HIGH_ENTROPY + PE_PATCHED block for OUTLOOK.EXE)",
+      "memprocfs/forensic/csv/findevil.csv lines 246-253 (8 PRIVATE_RWX rows)",
+      "memprocfs/forensic/csv/findevil.csv lines 372-378 (7 PRIVATE_RX rows)",
+      "vol/vol-windows-54fe308d-ff7158db.txt:92 (pslist OUTLOOK.EXE PID 904, PPID 8652, 33 threads, SessionId 3, Wow64)",
+      "vol/vol-windows-72af336e-d4b3dbca.txt:72 (psscan OUTLOOK.EXE PID 904)",
+      "YARA search for OUTLOOK.EXE (0 hits, parser confirmed via run_record 17 tools OK)",
+      "run_record (17 parsers, all statuses OK)",
+      "All 37 findevil rows for OUTLOOK.EXE pid 904 (nexus-claudebot-20261028-105)"
+     ],
+     "not_checked": [
+      "Module names for addresses 0xd770000, 0xe360000, 0xe780000 (findevil CSV has no module-name column; would need full process-memory module map)",
+      "Network connections from pid 904 (vol netstat not queried for this PID)",
+      "Content of the 8 PRIVATE_RWX sections (shellcode-pattern matching not available with current tools)",
+      "PPID 8652 identity (likely explorer.exe or WINWORD.EXE launching Outlook; not explicitly queried)",
+      "Correlation with email gateway / phishing indicators (no email log family in this case)",
+      "Cross-host sweep for same HIGH_ENTROPY pattern in other Outlook PIDs"
+     ]
+    }
+   }
+  },
+  {
+   "role": "correlation",
+   "order_id": "wo-26770d0b98a4",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "memprocfs/YARA (mcshield.exe 4 match blocks with full hex context — nexus-claudebot-20261028-120)",
+      "memprocfs/findevil.csv (OUTLOOK.EXE 37 rows, Teams.exe 184 rows, mcshield.exe YARA rows, System DRIVER_PATH — nexus-claudebot-20261028-118/119/120)",
+      "memprocfs/drivers.csv (SysmonDrv, mnemosyne entries)",
+      "memprocfs/devices.csv (SysmonDrv, Mnemosyne device objects)",
+      "memprocfs/eventlog.csv (7045 mcshield/mnemosyne, TaskScheduler 157 rows, GPO Sysmon, ETW SYSMON TRACE — nexus-claudebot-20261028-123)",
+      "vol/netstat (148 rows, all LISTENING localhost/0.0.0.0, no ESTABLISHED external — nexus-claudebot-20261028-121)",
+      "vol/pslist (mcshield PID 3836, OUTLOOK PID 904, Teams multiple PIDs)",
+      "NTFS timeline (McAfee install/update files)",
+      "registry timeline (McShield service key)",
+      "run_record (17 parsers OK, all tools ran)"
+     ],
+     "not_checked": [
+      "Binary SHA-256 verification for mcshield.exe, SysmonDrv.sys, Mnemosyne.sys (no hashes in evidence)",
+      "Content-level examination of PRIVATE_RWX sections for shellcode patterns (not available with current tools)",
+      "Cross-host sweep for same product deployment (single host in case)",
+      "Prefetch/AmCache for historical execution (not in available families)",
+      "Network connections from specific PIDs (904, 1680, 3836) — vol/netstat shows only socket-level data without PID correlation to specific processes for ESTABLISHED connections"
+     ]
+    }
+   }
+  },
+  {
+   "role": "pattern",
+   "order_id": "wo-7c47240a1900",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "ATT&CK T1486 (Data Encrypted for Impact): no ransomware on disk, no file-encryption burst, YARA matches explained as AV signature store",
+      "ATT&CK T1055 / T1055.004 (Process Injection / APC): no private RWX shellcode, no VAD anomalies, no foreign threads, no APC-queueing evidence",
+      "ATT&CK T1068 / T1547.005 (Vulnerable Driver / Kernel Module): mnemosyne is a known-vulnerable but NOT-exploited commercial driver; SysmonDrv is a Microsoft security tool",
+      "ATT&CK T1021.002 (SMB): single System-owned 445 connection, no lateral-movement tool execution",
+      "ATT&CK T1021.006 (WinRM): single svchost 5985 connection, standard Windows Remoting",
+      "ATT&CK T1133 / T1558 (External Service): 172.16.4.10:8080 connections from Office/Teams/OneDrive are consistent with corporate proxy/gateway",
+      "Network: all 36 ESTABLISHED connections enumerated; no untrusted external C2 channel identified",
+      "Disk: RyukReadMe / CIopReadMe not present on file system (0 hits)",
+      "Memory: OUTLOOK.EXE 37 findevil rows + 0 YARA rows examined; mcshield.exe 4 YARA rows + 37 findevil rows examined",
+      "Drivers: 2 FinDevil DRIVER_PATH rows (SysmonDrv, mnemosyne) fully attributed",
+      "run_record: 17 parsers confirmed OK; zero-hit results validated against parser execution"
+     ],
+     "not_checked": [
+      "Binary SHA-256 verification for mcshield.exe, SysmonDrv.sys, Mnemosyne.sys (no hashes in evidence)",
+      "Content-level shellcode analysis of the 8 PRIVATE_RWX sections in OUTLOOK.EXE (no disassembly tool available)",
+      "Cross-host sweep for same product deployment (single-host case)",
+      "Prefetch / AmCache historical execution records (not in available families)",
+      "DNS / ARP table to identify 172.16.4.10 (corporate gateway vs attacker C2)",
+      "Security log 4688/4624 events for process-creation or logon-based lateral movement (not specifically queried in this pattern pass)",
+      "Specific CVE for mnemosyne driver and vendor patch status"
+     ]
+    },
+    "caveats": [
+     "Binary SHA-256 hashes for mcshield.exe, SysmonDrv.sys, and Mnemosyne.sys were NOT available in the evidence to verify against vendor releases. The benign determinations rest on path, parentage, service registration, install timeline, and string-context analysis, not on hash verification.",
+     "The memprocfs net.csv captures a point-in-time socket table; connections that were established and closed before the memory snapshot are invisible. The absence of C2 in this snapshot does not prove no C2 occurred earlier.",
+     "The vol/netstat and memprocfs net.csv show PID correlation only in the memprocfs CSV (fields.PID). The vol netstat rows have PID=null, so process-to-socket mapping relies on the memprocfs CSV. A process that exited before the vol snapshot but left a socket in the kernel would appear in vol/netstat without an owner.",
+     "The 8 PRIVATE_RWX sections in OUTLOOK.EXE were not content-examined for shellcode patterns (no tool available for byte-level shellcode analysis in this case). Their benign explanation (VBA/COM/JIT) is based on process context and rule annotation, not on disassembly.",
+     "The mnemosyne driver's known vulnerability (severity 50 per YARA) is a patch-management concern. Without the specific CVE identifier and the vendor's patch status, the risk level is 'moderate' but the exploitation question is unanswerable with current evidence."
+    ]
+   }
+  },
+  {
+   "role": "verifier",
+   "order_id": "wo-b65eaac4180f",
+   "parsed": {
+    "coverage": {
+     "candidates_reviewed": 6,
+     "confirmed": 5,
+     "gaps": [
+      "mcshield.exe binary hash not available for vendor-verification (check_file returned UNKNOWN, no hash in evidence)",
+      "Mnemosyne.sys file hash not available for vendor-verification",
+      "SysmonDrv binary hash not available for vendor-verification",
+      "Specific Outlook module names at HIGH_ENTROPY addresses not determinable from findevil CSV",
+      "No network-connection data available to rule out C2 from pid 904"
+     ],
+     "inferred": 1,
+     "parsers_confirmed": "run_record shows 17 tools/parsers ran; YARA parser produced yara.csv (2 data rows for mcshield.exe) and yara.txt; FinDevil parser produced findevil.csv (37 OUTLOOK.EXE rows, 2 DRIVER_PATH rows); eventlog parser produced eventlog.csv with 7045 events for both mnemosyne (173 rows) and McAfee McShield",
+     "refuted": 0
+    }
+   }
+  },
+  {
+   "role": "correlation",
+   "order_id": "wo-05a8b269a420",
+   "parsed": {}
+  },
+  {
+   "role": "verifier",
+   "order_id": "wo-132eb7b11c3c",
+   "parsed": {
+    "coverage": {
+     "addresses_checked": 3,
+     "addresses_in_OUTLLIBR": 1,
+     "addresses_in_UNNAMED_DATA": 2,
+     "module_cross_reference": "OUTLLIBR.DLL range d770000-e213fff confirmed; e360000 and e780000 outside that range, labeled _DATA in PTE",
+     "yara_hits_pid904": 0
+    }
+   }
+  },
+  {
+   "role": "correlation",
+   "order_id": "wo-6311c51d23ef",
+   "parsed": {
+    "coverage": {
+     "checked": [
+      "OUTLOOK.EXE HIGH_ENTROPY: all 3 addresses cross-referenced to modules.csv (OUTLLIBR.DLL, msointl30_win32.dll, unnamed data section)",
+      "AYAgent.aye: ProcessName search (0), file_path search (0), 4688 combined search (0) — confirmed YARA-rule string only",
+      "mssecess.exe: ProcessName search (0), 4688 combined search (0) — confirmed YARA-rule string only",
+      "RyukReadMe.html / CIopReadMe.txt: FileName.kw and file_path.kw searches both 0 rows; 6+4 text hits are all in YARA rule/match files",
+      "mcshield.exe PID 3836: AmCache metadata (v15.8.0.349), network search (0 connections), handle search for RyukReadMe (0)",
+      "Mnemosyne.sys: IOCTL+mnemosyne combined search (0), PID 3836+Mnemosyne handle (0), CISA KEV rag_search (no match)",
+      "run_record: 17 tools confirmed; file parsers (files.csv, timeline_ntfs.csv) and vol parsers (netscan, pslist, psscan) all executed"
+     ],
+     "not_checked": [
+      "Binary SHA-256 verification for mcshield.exe, Mnemosyne.sys, SysmonDrv.sys (no hashes in case data)",
+      "Specific CVE for Mnemosyne driver (not in YARA metadata, not in CISA KEV)",
+      "Content-level shellcode analysis of the 8 PRIVATE_RWX sections in OUTLOOK.EXE (no disassembly tool available)",
+      "DNS/ARP table to identify 172.16.4.10 (corporate gateway vs C2)",
+      "Cross-host sweep (single-host case)",
+      "Prefetch/AmCache historical execution beyond the mcshield AmCache record"
+     ],
+     "summary": "Both INFERRED candidates are now CORROBORATED as false positives. The OUTLOOK.EXE HIGH_ENTROPY finding is confirmed benign: all three flagged addresses map to Microsoft Office PE module data sections (OUTLLIBR.DLL, msointl30_win32.dll, and an unnamed Office data section), with no YARA malware signatures and a clean process tree. The mcshield.exe YARA matches are confirmed as AV-signature-store artifacts: the matched strings (RyukReadMe.html, CIopReadMe.txt, AYAgent.aye, mssecess.exe) exist ONLY in YARA rule definition files and produce no file-system, process, or handle entries on the host. No actual ransomware note files exist on disk. No exploitation of the Mnemosyne driver vulnerability is evidenced (zero IOCTL correlation, no unexpected callers). The 'compromise suspected' hypothesis is NOT supported by any available evidence."
+    }
+   }
+  },
+  {
+   "role": "synthesis",
+   "order_id": "wo-b151c82d19f2",
+   "parsed": {
+    "coverage": {
+     "detections_resolved": [
+      "YARA ransomware/trojan matches in mcshield.exe (resolved: AV signature DB false positive)",
+      "'Not in Windows baseline' flags on mcshield.exe / McAfee McShield service (resolved: third-party product scope artifact)",
+      "FindEvil DRIVER_PATH flags on SysmonDrv and mnemosyne (resolved: legitimate security drivers)",
+      "YARA VulnDriver match on mnemosyne.sys (resolved: known vulnerability, no exploitation evidence)",
+      "HIGH_ENTROPY flags in OUTLOOK.EXE (resolved: Image-type Office module sections, moderate entropy, no YARA malware)",
+      "YARA matches in OUTLOOK.EXE (resolved: zero hits, parser confirmed ran)",
+      "Mnemosyne service lifecycle (resolved: normal 2018-2020 product operation)"
+     ],
+     "detections_unresolved": [],
+     "families_examined": [
+      "memprocfs/findevil.csv",
+      "memprocfs/findevil/yara.txt",
+      "memprocfs/findevil/yara.csv",
+      "memprocfs/findevil/yara_rules.txt",
+      "memprocfs/findevil/findevil.txt",
+      "memprocfs/findevil/findevil.csv (lines 18-19, 22, 6-8)",
+      "memprocfs/eventlog.csv",
+      "memprocfs/eventlog_data.csv",
+      "memprocfs/process.csv",
+      "memprocfs/threads.csv",
+      "memprocfs/modules.csv",
+      "memprocfs/drivers.csv",
+      "memprocfs/devices.csv",
+      "memprocfs/services.csv",
+      "memprocfs/timeline_eventlog.csv",
+      "memprocfs/timeline_ntfs.csv",
+      "memprocfs/timeline_registry.csv",
+      "memprocfs/timeline.json",
+      "memprocfs/general.json",
+      "memprocfs/ntfs/ntfs_files.txt",
+      "vol/vol-windows-54fe308d-ff7158db.txt",
+      "vol/vol-windows-72af336e-d4b3dbca.txt"
+     ],
+     "total_candidates_reviewed": 7,
+     "total_findings_issued": 3,
+     "verdicts_confirmed": 4,
+     "verdicts_inferred": 3
+    },
+    "gaps": [
+     "The mcshield.exe binary file hash was not available in the evidence to independently verify it against a known McAfee release (check_file returned UNKNOWN without a testable hash).",
+     "The mnemosyne.sys file hash was not available to verify against Agile Risk Management's published release signatures, leaving the known-vulnerability state unconfirmed at the binary level.",
+     "The two _DATA sections in OUTLOOK.EXE at 0xe360000 and 0xe780000 lack a module-name column in the findevil CSV; their specific PE module origin (Microsoft vs. third-party add-in) cannot be determined from available evidence.",
+     "No network connection data (PCAP, Netstat, or equivalent) was available to rule out C2 or data-exfiltration traffic from any of the flagged processes.",
+     "The 8 PRIVATE_RWX sections in OUTLOOK.EXE could not be content-examined for shellcode patterns or C2 socket-connect code with available tools."
+    ]
+   }
+  }
+ ]
+}

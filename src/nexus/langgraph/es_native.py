@@ -691,6 +691,41 @@ def _client_and_index(case_id: str):
     return _client, index_name(case_id)
 
 
+def _family_doc_counts(c: Any, name: str) -> dict[str, int]:
+    """``{family: documents}`` in one index, exact; raises instead of reporting a family empty."""
+    head = c.head(f"/{name}")
+    if head.status_code != 200:
+        raise ESQueryError(f"index missing: {name} (run the pipeline / nexus index rebuild)")
+    agg = c.post(
+        f"/{name}/_search",
+        json={
+            "size": 0,
+            "track_total_hits": True,
+            "aggs": {"families": {"terms": {"field": "family", "size": 1000}}},
+        },
+    )
+    if agg.status_code >= 400:
+        raise ESQueryError(f"family population failed: {agg.status_code} {agg.text[:300]}")
+    family_agg = (agg.json().get("aggregations") or {}).get("families") or {}
+    if family_agg.get("sum_other_doc_count"):
+        raise ESQueryError("family population is incomplete: the family aggregation omitted rows")
+    return {str(bucket.get("key")): int(bucket.get("doc_count") or 0)
+            for bucket in family_agg.get("buckets") or []}
+
+
+def family_doc_counts(case_id: str) -> dict[str, int]:
+    """The documents each family holds in the case's index: the one count of a family's rows.
+
+    The run ledgers and the field catalog both read it. Extraction file lines (the briefing's
+    inventory) are not documents: blank lines and headers are never indexed.
+    """
+    if not case_id:
+        raise ESQueryError("case_id is required")
+    client, name = _client_and_index(case_id)
+    with client() as c:
+        return _family_doc_counts(c, name)
+
+
 def es_fields(case_id: str) -> dict[str, Any]:
     """Full per-family field catalog + family counts, with D35 population.
 
@@ -703,30 +738,13 @@ def es_fields(case_id: str) -> dict[str, Any]:
         raise ESQueryError("case_id is required")
     client, name = _client_and_index(case_id)
     with client() as c:
-        head = c.head(f"/{name}")
-        if head.status_code != 200:
-            raise ESQueryError(f"index missing: {name} (run the pipeline / nexus index rebuild)")
+        families = _family_doc_counts(c, name)
         mapping_resp = c.get(f"/{name}/_mapping")
         if mapping_resp.status_code >= 400:
             raise ESQueryError(f"mapping failed: {mapping_resp.status_code}")
         props = (
             (mapping_resp.json().get(name) or {}).get("mappings") or {}
         ).get("properties") or {}
-        agg = c.post(
-            f"/{name}/_search",
-            json={
-                "size": 0,
-                "track_total_hits": True,
-                "aggs": {"families": {"terms": {"field": "family", "size": 1000}}},
-            },
-        )
-        if agg.status_code >= 400:
-            raise ESQueryError(f"family population failed: {agg.status_code} {agg.text[:300]}")
-        family_agg = (agg.json().get("aggregations") or {}).get("families") or {}
-        if family_agg.get("sum_other_doc_count"):
-            raise ESQueryError("family population is incomplete: the family aggregation omitted rows")
-        families = {str(bucket.get("key")): int(bucket.get("doc_count") or 0)
-                    for bucket in family_agg.get("buckets") or []}
         field_types = mapping_field_types(props)
         leaf_types = mapping_field_types(props, include_multifields=False)
         parsed_paths = {path for path, kind in leaf_types.items()

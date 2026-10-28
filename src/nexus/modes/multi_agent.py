@@ -451,8 +451,12 @@ def compose_case(
     *,
     model: Any,
     sink: Any,
+    not_answered: list[str] | None = None,
 ) -> dict[str, Any]:
     """The case Mode 3's settled board makes, composed by the synthesis seat Mode 2 uses (IC-10, D237).
+
+    ``not_answered`` is what the seats said this evidence cannot answer (``_board_gaps``): the synthesis
+    seat composes with it and writes no gaps of its own (D463); the record takes the seats' account.
 
     Mode 3 used to stage every settled claim and end on a count ("103 settled claim(s)"): run 4 staged 63
     DRAFTs, of which the examiner could approve none (18 absences, 10 inventories, 15 context, 5 duplicates).
@@ -497,6 +501,7 @@ def compose_case(
                   "claims": claims,
                   "absences": [a["title"] for a in out["absences"]],
                   "disputes": disputes,
+                  "not_answered": list(not_answered or []),
               }, default=str), case_dir)),
         why="The case from the settled board (IC-10)",
         acceptance="narrative, timeline, attack chain, entities, open questions; findings with audit_ids",
@@ -534,7 +539,6 @@ def compose_case(
         out["findings"].append(final)
     out["narrative"] = str(parsed.get("narrative") or "")
     out["case"] = {part: parsed.get(part) or [] for part in CASE_PARTS}
-    out["gaps"].extend(str(g) for g in parsed.get("gaps") or [] if str(g).strip())
     sink.emit(new_event(run_id, "synthesis.composed", actor="synthesis",
                         detail=f"{len(out['findings'])} finding(s) from {len(claims)} settled claim(s); "
                                f"{len(absences)} absence(s) kept on the record"))
@@ -2486,7 +2490,8 @@ def run_mode3(
             run_id, "synthesis.candidates", actor="synthesis",
             detail=f"{len(candidates)} candidate(s)",
         ))
-        composed = compose_case(case_dir, run_id, question, candidates, list(disputes), model=model, sink=sink)
+        composed = compose_case(case_dir, run_id, question, candidates, list(disputes), model=model, sink=sink,
+                                not_answered=_board_gaps(list(state.get("board") or [])))
         return {"candidates": composed["findings"], "settled": candidates,
                 "candidate_gaps": candidate_gaps + composed["gaps"], "narrative": composed["narrative"],
                 "case": composed["case"], "absences": composed["absences"]}

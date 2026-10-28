@@ -448,29 +448,41 @@ def memory_verdict_leads_from(yara_hits: Iterable[dict[str, Any]],
         return hit.get("fields") if isinstance(hit.get("fields"), dict) else {}
 
     leads: list[Lead] = []
-    by_process: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    # A match in a process's memory names the process. An object-memory match (a kernel driver or file
+    # object) has no process: it names the object its MemoryTag gives, not "? (pid ?)" (D461).
+    by_subject: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for hit in yara_hits:
         f = fields_of(hit)
-        by_process.setdefault((str(f.get("ProcessName") or "?"), str(f.get("PID") or "?")), []).append(hit)
-    for (process, pid), hits in sorted(by_process.items()):
+        process, pid = str(f.get("ProcessName") or ""), str(f.get("PID") or "")
+        key = (process or "?", pid or "?") if process or pid else ("", str(f.get("MemoryTag") or "?"))
+        by_subject.setdefault(key, []).append(hit)
+    for (process, pid_or_object), hits in sorted(by_subject.items()):
         rules = sorted({str(fields_of(h).get("Rule") or "") for h in hits} - {""})
         threats = sorted({str(fields_of(h).get("Threat_name") or "") for h in hits} - {""})
         severities = [s for s in (_severity(fields_of(h).get("Severity")) for h in hits) if s is not None]
         first = fields_of(hits[0])
-        path = str(first.get("ProcessPath") or first.get("CommandLine") or "")
+        if process:
+            pid, obj = pid_or_object, ""
+            path = str(first.get("ProcessPath") or first.get("CommandLine") or "")
+            subject = f"{process} (pid {pid})"
+            matched = (f"the memory of {process} (pid {pid}" + (f", {path}" if path else "")
+                       + f", user {first.get('User') or '?'})")
+        else:
+            pid, obj = "", pid_or_object
+            subject = obj
+            matched = f"{str(first.get('Type') or 'object memory').lower()} {obj}"
         leads.append(Lead(
             kind="rule_engine",
-            subject=f"{process} (pid {pid})",
+            subject=subject,
             family="memprocfs",
-            detail=(f"MemProcFS YARA: {len(rules)} rule(s) matched the memory of {process} (pid {pid}"
-                    + (f", {path}" if path else "") + f", user {first.get('User') or '?'})"
+            detail=(f"MemProcFS YARA: {len(rules)} rule(s) matched {matched}"
                     + (f": {', '.join(threats)}" if threats else "") + f" [{', '.join(rules[:4])}]"),
             rows=tuple(_hit_rows(hits[:ANALYTIC_SAMPLE_ROWS])),
             audit_ids=(),
             score=(max(severities) / 100.0) if severities else 0.9,
             extra={"engine": "memprocfs-yara", "level": f"severity {int(max(severities))}" if severities else "",
                    "crit_high": bool(threats), "rules": rules, "threats": threats, "count": len(hits),
-                   "process": process, "pid": pid},
+                   "process": process, "pid": pid, "object": obj},
         ))
     by_type: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for hit in findevil_hits:

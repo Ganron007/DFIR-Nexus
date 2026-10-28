@@ -10,7 +10,7 @@ family it shows
 
 * the documents the index holds for it;
 * the queries run against it, succeeded and failed;
-* the rows those queries returned;
+* the rows those queries returned from it (a query examines the families it names or read rows of);
 * the leads touched.
 
 A family that was never examined is listed with the reason. The ledger is what
@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 
 __all__ = [
     "indexed_families",
+    "families_read",
     "record_query",
     "record_queries",
     "build_family_ledger",
@@ -54,57 +55,16 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def indexed_families(case_dir: Path) -> dict[str, int]:
-    """``{family: document_count}`` for every family the case's index holds.
+    """``{family: document_count}`` for every family the case's index holds, read from the index.
 
-    Read from the digest's inventory when it is present (it is rebuilt on every
-    interpret run and carries the ES counts), and from the index directly
-    otherwise. A family with no rows is not returned: the ledger accounts for
-    what is there, and an empty family is a different statement the digest
-    already makes.
+    The digest's inventory is not a source: it counts extraction file lines, not documents, and
+    reading its ``{"files", "rows"}`` entries for a ``docs`` key made every family 0 (D462). A
+    family with no documents is not returned. A failed measurement raises; the ledger records why.
     """
-    case_dir = Path(case_dir)
-    out: dict[str, int] = {}
-    digest = _load_json(case_dir / "analysis" / "case_digest.json") or {}
-    inventory = digest.get("inventory") if isinstance(digest, dict) else None
-    if isinstance(inventory, Mapping):
-        for family, rows in inventory.items():
-            name = str(family or "").strip()
-            if not name:
-                continue
-            try:
-                count = int(rows)
-            except (TypeError, ValueError):
-                # Some inventories carry {"docs": n, ...} instead of a bare int.
-                if isinstance(rows, Mapping):
-                    try:
-                        count = int(rows.get("docs") or rows.get("count") or 0)
-                    except (TypeError, ValueError):
-                        count = 0
-                else:
-                    count = 0
-            if count > 0:
-                out[name] = count
-        if out:
-            return out
-    # No digest (or an empty one): ask the index. ES is the only backend that
-    # can answer; a CSV-only case has no index families to account for.
-    try:
-        from nexus.config import settings
-        from nexus.langgraph.case_index import case_family_counts
+    from nexus.langgraph.es_native import family_doc_counts
 
-        counts = case_family_counts(settings.cases_root / case_dir.name)
-    except Exception:  # noqa: BLE001 — best effort; the caller records the reason
-        log.debug("family ledger: index counts unavailable for %s", case_dir.name)
-        return {}
-    for family, count in (counts or {}).items():
-        name = str(family or "").strip()
-        try:
-            n = int(count)
-        except (TypeError, ValueError):
-            continue
-        if name and n > 0:
-            out[name] = n
-    return out
+    counts = family_doc_counts(Path(case_dir).name)
+    return {name: n for name, n in counts.items() if name and n > 0}
 
 
 def _query_family(query: Any) -> str:
@@ -260,13 +220,28 @@ def _queries_from_interpret_loop(case_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
+def families_read(hits: Any) -> dict[str, int]:
+    """``{family: rows}`` among the rows a call returned: the families the call read (D462).
+
+    A query rarely names its family (Mode 1 and the seats search text, files and lines), so the rows it
+    returned say which families it examined.
+    """
+    counts: dict[str, int] = {}
+    for hit in hits if isinstance(hits, list) else []:
+        family = str(hit.get("family") or "").strip() if isinstance(hit, Mapping) else ""
+        if family:
+            counts[family] = counts.get(family, 0) + 1
+    return counts
+
+
 def record_query(case_dir: Path, query: Any, *, status: str, rows: int = 0,
-                 audit_id: str = "", run_id: str = "") -> None:
+                 audit_id: str = "", run_id: str = "", families: Mapping[str, int] | None = None) -> None:
     """Persist one executed query so the run's ledger can account for it.
 
     Called by the run's own execute path (the interpret loop, the Mode 2/3
     workers) — never reconstructed after the fact, so a query that was planned
-    but never ran is never credited.
+    but never ran is never credited. ``families`` is ``families_read`` of the
+    rows the call returned.
     """
     case_dir = Path(case_dir)
     path = case_dir / "analysis" / "family_queries.jsonl"
@@ -276,6 +251,7 @@ def record_query(case_dir: Path, query: Any, *, status: str, rows: int = 0,
         "status": str(status or "unknown"),
         "rows": int(rows or 0),
         "audit_id": str(audit_id or ""),
+        "families": {str(k): int(v) for k, v in (families or {}).items() if k},
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -291,7 +267,8 @@ def record_queries(case_dir: Path, entries: Iterable[Mapping[str, Any]]) -> None
             record_query(case_dir, entry.get("query"), status=str(entry.get("status") or ""),
                          rows=int(entry.get("rows") or 0),
                          audit_id=str(entry.get("audit_id") or ""),
-                         run_id=str(entry.get("run_id") or ""))
+                         run_id=str(entry.get("run_id") or ""),
+                         families=entry.get("families") if isinstance(entry.get("families"), Mapping) else None)
 
 
 def _executed_queries(case_dir: Path, run_id: str = "") -> list[dict[str, Any]]:
@@ -299,10 +276,10 @@ def _executed_queries(case_dir: Path, run_id: str = "") -> list[dict[str, Any]]:
 
     A run's ledger is built from **its own** execution records. When a run_id
     is given, only that run's rows are returned — never a fallback to the
-    whole file: another run's work must not credit this one (KR4). Rows with no
-    run_id are case-level facts shared by every run. The briefing's keyword scan
-    is not one: a word matched across the index examines no family (Part 12
-    FM-10), and crediting it made every family read as examined in every run.
+    whole file: another run's work must not credit this one (KR4). Every writer
+    names its run (the interpret loop, the Mode 2/3 workers); the only rows with
+    no run_id are the briefing keyword scan's from before Part 12 FM-10, which
+    examined no family and are credited to no run (D462).
     """
     case_dir = Path(case_dir)
     out: list[dict[str, Any]] = []
@@ -321,11 +298,7 @@ def _executed_queries(case_dir: Path, run_id: str = "") -> list[dict[str, Any]]:
         except OSError:
             pass
     if run_id:
-        scoped = [
-            q for q in out
-            if str(q.get("run_id") or "") == run_id or not str(q.get("run_id") or "")
-        ]
-        out = scoped
+        out = [q for q in out if str(q.get("run_id") or "") == run_id]
     if not run_id:
         out.extend(_queries_from_interpret_loop(case_dir))
     for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
@@ -373,12 +346,21 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
     """The ledger: every indexed family, its queries, its rows, its leads.
 
     Built from execution records only. A family is ``examined`` when at least
-    one query that names it ran without error; a family whose only queries
-    failed is ``queried_failed`` and is reported with the failure, because a
-    query that errored observed nothing.
+    one query that names it, or returned rows of it, ran without error; a family
+    whose only queries failed is ``queried_failed`` and is reported with the
+    failure, because a query that errored observed nothing. ``rows_read`` is the
+    rows the run's queries returned from the family. When the index cannot be
+    measured the ledger says so (``index_error``) instead of reading as an index
+    with no families.
     """
     case_dir = Path(case_dir)
-    families = indexed_families(case_dir)
+    index_error = ""
+    try:
+        families = indexed_families(case_dir)
+    except Exception as exc:  # noqa: BLE001 - recorded on the ledger, never an empty index
+        families, index_error = {}, f"{type(exc).__name__}: {exc}"[:300]
+    absent = (f"the index could not be measured ({index_error})" if index_error
+              else "queried but not in the index")
     queries = _executed_queries(case_dir, run_id)
     leads = _leads_by_family(case_dir)
 
@@ -390,7 +372,7 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
             "queries": [],
             "queries_ok": 0,
             "queries_failed": 0,
-            "rows_returned": 0,
+            "rows_read": 0,
             "leads_touched": list(leads.get(name) or [])[:8],
             "examined": False,
             "reason": "",
@@ -398,7 +380,9 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
 
     unattributed: list[dict[str, Any]] = []
     for query in queries:
-        family = _query_family(query.get("query"))
+        named = _query_family(query.get("query"))
+        read = query.get("families") if isinstance(query.get("families"), Mapping) else {}
+        touched = list(dict.fromkeys(([named] if named else []) + [str(f) for f in read if f]))
         status = str(query.get("status") or "unknown").upper()
         ok = status in ("OK", "SUCCESS", "COMPLETED", "DONE") or (
             status not in ("FAIL", "FAILED", "ERROR", "TIMEOUT", "UNKNOWN")
@@ -411,27 +395,28 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
             "audit_id": str(query.get("audit_id") or ""),
             "run_id": str(query.get("run_id") or ""),
         }
-        if not family:
+        if not touched:
             unattributed.append(row)
             continue
-        target = by_family.get(family)
-        if target is None:
-            # The query names a family the index does not hold (a stale family
-            # name, or a query against evidence that is not indexed). It is
-            # recorded so the ledger does not silently drop it.
-            target = {
-                "family": family, "docs": 0, "queries": [], "queries_ok": 0,
-                "queries_failed": 0, "rows_returned": 0, "leads_touched": [],
-                "examined": False, "reason": "queried but not in the index",
-            }
-            by_family[family] = target
-        target["queries"].append(row)
-        if ok:
-            target["queries_ok"] += 1
-            target["examined"] = True
-        else:
-            target["queries_failed"] += 1
-        target["rows_returned"] += int(query.get("rows") or 0)
+        for family in touched:
+            target = by_family.get(family)
+            if target is None:
+                # The query names a family the index does not hold (a stale family
+                # name, or a query against evidence that is not indexed). It is
+                # recorded so the ledger does not silently drop it.
+                target = {
+                    "family": family, "docs": 0, "queries": [], "queries_ok": 0,
+                    "queries_failed": 0, "rows_read": 0, "leads_touched": [],
+                    "examined": False, "reason": absent,
+                }
+                by_family[family] = target
+            target["queries"].append(row)
+            if ok:
+                target["queries_ok"] += 1
+                target["examined"] = True
+            else:
+                target["queries_failed"] += 1
+            target["rows_read"] += int(read.get(family) or 0)
 
     for target in by_family.values():
         if target["examined"]:
@@ -443,13 +428,14 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
             )
         elif target["docs"]:
             target["reason"] = "no query was run against this family"
-        elif target["reason"] != "queried but not in the index":
+        elif target["reason"] != absent:
             target["reason"] = "not in the index"
 
     rows = list(by_family.values())
     examined = [r for r in rows if r["examined"]]
     return {
         "run_id": run_id,
+        "index_error": index_error,
         "families": rows,
         "families_indexed": len([r for r in rows if r["docs"]]),
         "families_examined": len(examined),
@@ -457,6 +443,8 @@ def build_family_ledger(case_dir: Path, *, run_id: str = "") -> dict[str, Any]:
         "queries_total": len(queries),
         "queries_unattributed": len(unattributed),
         "summary": (
+            f"the index could not be measured ({index_error}); {len(examined)} queried families examined"
+            if index_error else
             f"{len(examined)}/{len([r for r in rows if r['docs']])} indexed families examined"
         ),
     }
@@ -491,7 +479,7 @@ def render_family_ledger_markdown(ledger: Mapping[str, Any]) -> str:
     lines = ["## Family coverage ledger", ""]
     lines.append(f"**{ledger.get('summary', '')}**")
     lines.append("")
-    lines.append("| Family | Docs | Queries (ok/failed) | Rows | Leads | Examined | Reason |")
+    lines.append("| Family | Docs | Queries (ok/failed) | Rows read | Leads | Examined | Reason |")
     lines.append("|---|---|---|---|---|---|---|")
     for row in ledger.get("families") or []:
         if not isinstance(row, Mapping):
@@ -502,7 +490,7 @@ def render_family_ledger_markdown(ledger: Mapping[str, Any]) -> str:
                 docs=row.get("docs", 0),
                 ok=row.get("queries_ok", 0),
                 fail=row.get("queries_failed", 0),
-                rows=row.get("rows_returned", 0),
+                rows=row.get("rows_read", 0),
                 leads=len(row.get("leads_touched") or []),
                 exam="yes" if row.get("examined") else "NO",
                 reason=str(row.get("reason") or ""),
