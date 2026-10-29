@@ -25,6 +25,11 @@ import yaml
 from nexus.knowledge.loader import det_for, skill_sources, validate_skill
 from nexus.langgraph.query_dsl import parse_query
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from devtools.scratch import use_repo_temp  # noqa: E402
+
+use_repo_temp()  # Part 11 rule 19: temporary files stay in the repository's scratch/
+
 _REPO = Path(__file__).resolve().parents[2]
 _DEFAULT_OUT = _REPO / "Docs" / "internal" / "skill-drafts"
 _SKILLS_DIR = _REPO / "src" / "nexus" / "data" / "knowledge" / "skills"

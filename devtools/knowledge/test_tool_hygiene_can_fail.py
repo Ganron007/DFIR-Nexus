@@ -12,6 +12,10 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from devtools.scratch import use_repo_temp  # noqa: E402
+
+use_repo_temp()  # Part 11 rule 19: temporary files stay in the repository's scratch/
 TOOL = REPO / "devtools" / "knowledge" / "audit_tool_hygiene.py"
 
 GOOD = '''"""good.py - a truthiness test WITH a reason."""

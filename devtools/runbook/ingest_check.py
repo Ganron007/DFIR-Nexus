@@ -13,6 +13,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from devtools.scratch import use_repo_temp  # noqa: E402
+
+use_repo_temp()  # Part 11 rule 19: the check's case folders stay in the repository's scratch/
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()

@@ -11,7 +11,6 @@ rows against the pinned snapshot when the snapshot is present.
 """
 from __future__ import annotations
 
-import os
 import random
 from pathlib import Path
 
@@ -77,17 +76,17 @@ def test_the_imported_file_names_its_pinned_sources():
 def test_a_random_sample_of_rows_matches_the_pinned_snapshot():
     """WO-KL2b acceptance: check 30 random items per list against the snapshot.
 
-    Skipped with a reason when the snapshots are absent (they are ~560 MB and live
-    outside the repo); `NEXUS_KL2B_SNAPSHOTS` points at them.
+    Skipped with a reason when the snapshots are absent (they are ~560 MB, never committed; they live in the
+    repository's gitignored `scratch/kl2b-snapshots`, `devtools/scratch.py`).
     """
     import json
 
     import yaml
 
-    snap = Path(os.environ.get("NEXUS_KL2B_SNAPSHOTS")
-                or (Path(os.environ.get("TEMP", "/tmp")) / "kl2b-snapshots"))
+    from devtools.scratch import SNAPSHOTS as snap
+
     if not snap.is_dir():
-        pytest.skip(f"snapshots not present at {snap} - set NEXUS_KL2B_SNAPSHOTS")
+        pytest.skip(f"snapshots not present at {snap}")
 
     data = yaml.safe_load(LOTL_LISTS_PATH.read_text(encoding="utf-8")) or {}
     lists = data.get("lists") or {}

@@ -12,7 +12,6 @@ Two further lessons are baked in, both found by running this:
 """
 from __future__ import annotations
 
-import os
 import random
 import subprocess
 import sys
@@ -37,13 +36,14 @@ GENERIC_ALIASES = {"Username": "UserName"}
 def _find_source() -> Path | None:
     """The pinned EZTools/evtx clone, located EXACTLY as the importer locates it.
 
-    Same env var, same default (TEMP/kl2b-snapshots), same nested path. A checker that
+    The same folder, `devtools.scratch.SNAPSHOTS`, and the same nested path. A checker that
     guesses its own paths reports "source not found" while the source is right there -
     which is what this one did when first written against repo-relative paths.
     """
-    root = Path(os.environ.get("NEXUS_KL2B_SNAPSHOTS")
-                or (Path(os.environ.get("TEMP", "/tmp")) / "kl2b-snapshots"))
-    cand = root / "evtx" / "evtx"
+    sys.path.insert(0, str(REPO))
+    from devtools.scratch import SNAPSHOTS
+
+    cand = SNAPSHOTS / "evtx" / "evtx"
     return cand if (cand / "Maps").is_dir() else None
 
 

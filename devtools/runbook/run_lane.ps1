@@ -29,6 +29,12 @@ $trace = Join-Path $repo "cases\$CaseId\.trace"
 New-Item -ItemType Directory -Force $trace | Out-Null
 $log = Join-Path $trace "lane-$Tag.log"
 $env:PYTHONIOENCODING = 'utf-8'
+# Part 11 rule 19: the lane and every tool it starts keep their temporary files inside the repository, in its one
+# gitignored folder (devtools/scratch.py names scratch/tmp).
+$scratchTmp = Join-Path $repo 'scratch\tmp'
+New-Item -ItemType Directory -Force $scratchTmp | Out-Null
+$env:TEMP = $scratchTmp
+$env:TMP = $scratchTmp
 
 # Worktrees share the ignored tool installation through the main checkout. Resolve the
 # Git common directory instead of trusting a caller-provided NEXUS_TOOL_PATHS value.

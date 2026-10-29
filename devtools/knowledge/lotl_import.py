@@ -23,8 +23,9 @@ Sources and the pin for each:
 | GTFOBins | github.com/GTFOBins/GTFOBins.github.io | `_gtfobins/*` |
 | LOTS | https://lots-project.com | the page's `main-table` (a web source: pinned by date + SHA-256) |
 
-The snapshots are **inputs**, not product data: they live outside the repo (a path
-given by `NEXUS_KL2B_SNAPSHOTS`) because LOLDrivers is ~560 MB of driver binaries.
+The snapshots are **inputs**, not product data: they live in the repository's gitignored
+`scratch/kl2b-snapshots` (`devtools/scratch.py`), never committed, because LOLDrivers is
+~560 MB of driver binaries.
 This module writes the **derived** lists to
 `src/nexus/data/knowledge/lists/lotl.yaml`, which is committed; each list carries
 `source`, `source_version` (the commit SHA / retrieval date) and its `source_key`.
@@ -43,7 +44,6 @@ import argparse
 import hashlib
 import html as html_lib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -56,11 +56,12 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "src" / "nexus" / "data" / "knowledge" / "lists" / "lotl.yaml"
 
-DEFAULT_SNAPSHOTS = Path(os.environ.get("NEXUS_KL2B_SNAPSHOTS") or (Path(os.environ.get("TEMP", "/tmp")) / "kl2b-snapshots"))
-
-
 def _snapshots() -> Path:
-    return Path(os.environ.get("NEXUS_KL2B_SNAPSHOTS") or DEFAULT_SNAPSHOTS)
+    """The pinned snapshots' one folder, inside the repository (`devtools/scratch.py`)."""
+    sys.path.insert(0, str(REPO))
+    from devtools.scratch import SNAPSHOTS
+
+    return SNAPSHOTS
 
 
 def _sha256(path: Path) -> str:
@@ -375,8 +376,8 @@ def build(*, only: list[str] | None = None) -> dict[str, Any]:
     snap = _snapshots()
     if not snap.is_dir():
         raise SystemExit(
-            f"snapshots not found at {snap}. Clone the pinned sources there and set "
-            f"NEXUS_KL2B_SNAPSHOTS. See the module docstring for the exact repos."
+            f"snapshots not found at {snap}. Clone the pinned sources there "
+            f"(scratch/kl2b-snapshots). See the module docstring for the exact repos."
         )
     payload: dict[str, Any] = {
         "version": 1,

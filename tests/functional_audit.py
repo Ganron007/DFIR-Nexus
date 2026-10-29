@@ -22,6 +22,11 @@ def check(label, condition, detail=""):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 os.chdir(Path(__file__).resolve().parent)
+# Every file this script writes stays in the repository's one gitignored folder (AGENTS.md, devtools/scratch.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from devtools.scratch import use_repo_temp  # noqa: E402
+
+use_repo_temp()
 
 # Guard + redirect the operator's store. These scripts run outside pytest, so
 # no conftest fixture redirects them: this one appended fixture approvals to the
@@ -31,7 +36,8 @@ from _nexus_guard import nexus_guard_end, nexus_snapshot  # noqa: E402
 
 _nexus_before = nexus_snapshot()
 
-# Test isolation: never materialize audit cases into the examiner's real store.
+# Test isolation: never materialize audit cases into the examiner's real store. Everything the audit makes (its
+# case stores, their databases and the case folders written beside them) goes under this one folder, removed at the end.
 from nexus.config import settings as _settings  # noqa: E402
 import nexus.transparency as _transparency  # noqa: E402
 
@@ -93,7 +99,7 @@ for mod_name, symbols in MODULES:
 print("\n=== 2. Case stack (SQLite) ===")
 from nexus.case import ApprovalState, CaseManager, CaseStatus, FindingSeverity
 
-db = Path(tempfile.gettempdir()) / f"audit_{os.getpid()}.db"
+db = _audit_cases_root / f"audit_{os.getpid()}.db"
 mgr = CaseManager(db, secret_key=b"audit-test")
 
 # Create case
@@ -140,7 +146,7 @@ _auth._LOCKOUT_FILE = _audit_home / "approval_lockout"
 _auth.VERIFICATION_DIR = _audit_home / "verification"
 setup_password("auditor", "audit-password")
 
-db2 = Path(tempfile.gettempdir()) / f"approval_{os.getpid()}.db"
+db2 = _audit_cases_root / f"approval_{os.getpid()}.db"
 mgr2 = CaseManager(db2, secret_key=b"audit-test")
 
 case2 = mgr2.create_case(name="APPROVAL-TEST")
@@ -176,7 +182,7 @@ db2.unlink(missing_ok=True)
 print("\n=== 4. Legacy JSON importer ===")
 from nexus.case import LegacyJsonImporter
 
-tmp = Path(tempfile.gettempdir()) / f"legacy_{os.getpid()}"
+tmp = _audit_cases_root / f"legacy_{os.getpid()}"
 case_dir = tmp / "LEGACY-CASE"
 case_dir.mkdir(parents=True)
 (case_dir / "findings.json").write_text(json.dumps([
@@ -264,7 +270,7 @@ from nexus.integration.export_formats import export_case_zip, export_findings_cs
 from nexus.integration.knowledge_graph import build_case_knowledge_graph
 from nexus.ingest.cti_ingestion import _extract_iocs_from_text
 
-db4 = Path(tempfile.gettempdir()) / f"export_{os.getpid()}.db"
+db4 = _audit_cases_root / f"export_{os.getpid()}.db"
 emgr = CM(db4, secret_key=b"export-test")
 ecase = emgr.create_case(name="EXPORT-TEST")
 emgr.add_finding(ecase.id, "Bad thing", technique_ids=["T1003.001"], severity=FindingSeverity.HIGH)
@@ -384,4 +390,6 @@ print(f"{'='*50}")
 
 # Leave the operator's store exactly as it was found (register D25/V9).
 nexus_guard_end(_nexus_before, "functional_audit")
+# And remove this run's own folder: 185 `nexus_audit_cases_<pid>` folders of earlier runs were left behind (D475).
+shutil.rmtree(_audit_cases_root, ignore_errors=True)
 sys.exit(0 if failed <= THRESHOLD else 1)

@@ -43,10 +43,11 @@ GENERIC_ALIASES = {"Username": "UserName"}
 
 
 def _snapshots() -> Path:
-    return Path(__file__).resolve().parents[2].parent.parent and (
-        Path(__import__("os").environ.get("NEXUS_KL2B_SNAPSHOTS")
-            or (Path(__import__("os").environ.get("TEMP", "/tmp")) / "kl2b-snapshots"))
-    )
+    """The pinned snapshots' one folder, inside the repository (`devtools/scratch.py`)."""
+    sys.path.insert(0, str(REPO))
+    from devtools.scratch import SNAPSHOTS
+
+    return SNAPSHOTS
 
 
 def _sha256(path: Path) -> str:
@@ -62,7 +63,7 @@ def build() -> dict[str, Any]:
     if not snap.is_dir():
         raise SystemExit(
             f"EvtxECmd maps snapshot not found at {snap}. Clone "
-            f"github.com/EricZimmerman/evtx there (NEXUS_KL2B_SNAPSHOTS).")
+            f"github.com/EricZimmerman/evtx there (scratch/kl2b-snapshots/evtx/evtx, at the pinned commit).")
     repo = _snapshots() / "evtx" / "evtx"
     commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
                             capture_output=True, text=True, check=False).stdout.strip()

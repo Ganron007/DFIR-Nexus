@@ -12,7 +12,6 @@ the snapshot.
 from __future__ import annotations
 
 import importlib.util
-import os
 import random
 import sys
 from pathlib import Path
@@ -32,13 +31,9 @@ def _snapshots() -> Path | None:
     module = importlib.util.module_from_spec(spec)
     sys.modules["iem"] = module
     spec.loader.exec_module(module)
-    for candidate in (
-        os.environ.get("NEXUS_KL2B_SNAPSHOTS"),
-        os.path.join(os.environ.get("TEMP", "/tmp"), "kl2b-snapshots"),
-    ):
-        if candidate and (Path(candidate) / "evtx" / "evtx" / "Maps").is_dir():
-            return Path(candidate)
-    return None
+    # The importer's own folder, so the check reads exactly what the import read (devtools/scratch.py).
+    snapshots = module._snapshots()
+    return snapshots if (snapshots / "evtx" / "evtx" / "Maps").is_dir() else None
 
 
 @pytest.fixture(scope="module")
@@ -88,7 +83,7 @@ def test_the_import_is_reproducible():
                           cwd=str(REPO), capture_output=True, text=True, timeout=300, check=False)
     out = proc.stdout + proc.stderr
     if "snapshot not found" in out:
-        pytest.skip("EvtxECmd maps snapshot absent - set NEXUS_KL2B_SNAPSHOTS")
+        pytest.skip("EvtxECmd maps snapshot absent from scratch/kl2b-snapshots")
     assert proc.returncode == 0, out[-600:]
 
 
@@ -96,7 +91,7 @@ def test_ten_random_entries_match_the_snapshot(imported_pack):
     """The WO's acceptance: 10 random entries checked against the pinned source."""
     snapshots = _snapshots()
     if snapshots is None:
-        pytest.skip("EvtxECmd maps snapshot absent - set NEXUS_KL2B_SNAPSHOTS")
+        pytest.skip("EvtxECmd maps snapshot absent from scratch/kl2b-snapshots")
     maps_dir = snapshots / "evtx" / "evtx" / "Maps"
     packs = imported_pack.get("packs") or []
     sample = random.Random(0).sample(packs, min(10, len(packs)))

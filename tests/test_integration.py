@@ -7,6 +7,11 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Every file this script writes stays in the repository's one gitignored folder (AGENTS.md, devtools/scratch.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from devtools.scratch import use_repo_temp  # noqa: E402
+
+use_repo_temp()
 
 # Guard + redirect before importing anything that captures a path.
 # Running outside pytest there is no conftest fixture to do this, so the real
@@ -268,5 +273,8 @@ print(f"Total tools registered: {len(tools)}")
 
 # Leave the operator's store exactly as it was found (register D25/V9).
 nexus_guard_end(_nexus_before, "test_integration")
+# And remove this run's own folders: earlier runs left `nexus_test_*` and `nexus_backup_*` behind (D475).
+shutil.rmtree(_tmp_root, ignore_errors=True)
+shutil.rmtree(backup_dir, ignore_errors=True)
 if failed:
     raise SystemExit(1)

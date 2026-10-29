@@ -25,6 +25,28 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: pytest.Config) -> None:
+    """Every file a test writes stays in the repository's one gitignored folder, `scratch/` (operator, 2026-10-29).
+
+    pytest's root is `scratch/pytest` and the temporary directory of the tests (and of the tools they start) is
+    `scratch/pytest-tmp`, emptied here as pytest empties its root (`devtools/scratch.py`, the one definition). A
+    `--basetemp` outside `scratch/` is refused: roots named `C:\\ptt` and `C:\\ptt-*` had put 2.3 GB of test output
+    outside the repository. ``tryfirst``: pytest's own tmpdir plugin reads the root in its ``pytest_configure``.
+    """
+    from devtools.scratch import PYTEST_ROOT, PYTEST_TMP, SCRATCH, inside_scratch, use_repo_temp
+
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    given = config.option.basetemp
+    if given is None:
+        config.option.basetemp = str(PYTEST_ROOT)
+    elif not inside_scratch(given):
+        raise pytest.UsageError(
+            f"--basetemp {given} is outside {SCRATCH}: every file a test writes stays in the repository's one "
+            "gitignored folder (AGENTS.md, devtools/scratch.py)")
+    use_repo_temp(PYTEST_TMP, empty=True)
+
+
 collect_ignore_glob = [
     "test_detection.py",    # script-style: sys.exit() at module level
     "test_hunt_parser.py",  # script-style: sys.exit() at module level

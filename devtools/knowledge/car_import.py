@@ -22,7 +22,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -36,8 +35,11 @@ OUT = REPO / "src" / "nexus" / "data" / "knowledge" / "needles" / "car_analytics
 
 
 def _snapshots() -> Path:
-    return Path(os.environ.get("NEXUS_KL2B_SNAPSHOTS")
-                or (Path(os.environ.get("TEMP", "/tmp")) / "kl2b-snapshots"))
+    """The pinned snapshots' one folder, inside the repository (`devtools/scratch.py`)."""
+    sys.path.insert(0, str(REPO))
+    from devtools.scratch import SNAPSHOTS
+
+    return SNAPSHOTS
 
 
 def _git(car: Path, *args: str) -> str:
@@ -53,7 +55,7 @@ def build() -> dict[str, Any]:
     if not (car / ".git").exists():
         raise SystemExit(
             f"CAR snapshot not found at {car}. Clone github.com/mitre-attack/car there "
-            f"and set NEXUS_KL2B_SNAPSHOTS.")
+            f"(scratch/kl2b-snapshots/car, at the pinned commit).")
 
     listing = _git(car, "ls-tree", "-r", "--name-only", "HEAD", "analytics").split()
     paths = sorted(p for p in listing if p.endswith((".yaml", ".yml")))

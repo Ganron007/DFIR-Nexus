@@ -12,6 +12,11 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Every file this script writes stays in the repository's one gitignored folder (AGENTS.md, devtools/scratch.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from devtools.scratch import use_repo_temp  # noqa: E402
+
+use_repo_temp()
 
 from nexus.detection import (
     DetectionIndexer,
