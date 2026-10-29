@@ -156,12 +156,24 @@ def review(tag: str, case: str, mode: str) -> dict:
         issues.append(f"{len(tracebacks)} traceback(s)")
     if fatal_log:
         issues.append(f"{len(fatal_log)} fatal/error log line(s)")
+    # TA-5.2: a run records the knowledge it chose (skills, playbooks, executed analytics) in one section.
+    knowledge = record.get("knowledge") if isinstance(record.get("knowledge"), dict) else None
+    if record and knowledge is None:
+        issues.append("record has no knowledge section (TA-5.2)")
     duration = f"{minutes:.1f}" if minutes is not None else "?"
     print(f"\n== {tag} mode {mode} [{start} .. {end}] {exit_line or 'no exit line'}")
     print(f"   run_id={run_id or '?'} status={status} stop={stop or '(none)'} candidates/DRAFTs={candidates}")
     print(f"   model={model or '?'} minutes={duration} audited calls={calls} unknown-field hints={hints} "
           f"other tool errors={sum(errors.values())} log-only errors={unaudited} tracebacks={len(tracebacks)} "
           f"expected_model={expected_model or '?'}")
+    if knowledge is not None:
+        ran = [a for a in knowledge.get("analytics") or [] if a.get("outcome") == "ran"]
+        print(f"   knowledge: {len(knowledge.get('skills') or [])} skill(s), "
+              f"{len(knowledge.get('playbooks') or [])} playbook(s), {len(ran)} analytic(s) ran "
+              f"({sum(1 for a in ran if a.get('hits'))} with hits)")
+        print("     skills: " + ", ".join(f"{s.get('skill')}[{s.get('best_score')}]"
+                                          for s in knowledge.get("skills") or []))
+        print("     playbooks: " + ", ".join(str(p.get("playbook")) for p in knowledge.get("playbooks") or []))
     for key, count in errors.items():
         print(f"     {count:3d} x {key}")
     for i in tracebacks:

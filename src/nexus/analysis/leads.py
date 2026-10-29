@@ -624,11 +624,14 @@ def behavioural_analytics_leads(
         log.warning("behavioural analytics pack unreadable: %s", exc)
         return []
 
+    from nexus.analysis.knowledge_record import note_analytic
+
     for analytic in pack[:limit]:
         name = str(analytic.get("name") or analytic.get("id") or "").strip()
         clause = analytic.get("es")
         if not name or not isinstance(clause, dict) or not clause:
             continue
+        analytic_id = str(analytic.get("id") or name)
         if not (hasattr(probe, "count_analytic") or hasattr(probe, "analytic_hits")):
             # A case that holds none of the log the analytic reads (Sysmon on a case without it) is not a
             # place it applies: the index refuses its fields, which is not a failure to report (IC-7).
@@ -636,12 +639,16 @@ def behavioural_analytics_leads(
 
             if step_source_present(analytic, Path(case_dir).name) is False:
                 log.debug("analytic %s not applicable: the case holds none of its source", name)
+                note_analytic(analytic_id, name, hits=None, outcome="not applicable: the case holds none of its source")
                 continue
         try:
             count, samples = _analytic_matches(case_dir, clause, probe=probe)
         except Exception as exc:  # noqa: BLE001 — one analytic must not lose the rest
             log.warning("analytic %s not run: %s", name, exc)
+            note_analytic(analytic_id, name, hits=None, outcome=f"not run: {exc}"[:200])
             continue
+        # TA-5.2: an executed analytic is part of the run's knowledge whatever it matched; only a match is a lead.
+        note_analytic(analytic_id, name, hits=count, outcome="ran")
         if count <= 0:
             continue
         techniques = [str(t) for t in (analytic.get("techniques") or []) if t]
@@ -660,7 +667,7 @@ def behavioural_analytics_leads(
             # Above a heuristic lead, below a crit/high detection.
             score=0.95,
             extra={
-                "analytic": str(analytic.get("id") or name),
+                "analytic": analytic_id,
                 "count": count,
                 "techniques": techniques,
                 "citation": analytic.get("citation") or {},

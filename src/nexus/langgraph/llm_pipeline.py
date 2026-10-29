@@ -3220,7 +3220,11 @@ async def run_pipeline(
     emit_stage(_progress, "pipeline", "running", f"mode={pipeline_mode}")
 
     config = get_mcp_config()
+    from nexus.analysis.knowledge_record import recording
+
+    # TA-5.2: the knowledge the run chooses, recorded where it is chosen; `finalize_run` writes it to the manifest.
     async with contextlib.AsyncExitStack() as sessions:
+        sessions.enter_context(recording())
         tools_by_name = await _load_mcp_tools(config, sessions=sessions)
         return await _run_pipeline_with_tools(
             tools_by_name,

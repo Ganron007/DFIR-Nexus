@@ -263,7 +263,20 @@ def skills_for(
     :func:`retrieve_skills`.
     """
     ranked = _ranked_skills(families, keywords, techniques, family_groups)
-    return [skill for _score, skill, _why in ranked[: max(1, limit)]]
+    return [skill for _score, skill, _why in _chosen(ranked, limit)]
+
+
+def _chosen(
+    ranked: list[tuple[int, dict[str, Any], list[str]]], limit: int,
+) -> list[tuple[int, dict[str, Any], list[str]]]:
+    """The top ``limit`` of the one ranking, noted into the recording run's knowledge with the score and the reasons
+    the ranking gave (TA-5.2); both selection surfaces take their skills here."""
+    from nexus.analysis.knowledge_record import note_skill
+
+    chosen = ranked[: max(1, limit)]
+    for score, skill, why in chosen:
+        note_skill(str(skill.get("skill") or ""), skill_version(skill), score, why)
+    return chosen
 
 
 def skill_version(skill: dict[str, Any]) -> str:
@@ -327,7 +340,7 @@ def retrieve_skills(
     """
     ranked = _ranked_skills(families, keywords, techniques, family_groups)
     out: list[dict[str, Any]] = []
-    for score, skill, why in ranked[: max(1, limit)]:
+    for score, skill, why in _chosen(ranked, limit):
         prov = skill_provenance(skill)
         out.append({
             "skill": prov["skill"],

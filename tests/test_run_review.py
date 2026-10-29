@@ -20,8 +20,10 @@ def _run(tmp_path, monkeypatch, mode, run_id, status):
     case = tmp_path / "CASE-REVIEW"
     (case / ".trace").mkdir(parents=True)
     (case / "audit").mkdir()
+    # Every mode run writes the knowledge it chose (TA-5.2); the review flags a record without it.
     record = {"run_id": run_id, "status": status,
-              "model": {"model": "agnes-3.0-flash"}, "candidates": [{}, {}, {}, {}]}
+              "model": {"model": "agnes-3.0-flash"}, "candidates": [{}, {}, {}, {}],
+              "knowledge": {"skills": [], "playbooks": [], "analytics": []}}
     if mode == "1":
         target = case / "runs" / run_id / "manifest.json"
         record["error"] = "awaiting approval at await_approval (3 DRAFT finding(s) staged)"
@@ -141,6 +143,19 @@ def test_replay_only_skips_unknown_fields_and_replays_value_failures(tmp_path, m
     monkeypatch.setattr(replay, "replay_call", execute)
     replay.main("2026-10-26T08:00:00", [case.name])
     assert executed == [entries[1]], "a bad value must not disappear as an unknown-field hint"
+
+
+def test_a_record_without_its_knowledge_section_is_an_issue(tmp_path, monkeypatch):
+    """TA-5.2: a run record says which skills, playbooks and analytics it used; one that does not is reviewed so."""
+    run_id = "M2-20261030T010101-abcdef"
+    case = _run(tmp_path, monkeypatch, "2", run_id, "completed")
+    record_path = case / "analysis/mode2_runs" / f"{run_id}.json"
+    record = json.loads(record_path.read_text())
+    record.pop("knowledge")
+    record_path.write_text(json.dumps(record))
+    (case / ".trace/run-T19-R2-mode2.log").write_text(
+        f"2026-10-30T01:01:01Z\nrun_id={run_id} status=completed\nMODE2_EXIT=0\n2026-10-30T01:30:00Z\n")
+    assert "record has no knowledge section (TA-5.2)" in review_run.review("T19-R2", case.name, "2")["issues"]
 
 
 def test_review_reads_the_bare_mode3_run_id_from_the_real_cli_format(tmp_path, monkeypatch):

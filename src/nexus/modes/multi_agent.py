@@ -168,6 +168,11 @@ def read_run_record(case_dir: Path, run_id: str) -> dict[str, Any] | None:
 
 
 def _persist(case_dir: Path, run_id: str, record: dict[str, Any]) -> None:
+    # TA-5.2: every save carries the knowledge chosen so far (`run_mode3` records it), so a stopped run says it too.
+    from nexus.analysis.knowledge_record import current as _knowledge
+
+    if _knowledge() is not None:
+        record["knowledge"] = _knowledge().section()
     path = _record_path(case_dir, run_id)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
@@ -1955,6 +1960,27 @@ def run_mode3(
     resume_state: dict[str, Any] | None = None,
     context_policy: str = "independent",
 ) -> dict[str, Any]:
+    """Run Mode 3 with the knowledge it chooses recorded where it is chosen (TA-5.2); see :func:`_run_mode3`."""
+    from nexus.analysis.knowledge_record import recording
+
+    with recording():
+        return _run_mode3(case_dir, question, model=model, run_id=run_id, families=families, seat_fn=seat_fn,
+                          es_ok=es_ok, on_event=on_event, resume_state=resume_state, context_policy=context_policy)
+
+
+def _run_mode3(
+    case_dir: Path,
+    question: str,
+    *,
+    model: Any = None,
+    run_id: str = "",
+    families: list[tuple[str, int]] | None = None,
+    seat_fn: Callable[[dict[str, Any], list[dict[str, Any]], int], dict[str, Any]] | None = None,
+    es_ok: bool | None = None,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
+    resume_state: dict[str, Any] | None = None,
+    context_policy: str = "independent",
+) -> dict[str, Any]:
     """Run one concurrent investigation. Returns the run record. Never stages.
 
     ``context_policy`` (WO-1C item 3) is recorded on the run record:
@@ -2047,6 +2073,10 @@ def run_mode3(
             return existing
         if existing is not None:
             record.update(existing)
+            from nexus.analysis.knowledge_record import current as _knowledge
+
+            if _knowledge() is not None:
+                _knowledge().merge(existing.get("knowledge"))
             record["status"] = "running"
             record["stop_reason"] = ""
             record.pop("resume_state", None)

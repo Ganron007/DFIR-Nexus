@@ -91,14 +91,18 @@ def mode_record(folder: Path, mode: str, rid: str) -> dict:
     for res in rec.get("results") or []:
         if res.get("role"):
             roles.add(res["role"])
+    # TA-5.2: a run records its knowledge in one section; a record written before it named Mode 2/3 skills only.
+    knowledge = rec.get("knowledge") if isinstance(rec.get("knowledge"), dict) else None
+    skills = (knowledge or {}).get("skills") if knowledge else rec.get("skills_used")
     return {
         "status": rec.get("status"),
         "reason": str(rec.get("error") or ""),
         "model": (rec.get("model") or {}).get("model") if isinstance(rec.get("model"), dict) else rec.get("model"),
-        "skills": sorted({s.get("skill") for s in rec.get("skills_used") or [] if s.get("skill")}),
-        "skills_recorded": "skills_used" in rec,
-        "playbooks_recorded": "playbooks_used" in rec,
-        "playbooks": sorted(set(rec.get("playbooks_used") or [])),
+        "skills": sorted({s.get("skill") for s in skills or [] if s.get("skill")}),
+        "skills_recorded": knowledge is not None or "skills_used" in rec,
+        "playbooks_recorded": knowledge is not None,
+        "playbooks": sorted({p.get("playbook") for p in (knowledge or {}).get("playbooks") or [] if p.get("playbook")}),
+        "analytics_ran": sum(1 for a in (knowledge or {}).get("analytics") or [] if a.get("outcome") == "ran"),
         "roles": sorted(roles),
         "candidates": len(rec.get("candidates") or []),
     }

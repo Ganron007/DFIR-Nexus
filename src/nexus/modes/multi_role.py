@@ -2159,6 +2159,11 @@ class Mode3State(dict):
 
 
 def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
+    # TA-5.2: every save carries the knowledge chosen so far (`run_mode2` records it), so a stopped run says it too.
+    from nexus.analysis.knowledge_record import current as _knowledge
+
+    if _knowledge() is not None:
+        state["knowledge"] = _knowledge().section()
     path = Path(case_dir) / _MODE2_DIR / f"{run_id}.json"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2232,6 +2237,26 @@ def busy_message(busy: list[dict[str, str]]) -> str:
 
 @egress_bound
 def run_mode2(
+    case_dir: Path,
+    question: str,
+    *,
+    model: Any = None,
+    run_id: str = "",
+    on_event: Callable[[dict[str, Any]], None] | None = None,
+    max_orders: int = 6,
+    resume: bool = True,
+    es_ok: bool | None = None,
+    context_policy: str = "independent",
+) -> dict[str, Any]:
+    """Run Mode 2 with the knowledge it chooses recorded where it is chosen (TA-5.2); see :func:`_run_mode2`."""
+    from nexus.analysis.knowledge_record import recording
+
+    with recording():
+        return _run_mode2(case_dir, question, model=model, run_id=run_id, on_event=on_event,
+                          max_orders=max_orders, resume=resume, es_ok=es_ok, context_policy=context_policy)
+
+
+def _run_mode2(
     case_dir: Path,
     question: str,
     *,
@@ -2328,6 +2353,10 @@ def run_mode2(
             loaded = json.loads(state_path.read_text(encoding="utf-8"))
             if isinstance(loaded, dict) and loaded.get("run_id") == run_id:
                 state.update(loaded)
+                from nexus.analysis.knowledge_record import current as _knowledge
+
+                if _knowledge() is not None:
+                    _knowledge().merge(loaded.get("knowledge"))
                 # Stopped, completed, and failed runs are terminal. Resuming
                 # them used to re-enter verify/synthesis and append a second
                 # pass onto a finished investigation.

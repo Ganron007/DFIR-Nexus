@@ -246,6 +246,7 @@ def parse_intake_window(intake: dict[str, str] | None) -> tuple[datetime | None,
 
 
 def _playbook_terms(playbook_ids: list[str]) -> list[str]:
+    from nexus.analysis.knowledge_record import note_playbook
     from nexus.knowledge.loader import get_playbook
     from nexus.knowledge.needle_terms import filter_scannable
 
@@ -254,6 +255,7 @@ def _playbook_terms(playbook_ids: list[str]) -> list[str]:
         pb = get_playbook(name)
         if not isinstance(pb, dict):
             continue
+        note_playbook(str(name), "named in the case intake")
         raw = pb.get("query_terms") or []
         if isinstance(raw, list):
             terms.extend(str(t).strip() for t in raw if str(t).strip())
@@ -366,7 +368,9 @@ def collect_playbook_query_terms(intake: dict[str, str] | None) -> list[str]:
 
 
 def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dict]:
-    """Playbooks whose declared evidence families match the case."""
+    """Playbooks whose declared evidence families match the case, each noted into the recording run's knowledge
+    with the declared families that matched (TA-5.2)."""
+    from nexus.analysis.knowledge_record import note_playbook
     from nexus.knowledge.family_registry import families_intersect
     from nexus.knowledge.loader import get_playbook, list_playbook_slugs
 
@@ -379,7 +383,9 @@ def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dic
         if not isinstance(pb, dict):
             continue
         declared = pb.get("families")
-        if isinstance(declared, list) and families_intersect(fams, declared):
+        matched = families_intersect(fams, declared) if isinstance(declared, list) else set()
+        if matched:
+            note_playbook(slug, "the case holds its declared " + ", ".join(sorted(matched)))
             out.append(pb)
     return out
 

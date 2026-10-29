@@ -562,6 +562,11 @@ def finalize_run(run: PipelineRun, status: str, error: str = "") -> None:
         manifest["absence"] = _absence_record(run.path.parent.parent)
     except Exception:  # noqa: BLE001 - never fail a finalize on a report nicety
         manifest["absence"] = {}
+    # TA-5.2: the knowledge the run chose, noted where it was chosen (a pipeline run records inside `run_pipeline`).
+    from nexus.analysis.knowledge_record import current as _knowledge
+
+    if _knowledge() is not None:
+        manifest["knowledge"] = _knowledge().section()
     if error:
         manifest["error"] = error[:2000]
     _atomic_json(run.path / "manifest.json", manifest)
