@@ -128,11 +128,14 @@ def _fake_brief() -> dict:
 
 
 def test_classify_scope(tmp_path):
-    classes = _classify(["hayabusa", "zeek", "splunk", "memory_dump"])
+    # The classes are the family registry's (D486): `vol` is a memory producer. A name no producer writes
+    # (`memory_dump`, which the old substring hint took for memory) is host.
+    classes = _classify(["hayabusa", "zeek", "splunk", "vol", "memory_dump"])
     assert "hayabusa" in classes["host"]
     assert "zeek" in classes["network"]
     assert "splunk" in classes["siem"]
-    assert "memory_dump" in classes["memory"]
+    assert "vol" in classes["memory"]
+    assert "memory_dump" in classes["host"]
 
 
 def test_the_digest_carries_no_keyword_needle_counts_or_negative_evidence(tmp_path, monkeypatch):

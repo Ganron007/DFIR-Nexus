@@ -50,15 +50,20 @@ families:
     platform_source: knowledge/artifacts/linux/auth_log.yaml
   aws_s3_access:
     aliases: []
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - cloud
+    kind_sources:
+      ingest/cloud/aws_s3_access.py:S3AccessLogImporter:
+      - cloud
   aws_vpc_flow:
     aliases: []
     kinds:
     - network
+    - cloud
     kind_sources:
       ingest/cloud/aws_vpc_flow.py:VpcFlowLogImporter:
       - network
+      - cloud
     kind_notes:
       network: ingest/cloud/aws_vpc_flow.py:1-7 reads VPC flow log records (srcaddr, dstaddr, srcport, dstport, protocol)
   axiom:
@@ -67,8 +72,11 @@ families:
   azure:
     aliases:
     - ingest-azure
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - cloud
+    kind_sources:
+      ingest/cloud/azure.py:AzureImporter:
+      - cloud
   bash_history:
     aliases:
     - ingest-bash_history
@@ -111,8 +119,11 @@ families:
   cloudtrail:
     aliases:
     - ingest-cloudtrail
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - cloud
+    kind_sources:
+      ingest/cloud/cloudtrail.py:CloudTrailImporter:
+      - cloud
   crowdstrike:
     aliases: []
     kinds: []
@@ -133,12 +144,19 @@ families:
   elastic:
     aliases:
     - ingest-elastic
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - siem
+    kind_sources:
+      ingest/siem/elastic.py:ElasticImporter:
+      - siem
   email:
     aliases:
     - eml
-    kinds: []
+    kinds:
+    - email
+    kind_sources:
+      ingest/generic/email_import.py:EmailImporter:
+      - email
     importer_classes:
     - nexus.ingest.generic.email_import.EmailImporter
     alias_sources:
@@ -288,8 +306,11 @@ families:
     kind_sources: {}
   ossec:
     aliases: []
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - siem
+    kind_sources:
+      ingest/siem/ossec.py:OssecAlertsImporter:
+      - siem
   otx:
     aliases:
     - ingest-otx
@@ -312,9 +333,12 @@ families:
     - ingest-plaso
     kinds:
     - file
+    - timeline
     kind_sources:
       ecs_map.yaml:family_columns:
       - file
+      knowledge/tools/timeline/plaso.yaml:
+      - timeline
   prefetch:
     aliases: []
     kinds: []
@@ -359,8 +383,11 @@ families:
   security_onion:
     aliases:
     - ingest-security_onion
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - siem
+    kind_sources:
+      ingest/siem/security_onion.py:SecurityOnionImporter:
+      - siem
   sentinel:
     aliases: []
     kinds: []
@@ -380,8 +407,11 @@ families:
   splunk:
     aliases:
     - ingest-splunk
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - siem
+    kind_sources:
+      ingest/siem/splunk.py:SplunkImporter:
+      - siem
   spreadsheet:
     aliases: []
     kinds: []
@@ -531,10 +561,18 @@ families:
     kinds: []
   log2timeline:
     aliases: []
-    kinds: []
+    kinds:
+    - timeline
+    kind_sources:
+      knowledge/tools/timeline/plaso.yaml:
+      - timeline
   mactime:
     aliases: []
-    kinds: []
+    kinds:
+    - timeline
+    kind_sources:
+      knowledge/tools/timeline/mactime.yaml:
+      - timeline
   mmls:
     aliases: []
     kinds: []
@@ -555,16 +593,28 @@ families:
         family tshark-flows)
   nfdump:
     aliases: []
-    kinds: []
+    kinds:
+    - network
+    kind_sources:
+      ingest/network/nfdump.py:NfdumpImporter:
+      - network
   pff-ost:
     aliases: []
-    kinds: []
+    kinds:
+    - email
+    kind_sources:
+      knowledge/tools/analysis/pff-ost.yaml:
+      - email
   powershell_history:
     aliases: []
     kinds: []
   psort:
     aliases: []
-    kinds: []
+    kinds:
+    - timeline
+    kind_sources:
+      knowledge/tools/timeline/psort.yaml:
+      - timeline
   pstranscript:
     aliases: []
     kinds:
@@ -629,7 +679,11 @@ families:
     kinds: []
   m365:
     aliases: []
-    kinds: []
+    kinds:
+    - cloud
+    kind_sources:
+      ingest/cloud/m365.py:M365Importer:
+      - cloud
     importer_classes:
     - nexus.ingest.cloud.m365.M365Importer
   journal:

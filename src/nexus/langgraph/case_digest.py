@@ -18,57 +18,49 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
 
-_NETWORK_FAMILIES = ("suricata", "zeek", "wireshark", "sysdig", "pcap", "netflow", "arkime")
-_CLOUD_FAMILIES = ("cloudtrail", "azure", "m365", "o365", "entra", "gcp", "aws")
-_EMAIL_FAMILIES = ("email", "eml", "msg", "mbox", "pst", "ost")
-_SIEM_FAMILIES = ("splunk", "elastic", "security_onion", "wazuh", "socrates", "syslog", "socrate")
-_MEMORY_FAMILIES = ("volatility", "memprocfs", "memory")
-_LINUX_FAMILIES = ("auditd", "authlog", "auth", "bash_history", "linux")
-_DISK_FAMILIES = ("plaso", "log2timeline", "super_timeline")
+#: The digest's evidence classes besides host, memory and Linux: the evidence kinds the family registry records for
+#: a producer (D486). Seven typed name lists decided them, outside the registry: T13-T16's capture flows and BIND
+#: log were host, T15's two email messages were "explicitly absent", T18's NetFlow was host.
+_CLASS_KINDS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("network", frozenset({"network", "pcap"})),
+    ("cloud", frozenset({"cloud"})),
+    ("email", frozenset({"email"})),
+    ("siem", frozenset({"siem"})),
+    ("disk_timeline", frozenset({"timeline"})),
+)
 
 
-def _classify(families: list[str]) -> dict[str, list[str]]:
-    from nexus.langgraph.lane_gate import _MEMORY_JOB_TOOLS
+def _classify(families: list[str], groups: list[set[str]] | None = None) -> dict[str, list[str]]:
+    """The case's families by evidence class, from the family registry: a memory image is memory whatever its tables
+    hold (D204), Linux is the producer's platform, the rest are the producer's evidence kinds; a family in none is
+    host evidence, and a container (generic CSV/JSONL, a spreadsheet) is no evidence. ``groups`` are the index's
+    evidence groups, so a row an importer class read as something (T15's ``.eml`` as email) counts as that."""
+    from nexus.knowledge.family_registry import get_family_registry
 
-    low = {f.lower(): f for f in families}
-
-    def named(lower: str, hints: tuple[str, ...]) -> bool:
-        # A family is an identifier the lane or an importer chose (`zeek_conn`, `pff-ost`), so a hint
-        # names the whole family or one of its parts. It used to match any substring: `pstranscript`
-        # (PowerShell transcripts) was email for its "pst", `oauth` would be Linux for its "auth" (D205).
-        return lower in hints or any(part in hints for part in re.split(r"[-_.\s]+", lower))
-
-    def pick(hints: tuple[str, ...]) -> list[str]:
-        return [orig for lower, orig in low.items() if named(lower, hints)]
-
-    # A family named for the memory job that wrote it is memory: the SIFT lane's Volatility output is
-    # the family `vol`, which no name hint matched, so 88,965 memory rows were "host" (D204).
-    memory = sorted(set(pick(_MEMORY_FAMILIES))
-                    | {orig for lower, orig in low.items() if lower in _MEMORY_JOB_TOOLS})
-    host = [
-        orig for lower, orig in low.items()
-        if orig not in memory and not named(lower, (
-            _NETWORK_FAMILIES + _CLOUD_FAMILIES + _EMAIL_FAMILIES
-            + _SIEM_FAMILIES + _MEMORY_FAMILIES + _DISK_FAMILIES
-        ))
-    ]
-    return {
-        "host": sorted(host),
-        "network": sorted(pick(_NETWORK_FAMILIES)),
-        "cloud": sorted(pick(_CLOUD_FAMILIES)),
-        "email": sorted(pick(_EMAIL_FAMILIES)),
-        "siem": sorted(pick(_SIEM_FAMILIES)),
-        "memory": memory,
-        "linux": sorted(pick(_LINUX_FAMILIES)),
-        "disk_timeline": sorted(pick(_DISK_FAMILIES)),
-    }
+    registry = get_family_registry()
+    names = {str(f).strip() for f in families if str(f).strip()}
+    names |= {str(f).strip() for group in groups or () for f in group if str(f).strip()}
+    out: dict[str, list[str]] = {
+        key: [] for key in ("host", "network", "cloud", "email", "siem", "memory", "linux", "disk_timeline")}
+    for name in sorted(names):
+        if registry.is_container(name):
+            continue
+        kinds = registry.kinds_of(name)
+        if "memory" in kinds:
+            out["memory"].append(name)
+            continue
+        classes = [cls for cls, wanted in _CLASS_KINDS if kinds & wanted]
+        if "linux" in registry.platforms({name}):
+            classes.append("linux")
+        for cls in classes or ["host"]:
+            out[cls].append(name)
+    return out
 
 
 def _timeline(case_dir: Path) -> dict[str, Any]:
@@ -119,8 +111,16 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
 
         brief = case_briefing(case_dir)
     families = list(brief.get("families") or [])
-    classes = _classify(families)
+    groups, groups_note = None, "measured"
+    try:
+        from nexus.langgraph.es_native import knowledge_evidence_groups
+
+        groups = [set(group["families"]) for group in knowledge_evidence_groups(case_dir.name)]
+    except Exception as exc:  # noqa: BLE001 - no index, or one built before evidence groups: said, not hidden
+        groups_note = f"unavailable ({exc}); classes from family names alone"
+    classes = _classify(families, groups)
     scope = {
+        "evidence_groups": groups_note,
         "families_present": classes,
         "evidence_classes_present": [k for k, v in classes.items() if v],
         "explicitly_absent": [

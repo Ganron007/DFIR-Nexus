@@ -110,6 +110,11 @@ class FamilyRegistry:
             return {f"kind:{value}"}
         return {value}
 
+    def kinds_of(self, family: str) -> set[str]:
+        """The evidence kinds a producer yields (any of its spellings); empty for an unknown name."""
+        canonical = self._aliases.get(_name(family))
+        return set(self._kinds[canonical]) if canonical else set()
+
     def platforms(self, families: Iterable[str]) -> set[str]:
         """The platforms a case's producers place it on (D484): a producer's own `platform`, or that of an evidence
         kind it yields (`kind_platforms`, each from its pinned artifact entry). Empty when none says."""

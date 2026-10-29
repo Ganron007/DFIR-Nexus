@@ -45,12 +45,14 @@ def test_a_file_belongs_to_the_tool_that_wrote_its_folder(rel, family):
 
 
 def test_the_digest_reads_a_family_name_whole():
+    """D205's point (no substring guess: `pstranscript` is not email, `oauth_audit` not Linux) now holds because
+    the classes are the family registry's evidence kinds (D486); a name no producer writes is host."""
     from nexus.langgraph.case_digest import _classify
 
-    classes = _classify(["pstranscript", "email", "pff-ost", "memprocfs", "vol", "zeek_conn",
+    classes = _classify(["pstranscript", "email", "pff-ost", "memprocfs", "vol", "zeek",
                          "oauth_audit", "hayabusa"])
     assert classes["email"] == ["email", "pff-ost"]
     assert classes["memory"] == ["memprocfs", "vol"]
-    assert classes["network"] == ["zeek_conn"]
+    assert classes["network"] == ["zeek"]
     assert classes["linux"] == []
     assert classes["host"] == ["hayabusa", "oauth_audit", "pstranscript"]
