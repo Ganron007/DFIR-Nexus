@@ -802,6 +802,7 @@ def _supervisor_with_model(
     steering: str,
     max_agents: int,
     prior_context: str = "",
+    case_facts: str = "",
 ) -> list[dict[str, Any]]:
     """MA4.2 — the model chooses the team; [] on any doubt (caller falls back).
 
@@ -867,7 +868,9 @@ def _supervisor_with_model(
         {
             "role": "user",
             "content": (
-                f"Objective: {question}\n\nIndexed families (artifact value "
+                f"Objective: {question}\n\n"
+                + (f"{case_facts}\n\n" if case_facts else "")
+                + f"Indexed families (artifact value "
                 f"order):\n{family_lines}\n\nLeads raised so far:\n{lead_lines}\n\n"
                 + (f"Examiner steering:\n{steering}\n\n" if steering else "")
                 + (f"{prior_context}\n\n" if prior_context else "")
@@ -1037,8 +1040,10 @@ def _seat_with_model(
     superstep: int,
     audit: Any = None,
     prior_context: str = "",
+    case_facts: str = "",
 ) -> dict[str, Any]:
-    """One seat's turn. ``prior_context`` is what an ``informed`` run adds, labelled as not evidence."""
+    """One seat's turn. ``prior_context`` is what an ``informed`` run adds, labelled as not evidence;
+    ``case_facts`` is the run's deterministic case facts (D467), the same text every mode is given."""
     from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
     from nexus.modes.multi_role import _investigative_extras, role_for
 
@@ -1094,7 +1099,8 @@ def _seat_with_model(
     if is_verifier:
         question = (
             f"You are the {role_name} seat. Examiner objective: {objective}\n"
-            f"{skill_block}\n"
+            + (f"{case_facts}\n\n" if case_facts else "")
+            + f"{skill_block}\n"
             f"Board so far:\n{board_digest}\n\n"
             + (f"{prior_context}\n\n" if prior_context else "")
             + _investigative_extras(case_dir)
@@ -1157,6 +1163,8 @@ def _seat_with_model(
         question = "".join([
             f"You are the {role_name} seat. Examiner objective: {objective}\n",
             f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n",
+            # D467: the case facts every mode reads (scope, the lane's caveats, the alert surface).
+            f"{case_facts}\n\n" if case_facts else "",
             f"{skill_block}\n",
             f"Board so far:\n{board_digest}\n\n",
             # D235: an informed run's prior analysis reaches every seat; it went to the model
@@ -2079,15 +2087,21 @@ def run_mode3(
     sink.inner.path = _run_dir(case_dir) / f"{run_id}.jsonl"
     sink.inner.path.parent.mkdir(parents=True, exist_ok=True)
 
-    # The run's leads, built once from the index and persisted (`analysis/leads.jsonl`): the agenda and the lead
-    # dispositions read them. The briefing built them as a side effect until D460 took the briefing out of Mode 3.
+    # D467: the case digest, built once for this run. Its case facts (scope, timestamp coverage, the lane's
+    # caveats, the alert surface) go to the supervisor and every seat, as Mode 1 and every Mode 2 worker read
+    # them; building it also builds and persists the run's leads (`analysis/leads.jsonl`), which the agenda and
+    # the lead dispositions read.
+    case_facts = ""
     try:
-        from nexus.analysis.leads import build_leads
+        from nexus.langgraph.case_digest import build_case_digest, case_facts_markdown
 
-        sink.emit(new_event(run_id, "leads.ready", actor="system",
-                            detail=f"{len(build_leads(case_dir))} lead(s) built from the index"))
-    except Exception as exc:  # noqa: BLE001 - the run records it and goes on without leads
-        sink.emit(new_event(run_id, "leads.failed", actor="system", detail=str(exc)[:200]))
+        digest = build_case_digest(case_dir)
+        case_facts = case_facts_markdown(digest)
+        sink.emit(new_event(run_id, "case.facts", actor="system",
+                            detail=(f"{len(digest.get('alerts') or [])} alert(s), "
+                                    f"{len(digest.get('top_leads') or [])} top lead(s)")))
+    except Exception as exc:  # noqa: BLE001 - the run records it and goes on without them
+        sink.emit(new_event(run_id, "case.facts_failed", actor="system", detail=str(exc)[:200]))
 
     indexed = list(families or [])
     if not indexed:
@@ -2230,6 +2244,7 @@ def run_mode3(
                     ),
                     max_agents=max_agents,
                     prior_context=prior_context,
+                    case_facts=case_facts,
                 )
             supervisor_mode = "model" if spawns else "deterministic"
             if not spawns:
@@ -2285,7 +2300,7 @@ def run_mode3(
             entry = _seat_with_model(
                 spawn, case_dir=case_dir, model=model, run_id=run_id,
                 sink=sink, board_digest=str(payload.get("board_digest") or ""),
-                superstep=step, audit=run_audit, prior_context=prior_context,
+                superstep=step, audit=run_audit, prior_context=prior_context, case_facts=case_facts,
             )
         else:
             entry = _fallback_entry(spawn, step)

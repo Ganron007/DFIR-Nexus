@@ -12,13 +12,14 @@ from pathlib import Path
 
 
 def test_digest_summary_carries_the_alert_surface_and_the_top_leads():
+    """D467: the alert surface is rendered as the digest renders it (case facts), the top leads after it."""
     from nexus.modes.multi_role import _digest_summary
 
-    brief = {
+    digest = {
         "alerts": [
-            {"level": "crit", "family": "hayabusa",
+            {"level": "crit", "family": "hayabusa", "key": "a-1",
              "title": "Defender Alert (Severe)", "host": "WS01", "time": "t"},
-            {"level": "high", "family": "chainsaw",
+            {"level": "high", "family": "chainsaw", "key": "a-2",
              "title": "Hacktool Signature", "host": "WS01", "time": "t"},
         ],
         "top_leads": [
@@ -26,25 +27,27 @@ def test_digest_summary_carries_the_alert_surface_and_the_top_leads():
              "detail": "crit detection", "extra": {"level": "crit"}},
         ],
     }
-    text = _digest_summary(brief)
-    assert "ALERT SURFACE" in text
+    text = _digest_summary(digest)
+    assert "## Alert surface (2 crit/high leads" in text
     assert "TOP LEADS" in text
-    assert "Defender Alert (Severe)" in text
+    assert "Defender Alert (Severe)" in text and "[audit_id a-1]" in text
     assert "Antivirus - Password Dumper Signature" in text
 
 
-def test_digest_summary_is_capped_and_never_raises():
+def test_digest_summary_never_cuts_an_alert_and_never_raises():
+    """The alerts are the set every mode answers: never cut (D467). Only the top-leads block is capped."""
     from nexus.modes.multi_role import _digest_summary
 
     assert _digest_summary({}) == ""
     assert _digest_summary("not a dict") == ""  # type: ignore[arg-type]
     huge = {
         "alerts": [
-            {"level": "crit", "family": "f", "title": "x" * 400, "host": "h", "time": "t"}
-            for _ in range(100)
+            {"level": "crit", "family": "f", "title": "x" * 400, "host": "h", "time": "t", "key": f"k-{n}"}
+            for n in range(100)
         ]
     }
-    assert len(_digest_summary(huge)) <= 2400
+    text = _digest_summary(huge)
+    assert all(f"[audit_id k-{n}]" in text for n in range(100))
 
 
 def test_replan_inputs_surface_open_questions_and_pivots():

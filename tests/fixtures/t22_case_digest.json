@@ -1,0 +1,636 @@
+{
+ "source": "CASE-4387EB47 (tiny case T22): build_case_digest on its live index, 2026-10-29 (build 62a79f4+), the case-fact keys and the first 25 top leads; alert interpretations dropped",
+ "digest": {
+  "case_id": "CASE-4387EB47",
+  "scope": {
+   "families_present": {
+    "host": [],
+    "network": [],
+    "cloud": [],
+    "email": [],
+    "siem": [],
+    "memory": [
+     "memprocfs",
+     "vol"
+    ],
+    "linux": [],
+    "disk_timeline": []
+   },
+   "evidence_classes_present": [
+    "memory"
+   ],
+   "explicitly_absent": [
+    "network flows / PCAP",
+    "cloud audit logs",
+    "email archives",
+    "SIEM exports",
+    "linux host logs",
+    "disk super-timeline"
+   ]
+  },
+  "ts_coverage": {
+   "memprocfs": {
+    "present": 723549,
+    "missing": 1013354,
+    "synthesized": 0,
+    "tz_assumed": 301020,
+    "year_assumed": 0
+   },
+   "vol": {
+    "present": 272,
+    "missing": 160,
+    "synthesized": 0,
+    "tz_assumed": 1,
+    "year_assumed": 1
+   }
+  },
+  "ts_coverage_capped": false,
+  "ledger": {
+   "run_id": "RUN-20261025T204902604862Z-tools-d063e55e",
+   "entries": [
+    {
+     "tool": "(discovery)",
+     "status": "SKIP",
+     "family": "",
+     "reason": "No recognized evidence shape under C:\\STUDY\\Github\\CADRE-Platform\\DFIR-Nexus\\Evidence-files\\_tiny\\T22\\memory. Accepted: a Windows root (Windows/System32), a KAPE/drive tree (*/C/Windows/System32), a S"
+    },
+    {
+     "tool": "memprocfs",
+     "status": "OK",
+     "family": "",
+     "reason": ""
+    },
+    {
+     "tool": "vol",
+     "status": "OK",
+     "family": "",
+     "reason": ""
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "OK",
+     "family": "",
+     "reason": ""
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "OK",
+     "family": "",
+     "reason": ""
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "process-list walk returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "OK",
+     "family": "",
+     "reason": ""
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "registry read returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "registry read returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    },
+    {
+     "tool": "vol",
+     "status": "WARN",
+     "family": "",
+     "reason": "registry read returned nothing while psscan saw 134 process(es) — a coverage gap, not evidence of absence"
+    }
+   ],
+   "ok": 5,
+   "skip": 1,
+   "fail": 0
+  },
+  "alerts": [
+   {
+    "key": "nexus-claudebot-20261027-155",
+    "audit_ids": [
+     "nexus-claudebot-20261027-155"
+    ],
+    "family": "triage baseline",
+    "kind": "baseline",
+    "engine": "triage baseline",
+    "level": "high",
+    "title": "C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+    "detail": "C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe is run by service McShield (not in the Windows baseline); no Windows build in the triage baseline ships it, and it sits outside the Windows directory; a review item: absent from the baseline is not suspicious by itself; corroborated by mcs",
+    "count": 1,
+    "score": 1.0,
+    "time": "",
+    "host": "",
+    "doc_ids": [],
+    "locs": [
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/services.csv:226"
+    ],
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/services.csv",
+    "line": "226"
+   },
+   {
+    "key": "nexus-claudebot-20261027-180",
+    "audit_ids": [
+     "nexus-claudebot-20261027-180"
+    ],
+    "family": "triage baseline",
+    "kind": "baseline",
+    "engine": "triage baseline",
+    "level": "high",
+    "title": "mcshield.exe",
+    "detail": "mcshield.exe is run by service McAfee McShield (not in the Windows baseline); no Windows build in the triage baseline ships it, and it sits outside the Windows directory; seen 2018-05-09T14:47:17.000Z to 2018-05-09T14:47:17.000Z; a review item: absent from the baseline is not suspicious by itself; c",
+    "count": 2,
+    "score": 1.0,
+    "time": "2018-05-09T14:47:17.000Z",
+    "host": "",
+    "doc_ids": [],
+    "locs": [
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv:20631"
+    ],
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+    "line": "20631"
+   },
+   {
+    "key": "nexus-claudebot-20261027-003",
+    "audit_ids": [
+     "nexus-claudebot-20261027-003"
+    ],
+    "family": "memprocfs",
+    "kind": "rule_engine",
+    "engine": "memprocfs-yara",
+    "level": "severity 100",
+    "title": "mcshield.exe (pid 3836)",
+    "detail": "MemProcFS YARA: 3 rule(s) matched the memory of mcshield.exe (pid 3836, \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe, user SYSTEM): Windows.Ransomware.Clop, Windows.Ransomware.Ryuk, Windows.Trojan.Generic [Windows_Ransomware_Clop_e04959b5, Windows_Ransomware_Ryuk",
+    "count": 4,
+    "score": 1.0,
+    "time": "",
+    "host": "",
+    "doc_ids": [],
+    "locs": [
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:51",
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:515",
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:586",
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:658"
+    ],
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "line": "51"
+   },
+   {
+    "key": "nexus-claudebot-20261028-299",
+    "audit_ids": [
+     "nexus-claudebot-20261028-299"
+    ],
+    "family": "memprocfs",
+    "kind": "rule_engine",
+    "engine": "memprocfs-yara",
+    "level": "severity 50",
+    "title": "FILE:[\\Windows\\Mnemosyne.sys]",
+    "detail": "MemProcFS YARA: 1 rule(s) matched object memory FILE:[\\Windows\\Mnemosyne.sys]: Windows.VulnDriver.AgileRiskManagement [Windows_VulnDriver_AgileRiskManagement_66938a5b]",
+    "count": 1,
+    "score": 0.5,
+    "time": "",
+    "host": "",
+    "doc_ids": [],
+    "locs": [
+     "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt:1"
+    ],
+    "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/findevil/yara.txt",
+    "line": "1"
+   }
+  ],
+  "top_leads": [
+   {
+    "kind": "rule_engine",
+    "subject": "mcshield.exe (pid 3836)",
+    "detail": "MemProcFS YARA: 3 rule(s) matched the memory of mcshield.exe (pid 3836, \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe, user SYSTEM): Windows.Ransomware.Clop, Windows.Ransomware.Ryuk, Windows.Trojan.Generic [Windows_Ransomware_Clop_e04959b5, Windows_Ransomware_Ryuk",
+    "score": 1.0,
+    "level": "severity 100",
+    "engine": "memprocfs-yara",
+    "crit_high": true,
+    "audit_ids": [
+     "nexus-claudebot-20261027-003"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": [
+     "S0446",
+     "S0611"
+    ]
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "FILE:[\\Windows\\Mnemosyne.sys]",
+    "detail": "MemProcFS YARA: 1 rule(s) matched object memory FILE:[\\Windows\\Mnemosyne.sys]: Windows.VulnDriver.AgileRiskManagement [Windows_VulnDriver_AgileRiskManagement_66938a5b]",
+    "score": 0.5,
+    "level": "severity 50",
+    "engine": "memprocfs-yara",
+    "crit_high": true,
+    "audit_ids": [
+     "nexus-claudebot-20261028-299"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "baseline",
+    "subject": "C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+    "detail": "C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe is run by service McShield (not in the Windows baseline); no Windows build in the triage baseline ships it, and it sits outside the Windows directory; a review item: absent from the baseline is not suspicious by itself; corroborated by mcs",
+    "score": 1.0,
+    "level": "high",
+    "engine": "triage baseline",
+    "crit_high": true,
+    "audit_ids": [
+     "nexus-claudebot-20261027-155"
+    ],
+    "attack_ids": [
+     "T1543.003"
+    ],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "baseline",
+    "subject": "mcshield.exe",
+    "detail": "mcshield.exe is run by service McAfee McShield (not in the Windows baseline); no Windows build in the triage baseline ships it, and it sits outside the Windows directory; seen 2018-05-09T14:47:17.000Z to 2018-05-09T14:47:17.000Z; a review item: absent from the baseline is not suspicious by itself; c",
+    "score": 1.0,
+    "level": "high",
+    "engine": "triage baseline",
+    "crit_high": true,
+    "audit_ids": [
+     "nexus-claudebot-20261027-180"
+    ],
+    "attack_ids": [
+     "T1543.003"
+    ],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "DRIVER_PATH System",
+    "detail": "MemProcFS FindEvil DRIVER_PATH: 2 row(s) in System (pid 4): Driver:[SysmonDrv] Module:[\\SystemRoot\\SysmonDrv.sys]; Driver:[mnemosyne] Module:[\\??\\C:\\windows\\Mnemosyne.sys] [MemProcFS rates DRIVER_PATH false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-008"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "HIGH_ENTROPY OUTLOOK.EXE",
+    "detail": "MemProcFS FindEvil HIGH_ENTROPY: 3 row(s) in OUTLOOK.EXE (pid 904): Entropy:[7.38] Image ---wxc; Entropy:[7.50] Image --r---; Entropy:[7.69] Image --r--- [MemProcFS rates HIGH_ENTROPY false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-009"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "HIGH_ENTROPY Teams.exe",
+    "detail": "MemProcFS FindEvil HIGH_ENTROPY: 2 row(s) in Teams.exe (pid 1680, 5704): Entropy:[7.96]       p-----; Entropy:[7.95]       p----- [MemProcFS rates HIGH_ENTROPY false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-010"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "HIGH_ENTROPY WINWORD.EXE",
+    "detail": "MemProcFS FindEvil HIGH_ENTROPY: 2 row(s) in WINWORD.EXE (pid 9548): Entropy:[7.50] Image --r---; Entropy:[7.69] Image --r--- [MemProcFS rates HIGH_ENTROPY false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-011"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "HIGH_ENTROPY firefox.exe",
+    "detail": "MemProcFS FindEvil HIGH_ENTROPY: 5 row(s) in firefox.exe (pid 3492, 7812): Entropy:[8.00]       p-rw--; Entropy:[7.99]       p-rw--; Entropy:[8.00]       p-rw-- [MemProcFS rates HIGH_ENTROPY false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-012"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "NOIMAGE_RX firefox.exe",
+    "detail": "MemProcFS FindEvil NOIMAGE_RX: 1 row(s) in firefox.exe (pid 3492): 0000043b2000 31000000043b2025 A r-x ffff930eef826ed0 0000043b2000 0a000000043b2921 A Pf    --r-x- [MemProcFS rates NOIMAGE_RX false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-013"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RWX LocalBridge.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RWX: 36 row(s) in LocalBridge.exe (pid 2516): 0000b7c5a000 01000000b7c5a847 A rwx ffff930ef12fecb0 000000000000 0000000000000000 - Heap  p-rwx- HEAP-05 [SegHeap]; 000024aa8000 0100000024aa8847 A rwx ffff930ef375d230 000000000000 0000000000000000 - Heap  p-rwx- HEAP-07 [Seg",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-034"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RWX OUTLOOK.EXE",
+    "detail": "MemProcFS FindEvil PRIVATE_RWX: 8 row(s) in OUTLOOK.EXE (pid 904): 000000000000 00189aa700002064 C --- ffff930eec746e30 000000000000 0000000000000000 -       p-rwx-; 000000000000 00189aa800002064 C --- ffff930eec746e30 000000000000 0000000000000000 -       p-rwx-; 000000000000 00189aa900002064 C ---",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-035"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RWX SearchUI.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RWX: 4 row(s) in SearchUI.exe (pid 5308): 000000000000 000500e800002044 C --- ffff930ef297e420 000000000000 0000000000000000 -       p-rwx-; 000000000000 000500e900002044 C --- ffff930ef297e420 000000000000 0000000000000000 -       p-rwx-; 000000000000 000500ea00002044 C -",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-036"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RWX Teams.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RWX: 70 row(s) in Teams.exe (pid 1680, 2580, 5704): 0000595c0000 01000000595c0847 A rwx ffff930eec777430 000000000000 0000000000000000 -       p-----; 00009eac1000 010000009eac1847 A rwx ffff930eec777430 000000000000 0000000000000000 -       p-----; 000099cc3000 0100000099",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-037"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RWX WINWORD.EXE",
+    "detail": "MemProcFS FindEvil PRIVATE_RWX: 8 row(s) in WINWORD.EXE (pid 9548): 000000000000 0011a5d000002064 C --- ffff930ef2b1adb0 000000000000 0000000000000000 -       p-rwx-; 000000000000 0011a5d100002064 C --- ffff930ef2b1adb0 000000000000 0000000000000000 -       p-rwx-; 000000000000 0011a5d200002064 C --",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-038"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX AcroRd32.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 13 row(s) in AcroRd32.exe (pid 10768): 0000567ef000 04000000567ef005 A r-x ffff930ef2556d80 000000000000 0000000000000000 -       p-----; 00006a102000 040000006a102005 A r-x ffff930ef255c0a0 000000000000 0000000000000000 -       p-----; 000058fec000 0300000058fec005 A ",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-039"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX LogonUI.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 2 row(s) in LogonUI.exe (pid 11148): 0000a00aa000 04000000a00aa005 A r-x ffff930ef1394ab0 000000000000 0000000000000000 -       p-----; 0000a2745000 04000000a2745005 A r-x ffff930ef1fb9a40 000000000000 0000000000000000 -       p----- [MemProcFS rates PRIVATE_RX false p",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-040"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX OUTLOOK.EXE",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 7 row(s) in OUTLOOK.EXE (pid 904): 00003e781000 010000003e781005 A r-x ffff930eec746e30 000000000000 0000000000000000 -       p-rwx-; 0000359f0000 01000000359f0025 A r-x ffff930eed8f39d0 000000000000 0000000000000000 -       p-rwx-; 000009cff000 0100000009cff025 A r-x ",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-041"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX RdrCEF.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 36 row(s) in RdrCEF.exe (pid 10608, 10804): 0000b7c0f000 05000000b7c0f005 A r-x ffff930eeecf7bd0 000000000000 0000000000000000 -       p-----; 0000841ac000 01000000841ac005 A r-x ffff930ef1194a70 000000000000 0000000000000000 -       p-----; 0000b6ef4000 05000000b6ef40",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-042"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX ShellExperienceHost.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 11 row(s) in ShellExperienceHost.exe (pid 3676): 000003bd4000 0300000003bd4005 A r-x ffff930eef02d090 000000000000 0000000000000000 -       p-----; 00005bcf4000 030000005bcf4005 A r-x ffff930ef23f0c80 000000000000 0000000000000000 -       p-----; 0000997f4000 030000009",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-043"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX Teams.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 107 row(s) in Teams.exe (pid 1680, 2580, 5704): 000000000000 00197a57000020c4 C --- ffff930eef4f2b10 000000000000 0000000000000000 -       p-----; 000000000000 00197a58000020c4 C --- ffff930eef4f2b10 000000000000 0000000000000000 -       p-----; 000000000000 00197a5900",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-044"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX UpdaterUI.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 1 row(s) in UpdaterUI.exe (pid 5576): 00000a9db000 010000000a9db805 A r-x ffff930ef14c6b60 000000000000 0000000000000000 -       p-rwx- [MemProcFS rates PRIVATE_RX false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-045"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX WINWORD.EXE",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 8 row(s) in WINWORD.EXE (pid 9548): 0000073b6000 01000000073b6005 A r-x ffff930ef2b1adb0 000000000000 0000000000000000 -       p-rwx-; 00005ee83000 010000005ee83005 A r-x ffff930eeec41a40 000000000000 0000000000000000 -       p-rwx-; 00008e792000 010000008e792025 A r-x",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-046"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PRIVATE_RX firefox.exe",
+    "detail": "MemProcFS FindEvil PRIVATE_RX: 37 row(s) in firefox.exe (pid 10808, 3256, 3492, 7812): 00000e61f000 040000000e61f005 A r-x ffff930ef1507cf0 000000000000 0000000000000000 -       p-----; 000023c37000 0400000023c37005 A r-x ffff930ef225a810 000000000000 0000000000000000 -       p-----; 000000000000 00",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-047"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   },
+   {
+    "kind": "rule_engine",
+    "subject": "PROC_DEBUG Teams.exe",
+    "detail": "MemProcFS FindEvil PROC_DEBUG: 1 row(s) in Teams.exe (pid 2568):  [MemProcFS rates PROC_DEBUG false positives MEDIUM]",
+    "score": 0.5,
+    "level": "",
+    "engine": "memprocfs-findevil",
+    "crit_high": false,
+    "audit_ids": [
+     "nexus-claudebot-20261027-048"
+    ],
+    "attack_ids": [],
+    "pinned_source_facts": [],
+    "software": []
+   }
+  ]
+ }
+}

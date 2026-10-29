@@ -192,44 +192,32 @@ def _investigative_extras(case_dir: Path) -> str:
     return out
 
 
-def _digest_summary(brief: dict[str, Any], *, limit: int = 2400) -> str:
-    """The digest summary a Mode 2 worker is handed (WO-R1F item 7c).
+def _digest_summary(digest: dict[str, Any], *, limit: int = 2400) -> str:
+    """What every Mode 2 worker is handed (WO-R1F item 7c, D467): the case facts, whole, and the top leads.
 
-    The same strongest signals Mode 1 reconciles: the alert surface and the top
-    leads. Capped so it fits every worker prompt. Never raises on a thin brief.
+    The case facts are rendered as Mode 1's digest renders them (`case_digest.case_facts_markdown`: scope,
+    timestamp coverage, parser ledger with the lane's caveats, alert surface) and are never cut: the alerts are
+    the set every mode answers. The top-leads block keeps whole lines up to ``limit`` characters and says how
+    many it left out. Never raises on a thin digest.
     """
-    if not isinstance(brief, dict):
+    if not isinstance(digest, dict):
         return ""
-    lines: list[str] = []
-    alerts = brief.get("alerts") or []
-    if alerts:
-        lines.append(f"ALERT SURFACE ({len(alerts)} crit/high leads):")
-        for alert in alerts[:20]:
-            lines.append(
-                f"- [{str(alert.get('level') or '').upper()}] "
-                f"{alert.get('family', '')} · {alert.get('title', '')} · "
-                f"{alert.get('host', '')} {alert.get('time', '')}"
-                + (f" [audit_id {alert['key']}]" if alert.get("key") else "")
-            )
-    leads = brief.get("top_leads") or []
-    if leads:
-        from nexus.langgraph.case_digest import lead_citation
+    from nexus.langgraph.case_digest import case_facts_markdown, lead_citation
 
-        lines.append(f"TOP LEADS ({len(leads)}):")
-        for lead in leads[:20]:
-            # The digest's leads carry their level at the top; reading only `extra` dropped every
-            # [CRIT]/[HIGH] tag from the Mode 2 worker prompts.
-            level = str(lead.get("level") or (lead.get("extra") or {}).get("level") or "").upper()
-            tag = f"[{level}] " if level else ""
-            lines.append(f"- {tag}{lead.get('subject', '')}: "
-                         f"{str(lead.get('detail') or '')[:160]}{lead_citation(lead)}")
-    if not lines:
-        return ""
-    head = ("CASE DIGEST SUMMARY (the strongest signals this case holds; every "
-            "mode is given the same ones):")
+    facts = case_facts_markdown(digest)
+    parts = [facts] if facts else []
+    leads = digest.get("top_leads") or []
+    lines: list[str] = []
+    for lead in leads[:20]:
+        # The digest's leads carry their level at the top; reading only `extra` dropped every
+        # [CRIT]/[HIGH] tag from the Mode 2 worker prompts.
+        level = str(lead.get("level") or (lead.get("extra") or {}).get("level") or "").upper()
+        tag = f"[{level}] " if level else ""
+        lines.append(f"- {tag}{lead.get('subject', '')}: "
+                     f"{str(lead.get('detail') or '')[:160]}{lead_citation(lead)}")
     # Whole lines only: a slice at `limit` used to cut a lead mid-line, and its citation with it.
     kept: list[str] = []
-    size = len(head)
+    size = 0
     for line in lines:
         if size + 1 + len(line) > limit:
             break
@@ -237,7 +225,9 @@ def _digest_summary(brief: dict[str, Any], *, limit: int = 2400) -> str:
         size += 1 + len(line)
     if len(kept) < len(lines):
         kept.append(f"(+{len(lines) - len(kept)} more line(s) not shown here)")
-    return head + "\n" + "\n".join(kept)
+    if kept:
+        parts.append(f"TOP LEADS ({len(leads)}):\n" + "\n".join(kept))
+    return "\n\n".join(parts)
 
 
 def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -2343,20 +2333,14 @@ def run_mode2(
         _persist_state(case_dir, run_id, state)
         return state
 
-    # WO-R1F item 7c: the briefing's DIGEST SUMMARY reaches every worker (best-effort by design: a briefing
-    # failure must not take the run down). The
-    # old code built it and threw it away (only an event was emitted), so the
-    # strongest signals the digest carries - the alert surface and the top leads -
-    # never reached a Mode 2 seat while they did reach Mode 1.
+    # WO-R1F item 7c, D467: the case digest is built once and its case facts and top leads reach every
+    # worker (best-effort by design: a digest failure must not take the run down, and the event says so).
     try:
         from nexus.langgraph.briefing import case_briefing
-        from nexus.langgraph.case_digest import top_leads
+        from nexus.langgraph.case_digest import build_case_digest
 
         brief = case_briefing(case_dir)
-        # The top leads live in the case digest, not the briefing: summarising the briefing alone
-        # gave every Mode 2 worker the alert surface and no TOP LEADS block (traced 2026-10-14).
-        brief = {**brief, "top_leads": brief.get("top_leads") or top_leads(case_dir)}
-        state["digest_summary"] = _digest_summary(brief)
+        state["digest_summary"] = _digest_summary(build_case_digest(case_dir, brief=brief))
         sink.emit(new_event(
             run_id, "briefing.ready", actor="system",
             detail=(f"{len(brief.get('alerts') or [])} alert(s), "

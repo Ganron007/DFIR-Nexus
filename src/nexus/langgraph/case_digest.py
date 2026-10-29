@@ -263,14 +263,23 @@ def _ts_coverage_capped(case_dir) -> bool:
     return bool(meta.get("capped"))
 
 
-def render_digest_markdown(digest: dict[str, Any]) -> str:
-    lines: list[str] = [
-        f"# Case Digest — {digest.get('case_id', '')}",
-        "",
-        f"Generated: {digest.get('generated_at', '')}",
-        "",
-        "## Scope (what this evidence IS — and what it is NOT)",
-    ]
+def _inventory_lines(digest: dict[str, Any]) -> list[str]:
+    """Rows and files per family, as the extraction files hold them."""
+    inv = digest.get("inventory") or {}
+    if not inv:
+        return []
+    lines = ["## Evidence inventory"]
+    for fam, entry in sorted(inv.items(), key=lambda kv: -int(kv[1].get("rows") or 0)):
+        lines.append(
+            f"- {fam}: {entry.get('rows', 0)}{'+' if entry.get('capped') else ''} rows "
+            f"({entry.get('files', 0)} file(s))"
+        )
+    return lines
+
+
+def _scope_lines(digest: dict[str, Any]) -> list[str]:
+    """What this evidence is and is not."""
+    lines = ["## Scope (what this evidence IS — and what it is NOT)"]
     scope = digest.get("scope") or {}
     for label, values in (scope.get("families_present") or {}).items():
         if values:
@@ -281,87 +290,132 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             "- **NOT in evidence** (state this as scope, never as 'no compromise'): "
             + "; ".join(absent)
         )
+    return lines
+
+
+def _ts_coverage_lines(digest: dict[str, Any]) -> list[str]:
+    """Which families carry event times, so an undated family is never read as an empty timeline."""
     ts_cov = digest.get("ts_coverage") or {}
-    if ts_cov:
-        lines.append("")
-        lines.append("## Timestamp coverage (per family)")
-        if digest.get("ts_coverage_capped"):
-            lines.append(
-                "_Partial: index caps were set (`NEXUS_INDEX_*`) — coverage "
-                "counts only the indexed rows._"
-            )
-        for fam, cov in sorted(ts_cov.items()):
-            present = int(cov.get("present") or 0)
-            missing = int(cov.get("missing") or 0)
-            synth = int(cov.get("synthesized") or 0)
-            tz_a = int(cov.get("tz_assumed") or 0)
-            yr_a = int(cov.get("year_assumed") or 0)
-            if present + missing + synth == 0:
-                continue
-            notes = []
-            if synth:
-                notes.append(f"{synth} synthesized")
-            if tz_a:
-                notes.append(f"{tz_a} UTC-assumed")
-            if yr_a:
-                notes.append(f"{yr_a} year-assumed")
-            suffix = f" ({'; '.join(notes)})" if notes else ""
-            if present == 0:
-                lines.append(
-                    f"- {fam}: **no parsed event timestamps** — "
-                    f"{missing} row(s) undated; do not read absence as timeline evidence{suffix}"
-                )
-            else:
-                lines.append(f"- {fam}: {present} timestamped / {missing} undated{suffix}")
-    inv = digest.get("inventory") or {}
-    if inv:
-        lines.append("")
-        lines.append("## Evidence inventory")
-        for fam, entry in sorted(inv.items(), key=lambda kv: -int(kv[1].get("rows") or 0)):
-            lines.append(
-                f"- {fam}: {entry.get('rows', 0)}{'+' if entry.get('capped') else ''} rows "
-                f"({entry.get('files', 0)} file(s))"
-            )
-    led = digest.get("ledger") or {}
-    if led.get("entries"):
-        lines.append("")
+    if not ts_cov:
+        return []
+    lines = ["## Timestamp coverage (per family)"]
+    if digest.get("ts_coverage_capped"):
         lines.append(
-            f"## Parser ledger — {led.get('ok', 0)} OK / {led.get('skip', 0)} SKIP / "
-            f"{led.get('fail', 0)} FAIL"
+            "_Partial: index caps were set (`NEXUS_INDEX_*`) — coverage "
+            "counts only the indexed rows._"
         )
-        # Every job, OK ones counted by tool and every other one whole (D216). The first 20 of 92 rows
-        # used to be listed with no word of the rest: the memory jobs (MemProcFS, 31 Volatility runs)
-        # came last and never showed, while the triage discovery's SKIP naming the memory image came
-        # first, and Mode 1 recorded the memory image as unprocessed. A repeated message is one line with
-        # its count (Part 12 FM-12: T22 printed one Volatility WARN eight times).
-        entries = led.get("entries") or []
-        ok: dict[str, int] = {}
-        others: dict[tuple[str, str, str], int] = {}
-        for entry in entries:
-            status = str(entry.get("status") or "").upper()
-            tool = str(entry.get("tool") or "")
-            if status == "OK":
-                ok[tool] = ok.get(tool, 0) + 1
-            else:
-                key = (str(entry.get("status") or ""), tool, str(entry.get("reason") or ""))
-                others[key] = others.get(key, 0) + 1
-        if ok:
-            lines.append("- OK: " + ", ".join(
-                f"{tool} x{n}" if n > 1 else tool for tool, n in sorted(ok.items())))
-        for (status, tool, reason), n in others.items():
-            lines.append(f"- {status}: {tool}{' x' + str(n) if n > 1 else ''}"
-                         + (f" — {reason}" if reason else ""))
-    alerts = digest.get("alerts") or []
-    if alerts:
-        # Every crit/high lead, each with the audit id of the rows it stands on (Part 12 FM-3, FM-9).
-        lines.append("")
-        lines.append(f"## Alert surface ({len(alerts)} crit/high leads; each is answered by its audit id)")
-        for a in alerts:
-            count = f" x{a['count']}" if a.get("count") else ""
+    for fam, cov in sorted(ts_cov.items()):
+        present = int(cov.get("present") or 0)
+        missing = int(cov.get("missing") or 0)
+        synth = int(cov.get("synthesized") or 0)
+        tz_a = int(cov.get("tz_assumed") or 0)
+        yr_a = int(cov.get("year_assumed") or 0)
+        if present + missing + synth == 0:
+            continue
+        notes = []
+        if synth:
+            notes.append(f"{synth} synthesized")
+        if tz_a:
+            notes.append(f"{tz_a} UTC-assumed")
+        if yr_a:
+            notes.append(f"{yr_a} year-assumed")
+        suffix = f" ({'; '.join(notes)})" if notes else ""
+        if present == 0:
             lines.append(
-                f"- [{str(a.get('level', '')).upper()}] {a.get('family', '')} · {a.get('title', '')}{count} · "
-                f"{a.get('host', '')} {a.get('time', '')} [audit_id {a.get('key', '')}]"
+                f"- {fam}: **no parsed event timestamps** — "
+                f"{missing} row(s) undated; do not read absence as timeline evidence{suffix}"
             )
+        else:
+            lines.append(f"- {fam}: {present} timestamped / {missing} undated{suffix}")
+    return lines
+
+
+def _ledger_lines(digest: dict[str, Any]) -> list[str]:
+    """The parser ledger: OK jobs counted by tool, every other job whole with the lane's own reason."""
+    led = digest.get("ledger") or {}
+    if not led.get("entries"):
+        return []
+    lines = [
+        f"## Parser ledger — {led.get('ok', 0)} OK / {led.get('skip', 0)} SKIP / "
+        f"{led.get('fail', 0)} FAIL"
+    ]
+    # Every job, OK ones counted by tool and every other one whole (D216). The first 20 of 92 rows
+    # used to be listed with no word of the rest: the memory jobs (MemProcFS, 31 Volatility runs)
+    # came last and never showed, while the triage discovery's SKIP naming the memory image came
+    # first, and Mode 1 recorded the memory image as unprocessed. A repeated message is one line with
+    # its count (Part 12 FM-12: T22 printed one Volatility WARN eight times).
+    entries = led.get("entries") or []
+    ok: dict[str, int] = {}
+    others: dict[tuple[str, str, str], int] = {}
+    for entry in entries:
+        status = str(entry.get("status") or "").upper()
+        tool = str(entry.get("tool") or "")
+        if status == "OK":
+            ok[tool] = ok.get(tool, 0) + 1
+        else:
+            key = (str(entry.get("status") or ""), tool, str(entry.get("reason") or ""))
+            others[key] = others.get(key, 0) + 1
+    if ok:
+        lines.append("- OK: " + ", ".join(
+            f"{tool} x{n}" if n > 1 else tool for tool, n in sorted(ok.items())))
+    for (status, tool, reason), n in others.items():
+        lines.append(f"- {status}: {tool}{' x' + str(n) if n > 1 else ''}"
+                     + (f" — {reason}" if reason else ""))
+    return lines
+
+
+def _alert_lines(digest: dict[str, Any]) -> list[str]:
+    """Every crit/high lead, each with the audit id of the rows it stands on (Part 12 FM-3, FM-9)."""
+    alerts = digest.get("alerts") or []
+    if not alerts:
+        return []
+    lines = [f"## Alert surface ({len(alerts)} crit/high leads; each is answered by its audit id)"]
+    for a in alerts:
+        count = f" x{a['count']}" if a.get("count") else ""
+        lines.append(
+            f"- [{str(a.get('level', '')).upper()}] {a.get('family', '')} · {a.get('title', '')}{count} · "
+            f"{a.get('host', '')} {a.get('time', '')} [audit_id {a.get('key', '')}]"
+        )
+    return lines
+
+
+#: The case facts every mode reads (D467): what the evidence is, which families carry times, what the lane
+#: could and could not parse, and what the detections and baselines raised. Mode 1 reads them inside the whole
+#: digest; every Mode 2 worker and every Mode 3 supervisor and seat is given the same text.
+_CASE_FACT_SECTIONS = (_scope_lines, _ts_coverage_lines, _ledger_lines, _alert_lines)
+
+
+def case_facts_markdown(digest: dict[str, Any]) -> str:
+    """The case facts block given to every Mode 2 worker and Mode 3 seat, rendered as Mode 1's digest renders them.
+
+    T22-R1z3d Mode 3 read two exited processes with ``pslist=False`` as DKOM while the lane ledger said the
+    process-list walk returned nothing for the whole image, and never saw the alert surface whose YARA record
+    names the acquisition tool: Mode 1 had both, the other modes neither.
+    """
+    # A section with nothing under its header says nothing; the digest prints the scope header regardless.
+    blocks = [lines for lines in (section(digest) for section in _CASE_FACT_SECTIONS) if len(lines) > 1]
+    if not blocks:
+        return ""
+    out = ["CASE FACTS (deterministic, from the lane and the index; every mode is given the same):"]
+    for lines in blocks:
+        out += ["", *lines]
+    out += ["", "A lane caveat (WARN, SKIP, FAIL) is a coverage gap, not evidence of absence or of hiding; an "
+                "artifact class not in evidence is SCOPE, not a verdict."]
+    return "\n".join(out)
+
+
+def render_digest_markdown(digest: dict[str, Any]) -> str:
+    lines: list[str] = [
+        f"# Case Digest — {digest.get('case_id', '')}",
+        "",
+        f"Generated: {digest.get('generated_at', '')}",
+        "",
+        *_scope_lines(digest),
+    ]
+    for section in (_ts_coverage_lines, _inventory_lines, _ledger_lines, _alert_lines):
+        block = section(digest)
+        if block:
+            lines += ["", *block]
     top_leads = digest.get("top_leads") or []
     if top_leads:
         # The same top leads every mode is handed (WO-R1F item 1). Severity is
