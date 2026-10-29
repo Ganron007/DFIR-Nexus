@@ -260,6 +260,46 @@ def _store_keys(path: Path) -> set[tuple]:
     return keys
 
 
+@contextlib.contextmanager
+def rebuilt_ingest_store(case_dir: Path):
+    """The lane's importer pass rebuilds the case's store and provenance ledger (D490, operator 2026-10-30).
+
+    The store only appends and dedupes by content, so a file another importer reads after a routing fix kept both
+    readings: T10's M365 exports stood as 6,454 generic CSV rows beside the same 6,454 M365 rows. The pass re-reads
+    every registered file, so the store it leaves holds the current importers' readings only. The old store and
+    ledger are set aside before the pass, removed when it completes and put back when it raises; a set-aside copy a
+    killed pass left behind is superseded by the next pass. Rows imported by hand outside the lane are re-imported
+    after it.
+    """
+    from nexus.ingest import provenance
+
+    store = Path(case_dir) / "ingest" / "artifacts.jsonl"
+    files = [store, provenance.ledger_path(case_dir)]
+    aside = [path.with_name(path.name + ".previous") for path in files]
+
+    def forget() -> None:
+        _STORE_KEYS.pop(str(store), None)
+        provenance._LEDGER_CACHE.pop(str(files[1]), None)
+
+    for path, held in zip(files, aside, strict=True):
+        held.unlink(missing_ok=True)
+        if path.exists():
+            atomic.replace(path, held)
+    forget()
+    try:
+        yield
+    except BaseException:
+        for path, held in zip(files, aside, strict=True):
+            if held.exists():
+                atomic.replace(held, path)
+            else:
+                path.unlink(missing_ok=True)
+        forget()
+        raise
+    for held in aside:
+        held.unlink(missing_ok=True)
+
+
 def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     """Append artifacts to the case ingest store, deduped by content key.
 

@@ -1191,120 +1191,129 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
             f"I1 left {len(windows_unconfirmed)} file(s) inside a recognised Windows root on the host lane "
             f"because no importer confirmed them; check the Windows-lane completeness rows. Examples: {examples}"
         )
-    if ingest_paths:
-        import asyncio as _asyncio
-        import threading as _threading
+    # D490 (operator 2026-10-30): the pass rebuilds the case's store when it reads every registered evidence path;
+    # a run handed only some of them appends as before, so it never drops the other files' rows.
+    from nexus.langgraph.timeline_merge import rebuilt_ingest_store
 
-        from nexus.langgraph.network_lane import enrich_local_network
-        from nexus.langgraph.timeline_merge import (
-            anchor_assumed_years,
-            ingest_into_case,
-        )
-        from nexus.langgraph.tool_lane import _lane_concurrency, find_windows_root
+    rebuild_store = _covers_registered_evidence(case_id, [str(p) for p in registered])
+    with rebuilt_ingest_store(case_dir) if rebuild_store else contextlib.nullcontext():
+        if ingest_paths:
+            import asyncio as _asyncio
+            import threading as _threading
 
-        steps = list(result.get("step_log") or [])
-        # EH-15: store writes are serialized (artifacts.jsonl/audit append);
-        # parsing/enrichment may overlap up to NEXUS_TOOL_LANE_CONCURRENCY.
-        write_lock = _threading.Lock()
-
-        from nexus.langgraph.lane_gate import import_row, record_import_results
-        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
-
-        # Every file of the pass is a gate row: read, empty, or not read (2026-10-18).
-        import_rows: list[dict[str, str]] = []
-        # A capture's local app logs go to this run's extractions, which the index reads (D272).
-        run_extractions = resolve_tools_extractions(case_dir, str(state.get("run_id") or ""))
-
-        def _process(p: str) -> list[str]:
-            lines: list[str] = []
-            path = Path(p)
-            net: dict | None = None
-            # EH-14b session guarantee: Zeek/Suricata when available locally +
-            # tshark flow projection always. Runs before import so the flows
-            # CSV is part of the same evidence pass.
-            if path.suffix.lower() in (".pcap", ".pcapng", ".cap"):
-                try:
-                    net = enrich_local_network(path, case_dir, run_extractions)
-                    lines.extend(str(s) for s in (net.get("steps") or []))
-                    for err in net.get("errors") or []:
-                        lines.append(f"I1 network warning: {err}")
-                except Exception as exc:  # noqa: BLE001
-                    lines.append(f"I1 network enrichment failed: {exc}")
-            if find_windows_root(path) is not None:
-                lines.append(
-                    f"Extra Windows root registered (not re-parsed this pass): {p}"
-                )
-                return lines
-            try:
-                with write_lock:
-                    info = ingest_into_case(path, case_dir)
-            except Exception as exc:  # noqa: BLE001 — one bad path must not sink the lane
-                lines.append(f"I1 ingest extra path {p} failed: {exc}")
-                import_rows.append(import_row(path, {"error": str(exc)}, net))
-                return lines
-            import_rows.append(import_row(path, info, net))
-            err_note = ""
-            problems = list(info.get("errors") or [])
-            if info.get("error"):
-                problems.insert(0, str(info["error"]))
-            if problems:
-                err_note = " errors=" + " | ".join(str(e)[:120] for e in problems[:2])
-            lines.append(
-                f"I1 ingest extra path {p}: {info.get('source')} "
-                f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')} "
-                f"ok={info.get('success')}{err_note}"
+            from nexus.langgraph.network_lane import enrich_local_network
+            from nexus.langgraph.timeline_merge import (
+                anchor_assumed_years,
+                ingest_into_case,
             )
-            if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and path.suffix.lower() in (
-                ".json", ".jsonl"
-            ):
+            from nexus.langgraph.tool_lane import _lane_concurrency, find_windows_root
+
+            steps = list(result.get("step_log") or [])
+            # EH-15: store writes are serialized (artifacts.jsonl/audit append);
+            # parsing/enrichment may overlap up to NEXUS_TOOL_LANE_CONCURRENCY.
+            write_lock = _threading.Lock()
+
+            from nexus.langgraph.lane_gate import import_row, record_import_results
+            from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+            # Every file of the pass is a gate row: read, empty, or not read (2026-10-18).
+            import_rows: list[dict[str, str]] = []
+            # A capture's local app logs go to this run's extractions, which the index reads (D272).
+            run_extractions = resolve_tools_extractions(case_dir, str(state.get("run_id") or ""))
+
+            def _process(p: str) -> list[str]:
+                lines: list[str] = []
+                path = Path(p)
+                net: dict | None = None
+                # EH-14b session guarantee: Zeek/Suricata when available locally +
+                # tshark flow projection always. Runs before import so the flows
+                # CSV is part of the same evidence pass.
+                if path.suffix.lower() in (".pcap", ".pcapng", ".cap"):
+                    try:
+                        net = enrich_local_network(path, case_dir, run_extractions)
+                        lines.extend(str(s) for s in (net.get("steps") or []))
+                        for err in net.get("errors") or []:
+                            lines.append(f"I1 network warning: {err}")
+                    except Exception as exc:  # noqa: BLE001
+                        lines.append(f"I1 network enrichment failed: {exc}")
+                if find_windows_root(path) is not None:
+                    lines.append(
+                        f"Extra Windows root registered (not re-parsed this pass): {p}"
+                    )
+                    return lines
+                try:
+                    with write_lock:
+                        info = ingest_into_case(path, case_dir)
+                except Exception as exc:  # noqa: BLE001 — one bad path must not sink the lane
+                    lines.append(f"I1 ingest extra path {p} failed: {exc}")
+                    import_rows.append(import_row(path, {"error": str(exc)}, net))
+                    return lines
+                import_rows.append(import_row(path, info, net))
+                err_note = ""
+                problems = list(info.get("errors") or [])
+                if info.get("error"):
+                    problems.insert(0, str(info["error"]))
+                if problems:
+                    err_note = " errors=" + " | ".join(str(e)[:120] for e in problems[:2])
                 lines.append(
-                    f"I1 warning: {path.name} resolved as {info.get('source')} — "
-                    "structured JSON may be misrouted; check importer detection"
+                    f"I1 ingest extra path {p}: {info.get('source')} "
+                    f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')} "
+                    f"ok={info.get('success')}{err_note}"
                 )
-            return lines
+                if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and path.suffix.lower() in (
+                    ".json", ".jsonl"
+                ):
+                    lines.append(
+                        f"I1 warning: {path.name} resolved as {info.get('source')} — "
+                        "structured JSON may be misrouted; check importer detection"
+                    )
+                return lines
 
-        try:
-            conc = _lane_concurrency()
-            per_path: list[list[str]] = []
-            if conc <= 1 or len(ingest_paths) <= 1:
-                for p in ingest_paths:
-                    per_path.append(await _asyncio.to_thread(_process, p))
-            else:
-                sem = _asyncio.Semaphore(conc)
+            try:
+                conc = _lane_concurrency()
+                per_path: list[list[str]] = []
+                if conc <= 1 or len(ingest_paths) <= 1:
+                    for p in ingest_paths:
+                        per_path.append(await _asyncio.to_thread(_process, p))
+                else:
+                    sem = _asyncio.Semaphore(conc)
 
-                async def _one(p: str) -> list[str]:
-                    async with sem:
-                        return await _asyncio.to_thread(_process, p)
+                    async def _one(p: str) -> list[str]:
+                        async with sem:
+                            return await _asyncio.to_thread(_process, p)
 
-                per_path = list(await _asyncio.gather(*(_one(p) for p in ingest_paths)))
-            # Input order preserved in the step log regardless of concurrency
-            # — the ledger reads identically at 1 and 4 workers.
-            for lines in per_path:
-                steps.extend(lines)
-        except Exception as exc:  # noqa: BLE001
-            steps.append(f"I1 ingest lane failed: {exc}")
-        try:
-            gate = record_import_results(case_dir, import_rows)
-            if gate:
-                failed = [r for r in import_rows if r.get("status") == "FAIL"]
-                steps.append(
-                    f"N2 gate with the importer pass: {gate.get('status')} ({len(import_rows)} file(s) read, "
-                    f"{len(failed)} not read)"
-                )
-        except Exception as exc:  # noqa: BLE001 - the gate keeps its tool-lane state
-            steps.append(f"N2 gate update from the importer pass failed: {exc}")
-        try:
-            # D262: a yearless time takes the year of the case's dated evidence, before the timeline is built.
-            years = anchor_assumed_years(case_dir)
-            if years.get("anchored") or years.get("unresolved"):
-                steps.append(
-                    f"I1 yearless times: {years.get('anchored', 0)} given the year of {years.get('basis') or '-'}; "
-                    f"{years.get('unresolved', 0)} left with the current year (flagged)"
-                )
-        except Exception as exc:  # noqa: BLE001
-            steps.append(f"I1 yearless-time anchoring failed: {exc}")
-        result["step_log"] = steps
+                    per_path = list(await _asyncio.gather(*(_one(p) for p in ingest_paths)))
+                # Input order preserved in the step log regardless of concurrency
+                # — the ledger reads identically at 1 and 4 workers.
+                for lines in per_path:
+                    steps.extend(lines)
+            except Exception as exc:  # noqa: BLE001
+                steps.append(f"I1 ingest lane failed: {exc}")
+            try:
+                gate = record_import_results(case_dir, import_rows)
+                if gate:
+                    failed = [r for r in import_rows if r.get("status") == "FAIL"]
+                    steps.append(
+                        f"N2 gate with the importer pass: {gate.get('status')} ({len(import_rows)} file(s) read, "
+                        f"{len(failed)} not read)"
+                    )
+            except Exception as exc:  # noqa: BLE001 - the gate keeps its tool-lane state
+                steps.append(f"N2 gate update from the importer pass failed: {exc}")
+            try:
+                # D262: a yearless time takes the year of the case's dated evidence, before the timeline is built.
+                years = anchor_assumed_years(case_dir)
+                if years.get("anchored") or years.get("unresolved"):
+                    steps.append(
+                        f"I1 yearless times: {years.get('anchored', 0)} given the year of {years.get('basis') or '-'}; "
+                        f"{years.get('unresolved', 0)} left with the current year (flagged)"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                steps.append(f"I1 yearless-time anchoring failed: {exc}")
+            result["step_log"] = steps
     steps = list(result.get("step_log") or [])
+    if not rebuild_store:
+        steps.append("I1 store not rebuilt: this run reads only some of the case's registered evidence, so the "
+                     "rows of the others are kept (D490)")
     label = "tools mode" if mode == "tools" else "coverage mode"
     steps.insert(0, f"{label}: deterministic tool lane")
     raw_note = str(result.pop("_raw_skipped_note", "") or "")
@@ -2942,6 +2951,18 @@ def _case_evidence_paths(case_id: str) -> list[str]:
         except OSError:
             continue
     return out
+
+
+def _covers_registered_evidence(case_id: str, paths: list[str]) -> bool:
+    """Whether a run reads every local evidence path registered on its case (D490: only such a run rebuilds the
+    store; one handed a subset would otherwise drop the rows of the files it did not read)."""
+    def key(value: str) -> str:
+        try:
+            return os.path.normcase(str(Path(value).resolve()))
+        except OSError:
+            return os.path.normcase(str(value))
+
+    return {key(p) for p in _case_evidence_paths(case_id)} <= {key(p) for p in paths}
 
 
 def _is_under_case_outputs(path: Path, case_root: Path) -> bool:
