@@ -88,6 +88,12 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                      "NEXUS_LLM_API_KEY", "NEXUS_LLM_PROVIDER"):
             monkeypatch.setenv(_key, "")
 
+    # The Velociraptor MCP, for the same reason (2026-10-29): `.env` names the lab's live server (SETUP §2.6), so
+    # the Stage 0 collect tests opened connections to it, and with the lab host down after a reboot each one
+    # waited out a TCP connect timeout. Empty but present, as above.
+    for _key in ("NEXUS_VR_MCP_URL", "NEXUS_VR_MCP_API_KEY"):
+        monkeypatch.setenv(_key, "")
+
     # The egress anonymizer must not fire on a TestClient loopback either.
     monkeypatch.delenv("NEXUS_BEARER_TOKEN", raising=False)
 
