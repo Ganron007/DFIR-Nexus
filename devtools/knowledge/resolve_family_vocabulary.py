@@ -27,8 +27,6 @@ RENAME: dict[str, tuple[str, str]] = {
     "netstat": ("kind:network", "a connection table is network evidence (vol netscan, MemProcFS net.csv, Zeek conn)"),
     "apache": ("kind:weblogs", "ingest/linux/logs.py:71 parses Apache access and error logs (linux_log yields weblogs)"),
     "weblogs": ("kind:weblogs", "ingest/linux/logs.py:71 parses Apache access and error logs (linux_log yields weblogs)"),
-    "csv": ("generic_csv", "the generic CSV importer's family"),
-    "jsonl": ("generic_jsonl", "the generic JSONL importer's family"),
     "linux": ("linux_log", "the Linux log importer's family (ingest/linux/logs.py:70)"),
 }
 
@@ -46,6 +44,11 @@ DROP: dict[str, tuple[tuple[str, ...], str]] = {
     "firewall": ((), "no importer identifies firewall records; a firewall's syslog reaches the index as syslog rows"),
     "proxy": ((), "no importer reads proxy logs"),
     "sandbox": ((), "no importer reads sandbox reports; specimens are analysed in the specimen phase (OD-T4)"),
+    # First applied as renames to generic_csv/generic_jsonl, which made any case holding generic CSV/JSONL rows
+    # surface container_forensics and mobile_forensics (T18, T21; corrected 2026-10-29). Those producers are
+    # containers (family_registry.yaml `container: true`): their name is no evidence.
+    "csv": ((), "an output format, not evidence: scoring ignores format names (skills._NON_DISCRIMINATIVE_FAMILIES)"),
+    "jsonl": ((), "an output format, not evidence: scoring ignores format names (skills._NON_DISCRIMINATIVE_FAMILIES)"),
 }
 
 

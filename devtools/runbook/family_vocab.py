@@ -168,8 +168,11 @@ def main() -> int:
         print(f"  {name} [{scopes[name] or 'NO RECORDED SCOPE'}]: "
               f"{', '.join(users[:4])}{' ...' if len(users) > 4 else ''}")
     dead = unknown + unscoped
-    unnamed = sorted(p for p in produced if not families_intersect({p}, set(declared)))
-    print(f"\nproduced families no skill or playbook names ({len(unnamed)}):", ", ".join(unnamed))
+    containers = sorted(p for p in produced if registry.is_container(p))
+    unnamed = sorted(p for p in produced if not registry.is_container(p) and not families_intersect({p}, set(declared)))
+    print(f"\nproduced containers (their rows are whatever the input held; never named) ({len(containers)}):",
+          ", ".join(containers))
+    print(f"produced families no skill or playbook names ({len(unnamed)}):", ", ".join(unnamed))
     unnamed_groups = sorted({tuple(sorted(group)) for group in groups if not families_intersect(group, declared)})
     completeness = f"; incomplete: {len(missing)} cases lack group metadata" if missing else ""
     print(f"\nindexed source/importer groups no knowledge names ({len(unnamed_groups)}{completeness}):")

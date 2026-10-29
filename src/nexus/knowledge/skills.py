@@ -40,20 +40,6 @@ _NON_DISCRIMINATIVE_FAMILIES = frozenset({
 # skills to the matcher.
 _SKILL_PLATFORMS = frozenset({"windows", "linux", "macos", "mobile", "any"})
 
-# Windows parser/artifact families, used to infer a case's platform.
-_WINDOWS_FAMILIES = frozenset({
-    "evtx", "evtxecmd", "hayabusa", "chainsaw", "suzaku", "sysmon", "security",
-    "system", "application", "prefetch", "pecmd", "amcache", "appcompat",
-    "mft", "mftecmd", "usn", "i30", "registry", "recmd", "lnk", "lecmd",
-    "jlecmd", "jumplist", "srum", "srumecmd", "sru", "shimcache", "setupapi",
-    "services", "scheduled_tasks", "bits", "tasks", "wmi", "wer",
-    "rpcmd", "recycle", "shellbags", "sbecmd", "thumbcache",
-})
-_LINUX_FAMILIES = frozenset({
-    "syslog", "authlog", "journal", "journald", "bash_history", "systemd",
-    "sysdig", "audit", "wtmp", "btmp", "lastlog", "cron",
-})
-
 def skill_platforms(skill: dict[str, Any]) -> set[str]:
     """The platforms a skill applies to. Absent or unrecognised means ``any``."""
     raw = skill.get("platform") or skill.get("platforms")
@@ -67,14 +53,13 @@ def skill_platforms(skill: dict[str, Any]) -> set[str]:
 
 
 def infer_case_platform(families) -> set[str]:
-    """Platforms a set of parser families is consistent with."""
+    """Platforms a set of parser families is consistent with: what the family registry records for their producers
+    (D484). Two typed lists used to decide it, naming producers no lane writes (`sysmon`, `security`, `wtmp`) and
+    missing ones it does (`auditd`, `utmp`, `memprocfs`)."""
+    from nexus.knowledge.family_registry import get_family_registry
+
     fams = {str(f).lower().strip() for f in (families or ()) if str(f).strip()}
-    out: set[str] = set()
-    if fams & _WINDOWS_FAMILIES:
-        out.add("windows")
-    if fams & _LINUX_FAMILIES:
-        out.add("linux")
-    return out or {"any"}
+    return get_family_registry().platforms(fams) or {"any"}
 
 
 def platform_compatible(skill: dict[str, Any], case_platforms: set[str]) -> bool:
@@ -235,6 +220,15 @@ def _ranked_skills(
         # Measured groups are authoritative; a requested source with no indexed
         # group is not evidence merely because it appeared in a plan.
         fams = {str(f).lower().strip() for group in family_groups for f in group if str(f).strip()}
+    # A container's rows (generic CSV/JSONL, a spreadsheet) are whatever its input held, so its name is no evidence
+    # (TA-5.1). Its group keeps the importer class that read a row as something (an `.eml` as email).
+    from nexus.knowledge.family_registry import get_family_registry
+
+    registry = get_family_registry()
+    fams = {f for f in fams if not registry.is_container(f)}
+    if family_groups is not None:
+        family_groups = [kept for group in family_groups
+                         if (kept := {f for f in group if not registry.is_container(str(f))})]
     case_platforms = infer_case_platform(fams)
     scored: list[tuple[int, dict[str, Any], list[str]]] = []
     for skill in get_skills():

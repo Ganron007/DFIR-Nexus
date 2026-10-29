@@ -1,5 +1,8 @@
 skill: mft_file_activity
 title: NTFS file-system activity — $MFT, $UsnJrnl, $I30 slack, ADS, timestomp
+primary_families:
+- kind:mft
+- kind:usn
 description: 'Reconstruct file-system truth: the MFT''s per-record timestamps and attributes, the USN journal''s
   change reasons, $I30 slack''s deleted-file residue, and SI-vs-FN timestamp comparison for timestomp detection.
   This is the ground layer the timeline is built on.'

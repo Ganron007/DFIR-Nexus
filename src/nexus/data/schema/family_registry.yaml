@@ -1,5 +1,19 @@
 version: 1
 status: draft
+# D484: an evidence kind whose format exists on one platform, from its pinned artifact entry (`platform:`). Browser,
+# memory and PowerShell evidence exist on several platforms, so they place a case on none.
+kind_platforms:
+  evtx: {platform: windows, source: knowledge/artifacts/windows/event_logs_security.yaml}
+  registry: {platform: windows, source: knowledge/artifacts/windows/registry_run_keys.yaml}
+  prefetch: {platform: windows, source: knowledge/artifacts/windows/prefetch.yaml}
+  lnk: {platform: windows, source: knowledge/artifacts/windows/lnk_files.yaml}
+  jumplist: {platform: windows, source: knowledge/artifacts/windows/jump_lists.yaml}
+  srum: {platform: windows, source: knowledge/artifacts/windows/srum.yaml}
+  mft: {platform: windows, source: knowledge/artifacts/windows/mft.yaml}
+  usn: {platform: windows, source: knowledge/artifacts/windows/usn_journal.yaml}
+  tasks: {platform: windows, source: knowledge/artifacts/windows/scheduled_tasks.yaml}
+  services: {platform: windows, source: knowledge/artifacts/windows/registry_services.yaml}
+  bash: {platform: linux, source: knowledge/artifacts/linux/bash_history.yaml}
 families:
   abuseipdb:
     aliases:
@@ -23,19 +37,28 @@ families:
     - ingest-auditd
     kinds: []
     kind_sources: {}
+    platform: linux
+    platform_source: ingest/linux/auditd.py
   authlog:
     aliases:
     - ingest-authlog
     kinds: []
     kind_sources: {}
+    platform: linux
+    platform_source: knowledge/artifacts/linux/auth_log.yaml
   aws_s3_access:
     aliases: []
     kinds: []
     kind_sources: {}
   aws_vpc_flow:
     aliases: []
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - network
+    kind_sources:
+      ingest/cloud/aws_vpc_flow.py:VpcFlowLogImporter:
+      - network
+    kind_notes:
+      network: ingest/cloud/aws_vpc_flow.py:1-7 reads VPC flow log records (srcaddr, dstaddr, srcport, dstport, protocol)
   axiom:
     aliases: []
     kinds: []
@@ -54,8 +77,13 @@ families:
       - bash
   bind:
     aliases: []
-    kinds: []
-    kind_sources: {}
+    kinds:
+    - network
+    kind_sources:
+      ingest/network/bind.py:BindQueryLogImporter:
+      - network
+    kind_notes:
+      network: ingest/network/bind.py:1-9 reads BIND 9's query log, one DNS query per line with the client's address and port
   bits:
     aliases:
     - bitsparser
@@ -134,9 +162,13 @@ families:
   generic_csv:
     aliases: []
     kinds: []
+    container: true
+    container_note: ingest/generic/csv.py reads any CSV; T09's examiner CSVs and T10's M365 export both index as generic_csv
   generic_jsonl:
     aliases: []
     kinds: []
+    container: true
+    container_note: ingest/generic/jsonl.py reads any JSON lines; the class that parsed a row (EmailImporter) says what it is
     kind_sources: {}
     importer_classes:
     - nexus.ingest.generic.jsonl.JSONLImporter
@@ -198,6 +230,8 @@ families:
       - weblogs
     kind_notes:
       weblogs: ingest/linux/logs.py:71,105-107 parses Apache access, request and error logs (T18 web01 httpd)
+    platform: linux
+    platform_source: ingest/linux/logs.py
   lnk:
     aliases: []
     kinds: []
@@ -349,6 +383,8 @@ families:
   spreadsheet:
     aliases: []
     kinds: []
+    container: true
+    container_note: ingest/generic/spreadsheet.py reads every sheet's rows; T09's spreadsheet is a Hindsight timeline export
   sqlecmd:
     aliases: []
     kinds: []
@@ -385,6 +421,8 @@ families:
     - ingest-syslog
     kinds: []
     kind_sources: {}
+    platform: linux
+    platform_source: knowledge/artifacts/linux/syslog.yaml
   tasks:
     aliases: []
     kinds: []
@@ -414,6 +452,8 @@ families:
     aliases: []
     kinds: []
     kind_sources: {}
+    platform: linux
+    platform_source: knowledge/artifacts/linux/wtmp_utmp.yaml
   velociraptor:
     aliases:
     - ingest-velociraptor
@@ -596,6 +636,8 @@ families:
   journal:
     aliases: []
     kinds: []
+    platform: linux
+    platform_source: knowledge/artifacts/linux/systemd_journal.yaml
     importer_classes:
     - nexus.ingest.linux.journald.JournaldImporter
   sysdig:

@@ -35,6 +35,8 @@ class FamilyRegistry:
         self._kinds: dict[str, set[str]] = {}
         self._importers: dict[str, str] = {}
         self._importer_spellings: dict[str, str] = {}
+        self._containers: set[str] = set()
+        self._platforms: dict[str, str] = {}
         for raw_name, spec in families.items():
             name = _name(raw_name)
             if not name or not isinstance(spec, dict):
@@ -58,6 +60,15 @@ class FamilyRegistry:
             self._kinds[name] = {_name(kind).removeprefix("kind:") for kind in kinds}
             if "" in self._kinds[name]:
                 raise ValueError(f"family {name}: empty evidence kind")
+            container = spec.get("container", False)
+            if not isinstance(container, bool) or (container and kinds):
+                raise ValueError(f"family {name}: container is true or false, and a container yields no evidence kind")
+            if container:
+                self._containers.add(name)
+            if spec.get("platform") is not None:
+                if not _name(spec["platform"]) or not spec.get("platform_source"):
+                    raise ValueError(f"family {name}: a platform needs its platform_source")
+                self._platforms[name] = _name(spec["platform"])
             for importer in importers:
                 identifier = _name(importer)
                 if not identifier or identifier in self._importers:
@@ -65,6 +76,13 @@ class FamilyRegistry:
                 self._importers[identifier] = name
                 self._importer_spellings[identifier] = str(importer)
         self._known_kinds = set().union(*self._kinds.values())
+        self._kind_platforms: dict[str, str] = {}
+        for raw_kind, spec in (document.get("kind_platforms") or {}).items():
+            kind = _name(raw_kind).removeprefix("kind:")
+            if (kind not in self._known_kinds or not isinstance(spec, dict) or not _name(spec.get("platform"))
+                    or not spec.get("source")):
+                raise ValueError(f"kind_platforms {raw_kind!r}: a known kind with a platform and its source")
+            self._kind_platforms[kind] = _name(spec["platform"])
 
     @classmethod
     def load(cls, path: Path = REGISTRY_PATH) -> FamilyRegistry:
@@ -91,6 +109,25 @@ class FamilyRegistry:
         if value in self._known_kinds:
             return {f"kind:{value}"}
         return {value}
+
+    def platforms(self, families: Iterable[str]) -> set[str]:
+        """The platforms a case's producers place it on (D484): a producer's own `platform`, or that of an evidence
+        kind it yields (`kind_platforms`, each from its pinned artifact entry). Empty when none says."""
+        out: set[str] = set()
+        for family in families:
+            canonical = self._aliases.get(_name(family))
+            if canonical is None:
+                continue
+            if canonical in self._platforms:
+                out.add(self._platforms[canonical])
+            out |= {self._kind_platforms[kind] for kind in self._kinds[canonical] if kind in self._kind_platforms}
+        return out
+
+    def is_container(self, family: str) -> bool:
+        """Whether a producer's rows hold whatever its input held (the generic CSV and JSONL importers, spreadsheets):
+        its name says nothing about the evidence, so it is never a reason to choose knowledge. The importer class
+        that actually parsed a row (its evidence group) says what the row is."""
+        return self._aliases.get(_name(family)) in self._containers
 
     def known(self, selector: str) -> bool:
         """Whether a selector names a registry producer (any of its spellings) or an evidence kind. A name that is

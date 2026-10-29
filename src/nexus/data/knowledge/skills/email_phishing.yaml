@@ -1,5 +1,7 @@
 skill: email_phishing
 title: Phishing email analysis — headers, auth checks, payload chain
+primary_families:
+- email
 description: 'Analyze a suspected phishing email: authenticate the sender (SPF/DKIM/DMARC + Received-chain), extract
   and defang URLs/attachments, then pivot to host-side delivery and execution artifacts — the email is the vector,
   the host is the scene.'

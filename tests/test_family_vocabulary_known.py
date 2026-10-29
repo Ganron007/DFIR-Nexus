@@ -18,6 +18,13 @@ def test_every_declared_family_name_is_a_producer_or_an_evidence_kind():
     assert unknown == {}
 
 
+def test_no_skill_or_playbook_declares_a_container():
+    """A container's rows are whatever its input held (generic CSV/JSONL, a spreadsheet): declaring one chooses a
+    skill for every case that holds such rows (TA-5.1 had renamed `csv`/`jsonl` to them, 2026-10-29)."""
+    registry = get_family_registry()
+    assert {name: sorted(users)[:3] for name, users in declared_families().items() if registry.is_container(name)} == {}
+
+
 def test_known_separates_vocabulary_from_coverage():
     registry = FamilyRegistry({"families": {
         "evtxecmd": {"kinds": ["evtx"]},

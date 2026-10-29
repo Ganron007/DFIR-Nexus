@@ -1,5 +1,7 @@
 skill: browser_artifact_analysis
 title: Browser-artifact analysis — history, downloads, cache, sessions, searches
+primary_families:
+- kind:browser
 description: 'Browser artifacts corroborate initial access (what was downloaded, from where, when) and user intent
   (searches, webmail, cloud drives). Work the profile layout: History SQLite for visits, downloads table for file
   lineage, cache for content, Sessions for open tabs, Preferences for config.'

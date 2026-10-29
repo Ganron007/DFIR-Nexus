@@ -17,6 +17,7 @@ trigger:
   - bash
   - memory
   - auditd
+  - utmp
   keywords:
   - linux
   - ssh
