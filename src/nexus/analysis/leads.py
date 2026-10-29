@@ -38,6 +38,8 @@ from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
+from nexus.utils import atomic
+
 log = logging.getLogger(__name__)
 
 LEADS_FILENAME = "leads.jsonl"
@@ -813,7 +815,7 @@ def _cite_leads(case_dir: Path, leads: list[Lead]) -> list[Lead]:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(known, sort_keys=True), encoding="utf-8")
-        tmp.replace(path)
+        atomic.replace(tmp, path)
     return out
 
 
@@ -948,7 +950,7 @@ def _write_leads(case_dir: Path, leads: Iterable[Lead]) -> Path:
     )
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(body + ("\n" if body else ""), encoding="utf-8")
-    tmp.replace(path)
+    atomic.replace(tmp, path)
     return path
 
 

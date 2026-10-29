@@ -43,6 +43,7 @@ from nexus.modes.multi_role import (
     stage_run_candidates,
 )
 from nexus.modes.multi_role import norm_key as _norm_key
+from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
@@ -170,7 +171,7 @@ def _persist(case_dir: Path, run_id: str, record: dict[str, Any]) -> None:
     path = _record_path(case_dir, run_id)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
-    tmp.replace(path)
+    atomic.replace(tmp, path)
 
 
 def latest_run_id(case_dir: Path) -> str:

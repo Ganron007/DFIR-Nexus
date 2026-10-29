@@ -9,9 +9,10 @@ are written only to the canonical file. Existing case data is never rewritten.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
+
+from nexus.utils import atomic
 
 CANONICAL_NAME = "mode1_saved_answers.json"
 LEGACY_NAMES = ("mode2_saved_answers.json",)
@@ -33,7 +34,7 @@ def _write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(rows, indent=2, default=str), encoding="utf-8")
-    os.replace(tmp, path)
+    atomic.replace(tmp, path)
 
 
 def load_saved_answers(case_dir: str | Path) -> list[dict[str, Any]]:

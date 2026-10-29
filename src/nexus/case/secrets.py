@@ -8,6 +8,7 @@ import os
 import secrets
 from pathlib import Path
 
+from nexus.utils import atomic
 from nexus.utils.constants import ENV_AUDIT_SECRET
 
 log = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ def get_audit_secret() -> bytes:
         os.close(fd)
         with open(tmp, "w") as f:
             f.write(generated)
-        os.replace(tmp, _PERSISTED_SECRET_PATH)
+        atomic.replace(tmp, _PERSISTED_SECRET_PATH)
         with contextlib.suppress(OSError):
             os.chmod(_PERSISTED_SECRET_PATH, 0o600)
     except OSError as exc:

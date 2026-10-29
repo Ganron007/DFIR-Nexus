@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import tzdata
 
 from nexus.case.evidence_roots import EXPANSION_DIRNAME
+from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
@@ -253,7 +254,7 @@ def record_case_host_timezones(case_dir: Path) -> list[dict[str, Any]]:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 temporary = output.with_suffix(output.suffix + ".tmp")
                 temporary.write_text(encoded, encoding="utf-8", newline="\n")
-                temporary.replace(output)
+                atomic.replace(temporary, output)
         except OSError as exc:
             log.warning("Could not record case timezone evidence: %s", exc)
     return records

@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.utils import atomic
+
 log = logging.getLogger(__name__)
 
 _ACTIVE_CASE_FILE = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
@@ -30,7 +32,7 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         os.close(fd)
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, default=str)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

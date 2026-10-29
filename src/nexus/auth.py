@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from nexus.audit import normalize_examiner
+from nexus.utils import atomic
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def _adopt_misnamed_entry(slug: str) -> Path | None:
             target = _PASSWORDS_DIR / f"{slug}.json"
             if not target.exists():
                 with contextlib.suppress(OSError):
-                    candidate.replace(target)
+                    atomic.replace(candidate, target)
                     return target
             return candidate
     except OSError:
@@ -125,7 +126,7 @@ def _save_password_entry(analyst: str, entry: dict) -> None:
         os.close(fd)
         with open(tmp, "w") as f:
             json.dump(entry, f)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -261,7 +262,7 @@ def reset_password(analyst: str, old_password: str, new_password: str) -> dict:
             with open(tmp, "w") as f:
                 for entry in updated:
                     f.write(json.dumps(entry) + "\n")
-            os.replace(tmp, path)
+            atomic.replace(tmp, path)
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(tmp)

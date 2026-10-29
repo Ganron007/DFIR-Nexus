@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.utils import atomic
+
 log = logging.getLogger(__name__)
 
 
@@ -340,7 +342,7 @@ def _save_state(base_path: str | Path, state: UndoRedoState) -> None:
         json.dumps(state.to_dict(), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    tmp_path.replace(state_path)
+    atomic.replace(tmp_path, state_path)
 
 
 def _save_snapshot_file(base_path: str | Path, snapshot: Snapshot) -> None:

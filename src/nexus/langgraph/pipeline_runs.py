@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from nexus.utils import atomic
+
 log = logging.getLogger(__name__)
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,95}$")
@@ -67,7 +69,7 @@ def _atomic_json(path: Path, value: Any) -> None:
             json.dump(value, handle, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp_name, path)
+        atomic.replace(temp_name, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temp_name)

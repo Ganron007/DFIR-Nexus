@@ -8,16 +8,16 @@ a DRAFT finding. The LLM never writes to this file.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from nexus.langgraph.query_pack import _DATE_RE
+from nexus.utils import atomic
 
 
 def _atomic_write(path: Path, content: str) -> None:
     tmp = Path(str(path) + ".tmp")
     tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic.replace(tmp, path)
 
 
 def _wb_path(case_dir: Path) -> Path:

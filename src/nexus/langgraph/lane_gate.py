@@ -28,6 +28,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.utils import atomic
+
 GATE_FILENAME = "lane_gate.json"
 
 #: N1-N8 spine (Docs/NEXUS-MODE.md). Used for the stage panel.
@@ -176,7 +178,7 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    atomic.replace(tmp, path)
 
 
 def _job_state(status: str) -> str:

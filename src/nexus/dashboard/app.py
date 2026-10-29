@@ -37,6 +37,7 @@ from nexus.case.locks import case_lock, lock_case_writes
 from nexus.dashboard.case_status_api import api_case_status
 from nexus.dashboard.exhibit_api import api_finding_exhibit
 from nexus.dashboard.timeline_api import timeline_api_routes
+from nexus.utils import atomic
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def _replace_with_retry(tmp: str, path: Path) -> None:
     last: Exception | None = None
     for attempt in range(6):
         try:
-            os.replace(tmp, path)
+            atomic.replace(tmp, path)
             return
         except PermissionError as exc:  # transient on Windows
             last = exc

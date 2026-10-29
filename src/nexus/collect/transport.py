@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Protocol
 
 from nexus.collect.types import AuthSpec, HostSpec, TransportName
+from nexus.utils import atomic
 
 
 @dataclass
@@ -110,7 +111,7 @@ def _flatten_scp_nest(local: Path, remote: str) -> None:
         if dest.exists():
             continue
         try:
-            child.rename(dest)
+            atomic.replace(child, dest)
         except OSError:
             continue
     try:

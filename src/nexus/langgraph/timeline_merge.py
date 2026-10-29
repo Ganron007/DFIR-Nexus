@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import csv
 import json
-import os
 import re
 import sys
 from datetime import UTC, datetime
@@ -18,6 +17,7 @@ from nexus.ingest.provenance import artifact_key as _artifact_key
 from nexus.ingest.schemas import Artifact, ArtifactSource
 from nexus.langgraph.evidence_rows import row_time
 from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_intake_window
+from nexus.utils import atomic
 
 _HOST_RE = re.compile(
     r"\b((?:[a-z0-9][a-z0-9-]{0,24}\.)+(?:local|lan|corp|internal|com|net|org))\b",
@@ -374,7 +374,7 @@ def anchor_assumed_years(case_dir: Path) -> dict[str, Any]:
         tmp = path.with_suffix(".jsonl.tmp")
         with tmp.open("w", encoding="utf-8") as fh:
             fh.write("\n".join(json.dumps(d, default=str) for d in rows) + "\n")
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
         _STORE_KEYS.pop(str(path), None)
     return {"anchored": anchored, "unresolved": unresolved, "basis": basis}
 
@@ -412,7 +412,7 @@ def gunzipped_working_copy(path: Path, case_dir: Path) -> Path | None:
     part = dest.with_name(dest.name + ".part")
     with gzip.open(path, "rb") as src, part.open("wb") as out:
         shutil.copyfileobj(src, out, 1 << 20)
-    os.replace(part, dest)
+    atomic.replace(part, dest)
     return dest
 
 

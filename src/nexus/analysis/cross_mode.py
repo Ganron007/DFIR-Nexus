@@ -36,6 +36,7 @@ from typing import Any
 from nexus.langgraph.event_categories import OTHER
 from nexus.langgraph.evidence_rows import subject_rows_for_audit_ids
 from nexus.langgraph.subject import derive_subject
+from nexus.utils import atomic
 
 __all__ = [
     "MODES",
@@ -749,5 +750,5 @@ def write_consistency(case_dir: Path, result: dict[str, Any]) -> Path:
     out = target / "cross_mode.json"
     tmp = out.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
-    tmp.replace(out)
+    atomic.replace(tmp, out)
     return out

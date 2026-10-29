@@ -21,6 +21,7 @@ from nexus.audit import resolve_examiner
 from nexus.case.locks import lock_case_writes
 from nexus.config import settings
 from nexus.discipline import validate_finding
+from nexus.utils import atomic
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def _atomic_write(path: Path, content: str) -> None:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, path)
+        atomic.replace(tmp_path, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp_path)

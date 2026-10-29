@@ -68,6 +68,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from nexus.utils import atomic
+
 __all__ = [
     "AXES",
     "REPORT_CLASSES",
@@ -737,5 +739,5 @@ def write_grade(case_dir: Path, grade: dict[str, Any]) -> Path:
     out = target / "report_grade.json"
     tmp = out.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(grade, indent=2, default=str), encoding="utf-8")
-    tmp.replace(out)
+    atomic.replace(tmp, out)
     return out

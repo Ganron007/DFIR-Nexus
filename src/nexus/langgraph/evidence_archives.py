@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.case.evidence_roots import EXPANSION_DIRNAME, expansion_root
+from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
@@ -178,7 +179,7 @@ def expand_archives(paths: list[str], case_dir: Path, exclude: set[Path] | None 
                     continue
                 kept.append({"path": f.relative_to(work).as_posix(), "size": size, "sha256": sha})
             shutil.rmtree(dest, ignore_errors=True)
-            work.rename(dest)
+            atomic.replace(work, dest)
             (dest / _MARKER).write_text(json.dumps({
                 "archive": str(archive), "archive_sha256": archive_sha, "files": len(kept),
                 "duplicates": duplicates, "kept": kept,

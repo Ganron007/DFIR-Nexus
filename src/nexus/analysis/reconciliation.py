@@ -29,10 +29,11 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from nexus.utils import atomic
 
 SCHEMA_VERSION = 1
 FILENAME = "reconciliation.json"
@@ -349,7 +350,7 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
     analysis.mkdir(parents=True, exist_ok=True)
     tmp = analysis / f"{FILENAME}.tmp"
     tmp.write_text(json.dumps(out, indent=2, sort_keys=True, default=str), encoding="utf-8")
-    os.replace(tmp, analysis / FILENAME)
+    atomic.replace(tmp, analysis / FILENAME)
     return out
 
 

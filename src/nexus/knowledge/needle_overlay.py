@@ -13,6 +13,8 @@ from pathlib import Path
 
 import yaml
 
+from nexus.utils import atomic
+
 _OVERLAY_FILENAME = "overlay.yaml"
 
 
@@ -90,7 +92,7 @@ def promote_needles(family: str, terms: list[str]) -> dict:
     try:
         os.close(fd)
         Path(tmp).write_text(yaml.safe_dump(overlay, sort_keys=False), encoding="utf-8")
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         with __import__("contextlib").suppress(OSError):
             os.unlink(tmp)

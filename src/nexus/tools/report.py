@@ -19,6 +19,7 @@ from mcp.server.fastmcp import FastMCP
 from nexus.audit import AuditWriter
 from nexus.case_manager import CaseManager
 from nexus.config import settings
+from nexus.utils import atomic
 
 logger = logging.getLogger(__name__)
 manager = CaseManager()
@@ -138,7 +139,7 @@ def _atomic_write(path: Path, content: str) -> None:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

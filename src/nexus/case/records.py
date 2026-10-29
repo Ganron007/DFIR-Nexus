@@ -1,8 +1,9 @@
 """Canonical case records (WO-B1).
 
-SQLite holds the document. The flat JSON file is a mirror written in the same
-transaction's success path, so existing readers keep working. A failed database
-write does not publish a mirror that the database does not have.
+SQLite holds the document. The flat JSON file is a mirror written inside the
+same transaction, before its commit, so existing readers keep working: a failed
+database write publishes no mirror, and a mirror that cannot be written rolls
+the database back.
 """
 from __future__ import annotations
 
@@ -11,6 +12,8 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from nexus.utils import atomic
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS case_records (
@@ -56,6 +59,9 @@ def save_records(
     case_id = case_dir.name
     db_path = db_path or records_db_path()
     now = datetime.now(UTC).isoformat()
+    mirror = case_dir / mirror_name
+    mirror.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(records, indent=2, default=str)
     conn = _connect(db_path)
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -86,18 +92,37 @@ def save_records(
                     now,
                 ),
             )
-        conn.commit()
+        # The mirror is published before the commit (D485): a mirror that cannot be replaced rolls the store back,
+        # so the two never disagree. A disagreement reads as a mirror edited outside the store, and every later
+        # approval of the case is refused for it (`approval_service._authoritative`).
+        previous = mirror.read_bytes() if mirror.is_file() else None
+        _publish(mirror, payload)
+        try:
+            conn.commit()
+        except Exception as exc:
+            try:
+                if previous is None:
+                    mirror.unlink(missing_ok=True)
+                else:
+                    _publish(mirror, previous)
+            except OSError as undo:
+                exc.add_note(f"{mirror.name} could not be put back ({undo}): it is ahead of the record store")
+            raise
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
-    mirror = case_dir / mirror_name
-    mirror.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(records, indent=2, default=str)
+
+
+def _publish(mirror: Path, content: str | bytes) -> None:
+    """Replace the mirror in one step: a new payload as text, a previous mirror's exact bytes."""
     tmp = mirror.with_name(mirror.name + ".tmp")
-    tmp.write_text(payload, encoding="utf-8")
-    tmp.replace(mirror)
+    if isinstance(content, bytes):
+        tmp.write_bytes(content)
+    else:
+        tmp.write_text(content, encoding="utf-8")
+    atomic.replace(tmp, mirror)
 
 
 def load_records(

@@ -53,6 +53,7 @@ from nexus.analysis.integrity import (
     verify_citations,
     verify_seal,
 )
+from nexus.utils import atomic
 
 __all__ = [
     "VERDICTS",
@@ -1133,5 +1134,5 @@ def write_ledger(case_dir: Path, ledger: dict[str, Any]) -> Path:
     out = target / "claim_ledger.json"
     tmp = out.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(ledger, indent=2, default=str), encoding="utf-8")
-    tmp.replace(out)
+    atomic.replace(tmp, out)
     return out

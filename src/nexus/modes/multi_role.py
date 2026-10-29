@@ -44,6 +44,7 @@ from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_lo
 from nexus.langgraph.model_json import loads_model_json
 from nexus.langgraph.prompt_budget import budget_chars, case_window
 from nexus.llm.egress import egress_bound
+from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
@@ -736,7 +737,7 @@ def _update_controls(case_dir: Path, run_id: str, **changes: bool) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(controls, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic.replace(tmp, path)
     return True
 
 
@@ -2163,7 +2164,7 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
-        tmp.replace(path)
+        atomic.replace(tmp, path)
     except OSError as exc:
         log.warning("run state persist failed: %s", exc)
 

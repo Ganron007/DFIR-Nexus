@@ -33,12 +33,12 @@ import os
 import re
 import tempfile
 import threading
-import time
 from contextvars import ContextVar
 from pathlib import Path
 from urllib.parse import urlparse
 
 from nexus.ingest.anonymize import Anonymizer, deanonymize
+from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,6 @@ _TOKEN_FILE = "egress_tokens.json"
 #: Serializes the read-modify-write of the per-case token file. Two turns on one
 #: case share it, and a lost update would hand out a token with no mapping.
 _TOKEN_LOCK = threading.Lock()
-_TOKEN_REPLACE_ATTEMPTS = 6
 
 
 def egress_required(base_url: str) -> bool:
@@ -100,32 +99,18 @@ def _load_tokens(case_dir: Path | None) -> dict[str, str]:
 
 
 def _write_tokens(path: Path, mapping: dict[str, str]) -> None:
-    """Atomically persist the token map, retrying a briefly held target.
+    """Atomically persist the token map.
 
-    Windows antivirus and indexers can briefly deny ``os.replace`` while they
-    inspect the destination. Keep the completed temp file and retry; if the
-    target stays unavailable, raise an error that names it so the model call
-    fails closed with a useful diagnostic.
+    The replace rides out the brief hold Windows antivirus and indexers put on a
+    file just written (``nexus.utils.atomic``, D293/D485); a target that stays
+    unavailable raises an error that names it, so the model call fails closed.
     """
     payload = json.dumps(mapping, indent=2, sort_keys=True)
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         os.close(fd)
         Path(tmp_name).write_text(payload, encoding="utf-8")
-        last: PermissionError | None = None
-        for attempt in range(_TOKEN_REPLACE_ATTEMPTS):
-            try:
-                os.replace(tmp_name, path)
-                return
-            except PermissionError as exc:
-                last = exc
-                if attempt + 1 < _TOKEN_REPLACE_ATTEMPTS:
-                    time.sleep(0.05 * (attempt + 1))
-        if last is not None:
-            raise PermissionError(
-                f"could not replace egress token file {path} after "
-                f"{_TOKEN_REPLACE_ATTEMPTS} attempts: {last}"
-            ) from last
+        atomic.replace(tmp_name, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp_name)

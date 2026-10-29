@@ -12,12 +12,12 @@ the next incremental build does not read the change as a failed run and rebuild 
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from nexus.langgraph.case_index import _bulk_insert, _client, index_name, iter_index_doc_batches
+from nexus.utils import atomic
 
 
 def new_documents(case_dir: Path, rels: set[str], run_id: str = "") -> dict[str, int]:
@@ -86,4 +86,4 @@ def _record_total(case_dir: Path, total: int, rels: set[str]) -> None:
     tmp = state_path.with_suffix(".json.tmp")
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    os.replace(tmp, state_path)
+    atomic.replace(tmp, state_path)

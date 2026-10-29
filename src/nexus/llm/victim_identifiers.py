@@ -44,6 +44,7 @@ from nexus.analysis.anonymize import (
     CustomEntity,
     KnownEntities,
 )
+from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ def _write(case_dir: Path, data: dict[str, Any]) -> None:
     try:
         os.close(fd)
         Path(tmp).write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

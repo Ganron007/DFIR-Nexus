@@ -16,6 +16,8 @@ import os
 import sys
 from pathlib import Path
 
+from nexus.utils import atomic
+
 # ---------------------------------------------------------------------------
 # External reference MCPs (optional, public, no auth)
 # ---------------------------------------------------------------------------
@@ -299,7 +301,7 @@ def _write_protected(path: Path, content: str) -> None:
         os.close(fd)
         with open(tmp, "w") as f:
             f.write(content)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

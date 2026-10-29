@@ -241,7 +241,7 @@ def test_token_file_replace_retries_transient_windows_lock(tmp_path, monkeypatch
         return real_replace(src, dst)
 
     monkeypatch.setattr(egress.os, "replace", replace_with_brief_lock)
-    monkeypatch.setattr(egress.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(egress.atomic.time, "sleep", lambda _seconds: None)
     egress._write_tokens(target, {"new": "{{HOST_2}}"})
 
     assert attempts == 3
@@ -261,7 +261,7 @@ def test_token_file_replace_reports_target_after_retries_exhaust(tmp_path, monke
         raise PermissionError(5, "Access is denied", str(dst))
 
     monkeypatch.setattr(egress.os, "replace", always_locked)
-    monkeypatch.setattr(egress.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(egress.atomic.time, "sleep", lambda _seconds: None)
     with pytest.raises(PermissionError, match="egress_tokens.json"):
         egress._write_tokens(target, {"new": "{{HOST_2}}"})
 
