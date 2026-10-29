@@ -567,6 +567,7 @@ def ingest_into_case(
     return {
         "success": result.success,
         "source": result.source.value,
+        "importer": result.importer,
         "artifacts": result.parsed_lines,
         "artifacts_total": result.parsed_lines,
         "artifacts_capped": False,

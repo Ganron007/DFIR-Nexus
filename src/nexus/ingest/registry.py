@@ -145,6 +145,7 @@ class ImporterRegistry:
 
         importer = importer_cls()
         result = importer.ingest(path, on_batch=on_batch, context=context)
+        result.importer = importer_cls.__name__
         return result
 
 

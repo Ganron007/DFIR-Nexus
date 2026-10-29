@@ -219,6 +219,7 @@ def test_ingest_into_case_writes_audit(tmp_path, monkeypatch):
         artifacts = []
         errors: list = []
         parsed_lines = 0
+        importer = "ZeekImporter"  # ImportResult names the class that read the path (TA-5.3)
 
     class _FakeRegistry:
         def import_path(self, path, source=None, on_batch=None, context=None):
@@ -230,6 +231,7 @@ def test_ingest_into_case_writes_audit(tmp_path, monkeypatch):
         lambda path, source=None: (ArtifactSource.ZEEK, None),
     )
     out = timeline_merge.ingest_into_case(case / "conn.log", case)
+    assert out["importer"] == "ZeekImporter"
     assert out["success"] is True
     audit_log = case / "audit" / "nexus.jsonl"
     assert audit_log.is_file()

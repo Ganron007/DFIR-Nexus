@@ -57,6 +57,35 @@ def test_a_staged_artifact_with_no_documents_stays_unprocessed(tmp_path):
     assert any("SetupAPI" in str(u.get("purpose")) for u in read_lane_gate(case).get("unprocessed") or [])
 
 
+def test_the_importer_passs_files_survive_the_gate_being_re_derived(tmp_path):
+    """TA-5.3 (T07-TA53, 2026-10-30): the lane writes the gate, the importer pass adds its files, the index pass
+    re-derives the gate from the tool ledger. That last step dropped the importer pass's jobs, so T07's 60 task files
+    read as never imported (coverage GAP) and a file no importer could read would leave `unprocessed` unseen."""
+    from nexus.langgraph.lane_gate import import_row, record_import_results, write_lane_gate
+
+    rows = [_row("Scheduled Tasks", "PRESENT_NO_PARSER")]
+    case = _case_with_completeness(tmp_path, rows)
+    run_id = "RUN-20261011T000000Z-tools-gate"
+    task, unread = tmp_path / "Task1", tmp_path / "notes.csv"
+    task.write_text("<Task/>", encoding="utf-8")
+    unread.write_text("a,b\n1,2\n", encoding="utf-8")
+    write_lane_gate(case, run_id, [], registered_evidence=[], completeness=rows)
+    record_import_results(case, [
+        import_row(task, {"source": "scheduled_tasks", "importer": "ScheduledTasksImporter", "artifacts": 1}),
+        import_row(unread, {"source": "generic_csv", "importer": "CSVImporter", "artifacts": 0,
+                            "error": "no rows"}),
+    ])
+
+    reconcile_after_index(case, {"scheduled_tasks/ingest/artifacts.jsonl": {"docs": 60, "deduped": 0}},
+                          run_id=run_id)
+
+    gate = read_lane_gate(case)
+    imported = [j for j in gate["jobs"] if j["tool"] == "import:scheduled_tasks"]
+    assert imported and imported[0]["state"] == "processed" and imported[0]["importer"] == "ScheduledTasksImporter"
+    assert any(u["purpose"] == f"import {unread}" for u in gate["unprocessed"])
+    assert gate["status"] == "blocked"
+
+
 def test_scheduled_tasks_with_indexed_documents_become_parsed(tmp_path):
     case = _case_with_completeness(tmp_path, [_row("Scheduled Tasks", "PRESENT_NO_PARSER")])
 

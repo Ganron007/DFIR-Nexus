@@ -120,7 +120,8 @@ def case_report(tid: str, entry: dict, rnd: str | None) -> dict:
         gate = json.loads(gate_file.read_text(encoding="utf-8"))
         out["gate"] = {k: gate.get(k) for k in ("status", "run_id", "processed_count", "blocked_count",
                                                  "waiting_count")}
-        out["jobs"] = [{"tool": str(j.get("tool") or ""), "state": str(j.get("state") or "")}
+        out["jobs"] = [{"tool": str(j.get("tool") or ""), "state": str(j.get("state") or ""),
+                        "importer": str(j.get("importer") or "")}
                        for j in gate.get("jobs") or []]
     else:
         out["gate"] = {"status": "no lane run"}
@@ -195,6 +196,8 @@ def build(rnd: str | None) -> dict:
 
     tool_seen = seen(lambda j: None if j["tool"].startswith("import:") else (j["tool"].lower(), j["state"]))
     import_seen = seen(lambda j: (j["tool"][7:].lower(), j["state"]) if j["tool"].startswith("import:") else None)
+    # TA-5.3: the class that read each file (a gate written before it names only the source).
+    class_seen = seen(lambda j: (j["importer"], j["state"]) if j.get("importer") else None)
     tools = {}
     for name, spec in universe["tools"].items():
         states = tool_seen.get(name, [])
@@ -214,7 +217,8 @@ def build(rnd: str | None) -> dict:
         states = import_seen.get(src, [])
         ok = [s for s in states if s.split(":", 1)[1] in OK_STATES]
         expected = universe.get("importers_expected", {}).get(src)
-        importers[src] = {"classes": classes, "seen": states, "expect": expected or [],
+        classes_ok = sorted(c for c in classes if any(s.split(":", 1)[1] in OK_STATES for s in class_seen.get(c, [])))
+        importers[src] = {"classes": classes, "classes_seen": classes_ok, "seen": states, "expect": expected or [],
                           "verdict": "OK" if ok else ("GAP" if expected else "no tiny case")}
     used_skills: dict[str, list[str]] = {}
     used_roles: dict[str, list[str]] = {}
@@ -270,6 +274,8 @@ def markdown(rep: dict) -> str:
             where = ", ".join(v.get("seen", [])[:8]) or ("expected: " + ", ".join(v.get("expect", []))
                                                          if v.get("expect") else "")
             extra = f" ({v['class']})" if "class" in v else ""
+            if v.get("classes_seen"):
+                where = f"read by {', '.join(v['classes_seen'])}; " + where
             lines.append(f"| {name}{extra} | {v['verdict']} | {where} |")
     lines += ["", f"## Gaps ({len(rep['gaps'])})", ""] + [f"- {g}" for g in rep["gaps"]]
     return "\n".join(lines) + "\n"

@@ -201,12 +201,15 @@ def _job_state(status: str) -> str:
 def _jobs_from_ledger(ledger: list[dict[str, Any]]) -> list[dict[str, str]]:
     jobs: list[dict[str, str]] = []
     for row in ledger:
-        jobs.append({
+        job = {
             "tool": str(row.get("tool") or ""),
             "purpose": str(row.get("purpose") or ""),
             "family": str(row.get("family") or ""),
             "state": _job_state(str(row.get("status") or "")),
-        })
+        }
+        if row.get("importer"):
+            job["importer"] = str(row["importer"])
+        jobs.append(job)
     return jobs
 
 
@@ -464,6 +467,9 @@ def import_row(path: Path | str, info: dict[str, Any] | None, network: dict[str,
     flows = int((network or {}).get("flows_rows") or 0)
     source = str(info.get("source") or "")
     row = {"tool": f"import:{source}" if source else "import", "purpose": f"import {path}", "family": source}
+    if info.get("importer"):
+        # TA-5.3: the class that read the file, as the importer registry names it; one source has several.
+        row["importer"] = str(info["importer"])
     try:
         empty = path.stat().st_size == 0
     except OSError:
@@ -726,11 +732,30 @@ def reconcile_after_index(
     if not isinstance(evidence, list):
         return {"changed": changed}
     ledger = _read_json_list(extractions / "_tool_lane_ledger.json")
-    write_lane_gate(
-        case_dir, run_id or extractions.parent.name, ledger,
+    gate_run = run_id or extractions.parent.name
+    gate = write_lane_gate(
+        case_dir, gate_run, ledger,
         registered_evidence=evidence, completeness=rows,
         unindexed_field_values=unindexed_field_values,
     )
+    # TA-5.3: the importer pass's files (and the index's rejections) are jobs of this run that the tool ledger does
+    # not hold. Re-deriving the gate from the ledger dropped them, so on a drive tree (the only gate with completeness
+    # rows) T07's 60 task files read as never imported, and a file no importer could read left `unprocessed`.
+    if current.get("run_id") == gate_run:
+        def other_pass(item: dict[str, Any]) -> bool:
+            tool = str(item.get("tool") or "")
+            return tool == "import" or tool.startswith("import:") or tool == "index"
+
+        keys = {_key(job) for job in gate.get("jobs") or []}
+        carried = [job for job in current.get("jobs") or [] if other_pass(job) and _key(job) not in keys]
+        pending = {_key(item) for item in gate.get("unprocessed") or []}
+        carried_pending = [item for item in current.get("unprocessed") or []
+                           if other_pass(item) and _key(item) not in pending]
+        if carried or carried_pending:
+            gate["jobs"] = list(gate.get("jobs") or []) + carried
+            gate["unprocessed"] = list(gate.get("unprocessed") or []) + carried_pending
+            _recompute(gate)
+            _atomic_write(gate_path(case_dir), gate)
     return {"changed": changed}
 
 

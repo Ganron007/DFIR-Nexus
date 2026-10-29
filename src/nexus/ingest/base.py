@@ -40,6 +40,9 @@ class ImportResult:
     parsed_lines: int = 0
     skipped_lines: int = 0
     source_files: list[str] = field(default_factory=list)
+    #: The importer class that read the path (its registry name, `ScheduledTasksImporter`): a source can have several
+    #: (`generic_jsonl` is JSONL, Email and Archive), and the gate records which one read the file (TA-5.3).
+    importer: str = ""
 
     @property
     def success(self) -> bool:
@@ -60,6 +63,7 @@ class ImportResult:
             "errors": self.errors,
             "warnings": self.warnings,
             "success": self.success,
+            "importer": self.importer,
         }
 
 
