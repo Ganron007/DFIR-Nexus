@@ -1,5 +1,7 @@
 version: 1
-status: draft
+# Reviewed through TA-5.1 and TA-6 (2026-10-30): every name the knowledge declares is a producer or an evidence kind
+# here, and each fact below names its source.
+status: reviewed
 # D484: an evidence kind whose format exists on one platform, from its pinned artifact entry (`platform:`). Browser,
 # memory and PowerShell evidence exist on several platforms, so they place a case on none.
 kind_platforms:
@@ -443,9 +445,6 @@ families:
     aliases: []
     kinds: []
   unknown:
-    aliases: []
-    kinds: []
-  usbdeview:
     aliases: []
     kinds: []
   utmp:

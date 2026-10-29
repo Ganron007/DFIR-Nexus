@@ -1,5 +1,10 @@
 category: analysis
 description: Parse USB device history from registry
+caveats:
+- /regfile loads an external SYSTEM hive through the Windows registry API, which needs an elevated process; unelevated
+  it writes only the CSV header row (T01, 2026-10-30, while RegRipper's usbstor plugin listed that hive's devices)
+- Retired from the lane (TA-6, operator 2026-10-30); RECmd's USBSTOR keys, RegRipper's usbstor/usb plugins and setupapi
+  read USB history
 exit_code_hints:
   '0': success
   '1': error

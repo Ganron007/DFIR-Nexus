@@ -87,7 +87,7 @@ _TOOL_FAMILIES = (
     "hindsight", "jlecmd", "kstrike", "lecmd", "logfileparser", "mftecmd",
     "pecmd", "rbcmd", "recmd", "regripper", "sbecmd", "schtasks", "sigcheck",
     "sqlecmd", "srumecmd", "strings", "suzaku", "thumbcache_viewer",
-    "usbdeview", "wxtcmd", "yara", "zircolite",
+    "wxtcmd", "yara", "zircolite",
 )
 _SCAN_FIRST = (
     "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",

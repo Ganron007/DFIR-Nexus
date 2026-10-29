@@ -62,7 +62,6 @@ FAMILY_BUCKET: dict[str, str] = {
     "jlecmd": "persistence",
     "lecmd": "persistence",
     "wxtcmd": "persistence",
-    "usbdeview": "persistence",
     "ingest-windows_registry": "persistence",
     "ingest-windows_services": "persistence",
     "ingest-scheduled_tasks": "persistence",

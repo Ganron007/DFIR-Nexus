@@ -33,7 +33,6 @@ DECLARED = {
     "timeline_construction": ["mactime"],
     "network_session_analysis": ["nfdump", "tshark-flows"],
     "malware_analysis_triage": ["capa", "densityscout", "yara"],
-    "usb_device_intrusion": ["usbdeview"],
 }
 
 #: Families with no skill or playbook that investigates them, and why. Every
@@ -41,7 +40,11 @@ DECLARED = {
 #: than being declared (that would be the "made to look good" pattern).
 #: IC-6 (Part 9): `logfileparser` was the one uncovered family; mft_file_activity's `logfile_detail` step now
 #: reads it (an aggregate of its redo operations), so no real family is left out.
-UNCOVERED: dict[str, str] = {}
+UNCOVERED: dict[str, str] = {
+    # TA-6 (operator, 2026-10-30): retired from the lane. Its `/regfile` needs an elevated process, so on T01 it wrote
+    # only a header row; RECmd's USBSTOR keys, RegRipper's usbstor/usb plugins and setupapi read USB history.
+    "usbdeview": "retired: no producer writes it",
+}
 
 
 def _registry_families() -> set[str]:

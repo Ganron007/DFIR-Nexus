@@ -17,6 +17,33 @@ from pathlib import Path
 from nexus.langgraph import tool_lane as tl
 
 
+def test_regripper_reads_every_user_hive_recmd_reads_with_its_profile(monkeypatch, tmp_path):
+    """TA-6 (T03-OPT, 2026-10-30): a drive tree whose only hives are a user's. The RegRipper step never collected
+    NTUSER.DAT ("no hives found for RegRipper" on T03), and its private profile table labelled UsrClass hives so
+    that they ran `all`; both steps now read `_user_hives` and the profile comes from `_regripper_profile`."""
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    user = root / "Users" / "fredr"
+    (user / "AppData/Local/Microsoft/Windows").mkdir(parents=True)
+    (user / "NTUSER.DAT").write_bytes(b"")
+    (user / "AppData/Local/Microsoft/Windows/UsrClass.dat").write_bytes(b"")
+    plugins = tmp_path / "plugins"
+    plugins.mkdir()
+    for profile in ("ntuser", "usrclass", "all"):
+        (plugins / profile).write_text("x", encoding="utf-8")
+    monkeypatch.setenv("NEXUS_LANE_OPT_IN", "regripper")
+    monkeypatch.setattr(tl, "_windows_tool_available", lambda name: True)
+    monkeypatch.setattr(tl, "_windows_tool_path", lambda name: f"{name}.exe")
+    monkeypatch.setattr(tl, "_regripper_plugins_dir", lambda: plugins)
+
+    jobs = tl.plan_windows_triage(str(root), tmp_path / "ex")
+
+    regripper = sorted((Path(j.argv[2]).name, j.argv[4]) for j in jobs if j.tool == "regripper")
+    assert regripper == [("NTUSER.DAT", "ntuser"), ("UsrClass.dat", "usrclass")]
+    recmd = sorted(Path(j.argv[j.argv.index("-f") + 1]).name for j in jobs if j.tool == "recmd" and "-f" in j.argv)
+    assert recmd == ["NTUSER.DAT", "UsrClass.dat"]
+
+
 def test_recmd_batch_for_default_prefers_dfirbatch(monkeypatch, tmp_path):
     sentinel = tmp_path / "DFIRBatch.reb"
     sentinel.write_text("x", encoding="utf-8")

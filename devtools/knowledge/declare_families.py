@@ -44,8 +44,8 @@ PLAN: dict[str, list[str]] = {
     # Scanning/marking a sample: capabilities, entropy, rules. `capa` was declared
     # only after the step that reads its output existed (`capa_capabilities`).
     "malware_analysis_triage": ["capa", "densityscout", "yara"],
-    # USB device history.
-    "usb_device_intrusion": ["usbdeview"],
+    # USB device history: usb_device_intrusion declared `usbdeview` until the tool was retired from the lane
+    # (TA-6, operator 2026-10-30); no producer writes it now.
 }
 
 #: Deliberately NOT declared - a family with no step that investigates it. Declaring

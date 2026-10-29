@@ -626,7 +626,7 @@ def _zircolite_rules() -> Path | None:
 def _lane_opted_in(name: str) -> bool:
     """Examiner opt-in for tools the default dead-box lane no longer runs.
 
-    ``NEXUS_LANE_OPT_IN=chainsaw,zircolite,regripper,usbdeview``. Absent means
+    ``NEXUS_LANE_OPT_IN=chainsaw,zircolite,regripper`` (USBDeview is retired, TA-6). Absent means
     those jobs are not planned. Suzaku's EVTX row stays a skip: 2.x is cloud-only.
     """
     raw = os.environ.get("NEXUS_LANE_OPT_IN", "")
@@ -2278,32 +2278,19 @@ def plan_windows_triage(
         # suppress NTUSER.DAT or UsrClass.dat parsing.
         user_batch = _find_recmd_user_batch() or batch
         for user in users:
-            ntuser = user / "NTUSER.DAT"
-            if ntuser.is_file():
+            # WO-TA item 3: each user's UsrClass.dat takes the same batch as NTUSER.DAT.
+            for hive_name, hive in _user_hives(user):
                 ud = d / "user" / user.name
+                if hive_name == "UsrClass.dat":
+                    ud = ud / "usrclass"
                 ud.mkdir(parents=True, exist_ok=True)
                 add(
                     "recmd",
                     [
-                        "recmd", "-f", str(ntuser),
+                        "recmd", "-f", str(hive),
                         "--bn", str(user_batch), "--nl", "true", "--csv", str(ud),
                     ],
-                    f"NTUSER.DAT ({user.name}, {user_batch.name})",
-                    600,
-                )
-                scheduled = True
-            # WO-TA item 3: each user's UsrClass.dat takes the same batch as NTUSER.DAT.
-            usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
-            if usrclass.is_file():
-                uc_dir = d / "user" / user.name / "usrclass"
-                uc_dir.mkdir(parents=True, exist_ok=True)
-                add(
-                    "recmd",
-                    [
-                        "recmd", "-f", str(usrclass),
-                        "--bn", str(user_batch), "--nl", "true", "--csv", str(uc_dir),
-                    ],
-                    f"UsrClass.dat ({user.name}, {user_batch.name})",
+                    f"{hive_name} ({user.name}, {user_batch.name})",
                     600,
                 )
                 scheduled = True
@@ -2316,25 +2303,22 @@ def plan_windows_triage(
         regripper_ok = False
         skip("regripper", "only rip.pl found and perl is not on PATH (fetch rip.exe or install Strawberry Perl)")
     if regripper_ok:
-        profiles = {
-            "NTUSER.DAT": "ntuser", "SAM": "sam", "SECURITY": "security",
-            "SOFTWARE": "software", "SYSTEM": "system", "UsrClass.dat": "usrclass",
-        }
         rr_hives: list[tuple[str, Path]] = []
         if config_dir.is_dir():
-            for hive_name, _prof in profiles.items():
+            for hive_name in ("SAM", "SECURITY", "SOFTWARE", "SYSTEM"):
                 hp = config_dir / hive_name
                 if hp.is_file():
                     rr_hives.append((hive_name, hp))
+        # Every user hive RECmd reads (TA-6, 2026-10-30): NTUSER.DAT was never collected here, so T03's only
+        # hive (Users\fredr\NTUSER.DAT) made RegRipper "find no hives". The profile comes from the one
+        # `_regripper_profile`; a private table here labelled UsrClass hives so that they missed theirs.
         for user in users:
-            uc = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
-            if uc.is_file():
-                rr_hives.append((f"UsrClass-{user.name}", uc))
+            rr_hives.extend((f"{hive_name}-{user.name}", hive) for hive_name, hive in _user_hives(user))
         if rr_hives:
             d = extractions / "regripper"
             d.mkdir(parents=True, exist_ok=True)
             for hive_name, hive in rr_hives:
-                prof = profiles.get(hive_name.split("-")[0], "all")
+                prof = _regripper_profile(hive_name)
                 add(
                     "regripper",
                     ["regripper", "-r", str(hive), "-f", prof],
@@ -3027,22 +3011,10 @@ def _plan_gap_parsers(
                     skip("hindsight", "hindsight not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
                     break
 
-    # USBDeview is examiner opt-in. RECmd USBSTOR and setupapi cover USB.
-    usbstor = root / "Windows/System32/config/SYSTEM"
-    if usbstor.is_file() and not _lane_opted_in("usbdeview"):
-        skip("usbdeview", "not in the default lane; set NEXUS_LANE_OPT_IN=usbdeview")
-    elif usbstor.is_file() and _windows_tool_available("usbdeview"):
-        d = extractions / "usbdeview"
-        d.mkdir(parents=True, exist_ok=True)
-        add(
-            "usbdeview",
-            ["usbdeview", "/regfile", str(usbstor), "/scomma", str(d / "usb.csv"),
-             "/AddExportHeaderLine", "1"],
-            "USB device history (USBDeview)",
-            300,
-        )
-    elif usbstor.is_file():
-        skip("usbdeview", "usbdeview not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+    # USBDeview is retired from the lane (operator, TA-6, 2026-10-30). Its `/regfile` loads the SYSTEM hive through
+    # the registry API, which needs an elevated process: on T01-OPT it wrote only its header row while RegRipper's
+    # usbstor plugin listed the same hive's devices, and an unelevated `reg load` of the hive fails "a required
+    # privilege is not held". RECmd's USBSTOR keys, RegRipper's usbstor/usb plugins and setupapi read USB history.
 
     # Second Zircolite job (whole-root ruleset). Same opt-in as the EVTX-dir job.
     if not _lane_opted_in("zircolite"):
@@ -5334,8 +5306,10 @@ _PREFIXED_NAMED_OUTPUT_TOOLS = frozenset({"amcacheparser"})
 #: `/stext:<file>`), and they are not matched by the `--flag value` form above —
 #: so a job that wrote its file was judged by "did the directory gain a file"
 #: instead of "did the file this job named appear". Measured on the SC1 run:
-#: USBDeview wrote a 540-byte header row to `usb.csv` (proving the hive WAS
-#: read) and the lane still recorded FAIL.
+#: USBDeview wrote a 540-byte header row to `usb.csv` and the lane recorded FAIL.
+#: The header did NOT prove the hive was read: USBDeview writes it with no device
+#: rows when it cannot load the hive (unelevated, TA-6 T01-OPT), so the tool is
+#: retired from the lane. The switch parsing stays for any `/flag:<path>` tool.
 _WINDOWS_SWITCH_OUTPUT = frozenset({
     "scomma", "stab", "shtml", "sxml", "sjson", "stext", "scsv",
     "save", "out", "output",
@@ -5480,6 +5454,13 @@ def _find_recmd_batch() -> Path | None:
         if p.is_file():
             return p
     return None
+
+
+def _user_hives(user: Path) -> list[tuple[str, Path]]:
+    """A user profile's registry hives, as `(hive name, path)`: the one list the RECmd and RegRipper steps read."""
+    candidates = (("NTUSER.DAT", user / "NTUSER.DAT"),
+                  ("UsrClass.dat", user / "AppData/Local/Microsoft/Windows/UsrClass.dat"))
+    return [(name, path) for name, path in candidates if path.is_file()]
 
 
 def _find_recmd_user_batch() -> Path | None:

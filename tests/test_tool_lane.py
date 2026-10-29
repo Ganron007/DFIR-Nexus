@@ -448,7 +448,9 @@ def test_default_lane_leaves_optional_tools_unscheduled(tmp_path: Path, monkeypa
     assert "suzaku" not in pending
 
 
-def test_usbdeview_returns_when_opted_in(tmp_path: Path, monkeypatch):
+def test_usbdeview_is_retired_even_when_opted_in(tmp_path: Path, monkeypatch):
+    """TA-6 (operator, 2026-10-30): USBDeview's `/regfile` needs an elevated process. On T01-OPT it wrote only a
+    header row from a SYSTEM hive whose USBSTOR lists devices, and the lane recorded OK; it is no longer planned."""
     monkeypatch.setenv("NEXUS_LANE_OPT_IN", "usbdeview")
     monkeypatch.setattr(
         "nexus.langgraph.tool_lane._windows_tool_available",
@@ -458,9 +460,7 @@ def test_usbdeview_returns_when_opted_in(tmp_path: Path, monkeypatch):
     (root / "Windows" / "System32" / "config").mkdir(parents=True)
     (root / "Windows" / "System32" / "config" / "SYSTEM").write_bytes(b"hive")
     jobs = plan_windows_triage(str(root), tmp_path / "ex")
-    usb = [j for j in jobs if j.tool == "usbdeview" and j.status == "PENDING"]
-    assert usb
-    assert "/regfile" in usb[0].argv
+    assert [j for j in jobs if j.tool == "usbdeview"] == []
 
 
 def test_case_pipeline_refuses_live_and_unbound_commands(tmp_path: Path):

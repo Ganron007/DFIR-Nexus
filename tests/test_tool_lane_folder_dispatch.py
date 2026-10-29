@@ -301,9 +301,11 @@ def test_sqlecmd_zero_results_is_a_skip_not_a_fail():
 def test_usbdeview_output_detected_from_scomma_switch(tmp_path):
     """USBDeview names its file with `/scomma:<path>`, not `--csv`.
 
-    Measured on SC1: USBDeview wrote a 540-byte header row to `usb.csv`,
-    proving the SYSTEM hive was read, and the lane still recorded FAIL
-    ("expected a file under the --csv target") because the switch was unknown.
+    Measured on SC1: USBDeview wrote a 540-byte header row to `usb.csv` and
+    the lane recorded FAIL ("expected a file under the --csv target") because
+    the switch was unknown. The header did not prove the hive was read (TA-6:
+    it is all USBDeview writes when it cannot load the hive), and the tool is
+    retired from the lane; the `/flag:<path>` parsing stays for any such tool.
     """
     from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
 
