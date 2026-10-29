@@ -161,6 +161,42 @@ def test_the_wait_returns_once_progress_reads_100(wrapper, monkeypatch):
     assert [p for _t, p in wait["progress_history"]] == ["0", "51", "100"]
 
 
+def test_the_wrapper_writes_no_second_copy_of_a_forensic_table(wrapper, monkeypatch, tmp_path):
+    """D469: the wrapper's own processes/net/modules/threads/handles tables repeated MemProcFS's forensic CSVs.
+
+    Its net.csv split netstat.txt as `proto state local remote pid`, so on T22 every row read the index as the
+    protocol and the address as the PID (`001d,780,TCPv4,LISTENING,0.0.0.0:49673`), while forensic/csv/net.csv held
+    the same connections in named columns. The other tables held nothing the forensic CSVs lack (T22: processes
+    107 of 129, threads 2,929 of 2,930, handles identical, modules the same set).
+    """
+    import json
+    import sys
+    import types
+
+    t22 = json.loads((REPO / "tests" / "fixtures" / "memprocfs_t22_rows.json").read_text(encoding="utf-8"))
+    header = t22["headers"]["net.csv"]
+    net = ",".join(header) + "\n" + "\n".join(
+        ",".join(row[c] for c in header) for row in t22["rows"]["net.csv"]) + "\n"
+    files = {
+        "/pid/4/name.txt": b"System", "/pid/4/threads/threads.txt": b"#  PID  TID\n0000 4 8\n",
+        "/name/System-4": b"", "/sys/computername.txt": b"BASE-RD-01",
+        "/sys/net/netstat.txt": b"   # PID Proto State Src Dst Process\n001d 780 TCPv4 LISTENING 0.0.0.0:49673 ***:0 svchost.exe\n",
+        "/forensic/csv/net.csv": net.encode(),
+    }
+    vfs = FakeVfs(files)
+    monkeypatch.setitem(sys.modules, "memprocfs", types.SimpleNamespace(Vmm=lambda argv: types.SimpleNamespace(vfs=vfs)))
+    monkeypatch.setattr(wrapper, "FORENSIC_QUIET_S", 0)
+    image = tmp_path / "mem.raw"
+    image.write_bytes(b"\0")
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", ["run-memprocfs.py", "--image", str(image), "--out", str(out)])
+
+    assert wrapper.main() == 0
+    top = sorted(p.name for p in out.iterdir() if p.is_file())
+    assert top == ["forensic.json", "sysinfo.csv"]
+    assert (out / "forensic" / "csv" / "net.csv").read_text(encoding="utf-8") == net
+
+
 def test_the_wait_reports_unfinished_forensic_mode(wrapper, monkeypatch):
     monkeypatch.setattr(wrapper, "FORENSIC_WAIT_S", 0)
     monkeypatch.setattr(wrapper.time, "sleep", lambda _s: None)

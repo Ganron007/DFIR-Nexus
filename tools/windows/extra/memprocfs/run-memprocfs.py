@@ -15,8 +15,8 @@ which the operator approved on 2026-10-11. Without it MemProcFS reports the Elas
 and forensic mode still runs and writes its own outputs.
 
 Written under --out:
-  processes.csv, processmap.csv, net.csv, sysinfo.csv, modules.csv, threads.csv, handles.csv
-      the process and system tables (one family, memprocfs)
+  sysinfo.csv
+      the system scalars of /sys/, the one table forensic mode does not write
   forensic/<folder>/<file>
       MemProcFS's own forensic outputs, copied once each
   forensic.json
@@ -298,107 +298,17 @@ def main() -> int:
     vfs = vmm.vfs
     written: dict[str, int] = {}
 
-    # --- processes -------------------------------------------------------
-    pids = _vfs_list(vfs, "/pid/")
-    rows = []
-    for pid in pids:
-        base = f"/pid/{pid}/"
-        rows.append({
-            "pid": pid,
-            "name": _vfs_read(vfs, base + "name.txt").strip(),
-            "ppid": _vfs_read(vfs, base + "ppid.txt").strip(),
-            "state": _vfs_read(vfs, base + "state.txt").strip(),
-            "dtb": _vfs_read(vfs, base + "dtb.txt").strip(),
-            "path": _vfs_read(vfs, base + "path.txt").strip(),
-            "cmdline": _vfs_read(vfs, base + "cmdline.txt").strip(),
-            "user": _vfs_read(vfs, base + "user.txt").strip(),
-            "create_time": _vfs_read(vfs, base + "create-time.txt").strip(),
-            "exit_time": _vfs_read(vfs, base + "exit-time.txt").strip(),
-        })
-    written["processes.csv"] = _write_csv(
-        out / "processes.csv",
-        ["pid", "name", "ppid", "state", "dtb", "path", "cmdline", "user",
-         "create_time", "exit_time"],
-        rows,
-    )
-
-    # --- name -> pid map --------------------------------------------------
-    names = _vfs_list(vfs, "/name/")
-    written["processmap.csv"] = _write_csv(
-        out / "processmap.csv",
-        ["name_pid", "pid", "name"],
-        [
-            {
-                "name_pid": entry,
-                "pid": entry.rsplit("-", 1)[-1],
-                "name": entry.rsplit("-", 1)[0],
-            }
-            for entry in names
-        ],
-    )
-
-    # --- network ----------------------------------------------------------
-    net = _vfs_read(vfs, "/sys/net/netstat.txt")
-    net_rows = []
-    for line in net.splitlines():
-        parts = line.split()
-        if len(parts) >= 4:
-            net_rows.append({
-                "proto": parts[0], "state": parts[1],
-                "local": parts[2], "remote": parts[3],
-                "pid": parts[4] if len(parts) > 4 else "",
-            })
-    written["net.csv"] = _write_csv(
-        out / "net.csv", ["proto", "state", "local", "remote", "pid"], net_rows
-    )
-
     # --- system scalars ---------------------------------------------------
+    # The only table forensic mode does not write. Processes, connections, modules, threads and handles
+    # are MemProcFS's own forensic CSVs (D469: this wrapper's text-split copies of them repeated those
+    # rows, and its net.csv read netstat.txt's index, PID, protocol and state as protocol, state,
+    # local, remote).
     sys_files = _vfs_list(vfs, "/sys/")
     sys_rows = [
         {"file": name, "value": _vfs_read(vfs, f"/sys/{name}").strip()}
         for name in sys_files
     ]
     written["sysinfo.csv"] = _write_csv(out / "sysinfo.csv", ["file", "value"], sys_rows)
-
-    # --- per-process tables (modules / threads / handles) -----------------
-    # The paths and column layouts below were read from the live VFS on SC1's
-    # image, not guessed: MemProcFS keeps each under its own subdirectory
-    # (/pid/<pid>/threads/threads.txt) and prints its own header plus a dashed
-    # separator, which must not become rows.
-    for label, vfs_path, columns in (
-        ("modules", "modules/modules.txt",
-         ["index", "pid", "pages", "range_start", "range_end", "description"]),
-        ("threads", "threads/threads.txt",
-         ["index", "pid", "tid", "ethread", "status", "wait_reason", "prio",
-          "exit_st", "start_address", "win32_start_address"]),
-        ("handles", "handles/handles.txt",
-         ["index", "pid", "handle", "object_address", "access", "type",
-          "description"]),
-    ):
-        table_rows = []
-        for pid in pids:
-            for line in _vfs_read(vfs, f"/pid/{pid}/{vfs_path}").splitlines():
-                stripped = line.strip()
-                # MemProcFS's own header and separator are not data.
-                if not stripped or stripped.startswith("#") or set(stripped) <= {"-"}:
-                    continue
-                parts = stripped.split()
-                row = {"pid": pid}
-                for field, value in zip(columns, parts, strict=False):
-                    if field == "pid":
-                        continue
-                    row[field] = value
-                # the range column is one token "start-end" in the source
-                if "range_start" in columns and len(parts) >= 4:
-                    bounds = parts[3].split("-", 1)
-                    row["range_start"] = bounds[0]
-                    row["range_end"] = bounds[1] if len(bounds) > 1 else ""
-                    row["description"] = " ".join(parts[4:])
-                table_rows.append(row)
-        if table_rows:
-            written[f"{label}.csv"] = _write_csv(
-                out / f"{label}.csv", columns, table_rows
-            )
 
     # --- forensic outputs (D68) -------------------------------------------
     wait = _wait_for_forensic(vfs)
@@ -408,7 +318,6 @@ def main() -> int:
         json.dumps(
             {
                 "image": str(image),
-                "processes": len(rows),
                 "wait": wait,
                 "root": forensic_root,
                 "readme": _vfs_read(vfs, FORENSIC + "readme.txt")[:2000],
