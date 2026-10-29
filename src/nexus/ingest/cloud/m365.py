@@ -7,13 +7,23 @@ Parses JSON exports of:
 
 All three share a similar JSON envelope; this importer detects and normalises
 them into a single Artifact stream.
+
+And the two CSV exports of an audit log search, recognised by their header row whatever the file is called
+(D487: T10's ``UnifiedAuditLog.csv`` and ``AuditLog_<dates>.csv`` matched no name rule and were read as generic CSV):
+- "Download all results": ``CreationDate, UserIds, Operations, AuditData``, AuditData holding the raw record as a JSON
+  object (Microsoft Learn, "Export, configure, and view audit log records", Purview/audit-log-export-records.md at
+  69554005e5bd; Search-UnifiedAuditLog's export writes RecordType in place of Operations);
+- "Save loaded results": the displayed columns ``Date`` (UTC), ``IP address``, ``User``, ``Activity``, ``Item``,
+  ``Detail``, plus ``More``, "more information from the audit log entry" (Microsoft Learn, "View custodian audit
+  activity", Purview/ediscovery-view-custodian-activity.md at b2daca1adc7f).
 """
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -55,6 +65,28 @@ _SIGNIN_STATUS_SEVERITY: dict[str, Severity] = {
     "interrupted": Severity.LOW,
 }
 
+_RAW_EXPORT = frozenset({"creationdate", "userids", "auditdata"})
+_LOADED_EXPORT = frozenset({"date", "ip address", "user", "activity", "item", "more"})
+
+
+def audit_export_layout(header: Iterable[str]) -> str | None:
+    """Which documented audit-search CSV export a header row is (module docstring): "raw" (Download all results),
+    "loaded" (Save loaded results), or None. The one test detection, ``can_handle`` and ``parse`` share."""
+    cells = {str(cell).strip().lstrip("﻿").strip('"').lower() for cell in header}
+    if cells >= _RAW_EXPORT and cells & {"operations", "recordtype"}:
+        return "raw"
+    if cells >= _LOADED_EXPORT and cells & {"detail", "details"}:
+        return "loaded"
+    return None
+
+
+def _csv_header(path: Path) -> list[str]:
+    try:
+        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+            return next(csv.reader(fh), [])
+    except (OSError, csv.Error):
+        return []
+
 
 class M365Importer(Importer):
     """Parser for M365 Unified Audit Log and Entra ID sign-in/audit JSON."""
@@ -69,6 +101,9 @@ class M365Importer(Importer):
         has AuditData/UserPrincipalName keys."""
         if not path.is_file():
             return False
+        if path.suffix.lower() == ".csv":
+            # A CSV is one of the documented exports by its header, or not this importer's, whatever its name.
+            return audit_export_layout(_csv_header(path)) is not None
         name = path.name.lower()
         if any(kw in name for kw in ("m365", "entra", "unified_audit", "o365", "exchange_online")):
             return True
@@ -84,6 +119,9 @@ class M365Importer(Importer):
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per M365/Entra record."""
         suffix = path.suffix.lower()
+        if suffix == ".csv":
+            yield from self._parse_csv(path)
+            return
         if suffix in (".jsonl", ".ndjson"):
             for _line_num, record in self.read_jsonl(path):
                 try:
@@ -108,6 +146,40 @@ class M365Importer(Importer):
                     yield self._record_to_artifact(record)
                 except Exception:
                     log.debug("Skipping malformed M365 record", exc_info=True)
+
+    def _parse_csv(self, path: Path) -> Iterator[Artifact]:
+        """An audit-search CSV export: a raw row through the record path (its AuditData is the record), a loaded row
+        by the columns Microsoft documents."""
+        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+            reader = csv.DictReader(fh)
+            layout = audit_export_layout(reader.fieldnames or [])
+            if layout is None:
+                return
+            for line_num, row in enumerate(reader, start=2):
+                try:
+                    yield self._record_to_artifact(row) if layout == "raw" else self._loaded_row_to_artifact(row)
+                except Exception:
+                    log.debug("Skipping malformed M365 export row at %s:%d", path, line_num, exc_info=True)
+
+    def _loaded_row_to_artifact(self, row: dict[str, Any]) -> Artifact:
+        """A "Save loaded results" row, read by its documented columns; it carries no status, so no severity."""
+        ts = self.normalize_timestamp(row.get("Date"))  # "The date and time (in UTC format)"
+        activity = str(row.get("Activity") or "").strip()
+        detail = row.get("Detail") or row.get("Details")
+        parts = [str(part).strip() for part in (activity, row.get("Item"), detail) if str(part or "").strip()]
+        return Artifact(
+            id=Artifact.new_id(),
+            artifact_type=self._extract_type({"Operation": activity}, {}),
+            source=ArtifactSource.AZURE,
+            timestamp=ts or datetime.now(UTC),
+            ts_synthesized=ts is None,
+            severity=Severity.INFORMATIONAL,
+            user=str(row.get("User") or "").strip() or None,
+            source_ip=str(row.get("IP address") or "").strip() or None,
+            description=" - ".join(parts) or "M365 event",
+            raw=row,
+            tags=["m365"] + ([f"operation:{activity}"] if activity else []),
+        )
 
     @staticmethod
     def _extract_records(data: Any) -> list[dict[str, Any]]:
@@ -173,7 +245,9 @@ class M365Importer(Importer):
         ):
             ts = self.normalize_timestamp(record.get(key))
             if ts:
-                return ts
+                # D487: this returned the bare datetime, the caller's unpacking raised, and `parse` skipped every
+                # record with a top-level CreationDate (every UAL record) as malformed.
+                return ts, False
         for key in (
             "CreationTime",
             "EventTime",

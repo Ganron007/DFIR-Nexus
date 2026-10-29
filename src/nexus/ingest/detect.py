@@ -9,6 +9,7 @@ Inspired by DFIR-Companion's importDetect.ts pattern.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 from pathlib import Path
@@ -576,6 +577,11 @@ def _detect_csv_format(head: str, name: str) -> ArtifactSource | None:
     """Detect format from CSV header row."""
     first_line = head.split("\n")[0].lower()
 
+    # An audit log search export (D487), by the one header test its importer confirms with.
+    from nexus.ingest.cloud.m365 import audit_export_layout
+
+    if audit_export_layout(next(csv.reader([head.split("\n")[0].rstrip("\r")]), [])):
+        return ArtifactSource.AZURE
     if "fullpath" in first_line or "sha1" in first_line:
         return ArtifactSource.AMCACHE
     if "timestamp" in first_line and "hostname" in first_line:
