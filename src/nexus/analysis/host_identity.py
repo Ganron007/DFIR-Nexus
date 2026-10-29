@@ -11,6 +11,11 @@ same channel, the records logged under the previous name, the log is the same an
 machine: Security record 12965 was the last under `tpl-packer` and 12968 the first under `rd01`.
 A name whose records restart (a separate log) is not linked. Forwarded events are excluded: that
 channel holds other machines' records.
+
+A machine also acts under its own account (D468). A domain-joined Windows computer logs on to the network, runs its
+services and applies policy as its computer account, its name followed by `$`. T22-R1z3d's Mode 3 read
+`BASE-RD-01$`'s network logons and its service install on base-rd-01.shieldbase.lan as an outside actor. A `$` account
+whose name is a host's first label is paired with that host, from the index's typed users and hosts.
 """
 from __future__ import annotations
 
@@ -30,6 +35,11 @@ MAX_RECORD_GAP = 64
 MAX_TIME_GAP_S = 86_400
 
 _CACHE = "analysis/host_identity.json"
+#: The cached identity's shape: 2 adds the machine accounts (D468). A cache of another shape is recomputed.
+CACHE_SCHEMA = 2
+#: The typed fields that hold a row's account and a row's host (D470/D471 type them for every producer).
+USER_FIELDS = ("user", "ecs.user.name", "ecs.user.target.name")
+HOST_FIELDS = ("host", "ecs.host.name")
 
 
 def _ts(value: Any) -> datetime | None:
@@ -155,6 +165,62 @@ def channel_edges(case_dir: Path) -> list[dict[str, Any]]:
     return edges
 
 
+def pair_machine_accounts(accounts: dict[str, int], hosts: list[str]) -> list[dict[str, Any]]:
+    """Each `$` account whose name is a host's first label, paired with that host (D468).
+
+    ``accounts`` maps a typed account value (`shieldbase\\BASE-RD-01$`, `BASE-RD-01$`) to its row count; the name is
+    what follows the domain separator. ``hosts`` are typed host names. An account no host's first label matches
+    (another machine's, or a managed service account) is not paired.
+    """
+    by_label: dict[str, list[str]] = {}
+    for host in hosts:
+        name = str(host or "").strip()
+        if name:
+            by_label.setdefault(name.split(".", 1)[0].lower(), []).append(name)
+    pairs: dict[str, dict[str, Any]] = {}
+    for value, rows in accounts.items():
+        account = str(value or "").strip().rsplit("\\", 1)[-1]
+        if len(account) < 2 or not account.endswith("$"):
+            continue
+        names = by_label.get(account[:-1].lower())
+        if not names:
+            continue
+        key = account.lower()
+        # The host is named by its longest form (the domain name over the bare one). The account keeps the event data's
+        # own spelling: the envelope `user` is stored lower-cased.
+        pair = pairs.setdefault(key, {"account": account, "host": max(names, key=len), "forms": [], "rows": 0})
+        if pair["account"] == pair["account"].lower() and account != account.lower():
+            pair["account"] = account
+        pair["forms"] = sorted({*pair["forms"], str(value)})
+        pair["rows"] += int(rows or 0)
+    return sorted(pairs.values(), key=lambda p: (-p["rows"], p["account"].lower()))
+
+
+def machine_accounts(case_dir: Path) -> list[dict[str, Any]]:
+    """The case's computer accounts paired with their hosts, from the index's typed users and hosts."""
+    from nexus.langgraph.case_index import _client, index_name
+
+    aggs: dict[str, Any] = {}
+    for i, field in enumerate(USER_FIELDS):
+        # A `$` at the end, in Lucene's regular-expression syntax (a class, so no character is an operator).
+        aggs[f"u{i}"] = {"terms": {"field": field, "include": ".*[$]", "size": 10000}}
+    for i, field in enumerate(HOST_FIELDS):
+        aggs[f"h{i}"] = {"terms": {"field": field, "size": 10000}}
+    with _client() as client:
+        response = client.post(f"/{index_name(Path(case_dir).name)}/_search",
+                               json={"size": 0, "track_total_hits": False, "aggs": aggs})
+    response.raise_for_status()
+    found = response.json().get("aggregations") or {}
+    if any((found.get(key) or {}).get("sum_other_doc_count") for key in found):
+        raise RuntimeError("the account or host aggregation omitted values")
+    accounts: dict[str, int] = {}
+    for i in range(len(USER_FIELDS)):
+        for bucket in (found.get(f"u{i}") or {}).get("buckets") or []:
+            accounts[str(bucket["key"])] = accounts.get(str(bucket["key"]), 0) + int(bucket["doc_count"])
+    hosts = [str(b["key"]) for i in range(len(HOST_FIELDS)) for b in (found.get(f"h{i}") or {}).get("buckets") or []]
+    return pair_machine_accounts(accounts, hosts)
+
+
 def _index_stamp(case_dir: Path) -> str:
     try:
         state = json.loads((case_dir / "analysis" / "index_state.json").read_text(encoding="utf-8"))
@@ -164,22 +230,24 @@ def _index_stamp(case_dir: Path) -> str:
 
 
 def host_identity(case_dir: Path) -> dict[str, Any]:
-    """The case's machines and their names, computed once per index build. Never raises."""
+    """The case's machines, their names and their own accounts, computed once per index build. Never raises."""
     case_dir = Path(case_dir)
     stamp = _index_stamp(case_dir)
     cache = case_dir / _CACHE
     try:
         cached = json.loads(cache.read_text(encoding="utf-8"))
-        if stamp and cached.get("index_stamp") == stamp:
+        if stamp and cached.get("index_stamp") == stamp and cached.get("schema") == CACHE_SCHEMA:
             return cached
     except (OSError, ValueError):
         pass
     try:
         result = link_names(channel_edges(case_dir))
+        result["machine_accounts"] = machine_accounts(case_dir)
     except Exception as exc:  # noqa: BLE001 - an unreadable index leaves the names as they are
         log.debug("host identity unavailable: %s", exc)
-        return {"machines": [], "channels_checked": 0}
+        return {"machines": [], "channels_checked": 0, "machine_accounts": []}
     result["index_stamp"] = stamp
+    result["schema"] = CACHE_SCHEMA
     if stamp:
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
@@ -190,7 +258,7 @@ def host_identity(case_dir: Path) -> dict[str, Any]:
 
 
 def host_identity_lines(identity: dict[str, Any]) -> list[str]:
-    """One line per machine known under several names, with its proof."""
+    """One line per machine known under several names, with its proof, and one per machine's own account."""
     lines: list[str] = []
     for machine in identity.get("machines") or []:
         eras = ", ".join(f"{e['name']} ({e['first']} to {e['last']})" for e in machine.get("eras") or [])
@@ -200,12 +268,17 @@ def host_identity_lines(identity: dict[str, Any]) -> list[str]:
         lines.append(f"- One machine logged under {len(machine.get('names') or [])} names, in this order: "
                      f"{eras}. Its own event logs continue one record sequence across each rename "
                      f"({proof}), so these names are one host renamed over time, not separate hosts.")
+    for pair in identity.get("machine_accounts") or []:
+        lines.append(f"- `{pair['account']}` is the computer account of {pair['host']} (its name followed by `$`; "
+                     f"{pair['rows']} row(s), typed as {', '.join(pair['forms'])}). A logon, service or policy event "
+                     f"under it is that machine acting as itself (its services and SYSTEM processes): it says which "
+                     f"host acted, not which person, and is not another actor.")
     return lines
 
 
 def host_identity_block(case_dir: Path) -> str:
-    """The prompt block every investigative prompt carries; empty when no machine was renamed."""
+    """The prompt block every investigative prompt carries; empty when no machine was renamed or named its account."""
     lines = host_identity_lines(host_identity(case_dir))
     if not lines:
         return ""
-    return "HOST IDENTITY (deterministic, from the event logs' record numbers):\n" + "\n".join(lines)
+    return "HOST IDENTITY (deterministic, from the case index):\n" + "\n".join(lines)

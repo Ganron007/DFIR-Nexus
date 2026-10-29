@@ -65,7 +65,10 @@ def test_every_investigative_prompt_and_the_digest_carry_it(tmp_path):
     (case / "analysis").mkdir(parents=True)
     (case / "analysis" / "index_state.json").write_text(json.dumps({"indexed_at": "2026-10-15T06:07:24Z"}),
                                                         encoding="utf-8")
-    identity = {**link_names(EDGES), "index_stamp": "2026-10-15T06:07:24Z"}
+    from nexus.analysis.host_identity import CACHE_SCHEMA, pair_machine_accounts
+
+    identity = {**link_names(EDGES), "index_stamp": "2026-10-15T06:07:24Z", "schema": CACHE_SCHEMA,
+                "machine_accounts": pair_machine_accounts({"shieldbase\\RD01$": 12}, ["rd01.shieldbase.com"])}
     (case / "analysis" / "host_identity.json").write_text(json.dumps(identity), encoding="utf-8")
 
     extras = _investigative_extras(case)
@@ -73,9 +76,42 @@ def test_every_investigative_prompt_and_the_digest_carry_it(tmp_path):
     assert "tpl-packer (2022-08-31T17:36:13Z to 2022-09-30T23:37:06Z), rd01" in extras
     assert "Security 12965 -> 12968 (tpl-packer -> rd01)" in extras
     assert "OFFDEVS" not in extras
+    assert "`RD01$` is the computer account of rd01.shieldbase.com" in extras
     digest = render_digest_markdown({"case_id": case.name, "host_identity": identity})
-    assert "## Host identity (one machine, several names)" in digest
+    assert "## Host identity (a machine's names and its own account)" in digest
     assert "one host renamed over time, not separate hosts" in digest
+    assert "`RD01$` is the computer account of rd01.shieldbase.com" in digest
+
+
+def test_a_cache_of_the_earlier_shape_is_recomputed(tmp_path, monkeypatch):
+    """A cached identity written before D468 has no machine accounts: it is not served for the same index."""
+    from nexus.analysis import host_identity as hi
+
+    case = tmp_path / "CASE-HOSTID2"
+    (case / "analysis").mkdir(parents=True)
+    (case / "analysis" / "index_state.json").write_text(json.dumps({"indexed_at": "s1"}), encoding="utf-8")
+    (case / "analysis" / "host_identity.json").write_text(
+        json.dumps({"machines": [], "channels_checked": 3, "index_stamp": "s1"}), encoding="utf-8")
+    monkeypatch.setattr(hi, "channel_edges", lambda case_dir: EDGES)
+    monkeypatch.setattr(hi, "machine_accounts", lambda case_dir: [{"account": "RD01$", "host": "rd01", "forms": [],
+                                                                    "rows": 1}])
+    identity = hi.host_identity(case)
+    assert identity["schema"] == hi.CACHE_SCHEMA and identity["machine_accounts"][0]["account"] == "RD01$"
+
+
+def test_a_hosts_own_machine_account_is_paired_with_it():
+    """D468, on T22's typed values (CASE-4387EB47's index, 2026-10-29): Mode 3 read BASE-RD-01$'s logons and
+    service install on base-rd-01.shieldbase.lan as an outside actor. BASE-HUNT$ is another machine's account: no
+    host of the evidence is named base-hunt, so it is not paired."""
+    from nexus.analysis.host_identity import pair_machine_accounts
+
+    accounts = {"shieldbase\\BASE-RD-01$": 41, "BASE-RD-01$": 40, "base-rd-01$": 5, "BASE-HUNT$": 3,
+                "shieldbase\\tdungan": 43, "$": 1}
+    hosts = ["base-rd-01.shieldbase.lan", "win10-test", "microso-f9qcq4i", "base-rd-01"]
+    assert pair_machine_accounts(accounts, hosts) == [{
+        "account": "BASE-RD-01$", "host": "base-rd-01.shieldbase.lan",
+        "forms": ["BASE-RD-01$", "base-rd-01$", "shieldbase\\BASE-RD-01$"], "rows": 86,
+    }]
 
 
 def test_a_case_without_an_index_gets_no_block(tmp_path, monkeypatch):

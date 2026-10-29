@@ -449,7 +449,7 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
     identity = host_identity_lines(digest.get("host_identity") or {})
     if identity:
         lines.append("")
-        lines.append("## Host identity (one machine, several names)")
+        lines.append("## Host identity (a machine's names and its own account)")
         lines.extend(identity)
     tl = digest.get("timeline") or {}
     if tl.get("buckets_per_day"):

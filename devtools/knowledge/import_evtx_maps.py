@@ -96,8 +96,12 @@ def build() -> dict[str, Any]:
                 continue
             template = str(item.get("PropertyValue") or "").strip()
             values = [v for v in (item.get("Values") or []) if isinstance(v, dict)]
+            # D471: each source keeps the placeholder it fills (`Name`), so a template can be read from an
+            # event's own data: the map lists a template's sources in its own order (4624's RemoteHost is
+            # `%workstation% (%ipAddress%)` with ipAddress first), not the template's.
             sources = [
-                {"xpath": str(v.get("Value") or ""), "refine": str(v.get("Refine") or "")}
+                {"name": str(v.get("Name") or ""), "xpath": str(v.get("Value") or ""),
+                 "refine": str(v.get("Refine") or "")}
                 for v in values
             ]
             # WO-R0F item 6: KEEP duplicate properties. Sysmon 1 names `UserName`

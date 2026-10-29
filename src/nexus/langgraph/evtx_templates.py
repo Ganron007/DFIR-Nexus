@@ -10,6 +10,9 @@ The templates come from the pinned maps (`data/schema/evtxecmd_maps.yaml`, impor
 EricZimmerman/evtx), never typed here. The value is the template's first run of placeholders
 joined only by a domain separator: the user a template names first, `domain\\user`, without a label
 or a trailing `(sid)`. A value no template of its (channel, event) fits is returned unchanged.
+
+`event_value` reads the same value from an event's own data, for the tools that do not render the maps (D471:
+MemProcFS's event logs from memory had a user only for the events a hand-written table repeated).
 """
 from __future__ import annotations
 
@@ -69,6 +72,70 @@ def _pattern(template: str) -> tuple[re.Pattern[str], tuple[int, ...]] | None:
             break
         run.append(i)
     return re.compile(f"^{regex}$", re.DOTALL), tuple(run)
+
+
+#: Where a map source reads: one named EventData item, or a UserData element (`/Event/UserData/LogFileCleared/
+#: SubjectUserName`), which a producer that flattens an event's data (MemProcFS's eventlog.csv) carries by its leaf name.
+_DATA_ITEM = re.compile(r'^/Event/EventData/Data\[@Name="([^"]+)"\]$')
+_USER_DATA_LEAF = re.compile(r"^/Event/UserData/[^/\[]+/([^/\[]+)$")
+
+
+@lru_cache(maxsize=1)
+def _readers() -> dict[tuple[str, str], dict[str, tuple[str, dict[str, str]]]]:
+    """(channel, event id) -> column -> (template, {placeholder: the data name it reads}), from the pinned maps.
+
+    The column's primary (last) occurrence, the one EvtxECmd renders: a real Sysmon 1 row's `UserName` is its `%User%`,
+    not `ParentUser: %ParentUser%`. A placeholder read through a `Refine` pattern, or from anything but one named data
+    item, has no entry, so a run holding one is not read from the data.
+    """
+    try:
+        import yaml
+
+        doc = yaml.safe_load(_MAPS.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - without the maps no event value is read
+        return {}
+    out: dict[tuple[str, str], dict[str, tuple[str, dict[str, str]]]] = {}
+    for pack in doc.get("packs") or []:
+        key = (str(pack.get("channel") or "").strip().lower(), str(pack.get("event_id") or "").strip())
+        for column, spec in (pack.get("columns") or {}).items():
+            names: dict[str, str] = {}
+            for source in spec.get("sources") or []:
+                found = _DATA_ITEM.match(str(source.get("xpath") or "")) or _USER_DATA_LEAF.match(
+                    str(source.get("xpath") or ""))
+                if found and source.get("name") and not source.get("refine"):
+                    names[str(source["name"])] = found.group(1)
+            out.setdefault(key, {})[str(column)] = (str(spec.get("template") or ""), names)
+    return out
+
+
+def event_value(channel: Any, event_id: Any, column: str, data: dict[str, Any]) -> str | None:
+    """The value the map places in ``column``, read from an event's own data, whichever tool read the event (D471).
+
+    The same value ``map_value`` reads back from EvtxECmd's rendering of that event: the template's first run of
+    placeholders joined only by a domain separator, an empty placeholder left out. ``""`` when the run's names are in
+    the data but empty. None when the map gives the event no such column, a placeholder of the run is not a named data
+    item, or the data carries none of the run's names.
+    """
+    reader = _readers().get((str(channel or "").strip().lower(), str(event_id or "").strip()), {}).get(column)
+    if reader is None:
+        return None
+    template, names = reader
+    compiled = _pattern(template)
+    if compiled is None:
+        return None
+    placeholders = _PLACEHOLDER.split(template)[1::2]
+    values: list[str] = []
+    present = False
+    for i in compiled[1]:
+        name = names.get(placeholders[i])
+        if name is None:
+            return None
+        if name in data:
+            present = True
+        values.append(str(data.get(name) or "").strip())
+    if not present:
+        return None
+    return "\\".join(v for v in values if v not in _EMPTY)
 
 
 def map_value(channel: Any, event_id: Any, column: str, rendered: Any) -> str:

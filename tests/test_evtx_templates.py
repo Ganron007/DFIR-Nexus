@@ -40,16 +40,26 @@ def test_the_events_own_user_is_not_overwritten_and_the_logging_host_stays():
     from nexus.langgraph.ecs_normalize import normalize
 
     ecs = normalize("evtxecmd", ROWS["security_4624"])
-    assert ecs["user"]["name"] == "RD01$", "SubjectUserName from the event, not the rendered UserName"
+    # D471: the event's own subject through the pinned map's `%domain%\%user%`, read from its data; never the
+    # rendered `UserName` with its `(sid)`.
+    assert ecs["user"]["name"] == "shieldbase\\RD01$", "the map's user from the event, not the rendered UserName"
     assert ecs["user"]["target"]["name"] == "tdungan"
     assert ecs["host"]["name"] == "rd01.shieldbase.com", "Computer is a System field, not a rendered column"
 
 
 def test_the_envelope_user_reads_the_same_value():
     from nexus.langgraph.case_index import _host_user_event
+    from nexus.langgraph.ecs_normalize import normalize
 
     assert _host_user_event(ROWS["security_sid"])[1] == "shieldbase\\RD01$"
-    # A row with a UserId keeps it first, as before.
+    # D471: on the indexing path the row's user is the one its ECS layer types, the event's own (the map's
+    # `Context: %UserContext%`). The System UserID, `S-1-5-18`, the account Task Scheduler logged under, came first
+    # only because its column does.
+    for name, user in (("security_sid", "shieldbase\\RD01$"), ("task_context", "shieldbase\\tdungan")):
+        ecs = normalize("evtxecmd", ROWS[name])
+        assert ecs["user"]["name"] == user
+        assert _host_user_event(ROWS[name], ecs=ecs)[1] == user
+    # A row whose ECS layer types no user keeps the first generic column, UserId, as before.
     assert _host_user_event(ROWS["task_context"])[1] == "S-1-5-18"
 
 

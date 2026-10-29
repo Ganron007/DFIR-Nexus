@@ -136,7 +136,11 @@ _FORENSIC_TEXT_ANALYSIS = {
 # contradicted type is text), the date formats read what the tools write, flags are `true`/`false`, `ts_raw` is the
 # time as written, nfdump's summary is its own record, and keyword sub-fields hold up to 8,191 characters. An index
 # built before it silently left values out of typed and keyword fields and must be rebuilt.
-INDEX_SCHEMA_VERSION = 19
+# v20 (2026-10-29, D470/D471): MemProcFS's columns are read per table (an event row's channel, code, record and host; a
+# connection's addresses; a scheduled task's principal id is no account), and a Windows event's user is the pinned
+# EvtxECmd map's `UserName` whichever tool read the event. An index built before it has no channel on any event read
+# from memory, so every stored Windows-event query missed those rows, and must be rebuilt.
+INDEX_SCHEMA_VERSION = 20
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -802,32 +806,39 @@ _USER_KEYS = frozenset((
 _EVENT_KEYS = frozenset(("eventid", "event_id", "eventcode"))
 
 
-def _host_user_event(fields: dict[str, str], family: str = "", importer: bool = False) -> tuple[str, str, str]:
-    """A row's host, user and event id. A tool family whose ECS map names its host and user columns is read only
-    through those (D287: Zeek's `host` is an HTTP Host header, its FTP `user` default `<unknown>`); otherwise, and for a
-    row the importer pass wrote, by the generic column names."""
+def _host_user_event(
+    fields: dict[str, str], family: str = "", importer: bool = False, table: str = "",
+    ecs: dict[str, Any] | None = None,
+) -> tuple[str, str, str]:
+    """A row's host, user and event id. The user the row's ECS layer typed (``ecs``) is its user: a Windows event's
+    from the pinned map, whichever tool read the event (D471), a table's account column (D470). A tool family whose ECS
+    map names its host and user columns is otherwise read only through those (D287: Zeek's `host` is an HTTP Host
+    header, its FTP `user` default `<unknown>`; D470: MemProcFS's, per table, so a scheduled task's principal id is no
+    account); otherwise, and for a row the importer pass wrote, by the generic column names."""
     from nexus.langgraph.ecs_normalize import declared_host_user, is_absent
 
-    declared = None if importer else declared_host_user(family)
+    typed = str(((ecs or {}).get("user") or {}).get("name") or "")
+    declared = None if importer else declared_host_user(family, table)
     if declared is not None:
         host_cols, user_cols = declared
 
         def _first(cols: tuple[str, ...]) -> str:
             return next((str(fields[c]) for c in cols if fields.get(c) and not is_absent(family, c, fields[c])), "")
 
-        return _first(host_cols), _first(user_cols), _pick_field(fields, _EVENT_KEYS)
+        return _first(host_cols), typed or _first(user_cols), _pick_field(fields, _EVENT_KEYS)
     host = _pick_field(fields, _HOST_KEYS)
-    user = ""
-    for name, value in fields.items():
-        if value and name.lower() in _USER_KEYS:
-            user = str(value)
-            if name == "UserName" and fields.get("Channel") and fields.get("EventId"):
-                # EvtxECmd's UserName is its map's template rendered (`Context: %UserContext%`,
-                # `%domain%\%user% (%sid%)`): the user is what the map placed in it (D214).
-                from nexus.langgraph.evtx_templates import map_value
+    user = typed
+    if not user:
+        for name, value in fields.items():
+            if value and name.lower() in _USER_KEYS:
+                user = str(value)
+                if name == "UserName" and fields.get("Channel") and fields.get("EventId"):
+                    # EvtxECmd's UserName is its map's template rendered (`Context: %UserContext%`,
+                    # `%domain%\%user% (%sid%)`): the user is what the map placed in it (D214).
+                    from nexus.langgraph.evtx_templates import map_value
 
-                user = map_value(fields["Channel"], fields["EventId"], name, user)
-            break
+                    user = map_value(fields["Channel"], fields["EventId"], name, user)
+                break
     event = _pick_field(fields, _EVENT_KEYS)
     return host, user, event
 
@@ -987,7 +998,10 @@ def iter_index_doc_batches(
             # it whole). Every parsed field is stored whole in `doc["fields"]`.
             full_fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
                                              family=fam)
-            host, user, event = _host_user_event(full_fields, fam, importer)
+            # WO-CS1: one common ECS field set, ADDED beside the per-tool columns. It is read first: the row's
+            # user is the one it types (D471).
+            ecs = normalize(fam, full_fields, None, importer=importer, table=path.name)
+            host, user, event = _host_user_event(full_fields, fam, importer, table=path.name, ecs=ecs)
             doc["fields"] = _stored_field_values(full_fields)
             if host:
                 doc["host"] = host.lower()
@@ -995,12 +1009,10 @@ def iter_index_doc_batches(
                 doc["user"] = user.lower()
             if event:
                 doc["event_id"] = str(event)
-            # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
-            ecs = normalize(fam, full_fields, None, importer=importer)
             if ecs:
                 doc["ecs"] = ecs
         else:
-            ecs = normalize(fam, fields, None, importer=importer)
+            ecs = normalize(fam, fields, None, importer=importer, table=path.name)
             if ecs:
                 doc["ecs"] = ecs
         # 4k.4: parsed time columns first (TimeCreated/ts/…), then row text;

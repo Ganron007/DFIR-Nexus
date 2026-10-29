@@ -79,7 +79,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # v16: `fields` holds column names, not paths (`subobjects: false`, D271).
     # v19: typed `fields.*` checked on populated values, tool date formats, `true`/`false` flags, `ts_raw` the time,
     # nfdump's summary its own record, keyword sub-fields to 8,191 characters (D399-D403). Rebuild before it.
-    assert INDEX_SCHEMA_VERSION == 19
+    # v20: MemProcFS read per table (an event from memory has its channel, code and host), a Windows event's user
+    # is the pinned map's whichever tool read it (D470/D471). Rebuild before it.
+    assert INDEX_SCHEMA_VERSION == 20
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

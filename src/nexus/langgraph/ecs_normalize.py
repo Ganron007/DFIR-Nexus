@@ -43,9 +43,18 @@ MAX_EVENT_DATA = None
 MAX_GENERIC = None
 
 
-def declared_host_user(family: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+def _family_entry(section: str, family: str, table: str = "") -> Any:
+    """A family's entry in one section of the map. A family mapped per table (`__tables__`, D470) gives the entry of
+    the row's table, by the tool's own file name, and an empty one for a table it does not list."""
+    entry = (load_ecs_map().get(section) or {}).get(str(family or "").strip().lower())
+    if isinstance(entry, dict) and "__tables__" in entry:
+        return (entry.get("__tables__") or {}).get(str(table or "").strip().lower()) or {}
+    return entry
+
+
+def declared_host_user(family: str, table: str = "") -> tuple[tuple[str, ...], tuple[str, ...]] | None:
     """The (host, user) columns a tool family's map names (`event_host_user`), or None when it names none (D287)."""
-    entry = (load_ecs_map().get("event_host_user") or {}).get(str(family or "").strip().lower())
+    entry = _family_entry("event_host_user", family, table)
     if not isinstance(entry, dict):
         return None
     return (tuple(str(c) for c in entry.get("host") or ()), tuple(str(c) for c in entry.get("user") or ()))
@@ -218,12 +227,14 @@ def normalize(
     record: dict[str, Any] | None = None,
     *,
     importer: bool = False,
+    table: str = "",
 ) -> dict[str, Any]:
     """The `ecs` sub-document for one row (empty dict when nothing maps).
 
     ``importer`` marks a row the importer pass wrote: its `host` and `user` are the importer's typed slots. In a
     tool's own output they are the tool's column names, and a family whose map names its host and user columns
-    (`event_host_user`) is read only through those (D287).
+    (`event_host_user`) is read only through those (D287). ``table`` is the name of the file the row came from: a
+    family mapped per table (D470) reads the row by that table's entry.
     """
     emap = load_ecs_map()
     if not emap:
@@ -282,14 +293,24 @@ def normalize(
             _apply_mapped(ecs, dst, ev[name])
             if str(ev[name]).strip() not in ("", "-"):
                 from_event.add(dst)
+        # D471: an event's user is the pinned map's `UserName`, read from the event's own data whichever tool read it;
+        # EvtxECmd's rendered `UserName` column (step 2) holds the same value. The table above names no user an event's
+        # map names, so the two never differ in form (4624's `BASE-RD-01$` beside the map's `shieldbase\BASE-RD-01$`).
+        from nexus.langgraph.evtx_templates import event_value
+
+        user = event_value(channel, event_id, "UserName", ev)
+        if user:
+            _apply_mapped(ecs, "ecs.user.name", user)
+            from_event.add("ecs.user.name")
 
     # 2. Column -> ECS for this family, plus the importer slot table.
     tables = emap.get("family_columns") or {}
-    fam_table = tables.get(fam) if isinstance(tables.get(fam), dict) else {}
+    fam_table = _family_entry("family_columns", fam, table)
+    fam_table = fam_table if isinstance(fam_table, dict) else {}
     path_transform = str(fam_table.get("__path_transform__") or "first")
     ingest_table = tables.get("ingest") if isinstance(tables.get("ingest"), dict) else {}
 
-    declared = None if importer else declared_host_user(fam)
+    declared = None if importer else declared_host_user(fam, table)
     file_path_parts: list[str] = []
     for table in (fam_table, ingest_table):
         for column, dst in table.items():

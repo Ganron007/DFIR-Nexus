@@ -24,12 +24,15 @@ version: 1
 # Every name used must appear in that event's xpaths in evtxecmd_maps.yaml.
 # WO-CS1b item 2: keyed by (channel, event id), so Sysmon's 1/3/11/13 apply only
 # to the Sysmon channel and Security's 4624 only to Security.
+#
+# D471 (2026-10-29): an event's user (`ecs.user.name`) is not named here. It is the pinned map's `UserName`
+# (`evtxecmd_maps.yaml`), read from the event's own data whichever tool read the event (`evtx_templates.event_value`),
+# for the 152 events the maps give one; this table names a user only for an event they do not (TaskScheduler 142).
 winlog_event_data:
   Security:
     "4624":
       TargetUserName: ecs.user.target.name
       TargetDomainName: ecs.user.target.domain
-      SubjectUserName: ecs.user.name
       LogonType: ecs.winlog.logon.type
       IpAddress: ecs.source.ip
       IpPort: ecs.source.port
@@ -52,7 +55,6 @@ winlog_event_data:
       NewProcessName: ecs.process.executable
       CommandLine: ecs.process.command_line
       NewProcessId: ecs.process.pid
-      SubjectUserName: ecs.user.name
       # real 4688 has no ParentProcessName; the parent comes from the row's own
       # ProcessId field only on the modern form, so it is not mapped.
   System:
@@ -74,7 +76,6 @@ winlog_event_data:
       ParentProcessId: ecs.process.parent.pid
       OriginalFileName: ecs.process.pe.original_file_name
       Hashes: ecs.process.hash
-      User: ecs.user.name
     "3":
       SourceIp: ecs.source.ip
       SourcePort: ecs.source.port
@@ -107,21 +108,12 @@ winlog_event_data:
       # client address after the URI: "<uri> (<domain\user> clientIP: <address>)".
       resourceUri: __winrm_shell_request__
   Microsoft-Windows-TaskScheduler/Operational:
-    "100":
-      UserContext: ecs.user.name
-    "102":
-      UserContext: ecs.user.name
-    "106":
-      UserContext: ecs.user.name
     "129":
       # "Task Scheduler launch task %1, instance %2 with process ID %3": the process the task started.
       Path: ecs.process.executable
       ProcessID: ecs.process.pid
-    "140":
-      UserName: ecs.user.name
-    "141":
-      UserName: ecs.user.name
     "142":
+      # The pinned maps name no user for 142 (100-106 and 140-141 have theirs there, D471).
       UserName: ecs.user.name
   # D232 (operator 2026-10-16): what a Defender event is about, from the event data Defender writes
   # (checked against real rows, tests/fixtures/defender_rows.json). Path lists the detected resources
@@ -131,11 +123,9 @@ winlog_event_data:
     "1116":
       Process Name: __defender_process__
       Path: __defender_resources__
-      Detection User: ecs.user.name
     "1117":
       Process Name: __defender_process__
       Path: __defender_resources__
-      Detection User: ecs.user.name
     "5007":
       New Value: __registry_assignment__
     "5013":
@@ -238,6 +228,42 @@ family_columns:
     ForeignPort: ecs.destination.port
     LocalAddr: ecs.source.ip
     LocalPort: ecs.source.port
+  # D470 (2026-10-29): MemProcFS writes one table per forensic CSV, and one column name can mean two things in two of
+  # them: `User` is a process's or a service's account in process.csv and services.csv, but a scheduled task's
+  # principal id in tasks.csv (`Author`, `Users`, `InteractiveUsers`). Its columns are therefore mapped per table, by
+  # MemProcFS's own file name (`__tables__`); a table not listed maps nothing. The names are MemProcFS 5.19's
+  # forensic/csv headers (T22, tests/fixtures/memprocfs_t22_rows.json).
+  memprocfs:
+    __tables__:
+      eventlog.csv:
+        Channel: ecs.winlog.channel
+        EventID: ecs.event.code
+        Provider: ecs.event.provider
+        RecordID: ecs.winlog.record_id
+        Computer: ecs.host.name
+      net.csv:
+        SrcAddr: ecs.source.ip
+        SrcPort: ecs.source.port
+        DstAddr: ecs.destination.ip
+        DstPort: ecs.destination.port
+        PID: ecs.process.pid
+        Process: ecs.process.name
+      process.csv:
+        PID: ecs.process.pid
+        PPID: ecs.process.parent.pid
+        Name: ecs.process.name
+        UserPath: ecs.process.executable
+        CommandLine: ecs.process.command_line
+        User: ecs.user.name
+      services.csv:
+        ServiceName: ecs.service.name
+        PID: ecs.process.pid
+        User: ecs.user.name
+      yara.csv:
+        PID: ecs.process.pid
+        ProcessName: ecs.process.name
+        CommandLine: ecs.process.command_line
+        User: ecs.user.name
   plaso:
     # WO-CS1b item 3: the real plaso l2tcsv columns (date/time/user/host/filename/
     # desc/source), not the invented data_type/message.
@@ -323,6 +349,15 @@ event_host_user:
   zeek: {host: [], user: [user]}
   # Hindsight (browser history): `host` is a cookie's or a visited URL's domain, not the machine.
   hindsight: {host: [], user: []}
+  # MemProcFS, per table (D470): an event row's host is the Computer it was logged on (its user is the event's own,
+  # from the pinned maps); a process, service or YARA row's user is the account it runs as; tasks.csv's `User` is a
+  # principal id. A table not listed names no host and no user.
+  memprocfs:
+    __tables__:
+      eventlog.csv: {host: [Computer], user: []}
+      process.csv: {host: [], user: [User]}
+      services.csv: {host: [], user: [User]}
+      yara.csv: {host: [], user: [User]}
 
 # ── Values a tool writes for "none" (D287) ──
 # Each from the producing tool's own source, pinned; such a value is not mapped and is not a row's host or user.
