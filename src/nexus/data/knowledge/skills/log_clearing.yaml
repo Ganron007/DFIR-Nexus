@@ -5,8 +5,6 @@ description: Detect clearing of Security/System/Application logs, audit-policy c
 trigger:
   families:
   - evtx
-  - sysmon
-  - security
   - hayabusa
   - services
   keywords:
@@ -27,8 +25,7 @@ steps:
   pivot: SubjectUserName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -67,8 +64,7 @@ steps:
   pivot: SubjectUserName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -107,8 +103,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -195,8 +190,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -282,8 +276,7 @@ steps:
   corroborate: gap in Sysmon event sequence
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -388,8 +381,7 @@ steps:
   look_for: USN journal deletion (destroys file-change history).
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

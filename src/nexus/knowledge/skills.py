@@ -15,6 +15,8 @@ import hashlib
 import json
 from typing import Any
 
+from nexus.knowledge.family_registry import families_intersect as families_intersect
+from nexus.knowledge.family_registry import family_names as family_names
 from nexus.knowledge.loader import get_skills, skill_sources, validate_skill
 
 _TECH_WEIGHT = 3
@@ -52,89 +54,6 @@ _LINUX_FAMILIES = frozenset({
     "sysdig", "audit", "wtmp", "btmp", "lastlog", "cron",
 })
 
-# ---------------------------------------------------------------------------
-# WO-KL2e 1: ONE family-name alias table.
-#
-# The reviewer's finding: the registry spells the importer lanes `ingest-*`
-# (`ingest-authlog`, `ingest-zeek`), while `iter_ingest_records` indexes
-# `record.source` and the index therefore emits the runtime's own names
-# (`authlog`, `zeek`). A skill declaring `ingest-*` can never match a real
-# case, and every place that compared families had its own idea of the mapping.
-#
-# This is that one table. It lives next to the selection code that needs it, so
-# `expand_families` (query validation), the skill matcher and the coverage test
-# all resolve a name the same way.
-# ---------------------------------------------------------------------------
-FAMILY_ALIASES: dict[str, tuple[str, ...]] = {
-    # runtime name -> the registry's ingest-* spelling(s)
-    "authlog": ("ingest-authlog",),
-    "syslog": ("ingest-syslog",),
-    "auditd": ("ingest-auditd",),
-    "audit": ("ingest-auditd", "auditd"),
-    "bash_history": ("ingest-bash_history",),
-    "cloudtrail": ("ingest-cloudtrail",),
-    "azure": ("ingest-azure",),
-    "m365": ("ingest-m365",),
-    "sentinel": ("ingest-sentinel",),
-    "elastic": ("ingest-elastic",),
-    "splunk": ("ingest-splunk",),
-    "zeek": ("ingest-zeek",),
-    "suricata": ("ingest-suricata",),
-    "netflow": ("ingest-netflow",),
-    "wireshark": ("ingest-wireshark",),
-    "tshark": ("ingest-wireshark", "tshark-flows"),
-    "nfdump": ("ingest-netflow",),
-    "amcache": ("ingest-amcache",),
-    "scheduled_tasks": ("ingest-scheduled_tasks", "tasks"),
-    "windows_registry": ("ingest-windows_registry", "registry", "recmd"),
-    "windows_services": ("ingest-windows_services", "services"),
-    "velociraptor": ("ingest-velociraptor",),
-    "volatility": ("ingest-volatility", "vol", "memory"),
-    "vol": ("ingest-volatility", "volatility", "memory"),
-    "memory": ("vol", "volatility", "ingest-volatility"),
-    "plaso": ("ingest-plaso",),
-    "kape": ("ingest-kape",),
-    "mftecmd": ("ingest-mftecmd", "mft"),
-    "prefetch": ("ingest-prefetch", "pecmd"),
-    "cybertriage": ("ingest-cybertriage",),
-    "security_onion": ("ingest-security_onion",),
-    "lnk": ("ingest-lnk", "lecmd", "jlecmd"),
-    "powershell": ("ingest-powershell",),
-}
-
-
-def family_names(family: str) -> set[str]:
-    """Every spelling that names the same evidence, for one family.
-
-    The runtime's name and the registry's `ingest-*` spelling resolve to the same
-    set, so a comparison on either side agrees. Unknown names pass through as
-    themselves, so a new family never silently loses its own name.
-    """
-    low = str(family or "").lower().strip()
-    if not low:
-        return set()
-    out = {low}
-    out.update(FAMILY_ALIASES.get(low, ()))
-    return out
-
-
-def families_intersect(case_fams: set[str], declared: set[str]) -> set[str]:
-    """The declared families the case's families actually name, alias-aware.
-
-    A case from `iter_ingest_records` carries `authlog`; a skill that names
-    `ingest-authlog` still matches, which is what the reviewer's probe
-    "CloudTrail-only -> the cloud skill" needs.
-    """
-    case_wide: set[str] = set()
-    for f in case_fams:
-        case_wide |= family_names(f)
-    hit: set[str] = set()
-    for d in declared:
-        if family_names(d) & case_wide:
-            hit.add(str(d))
-    return hit
-
-
 def skill_platforms(skill: dict[str, Any]) -> set[str]:
     """The platforms a skill applies to. Absent or unrecognised means ``any``."""
     raw = skill.get("platform") or skill.get("platforms")
@@ -166,11 +85,41 @@ def platform_compatible(skill: dict[str, Any], case_platforms: set[str]) -> bool
     return bool(declared & case_platforms)
 
 
+def _distinct_family_matches(
+    families: set[str], declared: set[str], family_groups: list[set[str]] | None = None,
+) -> int:
+    """Count producer-group/selector pairs without double-counting shared identities."""
+    from nexus.knowledge.family_registry import get_family_registry
+
+    registry = get_family_registry()
+    families = {registry.canonical_family(family) for family in families}
+    selectors = declared - _NON_DISCRIMINATIVE_FAMILIES
+    normalized = ([{registry.canonical_family(str(name)) for name in group if str(name).strip()}
+                   for group in family_groups] if family_groups is not None
+                  else [{family} for family in families])
+    groups = {tuple(sorted(group & families)) for group in normalized if group & families}
+    ordered = sorted(groups)
+    owners: dict[str, int] = {}
+
+    def assign(index: int, seen: set[str]) -> bool:
+        for selector in sorted(families_intersect(ordered[index], selectors)):
+            if selector in seen:
+                continue
+            seen.add(selector)
+            if selector not in owners or assign(owners[selector], seen):
+                owners[selector] = index
+                return True
+        return False
+
+    return sum(assign(index, set()) for index in range(len(ordered)))
+
+
 def _score_skill(
     skill: dict[str, Any],
     fams: set[str],
     kws: set[str],
     techs: set[str],
+    family_groups: list[set[str]] | None = None,
 ) -> tuple[int, list[str]]:
     """(score, why) for one skill against the case context."""
     trig = skill.get("trigger") or {}
@@ -190,7 +139,10 @@ def _score_skill(
         # resolved through the one table (KL2e 1), so a case whose index emitted
         # the runtime name still scores a skill that names the registry spelling.
         hit = families_intersect(fams, declared) - _NON_DISCRIMINATIVE_FAMILIES
-        score += _FAM_WEIGHT * len(hit)
+        # Several selectors can name the same producer. Count distinct case
+        # families rather than treating one event source as multiple signals.
+        matched_sources = _distinct_family_matches(fams, declared, family_groups)
+        score += _FAM_WEIGHT * matched_sources
         why.extend(f"family {f}" for f in sorted(hit))
     return score, why[:6]
 
@@ -219,6 +171,7 @@ def _surfaceable(
     kws: set[str],
     techs: set[str],
     fams: set[str],
+    family_groups: list[set[str]] | None = None,
 ) -> bool:
     """Whether a positive score is enough to hand this skill to an agent.
 
@@ -255,13 +208,14 @@ def _surfaceable(
     if primary and families_intersect(fams, primary):
         return True
     declared = {str(f).lower() for f in (trig.get("families") or [])} - _NON_DISCRIMINATIVE_FAMILIES
-    return len(families_intersect(fams, declared)) >= 2
+    return _distinct_family_matches(fams, declared, family_groups) >= 2
 
 
 def _ranked_skills(
     families: set[str] | list[str] | None = None,
     keywords: set[str] | list[str] | None = None,
     techniques: set[str] | list[str] | None = None,
+    family_groups: list[set[str]] | None = None,
 ) -> list[tuple[int, dict[str, Any], list[str]]]:
     """**The one ranking path.** Platform-filtered and surface-gated, then ranked.
 
@@ -277,6 +231,10 @@ def _ranked_skills(
     truncates, so both surfaces agree on the top-N as well as on the filter.
     """
     fams, kws, techs = _context(families, keywords, techniques)
+    if family_groups is not None:
+        # Measured groups are authoritative; a requested source with no indexed
+        # group is not evidence merely because it appeared in a plan.
+        fams = {str(f).lower().strip() for group in family_groups for f in group if str(f).strip()}
     case_platforms = infer_case_platform(fams)
     scored: list[tuple[int, dict[str, Any], list[str]]] = []
     for skill in get_skills():
@@ -287,8 +245,8 @@ def _ranked_skills(
         # trigger listed csv/jsonl - output formats every case has.
         if not platform_compatible(skill, case_platforms):
             continue
-        score, why = _score_skill(skill, fams, kws, techs)
-        if score > 0 and _surfaceable(skill, score, kws, techs, fams):
+        score, why = _score_skill(skill, fams, kws, techs, family_groups)
+        if score > 0 and _surfaceable(skill, score, kws, techs, fams, family_groups):
             scored.append((score, skill, why))
     scored.sort(key=lambda t: -t[0])
     return scored
@@ -299,6 +257,8 @@ def skills_for(
     keywords: set[str] | list[str] | None = None,
     techniques: set[str] | list[str] | None = None,
     limit: int = 6,
+    *,
+    family_groups: list[set[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Skills whose trigger block intersects the case context.
 
@@ -308,7 +268,7 @@ def skills_for(
     and surfacing filters are applied by :func:`_ranked_skills`, shared with
     :func:`retrieve_skills`.
     """
-    ranked = _ranked_skills(families, keywords, techniques)
+    ranked = _ranked_skills(families, keywords, techniques, family_groups)
     return [skill for _score, skill, _why in ranked[: max(1, limit)]]
 
 
@@ -358,6 +318,8 @@ def retrieve_skills(
     keywords: set[str] | list[str] | None = None,
     techniques: set[str] | list[str] | None = None,
     limit: int = 6,
+    *,
+    family_groups: list[set[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Runtime skill retrieval for spawned agents (WP 9.5).
 
@@ -369,7 +331,7 @@ def retrieve_skills(
 
         [{skill, title, version, score, why, citations, mitre}]
     """
-    ranked = _ranked_skills(families, keywords, techniques)
+    ranked = _ranked_skills(families, keywords, techniques, family_groups)
     out: list[dict[str, Any]] = []
     for score, skill, why in ranked[: max(1, limit)]:
         prov = skill_provenance(skill)

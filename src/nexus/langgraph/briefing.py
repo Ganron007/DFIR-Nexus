@@ -37,7 +37,8 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
     Imported non-host evidence (network/cloud/TI) is counted per source from
     the case artifact store so the briefing shows it as a family.
     """
-    from nexus.langgraph.query_pack import iter_extraction_files, iter_ingest_rows
+    from nexus.ingest.provenance import importer_leaves
+    from nexus.langgraph.query_pack import iter_extraction_files, iter_ingest_records
 
     out: dict[str, dict[str, Any]] = {}
     for path, _root, fam in iter_extraction_files(case_dir):
@@ -53,12 +54,17 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
         except OSError:
             continue
     ingest_sources: dict[str, int] = {}
-    for _n, fam, _text, _ts in iter_ingest_rows(case_dir):
+    ingest_importers: dict[str, set[str]] = {}
+    for _n, fam, _text, _ts, record in iter_ingest_records(case_dir):
         ingest_sources[fam] = ingest_sources.get(fam, 0) + 1
+        if record.get("importer_chains"):
+            ingest_importers.setdefault(fam, set()).update(importer_leaves(record["importer_chains"]))
     for fam, rows in ingest_sources.items():
         entry = out.setdefault(fam, {"files": 0, "rows": 0})
         entry["files"] += 1
         entry["rows"] += rows
+        if ingest_importers.get(fam):
+            entry["importer_classes"] = sorted(ingest_importers[fam])
     return out
 
 

@@ -78,9 +78,12 @@ class _Recording:
         return _Reply()
 
 
-def _supervisor_prompt(case: Path, policy: str) -> str:
+def _supervisor_prompt(case: Path, policy: str, monkeypatch) -> str:
     from nexus.modes.multi_agent import run_mode3
+    from tests._measured_index import measured_index
 
+    # Mode 3 selects knowledge by the index's measured evidence groups and refuses to run without them (TA-5.1).
+    measured_index(monkeypatch, {"evtx": 3})
     model = _Recording()
     run_mode3(case, "q", families=[("evtx", 3)], model=model, es_ok=True, context_policy=policy)
     prompts = [m for m in model.calls if "You supervise a concurrent" in m[0]["content"]]
@@ -88,13 +91,13 @@ def _supervisor_prompt(case: Path, policy: str) -> str:
     return prompts[0][1]["content"]
 
 
-def test_an_informed_mode3_run_plans_with_the_prior_analysis(tmp_path):
-    prompt = _supervisor_prompt(_case(tmp_path), "informed")
+def test_an_informed_mode3_run_plans_with_the_prior_analysis(tmp_path, monkeypatch):
+    prompt = _supervisor_prompt(_case(tmp_path), "informed", monkeypatch)
     assert "Another run's DRAFT" in prompt and "not evidence" in prompt.lower()
 
 
-def test_an_independent_mode3_run_does_not(tmp_path):
-    assert "Another run's DRAFT" not in _supervisor_prompt(_case(tmp_path), "independent")
+def test_an_independent_mode3_run_does_not(tmp_path, monkeypatch):
+    assert "Another run's DRAFT" not in _supervisor_prompt(_case(tmp_path), "independent", monkeypatch)
 
 
 def test_mode2_workers_are_handed_the_cases_top_leads(tmp_path):

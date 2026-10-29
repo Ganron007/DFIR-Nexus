@@ -223,6 +223,16 @@ class _StubModel:
 
 def test_one_audit_writer_per_run(tmp_path, monkeypatch):
     import nexus.audit as audit_mod
+    from nexus.langgraph import backbone
+
+    real_backbone_call = backbone.backbone_call
+    def with_measured_groups(name, *args, **kwargs):
+        if name == "index_mappings":
+            return {"family_rows": {"evtx": 3}, "evidence_groups": [
+                {"source": "evtx", "families": ["evtx"], "importers": [], "rows": 3},
+            ]}
+        return real_backbone_call(name, *args, **kwargs)
+    monkeypatch.setattr(backbone, "backbone_call", with_measured_groups)
 
     created = []
     real = audit_mod.AuditWriter

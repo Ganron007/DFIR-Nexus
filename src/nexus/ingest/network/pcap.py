@@ -120,4 +120,5 @@ class PcapImporter(Importer):
             convert_pcap_to_json(
                 path, converted, timeout=timeout,
             )
-            yield from WiresharkImporter().parse(converted)
+            importer = WiresharkImporter()
+            yield from importer.with_provenance(importer.parse(converted))

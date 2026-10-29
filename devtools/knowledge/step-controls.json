@@ -690,7 +690,7 @@
    },
    "control_total": 5,
    "kind": "search",
-   "query_sha": "6d1d4a49346daa8d"
+   "query_sha": "004c3a22195e1c92"
   },
   "skill:cloud_identity_forensics/audit_trail_reconstruction": {
    "case_total": 0,
@@ -703,7 +703,7 @@
    },
    "control_total": 23981,
    "kind": "aggregate",
-   "query_sha": "c10ef300515b10d3"
+   "query_sha": "aa4cf4308d39eec6"
   },
   "skill:cloud_identity_forensics/data_access_and_exfil": {
    "case_total": 0,
@@ -715,7 +715,7 @@
    },
    "control_total": 1177,
    "kind": "search",
-   "query_sha": "e08ce3952ea4ea1b"
+   "query_sha": "6a7d150b42bca173"
   },
   "skill:cloud_identity_forensics/persistence_and_credentials": {
    "case_total": 0,
@@ -727,7 +727,7 @@
    },
    "control_total": 3,
    "kind": "search",
-   "query_sha": "c1da9519d8179bd5"
+   "query_sha": "ad760c44eadef820"
   },
   "skill:cloud_identity_forensics/unusual_authentication": {
    "case_total": 0,
@@ -739,7 +739,7 @@
    },
    "control_total": 4,
    "kind": "search",
-   "query_sha": "97d53fabc7d666cd"
+   "query_sha": "5149e1a3c6dfe073"
   },
   "skill:container_forensics/exec_and_escape": {
    "case_total": 0,
@@ -953,7 +953,7 @@
    "case_total": 0,
    "control_total": 0,
    "kind": "search",
-   "query_sha": "aed55540439e4961"
+   "query_sha": "535baba27e1f6d4c"
   },
   "skill:email_phishing/delivery_artifact": {
    "case_total": 10,
@@ -983,13 +983,13 @@
    "case_total": 0,
    "control_total": 0,
    "kind": "search",
-   "query_sha": "8d8def1f37076786"
+   "query_sha": "43bd5fb6805aa797"
   },
   "skill:email_phishing/sender_authentication": {
    "case_total": 0,
    "control_total": 0,
    "kind": "search",
-   "query_sha": "50b374fecb19b0e1"
+   "query_sha": "7dbf14bd1edd4e3e"
   },
   "skill:execution_anomaly/artifact_cross_validation": {
    "case_total": 270529,

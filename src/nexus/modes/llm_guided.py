@@ -19,7 +19,6 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -146,19 +145,10 @@ def _rag_methodology_for_proposal(families: set[str]) -> tuple[str, list[dict[st
 
 
 def _playbook_match(pb: dict, families: set[str]) -> int:
-    """How strongly a playbook applies to the families: 2 declared or a query term, 1 named, 0 not.
+    """A playbook applies only when its declared families match the evidence."""
+    from nexus.knowledge.family_registry import families_intersect
 
-    A family named inside another word is not a mention: "wer" in "PowerShell" and "web" in
-    "webshell" matched before, so a Windows case got the Linux and webshell playbooks (D172).
-    """
-    declared = {str(f).lower() for f in (pb.get("families") or []) if f}
-    terms = {str(t).lower() for t in (pb.get("query_terms") or []) if t}
-    if families & (declared | terms):
-        return 2
-    text = f"{pb.get('name', '')} {pb.get('description', '')}".lower()
-    if any(re.search(rf"\b{re.escape(fam)}\b", text) for fam in families):
-        return 1
-    return 0
+    return 2 if families_intersect(families, pb.get("families") or []) else 0
 
 
 def _playbook_block(pb: dict, slug: str) -> str:
@@ -380,12 +370,15 @@ def _propose_with_model(
 
     intake = load_case_intake(case_dir)
     families = sorted({h.get("family", "?") for h in hits})
+    from nexus.knowledge.family_registry import hit_evidence_families
+
+    knowledge_families = hit_evidence_families(hits)
 
     # WP 2.10: RAG methodology for hit families
     rag_context, rag_provenance = _rag_methodology_for_proposal(set(families))
 
     # WP 2.11: Playbook caveats + Identify steps for hit families
-    playbook_context = _playbook_context_for_families(set(families))
+    playbook_context = _playbook_context_for_families(knowledge_families)
 
     # Framework lenses (registry-grounded): ATT&CK detections for the hit
     # families, the Insider Threat Matrix lens, and the AI/malware registries.
@@ -398,7 +391,7 @@ def _propose_with_model(
         from nexus.langgraph.query_pack import playbook_techniques_for_families
 
         techs = (
-            set(playbook_techniques_for_families(set(families))) if families else set()
+            set(playbook_techniques_for_families(knowledge_families)) if knowledge_families else set()
         )
         attack_block = attack_context_for(
             attack_packs_for(set(families), techs, limit=3), cap=3

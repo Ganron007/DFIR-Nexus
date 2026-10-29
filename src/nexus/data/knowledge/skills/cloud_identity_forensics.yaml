@@ -51,12 +51,18 @@ steps:
   es_source:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
   source: families cloudtrail, azure, m365, suzaku
   kind: aggregate
   search:
@@ -71,12 +77,18 @@ steps:
   es:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
   es_aggs:
     by:
       terms:
@@ -98,12 +110,18 @@ steps:
   es_source:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
   source: families cloudtrail, azure, m365, suzaku
   search:
     families:
@@ -129,12 +147,18 @@ steps:
   es:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
       - bool:
           should:
           - bool:
@@ -191,12 +215,18 @@ steps:
   es_source:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
   source: families cloudtrail, azure, m365, suzaku
   search:
     families:
@@ -225,12 +255,18 @@ steps:
   es:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
       - bool:
           should:
           - bool:
@@ -298,12 +334,18 @@ steps:
   es_source:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
   source: families cloudtrail, azure, m365, suzaku
   search:
     families:
@@ -328,12 +370,18 @@ steps:
   es:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
       - bool:
           should:
           - bool:
@@ -394,12 +442,18 @@ steps:
   es_source:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
   source: families cloudtrail, azure, m365, suzaku
   search:
     families:
@@ -422,12 +476,18 @@ steps:
   es:
     bool:
       filter:
-      - terms:
-          family:
-          - cloudtrail
-          - azure
-          - m365
-          - suzaku
+      - bool:
+          should:
+          - terms:
+              family:
+              - cloudtrail
+              - azure
+              - m365
+              - suzaku
+          - terms:
+              importer_leaf:
+              - nexus.ingest.cloud.m365.M365Importer
+          minimum_should_match: 1
       - bool:
           should:
           - bool:

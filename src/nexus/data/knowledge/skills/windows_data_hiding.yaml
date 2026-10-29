@@ -38,8 +38,7 @@ steps:
   corroborate: a file present in a VSS snapshot but absent from the live volume proves deletion
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -219,14 +218,13 @@ steps:
           - rbcmd
 - name: timestomp_detection
   query: $SI OR $FN OR $STANDARD_INFORMATION OR 0x10 OR 0x30
-  look_for: >-
-    Compare the creation times on the same MFT record. MFTECmd's SI<FN flag means the $SI Created0x10 time
+  look_for: Compare the creation times on the same MFT record. MFTECmd's SI<FN flag means the $SI Created0x10 time
     precedes the $FN Created0x30 time; it is a candidate signal, not proof that an attacker changed the time or
-    that the $SI date is the file's age. MFTECmd's uSecZeros flag is true when either $SI Created0x10 or
-    LastModified0x10 has a zero Millisecond component; do not read it as proof that every timestamp is rounded
-    to a whole second. MFTECmd's Copied flag means $SI ContentModifiedOn precedes $SI CreatedOn; consider this
-    parser heuristic as an alternative timestamp pattern, not an automatic benign verdict. Keep claimed $SI time
-    separate from later independent journal or execution evidence.
+    that the $SI date is the file's age. MFTECmd's uSecZeros flag is true when either $SI Created0x10 or LastModified0x10
+    has a zero Millisecond component; do not read it as proof that every timestamp is rounded to a whole second.
+    MFTECmd's Copied flag means $SI ContentModifiedOn precedes $SI CreatedOn; consider this parser heuristic as
+    an alternative timestamp pattern, not an automatic benign verdict. Keep claimed $SI time separate from later
+    independent journal or execution evidence.
   pivot: FileName
   corroborate: correlate file reference and path to USN/$LogFile records and independent execution evidence; a USN
     BasicInfoChange reason alone does not identify which attribute or timestamp changed

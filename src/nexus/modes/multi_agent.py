@@ -1041,6 +1041,7 @@ def _seat_with_model(
     audit: Any = None,
     prior_context: str = "",
     case_facts: str = "",
+    evidence_groups: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One seat's turn. ``prior_context`` is what an ``informed`` run adds, labelled as not evidence;
     ``case_facts`` is the run's deterministic case facts (D467), the same text every mode is given."""
@@ -1071,11 +1072,17 @@ def _seat_with_model(
     # skills are used as today.
     lead_extra = spawn.get("lead_extra") or {}
     techniques = [str(t) for t in (lead_extra.get("attack_ids") or []) if t]
+    family_groups = None
+    if evidence_groups is not None:
+        from nexus.knowledge.family_registry import selection_groups
+
+        family_groups = selection_groups(evidence_groups, [family] if family else [])
     skill_refs = _retrieve_skill_refs(
         [family] if family else [],
         _question_keywords(objective),
         techniques=techniques,
         limit=8,
+        family_groups=family_groups,
     )
     seat_order = WorkOrder(
         order_id="seat",
@@ -2104,7 +2111,9 @@ def run_mode3(
         sink.emit(new_event(run_id, "case.facts_failed", actor="system", detail=str(exc)[:200]))
 
     indexed = list(families or [])
-    if not indexed:
+    evidence_groups = None
+    requires_groups = model is not None and seat_fn is None
+    if not indexed or requires_groups:
         try:
             from nexus.langgraph.backbone import backbone_call
 
@@ -2114,11 +2123,27 @@ def run_mode3(
                 case_id=case_dir.name,
                 case_dir=case_dir,
             )
-            indexed = [
-                (str(name), int(rows or 0))
-                for name, rows in (index.get("family_rows") or {}).items()
-            ]
-        except Exception:  # noqa: BLE001
+            if index.get("error"):
+                raise RuntimeError(str(index["error"]))
+            evidence_groups = index.get("evidence_groups")
+            if requires_groups and not isinstance(evidence_groups, list):
+                raise RuntimeError("index mappings did not return measured evidence groups")
+            if evidence_groups is not None:
+                from nexus.knowledge.family_registry import selection_groups
+
+                selection_groups(evidence_groups)
+            if not indexed:
+                indexed = [
+                    (str(name), int(rows or 0))
+                    for name, rows in (index.get("family_rows") or {}).items()
+                ]
+        except Exception as exc:  # noqa: BLE001
+            if requires_groups:
+                record["status"] = "failed"
+                record["stop_reason"] = "evidence_group_unavailable"
+                record["error"] = str(exc)
+                _persist(case_dir, run_id, record)
+                return record
             log.debug("mode3 index_mappings failed", exc_info=True)
             indexed = []
 
@@ -2301,6 +2326,7 @@ def run_mode3(
                 spawn, case_dir=case_dir, model=model, run_id=run_id,
                 sink=sink, board_digest=str(payload.get("board_digest") or ""),
                 superstep=step, audit=run_audit, prior_context=prior_context, case_facts=case_facts,
+                evidence_groups=evidence_groups,
             )
         else:
             entry = _fallback_entry(spawn, step)

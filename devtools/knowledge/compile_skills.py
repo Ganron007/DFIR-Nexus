@@ -35,8 +35,8 @@ from step_search import (  # noqa: E402
 REPO = HERE.parents[1]
 SKILLS_DIR = REPO / "src" / "nexus" / "data" / "knowledge" / "skills"
 KINDS = ("search", "aggregate", "procedure")
-#: The families the index records for event-log rows (EvtxECmd's parse and Hayabusa's read-back, D232).
-EVENT_FAMILIES = ["evtxecmd", "hayabusa"]
+#: A Windows-event requirement describes the evidence, not the parser that read it.
+EVENT_FAMILIES = ["kind:evtx"]
 
 
 def search_families(search: dict[str, Any]) -> list[str]:

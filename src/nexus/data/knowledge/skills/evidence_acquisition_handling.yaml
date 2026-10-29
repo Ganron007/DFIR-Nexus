@@ -8,7 +8,6 @@ trigger:
   families:
   - vol
   - kape
-  - ingest
   keywords:
   - acquisition
   - image

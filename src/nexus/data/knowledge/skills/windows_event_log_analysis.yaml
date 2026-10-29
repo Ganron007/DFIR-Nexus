@@ -11,8 +11,6 @@ trigger:
   - hayabusa
   - chainsaw
   - suzaku
-  - security
-  - sysmon
   - deepbluecli
   - zircolite
   keywords:
@@ -42,8 +40,7 @@ steps:
   corroborate: creator-process trees reveal the launch chain (who spawned the suspicious child)
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -121,8 +118,7 @@ steps:
   corroborate: type-3/type-10 logons from unexpected sources precede lateral movement
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -174,8 +170,7 @@ steps:
   pivot: AccountName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -224,8 +219,7 @@ steps:
   pivot: ServiceName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -286,8 +280,7 @@ steps:
   pivot: ShareName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -340,8 +333,7 @@ steps:
   pivot: ServiceName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -416,8 +408,7 @@ steps:
   pivot: Channel
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -485,8 +476,7 @@ steps:
   pivot: TargetUserName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -544,8 +534,7 @@ steps:
   pivot: EventID
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

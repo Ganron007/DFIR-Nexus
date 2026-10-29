@@ -10,7 +10,6 @@ trigger:
   - lnk
   - jumplist
   - mftecmd
-  - recent
   keywords:
   - lnk
   - shortcut

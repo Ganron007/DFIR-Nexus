@@ -8,8 +8,8 @@ trigger:
   families:
   - sysdig
   - syslog
-  - csv
-  - jsonl
+  - generic_csv
+  - generic_jsonl
   keywords:
   - container
   - docker

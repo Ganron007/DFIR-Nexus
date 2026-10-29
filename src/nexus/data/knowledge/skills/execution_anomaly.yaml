@@ -7,7 +7,6 @@ trigger:
   - prefetch
   - amcache
   - evtx
-  - sysmon
   - pecmd
   - mft
   - appcompat
@@ -31,8 +30,7 @@ steps:
   pivot: ExecutableName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -84,8 +82,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -230,8 +227,7 @@ steps:
   pivot: ParentImage
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -424,8 +420,7 @@ steps:
   pivot: Image
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -518,8 +513,7 @@ steps:
   pivot: SourceImage
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -578,8 +572,7 @@ steps:
   corroborate: prefetch/amcache entry in user-writable path
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

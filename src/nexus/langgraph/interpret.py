@@ -126,7 +126,9 @@ def _matched_steps(
     return picked
 
 
-def _playbook_caveats(family: str, limit: int = _MAX_CAVEATS) -> tuple[list[str], list[str]]:
+def _playbook_caveats(
+    family: str, limit: int = _MAX_CAVEATS, *, family_selectors: set[str] | None = None,
+) -> tuple[list[str], list[str]]:
     """(caveats, identify-steps) from playbooks matched to the hit family."""
     if not family:
         return [], []
@@ -136,7 +138,7 @@ def _playbook_caveats(family: str, limit: int = _MAX_CAVEATS) -> tuple[list[str]
         return [], []
     caveats: list[str] = []
     identify: list[str] = []
-    for pb in _family_matched_playbooks({family})[:4]:
+    for pb in _family_matched_playbooks(family_selectors or {family})[:4]:
         for c in (pb.get("caveats") or []):
             c = str(c).strip()
             if c and c not in caveats:
@@ -183,6 +185,7 @@ def _match_reasons(
     family: str,
     keywords: set[str],
     techniques: list[str],
+    family_selectors: set[str] | None = None,
 ) -> list[str]:
     """Why this skill matched — technique / keyword / family (WP 4j.2)."""
     trig = skill.get("trigger") or {}
@@ -191,12 +194,16 @@ def _match_reasons(
         reasons.append(f"technique {t}")
     for k in sorted(keywords & {str(x).lower() for x in (trig.get("keywords") or [])}):
         reasons.append(f"keyword {k}")
-    if family and family in {str(f).lower() for f in (trig.get("families") or [])}:
-        reasons.append(f"family {family}")
+    from nexus.knowledge.family_registry import families_intersect
+
+    for match in sorted(families_intersect(family_selectors or {family}, trig.get("families") or [])):
+        reasons.append(f"family {match}")
     return reasons[:6]
 
 
-def _playbook_triggers(family: str, limit: int = 3, *, case_dir: Path | None = None) -> list[str]:
+def _playbook_triggers(
+    family: str, limit: int = 3, *, case_dir: Path | None = None, family_selectors: set[str] | None = None,
+) -> list[str]:
     """'Why this pattern is suspicious' bullets from family-matched playbooks.
 
     IC-14: a trigger that names events the case's index does not hold is not about this case and is left
@@ -211,7 +218,7 @@ def _playbook_triggers(family: str, limit: int = 3, *, case_dir: Path | None = N
     except Exception:  # noqa: BLE001
         return []
     out: list[str] = []
-    for pb in _family_matched_playbooks({family})[:4]:
+    for pb in _family_matched_playbooks(family_selectors or {family})[:4]:
         for t in (pb.get("triggers") or []):
             t = str(t).strip()
             if not t or t in out:
@@ -250,6 +257,7 @@ def _learn(
     matched: list[dict[str, Any]],
     caveats: list[str],
     case_dir: Path | None = None,
+    family_selectors: set[str] | None = None,
 ) -> dict[str, Any]:
     """Plain-language "why this matters" — WP 4j.4 learning layer.
 
@@ -259,7 +267,7 @@ def _learn(
     description + caveats. Deterministic; RAG is appended by the caller.
     """
     tech_notes = _technique_notes(techniques)
-    pb_triggers = _playbook_triggers(family, case_dir=case_dir)
+    pb_triggers = _playbook_triggers(family, case_dir=case_dir, family_selectors=family_selectors)
 
     headline = ""
     if tech_notes:
@@ -341,16 +349,21 @@ def interpret_hit(
     """
     hit = hit if isinstance(hit, dict) else {}
     family = str(hit.get("family") or "").lower().strip()
+    from nexus.knowledge.family_registry import get_family_registry
+
+    importers = hit.get("importer_leaf") if isinstance(hit.get("importer_leaf"), list) else []
+    family_selectors = get_family_registry().evidence_group(family, importers)
     # Technique extraction never reads a path segment (V10): a folder or file
     # name is the key, not evidence.
     techniques = extract_techniques(_hit_technique_text(hit))
     keywords = _hit_keywords(hit)
 
     matched = skills_for(
-        families={family} if family else None,
+        families=family_selectors or None,
         keywords=keywords,
         techniques=techniques,
         limit=max(1, max_skills),
+        family_groups=[family_selectors] if family_selectors else None,
     )
 
     skills_out: list[dict[str, Any]] = []
@@ -405,7 +418,7 @@ def interpret_hit(
             # WP 4j.2: alert -> skill linkage. ``why`` explains the match;
             # ``confirm`` are the steps that would confirm the alert;
             # ``refute`` is what absence of the procedure would mean.
-            "why": _match_reasons(skill, family, keywords, techniques),
+            "why": _match_reasons(skill, family, keywords, techniques, family_selectors),
             "confidence": (
                 skill.get("confidence_rules")
                 if isinstance(skill.get("confidence_rules"), dict)
@@ -416,7 +429,7 @@ def interpret_hit(
             "matched_steps": step_rows,
         })
 
-    pb_caveats, pb_identify = _playbook_caveats(family)
+    pb_caveats, pb_identify = _playbook_caveats(family, family_selectors=family_selectors)
     for c in pb_caveats:
         if c not in caveats:
             caveats.append(c)
@@ -453,7 +466,7 @@ def interpret_hit(
         meaning = f"{family} parser row — no skill covers this family yet."
 
     # WP 4j.4: plain-language "why this matters" teaching block.
-    learn = _learn(family, techniques, matched, caveats, case_dir=case_dir)
+    learn = _learn(family, techniques, matched, caveats, case_dir=case_dir, family_selectors=family_selectors)
 
     out: dict[str, Any] = {
         "meaning": meaning[:400],

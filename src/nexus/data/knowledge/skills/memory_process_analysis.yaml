@@ -9,7 +9,6 @@ trigger:
   - memprocfs
   - memory
   - evtx
-  - sysmon
   keywords:
   - memory
   - volatility
@@ -122,8 +121,7 @@ steps:
   corroborate: IIS logs showing POSTs to the rogue page in the same window
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

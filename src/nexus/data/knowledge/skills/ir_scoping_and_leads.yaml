@@ -7,7 +7,6 @@ description: 'How a real examiner sequences an intrusion case: start from live-r
 trigger:
   families:
   - evtx
-  - sysmon
   - hayabusa
   - mft
   - prefetch

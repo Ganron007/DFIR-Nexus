@@ -4,13 +4,9 @@ description: 'Analyze network telemetry like an examiner: profile sessions by du
   congruence, and periodicity — separating interactive attacker sessions from beacon callbacks and bulk transfers.'
 trigger:
   families:
-  - netstat
+  - kind:network
   - zeek
-  - conn
-  - dns
   - pcap
-  - firewall
-  - proxy
   - nfdump
   - tshark-flows
   - suricata
@@ -279,7 +275,7 @@ caveats:
 - Jittered beacons defeat interval-only detection — use variance analysis and byte-size uniformity together.
 primary_families:
 - zeek
-- netstat
+- kind:network
 - tshark-flows
 - nfdump
 - suricata

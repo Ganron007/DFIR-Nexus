@@ -27,8 +27,7 @@ packs:
 - id: ba-exec-user-writable
   name: Execution from a user-writable path
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-exec-user-writable
@@ -139,8 +138,7 @@ packs:
 - id: ba-exec-temp
   name: Execution from a temporary directory
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-exec-temp
@@ -229,8 +227,7 @@ packs:
 - id: ba-exec-programdata
   name: Execution from ProgramData
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-exec-programdata
@@ -326,8 +323,7 @@ packs:
 - id: ba-exec-script-host
   name: Script host executing a script
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-exec-script-host
@@ -471,8 +467,7 @@ packs:
 - id: ba-exec-encoded-command
   name: Encoded or hidden command line
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-exec-encoded-command
@@ -592,8 +587,7 @@ packs:
 - id: ba-exec-lolbin-download
   name: LOLBin used to fetch a remote payload
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-exec-lolbin-download
@@ -698,8 +692,7 @@ packs:
 - id: ba-persist-service-temp
   name: Service binary in a user-writable path
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: car
     id: CAR-2014-02-001
@@ -835,8 +828,7 @@ packs:
 - id: ba-persist-service-new
   name: Service created or its ImagePath changed
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-persist-service-new
@@ -908,8 +900,7 @@ packs:
 - id: ba-persist-run-usbable
   name: Run key pointing at a user-writable path
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - recmd
   citation:
     type: authored
@@ -1007,8 +998,7 @@ packs:
 - id: ba-persist-runonce
   name: RunOnce key written
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - recmd
   citation:
     type: authored
@@ -1075,8 +1065,7 @@ packs:
 - id: ba-persist-task-script-host
   name: Scheduled task running a script host or encoded command
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - scheduled_tasks
   citation:
     type: car
@@ -1303,8 +1292,7 @@ packs:
 - id: ba-persist-wmi-subscription
   name: WMI event subscription persistence
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - wmi_parser
   citation:
     type: authored
@@ -1397,8 +1385,7 @@ packs:
 - id: ba-persist-startup-folder
   name: Startup folder executable
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - mftecmd
   citation:
     type: car
@@ -1515,8 +1502,7 @@ packs:
 - id: ba-cred-lsass-nonsystem
   name: Non-system process accessing lsass
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-cred-lsass-nonsystem
@@ -1612,8 +1598,7 @@ packs:
 - id: ba-cred-lsass-path
   name: lsass referenced from a user-writable path
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - mftecmd
   citation:
     type: car
@@ -1711,8 +1696,7 @@ packs:
 - id: ba-cred-dcsync-nondc
   name: Replication rights used off a domain controller
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-cred-dcsync-nondc
@@ -1781,8 +1765,7 @@ packs:
 - id: ba-cred-new-local-admin
   name: Account added to the local administrators group
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-cred-new-local-admin
@@ -1836,8 +1819,7 @@ packs:
 - id: ba-cred-logon-type3
   name: Network logon to a workstation
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-cred-logon-type3
@@ -1934,8 +1916,7 @@ packs:
 - id: ba-cred-rdp-firstseen
   name: RDP session from a source not seen before
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-cred-rdp-firstseen
@@ -1987,8 +1968,7 @@ packs:
 - id: ba-cred-kerberoast
   name: Service ticket requested with RC4
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-cred-kerberoast
@@ -2056,8 +2036,7 @@ packs:
 - id: ba-eva-log-cleared
   name: Security log cleared
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-eva-log-cleared
@@ -2130,8 +2109,7 @@ packs:
 - id: ba-eva-audit-policy
   name: Audit policy changed
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-eva-audit-policy
@@ -2176,8 +2154,7 @@ packs:
 - id: ba-eva-defender-exclusion
   name: Defender protection disabled or exclusions added
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - recmd
   citation:
     type: authored
@@ -2296,8 +2273,7 @@ packs:
 - id: ba-eva-service-stopped
   name: Security service stopped
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-eva-service-stopped
@@ -2403,8 +2379,8 @@ packs:
       source.'
   techniques:
   - T1070.006
-  rationale: MFTECmd SI<FN means same-record $SI Created0x10 precedes $FN Created0x30. uSecZeros only checks for a
-    zero Millisecond component on $SI creation or last-modified time; neither flag proves malicious backdating.
+  rationale: MFTECmd SI<FN means same-record $SI Created0x10 precedes $FN Created0x30. uSecZeros only checks for
+    a zero Millisecond component on $SI creation or last-modified time; neither flag proves malicious backdating.
     Treat this analytic as a lead and inspect its source facts and independent chronology.
   source_fact_ids:
   - mftecmd.si_fn
@@ -2517,8 +2493,7 @@ packs:
 - id: ba-lat-smb-admin-share
   name: Administrative share accessed remotely
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-lat-smb-admin-share
@@ -2582,8 +2557,7 @@ packs:
 - id: ba-lat-remote-service-create
   name: Service created by a remote logon
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-lat-remote-service-create
@@ -2730,8 +2704,7 @@ packs:
 - id: ba-lat-wmi-exec
   name: WMI used to start a process
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-lat-wmi-exec
@@ -2866,8 +2839,7 @@ packs:
 - id: ba-col-powershell-transcript
   name: PowerShell script block logging with a download or exec
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-col-powershell-transcript
@@ -2949,8 +2921,7 @@ packs:
 - id: ba-col-archive-staging
   name: Archive created in a staging directory
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   - mftecmd
   citation:
     type: authored
@@ -3072,8 +3043,7 @@ packs:
 - id: ba-lat-wmi-process-create
   name: Process creation via WMI command execution
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: car
     id: CAR-2016-03-002
@@ -3152,8 +3122,7 @@ packs:
 - id: ba-pers-schtask-reg-mod
   name: Scheduled task creation or modification via registry or schtasks
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: car
     id: CAR-2015-04-002
@@ -3264,8 +3233,7 @@ packs:
 - id: ba-c2-living-off-trusted-sites
   name: C2 and payload transfer via living off trusted sites
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: authored
     id: authored:ba-c2-living-off-trusted-sites
@@ -3426,8 +3394,7 @@ packs:
 - id: ba-priv-printspooler-exploit
   name: Print Spooler driver exploitation (PrintNightmare)
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: car
     id: CAR-2021-01-004
@@ -3516,8 +3483,7 @@ packs:
 - id: ba-cred-lsass-minidump-write
   name: LSASS memory dumping via MiniDumpWriteDump or comsvcs
   families:
-  - evtxecmd
-  - hayabusa
+  - kind:evtx
   citation:
     type: car
     id: CAR-2019-07-002
@@ -3656,8 +3622,8 @@ packs:
   techniques:
   - T1070.006
   rationale: USN BasicInfoChange covers attribute changes as well as timestamp changes, and its reason flags can
-    accumulate while a file is open. This analytic identifies a candidate journal row; it does not establish a
-    timestamp edit by itself. Correlate its record time and file identity with $SI/$FN and independent evidence.
+    accumulate while a file is open. This analytic identifies a candidate journal row; it does not establish a timestamp
+    edit by itself. Correlate its record time and file identity with $SI/$FN and independent evidence.
   source_fact_ids:
   - usn.basic_info_change
   - usn.reason_accumulates

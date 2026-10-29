@@ -124,6 +124,31 @@ def test_the_same_run_keeps_the_incremental_pass(indexer, monkeypatch):
     assert recreated == ["CASE-RUN"], "only the top-of-call ensure, no recreate"
 
 
+def test_new_provenance_reindexes_the_store_without_treating_ledger_as_evidence(indexer, monkeypatch):
+    from nexus.ingest.provenance import LEDGER_REL
+
+    case_index, case, _ = indexer
+    store = "ingest/artifacts.jsonl"
+    _prior(case, source="RUN-SAME/extractions", mtimes={store: 1.0}, docs=1)
+    fake = _FakeClient(docs=1)
+    monkeypatch.setattr(case_index, "_client", lambda: fake)
+    monkeypatch.setattr(case_index, "_source_extractions_text", lambda case_dir, run_id="": "RUN-SAME/extractions")
+    monkeypatch.setattr(case_index, "_index_file_mtimes", lambda case_dir, run_id="": {store: 1.0, LEDGER_REL: 2.0})
+    monkeypatch.setattr(case_index, "_index_file_digests", lambda case_dir, run_id="": {store: "old", LEDGER_REL: "new"})
+    selected = []
+
+    def batches(case_dir, *args, **kwargs):
+        selected.append(kwargs.get("only_files"))
+        return iter(())
+
+    monkeypatch.setattr(case_index, "iter_index_doc_batches", batches)
+    meta = case_index.index_case(case, incremental=True, run_id="RUN-SAME")
+    deletes = [call[2] for call in fake.calls if call[0] == "DELETE_BY_QUERY"]
+    assert deletes == [{"query": {"terms": {"file": [store]}}}]
+    assert selected == [{store}]
+    assert meta["provenance_changed"] is True
+
+
 def test_an_empty_resolution_still_refuses_to_drop_the_index(indexer, monkeypatch):
     case_index, case, recreated = indexer
     _prior(case, source="RUN-OLD/extractions", mtimes={"n.csv": 1.0}, docs=1)

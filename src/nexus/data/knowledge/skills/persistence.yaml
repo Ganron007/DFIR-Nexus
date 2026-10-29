@@ -8,10 +8,8 @@ trigger:
   families:
   - registry
   - evtx
-  - sysmon
   - services
   - scheduled_tasks
-  - security
   keywords:
   - persist
   - autostart
@@ -32,8 +30,7 @@ steps:
   pivot: ValueName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - recmd
   es_source:
     bool:
@@ -103,8 +100,7 @@ steps:
   pivot: ImagePath
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -171,8 +167,7 @@ steps:
   pivot: TaskName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - tasks
   es_source:
     bool:
@@ -266,8 +261,7 @@ steps:
   corroborate: the consumer's command/script path also appears in prefetch/MFT or Sysmon process-create
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - wmi_parser
   es_source:
     bool:
@@ -355,8 +349,7 @@ steps:
   pivot: KeyPath
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - recmd
   es_source:
     bool:
@@ -475,8 +468,7 @@ steps:
   pivot: FileName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - mftecmd
     - lecmd
   es_source:
@@ -547,8 +539,7 @@ steps:
   corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard dir
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - mftecmd
   es_source:
     bool:

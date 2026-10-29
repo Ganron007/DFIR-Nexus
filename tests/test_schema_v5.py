@@ -83,7 +83,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # is the pinned map's whichever tool read it (D470/D471). Rebuild before it.
     # v21: the MemProcFS wrapper's execution manifest is metadata, not evidence. Old indexes
     # retain its line fragments until rebuilt, so this version change is required (TA-5.0).
-    assert INDEX_SCHEMA_VERSION == 21
+    # v22: every row carries its evidence group and an imported row its importer chain (TA-5.1, D480/D481). An old
+    # index has no group to select knowledge by, so it must be rebuilt.
+    assert INDEX_SCHEMA_VERSION == 22
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

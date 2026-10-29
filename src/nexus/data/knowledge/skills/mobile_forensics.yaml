@@ -6,8 +6,8 @@ description: 'Investigate a mobile device (Android or iOS): choose and validate 
   and recover deleted records within retention limits — always with hash-verified, tool-documented acquisition.'
 trigger:
   families:
-  - csv
-  - jsonl
+  - generic_csv
+  - generic_jsonl
   - sqlite
   - syslog
   keywords:

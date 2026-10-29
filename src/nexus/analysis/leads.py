@@ -614,8 +614,8 @@ def behavioural_analytics_leads(
         from nexus.langgraph.query_pack import _present_families
 
         families = _present_families(Path(case_dir))
-    except Exception:  # noqa: BLE001 — an unknown case still gets every analytic
-        families = []
+    except Exception as exc:  # noqa: BLE001 — the lead builder records failed layers
+        raise RuntimeError(f"could not measure analytic evidence families: {exc}") from exc
     try:
         pack = analytics_for(families)
     except Exception as exc:  # noqa: BLE001

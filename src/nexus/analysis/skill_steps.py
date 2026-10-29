@@ -333,9 +333,10 @@ def methodology_only(
     """
     requires = declared_requires(skill)
     if case_families is not None:
-        have = {_norm(f) for f in case_families}
-        need = {_norm(f) for f in requires["families"]}
-        if need and not (need & have):
+        from nexus.knowledge.family_registry import families_intersect
+
+        need = requires["families"]
+        if need and not families_intersect(case_families, need):
             return True
     if case_lanes is not None:
         have_lanes = {str(x).strip().lower() for x in case_lanes}

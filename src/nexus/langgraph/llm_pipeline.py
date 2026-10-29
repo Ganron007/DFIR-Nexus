@@ -1997,13 +1997,18 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
 
             # Reuse the digest's inventory (already computed above) instead of
             # walking the extraction tree again for family names.
-            families = sorted((digest.get("inventory") or {}).keys())
-            if not families:
-                families = sorted(_family_inventory(settings.cases_root / case_id))
+            inventory = digest.get("inventory") or _family_inventory(settings.cases_root / case_id)
+            from nexus.knowledge.family_registry import get_family_registry
+
+            registry = get_family_registry()
+            families: set[str] = set()
+            for source, info in inventory.items():
+                if isinstance(info, dict) and int(info.get("rows") or 0) > 0:
+                    families.update(registry.evidence_group(source, info.get("importer_classes") or []))
             try:
                 from nexus.modes.llm_guided import _playbook_context_for_families
 
-                playbook_block = _playbook_context_for_families(set(families), budget=3000)
+                playbook_block = _playbook_context_for_families(families, budget=3000)
             except Exception as exc:  # noqa: BLE001
                 log.debug("playbook context unavailable: %s", exc)
         except Exception as exc:  # noqa: BLE001 — playbooks best-effort

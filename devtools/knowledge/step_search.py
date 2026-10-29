@@ -296,13 +296,15 @@ def compile_search(search: dict[str, Any]) -> dict[str, Any]:
     filt: list[dict[str, Any]] = []
     events = search.get("events") or []
     families = [str(f) for f in (search.get("families") or [])]
+    from nexus.knowledge.family_registry import family_source_query
+
     if events and families:
-        filt.append({"bool": {"should": [_events(events), {"terms": {"family": families}}],
+        filt.append({"bool": {"should": [_events(events), family_source_query(families)],
                               "minimum_should_match": 1}})
     elif events:
         filt.append(_events(events))
     elif families:
-        filt.append({"terms": {"family": families}})
+        filt.append(family_source_query(families))
     for clause in search.get("all") or []:
         filt.append(_clause(clause))
     anys = [_clause(c) for c in (search.get("any") or [])]

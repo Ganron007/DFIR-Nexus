@@ -6,7 +6,6 @@ trigger:
   families:
   - powershell
   - evtx
-  - sysmon
   - prefetch
   - hayabusa
   keywords:
@@ -28,8 +27,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -159,8 +157,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -313,8 +310,7 @@ steps:
   pivot: ScriptBlockText
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -362,8 +358,7 @@ steps:
   corroborate: subsequent suspicious 4104 content
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -495,8 +490,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -542,8 +536,7 @@ steps:
   look_for: Offensive framework/module names in script blocks or args.
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

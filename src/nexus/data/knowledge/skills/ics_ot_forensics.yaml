@@ -9,7 +9,6 @@ trigger:
   - zeek
   - suricata
   - syslog
-  - firewall
   keywords:
   - modbus
   - dnp3

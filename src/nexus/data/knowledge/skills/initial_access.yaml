@@ -9,7 +9,6 @@ trigger:
   - usn
   - prefetch
   - evtx
-  - sysmon
   - amcache
   - jumplist
   - browser
@@ -106,8 +105,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -238,8 +236,7 @@ steps:
   pivot: ParentImage
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -407,8 +404,7 @@ steps:
   pivot: FileName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - mftecmd
   es_source:
     bool:
@@ -487,8 +483,7 @@ steps:
   pivot: ParentImage
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -645,8 +640,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

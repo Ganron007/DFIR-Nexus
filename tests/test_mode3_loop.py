@@ -493,7 +493,18 @@ def test_a_claim_whose_rows_name_no_subject_is_still_verified(tmp_path):
 
 def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     """Full graph with a scripted model and no seat_fn (items 4, 5, 7)."""
+    from nexus.langgraph import backbone
     from nexus.modes.multi_agent import run_mode3
+
+    real_backbone_call = backbone.backbone_call
+    def with_measured_groups(name, *args, **kwargs):
+        if name == "index_mappings":
+            return {"family_rows": {"hayabusa": 10, "vol": 20}, "evidence_groups": [
+                {"source": source, "families": [source], "importers": [], "rows": rows}
+                for source, rows in (("hayabusa", 10), ("vol", 20))
+            ]}
+        return real_backbone_call(name, *args, **kwargs)
+    monkeypatch.setattr(backbone, "backbone_call", with_measured_groups)
 
     monkeypatch.setenv("NEXUS_MODE3_ROUNDS", "2")
     monkeypatch.setenv("NEXUS_MODE3_CALLS", "4")

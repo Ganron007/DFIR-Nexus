@@ -19,6 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from nexus.knowledge.family_registry import get_family_registry  # noqa: E402
 from nexus.knowledge.skills import (  # noqa: E402
     families_intersect,
     get_skills,
@@ -107,9 +108,16 @@ _NOISE_SKILLS = {"usb_device_intrusion", "usb_device_analysis", "email_phishing"
 
 #: Every EVTX lane family the corpus now stages. The corpus grew from 33 to 47 families
 #: after the original acceptance was measured, so the negative is asserted at the new
-#: size rather than at the size it first passed.
-_EVTX_FAMILIES = ("evtx", "security", "sysmon", "hayabusa", "chainsaw", "zircolite",
-                  "deepbluecli", "evtxecmd", "suzaku")
+#: size rather than at the size it first passed. TA-5.1 (2026-10-29): the family registry's
+#: producers of EVTX evidence join it, and `security` and `sysmon` left it: no producer
+#: writes either name (the deleted alias table mapped them), so no case can hold them.
+_EVTX_FAMILIES = tuple(sorted({"evtx", "hayabusa", "chainsaw", "zircolite", "deepbluecli", "evtxecmd", "suzaku"}
+                              | get_family_registry().producers_for("kind:evtx")))
+
+
+def test_the_evtx_families_are_names_a_producer_writes():
+    registry = get_family_registry()
+    assert [family for family in _EVTX_FAMILIES if not registry.known(family)] == []
 
 
 @pytest.mark.parametrize("family", _EVTX_FAMILIES)
@@ -129,8 +137,10 @@ def test_evtx_only_case_selects_no_other_platform_skill(family, surface):
     assert "windows_event_log_analysis" in got, got
 
 
-@pytest.mark.parametrize("pair", [("evtx", "security"), ("security", "sysmon"),
-                                  ("evtx", "hayabusa"), ("sysmon", "hayabusa")])
+#: Pairs of EVTX producers a case holds: EvtxECmd with Hayabusa is every tiny EVTX case's pair (T03, T05, T11, T12),
+#: and MemProcFS reads event logs from memory. Two tools that satisfy only the same declaration (`kind:evtx`) count
+#: once: the two-family signal needs two producers that satisfy two different declarations of the skill.
+@pytest.mark.parametrize("pair", [("evtx", "hayabusa"), ("evtxecmd", "hayabusa"), ("memprocfs", "hayabusa")])
 @pytest.mark.parametrize("surface", [skills_for, retrieve_skills])
 def test_two_evtx_families_surface_the_evtx_analysis_skills(pair, surface):
     """Two EVTX families is the signal for the event-log analysis skills.

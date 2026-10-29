@@ -12,11 +12,6 @@ trigger:
   - mftecmd
   - mft
   - usbdeview
-  primary_families:
-  - recmd
-  - registry
-  - setupapi
-  - usbdeview
   keywords:
   - usb
   - usbstor
@@ -32,6 +27,11 @@ trigger:
   - T1092
   - T1052.001
   - T1200
+primary_families:
+- recmd
+- registry
+- setupapi
+- usbdeview
 steps:
 - name: usbstor_serials
   query: usbstor
@@ -211,8 +211,7 @@ steps:
   corroborate: event 20001 time + Security 4624 session → attribution
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

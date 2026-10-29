@@ -49,65 +49,8 @@ CORE_ENVELOPE_FIELDS = frozenset({
     "user",
     "event_id",
     "case_id",
+    "importer_leaf",
 })
-
-# Family aliases / expansions mapping generic family names to tool & ingest families.
-FAMILY_EXPANSIONS: dict[str, set[str]] = {
-    "evtx": {
-        "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa", "chainsaw",
-        "zircolite", "deepbluecli", "ingest-kape", "security", "system",
-        "sysmon", "powershell",
-    },
-    "evtxecmd": {
-        "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa", "chainsaw",
-        "zircolite", "deepbluecli", "ingest-kape", "security", "system",
-        "sysmon", "powershell",
-    },
-    "hayabusa": {
-        "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa", "chainsaw",
-        "zircolite", "deepbluecli", "ingest-kape", "security", "system",
-        "sysmon",
-    },
-    "security": {
-        "security", "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa",
-        "chainsaw", "zircolite", "deepbluecli", "ingest-kape",
-    },
-    "system": {
-        "system", "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa", "ingest-kape",
-    },
-    "sysmon": {
-        "sysmon", "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa", "ingest-kape",
-    },
-    "prefetch": {"prefetch", "pecmd", "ingest-kape"},
-    "pecmd": {"prefetch", "pecmd", "ingest-kape"},
-    "amcache": {"amcache", "ingest-amcache", "ingest-kape"},
-    # mftecmd-logfile: MFTECmd 2026.10's $LogFile output (TA-Z), indexed in the mftecmd family like -i30 and -usn.
-    "mft": {"mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "mftecmd-logfile", "fls", "ingest-kape", "ntfs"},
-    "mftecmd": {"mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "mftecmd-logfile", "fls", "ingest-kape", "ntfs"},
-    "ntfs": {"ntfs", "mft", "mftecmd", "mftecmd-i30", "mftecmd-usn", "mftecmd-logfile", "fls", "ingest-kape"},
-    "registry": {"registry", "recmd", "ingest-windows_registry", "ingest-kape", "ntuser"},
-    "recmd": {"registry", "recmd", "ingest-windows_registry", "ingest-kape", "ntuser"},
-    "ntuser": {"ntuser", "registry", "recmd", "ingest-windows_registry"},
-    "lnk": {"lnk", "lecmd", "ingest-kape"},
-    "lecmd": {"lnk", "lecmd", "ingest-kape"},
-    "jumplist": {"jumplist", "jlecmd", "ingest-kape"},
-    "jlecmd": {"jumplist", "jlecmd", "ingest-kape"},
-    "shellbags": {"shellbags", "sbecmd", "ingest-kape"},
-    "sbecmd": {"shellbags", "sbecmd", "ingest-kape"},
-    "srum": {"srum", "srumecmd", "ingest-kape"},
-    "srumecmd": {"srum", "srumecmd", "ingest-kape"},
-    "tasks": {"tasks", "ingest-scheduled_tasks", "ingest-kape"},
-    "services": {"services", "ingest-windows_services", "ingest-kape"},
-    "wmi": {"wmi", "ingest-scheduled_tasks", "ingest-windows_services"},
-    "memory": {"memory", "vol", "ingest-volatility"},
-    "vol": {"memory", "vol", "ingest-volatility"},
-    "volatility": {"memory", "vol", "ingest-volatility"},
-    "pcap": {"pcap", "tshark-flows", "nfdump", "ingest-zeek", "ingest-suricata", "ingest-wireshark"},
-    "network": {"network", "tshark-flows", "nfdump", "ingest-zeek", "ingest-suricata", "ingest-wireshark"},
-    "powershell": {"powershell", "evtx", "evtxecmd", "hayabusa", "ingest-hayabusa"},
-    "browser": {"browser", "hindsight", "ingest-kape"},
-    "usb": {"usb", "usbdeview", "ingest-kape"},
-}
 
 _CACHED_REGISTRY: dict[str, Any] | None = None
 
@@ -134,19 +77,11 @@ def load_field_registry(path: Path | str | None = None) -> dict[str, Any]:
 
 
 def expand_families(families: Iterable[str]) -> set[str]:
-    """Expand family names with known tool aliases and ingest prefixes."""
-    expanded: set[str] = set()
-    for f in families:
-        low = str(f).strip().lower()
-        if not low:
-            continue
-        expanded.add(low)
-        expanded.add(f"ingest-{low}")
-        if low.startswith("ingest-"):
-            expanded.add(low[7:])
-        if low in FAMILY_EXPANSIONS:
-            expanded |= FAMILY_EXPANSIONS[low]
-    return expanded
+    """Resolve field inventory names through the shared family registry."""
+    from nexus.knowledge.family_registry import get_family_registry
+
+    registry = get_family_registry()
+    return {name for family in families for name in registry.producers_for(family)}
 
 
 def extract_es_fields(query: Any) -> set[str]:

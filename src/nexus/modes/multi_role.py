@@ -365,6 +365,7 @@ def _retrieve_skill_refs(
     keywords: list[str],
     limit: int = 3,
     techniques: list[str] | None = None,
+    family_groups: list[set[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Ranked skill provenance for a work order (M3.2).
 
@@ -386,6 +387,7 @@ def _retrieve_skill_refs(
             keywords=keywords,
             techniques=techniques,
             limit=limit,
+            family_groups=family_groups,
         )
         for ref in refs:
             try:
@@ -396,6 +398,21 @@ def _retrieve_skill_refs(
     except Exception:  # noqa: BLE001
         log.debug("skill retrieval failed", exc_info=True)
         return []
+
+
+def _case_family_groups(case_dir: Path, sources: list[str]) -> list[set[str]]:
+    """Measured groups for follow-up work orders on this case."""
+    from nexus.knowledge.family_registry import selection_groups
+    from nexus.langgraph.backbone import backbone_call
+
+    index = backbone_call("index_mappings", audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+                          case_id=case_dir.name, case_dir=case_dir)
+    if index.get("error"):
+        raise RuntimeError(f"index_mappings failed: {index['error']}")
+    groups = index.get("evidence_groups")
+    if not isinstance(groups, list):
+        raise RuntimeError("index mappings did not return measured evidence groups")
+    return selection_groups(groups, sources)
 
 
 # ---------------------------------------------------------------------------
@@ -1874,6 +1891,8 @@ def plan_work_orders(
     """Deterministic director: families + correlation/pattern + examiner feedback."""
     case_dir = Path(case_dir)
     audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
+    measured_groups = None
+    index: dict[str, Any] = {}
     try:
         from nexus.langgraph.backbone import backbone_call
 
@@ -1883,9 +1902,17 @@ def plan_work_orders(
             str(k): int(v or 0)
             for k, v in (index.get("family_rows") or {}).items()
         }
-    except Exception as exc:  # noqa: BLE001 — director must still plan
-        log.warning("director index_mappings failed: %s", exc)
-        families = {}
+    except Exception as exc:  # noqa: BLE001 — planning must expose a failed index read
+        raise RuntimeError(f"director index_mappings failed: {exc}") from exc
+    if index.get("error"):
+        raise RuntimeError(f"director index_mappings failed: {index['error']}")
+    if index.get("es_available") and index.get("evidence_groups") is None:
+        raise RuntimeError("director index_mappings did not return measured evidence groups")
+    if index.get("evidence_groups") is not None:
+        from nexus.knowledge.family_registry import selection_groups
+
+        measured_groups = index["evidence_groups"]
+        selection_groups(measured_groups)
 
     # WO-K5: rank by artifact value, never by row count. Volume is not value -
     # `$MFT` has a million rows on any host and rarely answers the question,
@@ -1894,6 +1921,14 @@ def plan_work_orders(
     from nexus.analysis.work_orders import orders_from_leads, rank_families
 
     all_families = rank_families(families)
+    def groups_for(sources: list[str]) -> list[set[str]] | None:
+        if measured_groups is None:
+            return None
+        from nexus.knowledge.family_registry import selection_groups
+
+        return selection_groups(measured_groups, sources)
+
+    all_groups = groups_for(all_families)
     keywords = _question_keywords(question)
 
     try:
@@ -1941,7 +1976,8 @@ def plan_work_orders(
                 "equally well) and refutation (what would refute it, with the audit_ids "
                 "of the rows that test it)"
             ),
-            skill_refs=_retrieve_skill_refs(skill_families, keywords, limit=8),
+            skill_refs=_retrieve_skill_refs(skill_families, keywords, limit=8,
+                                           family_groups=groups_for(skill_families)),
         ))
     # IC-3: the crit/high orders are kept whole; the plan's size limit applies to the rest.
     crit_orders = [o for o in orders if o.crit_high]
@@ -1955,7 +1991,7 @@ def plan_work_orders(
         why="Cross-family corroboration before pattern matching",
         priority_tools=("es_search", "es_aggregate", "run_record"),
         acceptance="corroborated entities/chains with audit_ids or explicit none",
-        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, family_groups=all_groups),
     ))
     from nexus.langgraph.case_intake import insider_intake
     from nexus.langgraph.query_pack import load_case_intake
@@ -1970,7 +2006,7 @@ def plan_work_orders(
         why="Framework-grounded pattern check after correlation",
         priority_tools=("rag_search", "es_search", "es_aggregate"),
         acceptance="patterns with required evidence rows, or explicit no-match",
-        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, family_groups=all_groups),
     ))
 
     # 4j.16 — examiner accept/reject feeds the next round: approved findings
@@ -2015,7 +2051,7 @@ def plan_work_orders(
             acceptance=(
                 "per-finding disposition: deepened with new evidence, kept "
                 "as-is, or explicitly dropped"),
-            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
+            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, family_groups=all_groups),
         )
         orders = orders + [feedback_order]
 
@@ -2684,7 +2720,8 @@ def run_mode2(
                 "per-candidate corroboration or honest exhaustion; no invented "
                 "evidence"),
             skill_refs=_retrieve_skill_refs(
-                families, _question_keywords(question), limit=3),
+                families, _question_keywords(question), limit=3,
+                family_groups=_case_family_groups(case_dir, families)),
         )
         state["orders"].append(order.to_dict())
         state["followup_rounds"] = used + 1

@@ -4,11 +4,8 @@ description: 'Hunt webshells: the web-server worker process spawning OS commands
   access-log POSTs to rogue pages, file-write artifacts in web roots, and the worker-process exec chain.'
 trigger:
   families:
-  - iis
-  - apache
-  - weblogs
+  - kind:weblogs
   - evtx
-  - sysmon
   - mft
   - usn
   - memory
@@ -36,8 +33,7 @@ steps:
   corroborate: child commands match recon/lateral patterns (net, whoami, ipconfig, arp, sc)
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -190,8 +186,7 @@ steps:
   corroborate: file creation ↔ first POST in access log ↔ first exec event = deployment timeline
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - mftecmd
   es_source:
     bool:
@@ -334,8 +329,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

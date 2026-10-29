@@ -281,7 +281,8 @@ def test_skill_procedure_block_reports_version_and_citations():
     assert "| run:" not in block
 
 
-def test_supervisor_followup_then_converges(tmp_path):
+def test_supervisor_followup_then_converges(tmp_path, monkeypatch):
+    monkeypatch.setattr(m3, "_case_family_groups", lambda _case, sources: [{source} for source in sources])
     case = _case(tmp_path)
 
     def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
@@ -694,9 +695,10 @@ def test_stage_takes_evidence_from_the_cited_rows_not_the_model_text(tmp_path):
     assert staged[0]["evidence"] == [stored_row]
 
 
-def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path):
+def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path, monkeypatch):
     """2026-10-14, Mode 2 run 3: after each follow-up round the verifier re-verified the whole
     candidate pool, unchanged candidates included (~10 minutes a pass, up to 8 rounds)."""
+    monkeypatch.setattr(m3, "_case_family_groups", lambda _case, sources: [{source} for source in sources])
     case = _case(tmp_path)
     verifier_tasks: list[str] = []
     first = {"title": "Suspicious logon", "observation": "o", "interpretation": "i",
@@ -729,9 +731,10 @@ def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path):
     assert {v["title"] for v in state["verdicts"]} == {"Suspicious logon", "Service installed"}
 
 
-def test_a_follow_up_that_only_adds_calls_and_notes_converges(tmp_path):
+def test_a_follow_up_that_only_adds_calls_and_notes_converges(tmp_path, monkeypatch):
     """2026-10-14, Mode 2 run 3: the convergence signature counted notes and tool calls, which
     every round adds, so the run went on to round 4 after a round that changed nothing."""
+    monkeypatch.setattr(m3, "_case_family_groups", lambda _case, sources: [{source} for source in sources])
     case = _case(tmp_path)
     claim = {"title": "Suspicious logon", "observation": "o", "interpretation": "i",
              "confidence": "LOW", "audit_ids": ["a-1"]}
@@ -761,9 +764,10 @@ def test_a_follow_up_that_only_adds_calls_and_notes_converges(tmp_path):
     assert state["stop_reason"] == "converged_no_new_evidence"
 
 
-def test_a_follow_up_that_re_cites_a_claim_without_moving_its_verdict_converges(tmp_path):
+def test_a_follow_up_that_re_cites_a_claim_without_moving_its_verdict_converges(tmp_path, monkeypatch):
     """2026-10-14, Mode 2 run 4: each follow-up re-cited the same 'inferred' claims with new audit
     ids, the verifier ruled them 'inferred' again, and the run went on round after round."""
+    monkeypatch.setattr(m3, "_case_family_groups", lambda _case, sources: [{source} for source in sources])
     case = _case(tmp_path)
     rounds = {"n": 0}
 
@@ -836,9 +840,10 @@ LOGON_ROWS = [{"source": "evtxecmd/Security.csv", "artifact": "Security.csv", "l
                "host": "ws01", "user": "corp\\jdoe", "detail": "EventId 4624 LogonType 10 corp\\jdoe"}]
 
 
-def test_a_re_worded_claim_on_the_same_rows_keeps_one_verdict(tmp_path):
+def test_a_re_worded_claim_on_the_same_rows_keeps_one_verdict(tmp_path, monkeypatch):
     """D189: verdicts were keyed by title, and follow-up rounds re-word titles. Mode 2 run 3's 16
     verdicts held one claim six times with different classes, and synthesis read six claims."""
+    monkeypatch.setattr(m3, "_case_family_groups", lambda _case, sources: [{source} for source in sources])
     case = _case(tmp_path)
     first_call = _audited_rows(case, LOGON_ROWS)
     second_call = _audited_rows(case, LOGON_ROWS)  # a follow-up query returning the same row

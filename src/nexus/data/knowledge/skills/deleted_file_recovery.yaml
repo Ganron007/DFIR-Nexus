@@ -241,8 +241,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - pecmd
   es_source:
     bool:

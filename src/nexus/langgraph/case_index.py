@@ -141,7 +141,10 @@ _FORENSIC_TEXT_ANALYSIS = {
 # EvtxECmd map's `UserName` whichever tool read the event. An index built before it has no channel on any event read
 # from memory, so every stored Windows-event query missed those rows, and must be rebuilt.
 # 21 = the MemProcFS wrapper's forensic.json is execution metadata, not evidence (TA-5.0).
-INDEX_SCHEMA_VERSION = 21
+# 22 = every row carries its evidence group (its source and the importer classes that actually parsed it, from the
+# append-only provenance ledger), and an imported row its importer chain and leaf (TA-5.1, D480/D481, OD-T24). An
+# index built before it has no group, and Modes 2/3 refuse to select knowledge without one: rebuild it.
+INDEX_SCHEMA_VERSION = 22
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -955,6 +958,7 @@ def iter_index_doc_batches(
     # per field hung the profiler on large corpora (WO-R0F item 1).
     sanitize_roots = machine_roots(case_dir)
     ts_cov: dict[str, dict[str, int]] = {}
+    from nexus.knowledge.family_registry import encode_evidence_group
 
     def _cov(fam: str) -> dict[str, int]:
         return ts_cov.setdefault(fam, {
@@ -963,7 +967,8 @@ def iter_index_doc_batches(
         })
 
     def _add(path: Path, root: Path, fam: str, i: int, line: str,
-             fields: dict[str, str] | None = None, count_key: str | None = None, importer: bool = False) -> bool:
+             fields: dict[str, str] | None = None, count_key: str | None = None, importer: bool = False,
+             importer_chains: list[list[str]] | None = None) -> bool:
         nonlocal total
         # Source/provenance columns carry the machine path the parser read
         # (EvtxECmd SourceFile, RECmd HivePath, ...) — that is routing
@@ -993,6 +998,15 @@ def iter_index_doc_batches(
             "line": i,
             "text": text,
         }
+        if importer_chains:
+            from nexus.ingest.provenance import importer_leaves
+
+            doc["importer_chain"] = sorted({name for chain in importer_chains for name in chain})
+            doc["importer_leaf"] = importer_leaves(importer_chains)
+            doc["importer_paths"] = [json.dumps(chain, separators=(",", ":")) for chain in importer_chains]
+        doc["evidence_group"] = encode_evidence_group(fam, doc.get("importer_leaf") or [])
+        if len(doc["evidence_group"]) > KEYWORD_IGNORE_ABOVE:
+            raise ValueError("evidence group exceeds the indexed keyword limit")
         if fields:
             # WO-CS1b item 1 (D37): the field map is sanitized at full length; the
             # ECS normalization reads THAT (a 1,326-char EvtxECmd Payload must reach
@@ -1150,8 +1164,9 @@ def iter_index_doc_batches(
                     if value not in (None, "", []):
                         art_fields[key_name] = field_text(value)
             family_key =(fam.replace("/", "_").replace("\\", "_") or "ingest")
+            chains = record.get("importer_chains") if isinstance(record, dict) else None
             _add(ingest_store, case_dir, fam, n, text, art_fields or None,
-                 count_key=f"{family_key}/artifacts.jsonl", importer=True)
+                 count_key=f"{family_key}/artifacts.jsonl", importer=True, importer_chains=chains)
             if len(out) >= batch:
                 yield out
                 out = []
@@ -1284,6 +1299,10 @@ def _mapping_body() -> dict[str, Any]:
             "properties": {
                 "case_id": {"type": "keyword"},
                 "family": {"type": "keyword"},
+                "evidence_group": {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE},
+                "importer_chain": {"type": "keyword"},
+                "importer_leaf": {"type": "keyword"},
+                "importer_paths": {"type": "keyword"},
                 "file": {"type": "keyword"},
                 "line": {"type": "integer"},
                 "host": {"type": "keyword", "ignore_above": KEYWORD_IGNORE_ABOVE},
@@ -1412,6 +1431,13 @@ def _index_file_keys(case_dir: Path, run_id: str = ""):
                 rel = f"ingest/{rel}"
             seen.setdefault(rel, path)
             break
+    # The provenance ledger is metadata, not another evidence file. Its bytes
+    # nevertheless determine the indexed importer fields and must be verified.
+    from nexus.ingest.provenance import LEDGER_REL, ledger_path
+
+    ledger = ledger_path(case_dir)
+    if ledger.is_file() and (case_dir / "ingest" / "artifacts.jsonl").is_file():
+        seen[LEDGER_REL] = ledger
     yield from seen.items()
 
 
@@ -1569,6 +1595,13 @@ def index_case(
             or current_digests.get(rel) != prior_digests.get(rel)
         }
         removed = set(prior_mtimes) - set(current_mtimes)
+        from nexus.ingest.provenance import LEDGER_REL
+
+        provenance_changed = LEDGER_REL in changed or LEDGER_REL in removed
+        changed.discard(LEDGER_REL)
+        removed.discard(LEDGER_REL)
+        if provenance_changed and "ingest/artifacts.jsonl" in current_mtimes:
+            changed.add("ingest/artifacts.jsonl")
         errors = 0
         rejected: dict[str, dict[str, Any]] = {}
         # A resolution of ZERO indexable files is never "the examiner deleted
@@ -1659,6 +1692,7 @@ def index_case(
             "incremental": True,
             "files_reindexed": sorted(changed),
             "files_removed": sorted(removed),
+            "provenance_changed": provenance_changed,
             "purge_refused": purge_refused,
             "purge_refused_reason": purge_refused_reason,
             # Coverage is only exact on full rebuilds; an incremental pass
@@ -1820,12 +1854,11 @@ def delete_index(case_id: str) -> dict[str, Any]:
 def _newest_extraction_mtime(case_dir: Path, run_id: str = "") -> float:
     """Newest mtime across this case's processed outputs (0 when none).
 
-    Uses ``iter_index_files`` so the ingest artifact store and files beyond
-    the small-scan cap still count — anything the indexer reads can make the
-    index stale.
+    Includes all indexed inputs and the provenance ledger: anything the
+    indexer reads can make the index stale.
     """
     newest = 0.0
-    for path in iter_index_files(case_dir, run_id):
+    for _key, path in _index_file_keys(case_dir, run_id):
         try:
             newest = max(newest, path.stat().st_mtime)
         except OSError:
@@ -1920,6 +1953,24 @@ def index_stale(case_dir: Path) -> tuple[bool, dict[str, Any]]:
         state = json.loads(state_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return True, {"reason": "unreadable index state"}
+    # A new input can arrive within the one-second timestamp tolerance, or be
+    # older than a different indexed file. Compare the complete per-input
+    # baseline first, including metadata dependencies such as provenance.
+    if isinstance(state.get("file_mtimes"), dict):
+        previous = state["file_mtimes"]
+        current = _index_file_mtimes(case_dir)
+        changed = sorted(key for key in previous.keys() | current.keys()
+                         if previous.get(key) != current.get(key))
+        if changed:
+            newer = any(key in current and (key not in previous
+                        or (isinstance(previous[key], (int, float)) and current[key] > previous[key]))
+                        for key in changed)
+            return True, {
+                "reason": "extractions newer than index" if newer else "index inputs changed",
+                "indexed_at": state.get("indexed_at", ""),
+                "changed_inputs": changed,
+            }
+        return False, {"indexed_at": state.get("indexed_at", ""), "docs": state.get("docs")}
     newest = _newest_extraction_mtime(case_dir)
     indexed_at = float(state.get("newest_extraction_mtime") or 0)
     if newest > indexed_at + 1:  # 1s tolerance for filesystem jitter
@@ -2778,6 +2829,8 @@ def _shape_es_hit(
         "text": text,
         "fields": fields_map if isinstance(fields_map, dict) else {},
     }
+    if isinstance(src.get("importer_leaf"), list):
+        hit["importer_leaf"] = src["importer_leaf"]
     if classified.get("facts"):
         hit["fact_terms"] = classified["facts"]
         hit["fact_sites"] = classified["sites"]

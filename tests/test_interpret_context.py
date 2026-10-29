@@ -60,5 +60,7 @@ def test_a_family_inside_another_word_does_not_select_a_playbook():
     pb = {"name": "PowerShell Anomaly", "description": "Encoded PowerShell and webshell drops",
           "query_terms": ["encodedcommand"]}
     assert _playbook_match(pb, {"wer", "web"}) == 0
-    assert _playbook_match(pb, {"encodedcommand"}) == 2
+    # A query term is not a declared evidence family and cannot select a playbook.
+    assert _playbook_match(pb, {"encodedcommand"}) == 0
+    assert _playbook_match({"name": "Web evidence", "description": "web findings"}, {"web"}) == 0
     assert _playbook_match({"name": "x", "families": ["prefetch"]}, {"prefetch"}) == 2

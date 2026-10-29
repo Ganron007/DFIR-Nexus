@@ -256,6 +256,9 @@ class Artifact:
     # Some source timestamps omit their timezone; keep that policy assumption
     # explicit even after normalizing the stored timestamp to UTC.
     ts_tz_assumed: bool = False
+    # Concrete parsers in execution order, including container delegates. The
+    # shared ArtifactSource is not enough to identify a parser.
+    importer_chain: list[str] = field(default_factory=list)
 
     @staticmethod
     def new_id() -> str:

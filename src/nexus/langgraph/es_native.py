@@ -663,6 +663,8 @@ def _shape_hit(src: dict[str, Any]) -> dict[str, Any]:
         "fields": fields,
         "terms_list": [],
     }
+    if isinstance(src.get("importer_leaf"), list):
+        hit["importer_leaf"] = src["importer_leaf"]
     for key in ("host", "user", "event_id", "ts", "ts_src", "ts_precision"):
         value = src.get(key)
         if value not in (None, ""):
@@ -724,6 +726,56 @@ def family_doc_counts(case_id: str) -> dict[str, int]:
     client, name = _client_and_index(case_id)
     with client() as c:
         return _family_doc_counts(c, name)
+
+
+def knowledge_evidence_groups(case_id: str) -> list[dict[str, Any]]:
+    """Exact indexed source/importer groups for knowledge selection, not extra index families."""
+    from nexus.knowledge.family_registry import decode_evidence_group, get_family_registry
+
+    if not case_id:
+        raise ESQueryError("case_id is required")
+    client, name = _client_and_index(case_id)
+    with client() as c:
+        response = c.post(f"/{name}/_search", json={
+            "size": 0,
+            "track_total_hits": True,
+            "aggs": {
+                "groups": {"terms": {"field": "evidence_group", "size": 1000}},
+                "missing": {"missing": {"field": "evidence_group"}},
+            },
+        })
+    if response.status_code >= 400:
+        raise ESQueryError(f"evidence group aggregation failed: {response.status_code} {response.text[:300]}")
+    payload = response.json()
+    shards = payload.get("_shards")
+    if not isinstance(shards, dict) or not isinstance(shards.get("failed"), int):
+        raise ESQueryError("evidence group aggregation omitted shard status")
+    if payload.get("timed_out") or shards["failed"]:
+        raise ESQueryError("evidence group aggregation timed out or had failed shards")
+    aggs = payload.get("aggregations") or {}
+    groups = aggs.get("groups")
+    missing = aggs.get("missing")
+    if (not isinstance(groups, dict) or not isinstance(groups.get("buckets"), list)
+            or "sum_other_doc_count" not in groups or not isinstance(missing, dict)
+            or "doc_count" not in missing):
+        raise ESQueryError("evidence group aggregation returned incomplete data")
+    if groups["sum_other_doc_count"] or missing["doc_count"]:
+        raise ESQueryError("evidence groups are incomplete; rebuild the case index")
+    total = (payload.get("hits") or {}).get("total")
+    total_value = total.get("value") if isinstance(total, dict) and total.get("relation") == "eq" else None
+    if not isinstance(total_value, int) or sum(int(b.get("doc_count") or 0) for b in groups["buckets"]) != total_value:
+        raise ESQueryError("evidence group counts do not cover every indexed row")
+    registry = get_family_registry()
+    out = []
+    for bucket in groups.get("buckets") or []:
+        try:
+            source, importers = decode_evidence_group(bucket["key"])
+        except (ValueError, KeyError) as exc:
+            raise ESQueryError("invalid indexed evidence group") from exc
+        out.append({"source": source, "importers": importers,
+                    "families": sorted(registry.evidence_group(source, importers)),
+                    "rows": int(bucket.get("doc_count") or 0)})
+    return out
 
 
 def es_fields(case_id: str) -> dict[str, Any]:

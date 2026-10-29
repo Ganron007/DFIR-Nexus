@@ -97,6 +97,19 @@ class Importer(ABC):
         """Parse with optional case context; existing importers remain context-free."""
         return self.parse(path)
 
+    def with_provenance(self, artifacts: Iterator[Artifact]) -> Iterator[Artifact]:
+        """Attach the actual parser, preserving more specific nested delegates."""
+        cls = type(self)
+        name = f"{cls.__module__}.{cls.__qualname__}"
+        for artifact in artifacts:
+            # A parser may populate fields from untrusted input. Only chains
+            # established by an inner wrapper in this process are provenance.
+            if not getattr(artifact, "_provenance_recorded", False):
+                artifact.importer_chain = []
+                artifact._provenance_recorded = True
+            artifact.importer_chain.insert(0, name)
+            yield artifact
+
     def ingest(
         self,
         path: Path,
@@ -124,7 +137,7 @@ class Importer(ABC):
 
         for file in files:
             try:
-                stream = self.parse_with_context(file, context or {})
+                stream = self.with_provenance(self.parse_with_context(file, context or {}))
                 for artifact in stream:
                     result.parsed_lines += 1
                     if on_batch is None:

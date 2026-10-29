@@ -233,6 +233,10 @@ def test_the_director_attaches_skill_refs_to_its_orders(monkeypatch):
     ref = {"skill": "windows_event_log_analysis", "version": "1",
            "citations": ["d_x:c1"], "role": "evidence"}
     monkeypatch.setattr(mr, "_retrieve_skill_refs", lambda *a, **k: [dict(ref)])
+    # The director plans from the index's measured evidence groups and no longer plans on a failed read (TA-5.1).
+    from tests._measured_index import measured_index
+
+    measured_index(monkeypatch, {"evtxecmd": 10})
 
     class _Sink:
         def emit(self, *_a, **_k):

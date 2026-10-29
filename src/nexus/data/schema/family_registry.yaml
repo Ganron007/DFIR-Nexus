@@ -1,0 +1,605 @@
+version: 1
+status: draft
+families:
+  abuseipdb:
+    aliases:
+    - ingest-abuseipdb
+    kinds: []
+    kind_sources: {}
+  amcache:
+    aliases:
+    - ingest-amcache
+    kinds: []
+    kind_sources: {}
+  appcompat:
+    aliases: []
+    kinds:
+    - file
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+  auditd:
+    aliases:
+    - ingest-auditd
+    kinds: []
+    kind_sources: {}
+  authlog:
+    aliases:
+    - ingest-authlog
+    kinds: []
+    kind_sources: {}
+  aws_s3_access:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  aws_vpc_flow:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  axiom:
+    aliases: []
+    kinds: []
+  azure:
+    aliases:
+    - ingest-azure
+    kinds: []
+    kind_sources: {}
+  bash_history:
+    aliases:
+    - ingest-bash_history
+    kinds:
+    - bash
+    kind_sources:
+      ingest/linux/bash_history.py:BashHistoryImporter:
+      - bash
+  bind:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  bits:
+    aliases:
+    - bitsparser
+    kinds: []
+    alias_sources:
+      bitsparser:
+      - query_pack.py:_tool_folder_family
+  bmc-tools:
+    aliases: []
+    kinds: []
+  browser_history:
+    aliases: []
+    kinds: []
+  capa:
+    aliases: []
+    kinds: []
+  carbon_black:
+    aliases: []
+    kinds: []
+  chainsaw:
+    aliases: []
+    kinds: []
+  cloudtrail:
+    aliases:
+    - ingest-cloudtrail
+    kinds: []
+    kind_sources: {}
+  crowdstrike:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  cybertriage:
+    aliases:
+    - ingest-cybertriage
+    kinds: []
+  deepbluecli:
+    aliases: []
+    kinds: []
+  defender:
+    aliases: []
+    kinds: []
+  densityscout:
+    aliases: []
+    kinds: []
+  elastic:
+    aliases:
+    - ingest-elastic
+    kinds: []
+    kind_sources: {}
+  email:
+    aliases:
+    - eml
+    kinds: []
+    importer_classes:
+    - nexus.ingest.generic.email_import.EmailImporter
+    alias_sources:
+      eml:
+      - ingest/generic/email_import.py:31 (EmailImporter parses RFC 2822 .eml files)
+  encoded_file:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  evtx:
+    aliases: []
+    kinds: []
+  evtxecmd:
+    aliases: []
+    kinds:
+    - evtx
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - evtx
+  gcp:
+    aliases: []
+    kinds: []
+  generic_csv:
+    aliases: []
+    kinds: []
+  generic_jsonl:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+    importer_classes:
+    - nexus.ingest.generic.jsonl.JSONLImporter
+  greynoise:
+    aliases: []
+    kinds: []
+  hayabusa:
+    aliases:
+    - ingest-hayabusa
+    kinds:
+    - evtx
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - evtx
+  hindsight:
+    aliases: []
+    kinds:
+    - browser
+    kind_sources:
+      langgraph/tool_lane.py:hindsight:
+      - browser
+  history:
+    aliases: []
+    kinds: []
+  jlecmd:
+    aliases: []
+    kinds:
+    - file
+    - jumplist
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+      langgraph/tool_lane.py:jlecmd:
+      - jumplist
+  kape:
+    aliases:
+    - ingest-kape
+    kinds: []
+    kind_sources: {}
+  kstrike:
+    aliases: []
+    kinds: []
+  lecmd:
+    aliases: []
+    kinds:
+    - file
+    - lnk
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+      langgraph/tool_lane.py:lecmd:
+      - lnk
+  linux_log:
+    aliases: []
+    kinds:
+    - weblogs
+    kind_sources:
+      ingest/linux/logs.py:LinuxLogImporter:
+      - weblogs
+    kind_notes:
+      weblogs: ingest/linux/logs.py:71,105-107 parses Apache access, request and error logs (T18 web01 httpd)
+  lnk:
+    aliases: []
+    kinds: []
+  logfileparser:
+    aliases: []
+    kinds: []
+  memprocfs:
+    aliases: []
+    kinds:
+    - evtx
+    - memory
+    - network
+    - process
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - evtx
+      - network
+      - process
+      lane_gate.py:_MEMORY_JOB_TOOLS:
+      - memory
+  mftecmd:
+    aliases:
+    - mftecmd-i30
+    - mftecmd-logfile
+    - mftecmd-usn
+    kinds:
+    - file
+    - mft
+    - usn
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+      langgraph/tool_lane.py:mftecmd_metafile:
+      - mft
+      - usn
+    alias_sources:
+      mftecmd-i30:
+      - tool_lane.py:2939
+      mftecmd-logfile:
+      - tool_lane.py:2956
+      mftecmd-usn:
+      - tool_lane.py:2114
+  misp:
+    aliases:
+    - ingest-misp
+    kinds: []
+    kind_sources: {}
+  netflow:
+    aliases:
+    - ingest-netflow
+    kinds: []
+    kind_sources: {}
+  ossec:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  otx:
+    aliases:
+    - ingest-otx
+    kinds: []
+    kind_sources: {}
+  pecmd:
+    aliases: []
+    kinds:
+    - file
+    - prefetch
+    - process
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+      - process
+      langgraph/tool_lane.py:pecmd:
+      - prefetch
+  plaso:
+    aliases:
+    - ingest-plaso
+    kinds:
+    - file
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+  prefetch:
+    aliases: []
+    kinds: []
+  rbcmd:
+    aliases: []
+    kinds:
+    - file
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+  rdp:
+    aliases: []
+    kinds: []
+  recmd:
+    aliases: []
+    kinds:
+    - registry
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - registry
+  regripper:
+    aliases: []
+    kinds: []
+  sbecmd:
+    aliases: []
+    kinds:
+    - file
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - file
+  scheduled_tasks:
+    aliases:
+    - ingest-scheduled_tasks
+    kinds:
+    - tasks
+    kind_sources:
+      ingest/df/scheduled_tasks.py:ScheduledTasksImporter:
+      - tasks
+  schtasks:
+    aliases: []
+    kinds: []
+  security_onion:
+    aliases:
+    - ingest-security_onion
+    kinds: []
+    kind_sources: {}
+  sentinel:
+    aliases: []
+    kinds: []
+  setupapi:
+    aliases:
+    - setupapi-serials.txt
+    kinds: []
+    alias_sources:
+      setupapi-serials.txt:
+      - tool_lane.py:2645
+  shodan:
+    aliases: []
+    kinds: []
+  sigcheck:
+    aliases: []
+    kinds: []
+  splunk:
+    aliases:
+    - ingest-splunk
+    kinds: []
+    kind_sources: {}
+  spreadsheet:
+    aliases: []
+    kinds: []
+  sqlecmd:
+    aliases: []
+    kinds: []
+  srum:
+    aliases: []
+    kinds: []
+  srumecmd:
+    aliases: []
+    kinds:
+    - srum
+    kind_sources:
+      langgraph/tool_lane.py:srumecmd:
+      - srum
+  strings:
+    aliases: []
+    kinds: []
+  suricata:
+    aliases:
+    - ingest-suricata
+    kinds:
+    - network
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - network
+  suzaku:
+    aliases: []
+    kinds:
+    - network
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - network
+  syslog:
+    aliases:
+    - ingest-syslog
+    kinds: []
+    kind_sources: {}
+  tasks:
+    aliases: []
+    kinds: []
+  thehive:
+    aliases:
+    - ingest-thehive
+    kinds: []
+    kind_sources: {}
+  threatfox:
+    aliases:
+    - ingest-threatfox
+    kinds: []
+    kind_sources: {}
+  thumbcache:
+    aliases: []
+    kinds: []
+  thumbcache_viewer:
+    aliases: []
+    kinds: []
+  unknown:
+    aliases: []
+    kinds: []
+  usbdeview:
+    aliases: []
+    kinds: []
+  utmp:
+    aliases: []
+    kinds: []
+    kind_sources: {}
+  velociraptor:
+    aliases:
+    - ingest-velociraptor
+    kinds: []
+    kind_sources: {}
+  virustotal:
+    aliases:
+    - ingest-virustotal
+    kinds: []
+    kind_sources: {}
+  windows_registry:
+    aliases:
+    - ingest-windows_registry
+    kinds:
+    - registry
+    kind_sources:
+      ingest/df/registry.py:WindowsRegistryImporter:
+      - registry
+  windows_services:
+    aliases:
+    - ingest-windows_services
+    kinds:
+    - services
+    kind_sources:
+      ingest/df/services.py:WindowsServicesImporter:
+      - services
+  wireshark:
+    aliases:
+    - ingest-wireshark
+    kinds:
+    - pcap
+    kind_sources:
+      ingest/network/pcap.py:PcapImporter:
+      - pcap
+  wmi:
+    aliases: []
+    kinds: []
+  wmi_subscriptions:
+    aliases: []
+    kinds: []
+  wxtcmd:
+    aliases: []
+    kinds:
+    - process
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - process
+  yara:
+    aliases: []
+    kinds: []
+  zeek:
+    aliases:
+    - ingest-zeek
+    kinds:
+    - network
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - network
+  zircolite:
+    aliases: []
+    kinds: []
+  bulk_extractor:
+    aliases: []
+    kinds: []
+  defender_detectionhistory:
+    aliases: []
+    kinds: []
+  drivefs:
+    aliases: []
+    kinds: []
+  evtx_input:
+    aliases: []
+    kinds: []
+  fls:
+    aliases: []
+    kinds: []
+  log2timeline:
+    aliases: []
+    kinds: []
+  mactime:
+    aliases: []
+    kinds: []
+  mmls:
+    aliases: []
+    kinds: []
+  mplog:
+    aliases: []
+    kinds: []
+  network:
+    aliases:
+    - tshark-flows
+    kinds:
+    - network
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - network
+    alias_sources:
+      tshark-flows:
+      - ecs_map.yaml:291 (the flow rows are the tshark projection's, ingest/network/*-flows.csv; ES-Mapping catalog
+        family tshark-flows)
+  nfdump:
+    aliases: []
+    kinds: []
+  pff-ost:
+    aliases: []
+    kinds: []
+  powershell_history:
+    aliases: []
+    kinds: []
+  psort:
+    aliases: []
+    kinds: []
+  pstranscript:
+    aliases: []
+    kinds:
+    - powershell
+    kind_sources:
+      langgraph/tool_lane.py:pstranscript:
+      - powershell
+  setupapi.dev.log:
+    aliases: []
+    kinds: []
+  sidr:
+    aliases: []
+    kinds: []
+  sqlite:
+    aliases: []
+    kinds: []
+  src:
+    aliases: []
+    kinds: []
+  sru:
+    aliases: []
+    kinds: []
+  sumecmd:
+    aliases: []
+    kinds: []
+  tiles:
+    aliases: []
+    kinds: []
+  tool-temp:
+    aliases: []
+    kinds: []
+  usb:
+    aliases: []
+    kinds: []
+  vol:
+    aliases:
+    - volatility
+    - ingest-volatility
+    kinds:
+    - memory
+    - network
+    - process
+    kind_sources:
+      ecs_map.yaml:family_columns:
+      - network
+      - process
+      lane_gate.py:_MEMORY_JOB_TOOLS:
+      - memory
+    alias_sources:
+      volatility:
+      - ingest/df/volatility.py:1 (imports Volatility 3 output, the tool the lane runs as vol)
+      ingest-volatility:
+      - ingest/registry.py (the importer's registry spelling)
+  wer:
+    aliases: []
+    kinds: []
+  wmi_parser:
+    aliases: []
+    kinds: []
+  workdir:
+    aliases: []
+    kinds: []
+  m365:
+    aliases: []
+    kinds: []
+    importer_classes:
+    - nexus.ingest.cloud.m365.M365Importer
+  journal:
+    aliases: []
+    kinds: []
+    importer_classes:
+    - nexus.ingest.linux.journald.JournaldImporter
+  sysdig:
+    aliases: []
+    kinds: []
+    importer_classes:
+    - nexus.ingest.network.sysdig.SysdigImporter

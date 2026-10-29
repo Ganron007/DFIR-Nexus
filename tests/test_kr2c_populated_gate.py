@@ -80,16 +80,21 @@ def test_declared_families_alone_are_not_the_gate():
         "measurement - re-check the population profile")
 
 
-def test_the_default_gate_still_accepts_a_declared_query():
-    """Opt-in on purpose: an unsampled column is unsampled, not invalid.
+def test_the_default_gate_checks_the_declared_familys_own_columns():
+    """The populated check stays opt-in (an unsampled column is unsampled, not invalid), but the default gate now
+    reads the declared family's own columns.
 
-    The population corpus is a subset of the world, so turning the populated check
-    on by default would reject valid queries for families nobody has staged. The
-    gate is explicit so the caller says what it knows.
+    It used to accept `command_line` for `evtxecmd` only through the expansion this file names as the reviewer's
+    root cause (`evtxecmd` -> `ingest-hayabusa`/`ingest-kape`). TA-5.1 deleted that private expansion: a family is
+    resolved through the one family registry, so a query declared for EvtxECmd that reads a column EvtxECmd never
+    writes is refused, and the same query declared for a family that has the column is accepted.
     """
-    errs = validate_stored_query(CMD_LINE, declared_families=["evtxecmd"],
-                                citation=["sigma-1"], registry_columns=_registry())
-    assert errs == [], errs[:3]
+    refused = validate_stored_query(CMD_LINE, declared_families=["evtxecmd"],
+                                    citation=["sigma-1"], registry_columns=_registry())
+    assert refused and "command_line" in refused[0], refused[:3]
+    accepted = validate_stored_query(CMD_LINE, declared_families=["scheduled_tasks"],
+                                     citation=["sigma-1"], registry_columns=_registry())
+    assert accepted == [], accepted[:3]
 
 
 def test_the_populated_gate_rejects_a_column_filled_only_for_other_families():

@@ -421,6 +421,17 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
 
     inventory = _family_inventory(case_dir)
     es = es_available()
+    groups = None
+    if es:
+        from nexus.langgraph.es_native import knowledge_evidence_groups
+
+        groups = knowledge_evidence_groups(case_name)
+    family_rows = {k: v.get("rows", 0) for k, v in sorted(inventory.items())}
+    if groups is not None:
+        family_rows = {}
+        for group in groups:
+            source = group["source"]
+            family_rows[source] = family_rows.get(source, 0) + group["rows"]
     # Field knowledge: curated profiles (KB) + the live census (this case's
     # own parsed columns) — the LLM's `field:` targets are grounded in both.
     from nexus.knowledge.loader import get_field_profiles
@@ -438,15 +449,16 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
     aid = audit.log(
         tool="index_mappings",
         params={"case_id": Path(case_dir).name},
-        result_summary={"families": len(inventory), "es": es},
+        result_summary={"families": len(family_rows), "es": es},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
     payload = {
         "case_id": Path(case_dir).name,
         "es_available": es,
         "index_name": index_name(Path(case_dir).name),
-        "families": sorted(inventory),
-        "family_rows": {k: v.get("rows", 0) for k, v in sorted(inventory.items())},
+        "families": sorted(family_rows),
+        "family_rows": dict(sorted(family_rows.items())),
+        "evidence_groups": groups,
         "family_fields": family_fields,
         "field_census": field_census,
         "dsl_fields": [

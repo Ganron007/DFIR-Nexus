@@ -279,7 +279,17 @@ def test_a_seat_spawned_for_several_questions_settles_each(tmp_path, monkeypatch
 
 def _informed_run(tmp_path, monkeypatch, policy: str) -> list[str]:
     """One superstep of a real Mode 3 run; the user messages its seats were sent."""
+    from nexus.langgraph import backbone
     from nexus.modes.multi_agent import run_mode3
+
+    real_backbone_call = backbone.backbone_call
+    def with_measured_groups(name, *args, **kwargs):
+        if name == "index_mappings":
+            return {"family_rows": {"hayabusa": 10}, "evidence_groups": [
+                {"source": "hayabusa", "families": ["hayabusa"], "importers": [], "rows": 10},
+            ]}
+        return real_backbone_call(name, *args, **kwargs)
+    monkeypatch.setattr(backbone, "backbone_call", with_measured_groups)
 
     monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "1")
     monkeypatch.setenv("NEXUS_MODE3_MAX_AGENTS", "2")

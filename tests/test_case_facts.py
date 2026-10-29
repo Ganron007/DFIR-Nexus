@@ -147,6 +147,10 @@ def test_a_mode3_run_builds_the_case_facts_once_and_every_seat_gets_them(tmp_pat
         return real(spawn, **kwargs)
 
     monkeypatch.setattr(multi_agent, "_seat_with_model", spy)
+    # Mode 3 selects knowledge by the index's measured evidence groups and refuses to run without them (TA-5.1).
+    from tests._measured_index import measured_index
+
+    measured_index(monkeypatch, {"vol": 432})
     multi_agent.run_mode3(case, "Compromise suspected.", model=_Recording({"claims": [], "open_questions": []}),
                           families=[("vol", 432)], es_ok=True)
     assert built == [1]

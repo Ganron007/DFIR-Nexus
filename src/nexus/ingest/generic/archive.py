@@ -68,7 +68,7 @@ class ArchiveImporter(Importer):
                         log.debug("No importer for extracted file %s", extracted_file)
                         continue
                     importer = importer_cls()
-                    yield from importer.parse(extracted_file)
+                    yield from importer.with_provenance(importer.parse(extracted_file))
                 except Exception:
                     log.warning(
                         "Failed to import extracted file %s", extracted_file, exc_info=True

@@ -13,8 +13,6 @@ trigger:
   - srumecmd
   - recmd
   - wxtcmd
-  - sysmon
-  - security
   - evtx
   - powershell
   keywords:

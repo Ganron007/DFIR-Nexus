@@ -10,7 +10,7 @@ description: 'Investigate a Linux host: authentication logs (auth.log/secure, bi
   via Linux.MalFind.'
 trigger:
   families:
-  - linux
+  - linux_log
   - syslog
   - authlog
   - journal

@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from nexus.case.locks import lock_case_writes
+from nexus.ingest.provenance import append_provenance
+from nexus.ingest.provenance import artifact_key as _artifact_key
 from nexus.ingest.schemas import Artifact, ArtifactSource
 from nexus.langgraph.evidence_rows import row_time
 from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_intake_window
@@ -225,42 +227,6 @@ def load_ingest_artifacts_with_lines(case_dir: Path) -> list[tuple[int, Artifact
     return arts
 
 
-def _artifact_key(d: dict) -> tuple:
-    """Content key so re-ingesting the same evidence does not duplicate rows.
-
-    Includes ports/protocol/user/file_path AND a hash of the raw record: two
-    genuinely different events (same ts/IP pair, different URL/uid) must not
-    collapse, and events whose timestamp was synthesized at parse time must
-    still key stably across runs.
-    """
-    import hashlib
-
-    raw = d.get("raw")
-    raw_hash = ""
-    if raw not in (None, "", {}):
-        raw_hash = hashlib.sha1(
-            str(raw).encode("utf-8", "replace")
-        ).hexdigest()[:16]
-    parts: tuple = (
-        d.get("source"),
-        d.get("artifact_type"),
-        # With a raw record the hash IS the identity — parse-time synthesized
-        # timestamps must not make the same row look new on every re-ingest.
-        None if raw_hash else d.get("timestamp"),
-        d.get("src_ip") or d.get("source_ip"),
-        d.get("source_port"),
-        d.get("dest_ip"),
-        d.get("dest_port"),
-        d.get("protocol"),
-        d.get("user"),
-        d.get("file_path"),
-        d.get("process_name"),
-        str(d.get("description") or d.get("details") or ""),
-        raw_hash,
-    )
-    return parts
-
-
 #: The dedupe keys of each store, kept between appends (path -> (mtime_ns, size, keys)). Re-reading the
 #: whole store on every append made an import quadratic: one volume of files is thousands of appends.
 #: The cache is trusted only while the file's size and mtime still match what the last append left.
@@ -303,14 +269,20 @@ def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     dest_dir = Path(case_dir) / "ingest"
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / "artifacts.jsonl"
+    records = [artifact.to_dict() for artifact in artifacts]
+    # Write provenance first, so a failed ledger append never leaves a new row
+    # claiming provenance that was not durably recorded. Orphan ledger entries
+    # after a later store failure are harmless and remain auditable.
+    append_provenance(case_dir, records)
     existing = _store_keys(path)
     rows: list[str] = []
-    for a in artifacts:
-        d = a.to_dict()
+    for d in records:
         key = _artifact_key(d)
         if key in existing:
             continue
         existing.add(key)
+        # The ledger is the authoritative provenance source for all rows.
+        d.pop("importer_chain", None)
         rows.append(json.dumps(d, default=str))
     if rows:
         with path.open("a", encoding="utf-8") as fh:

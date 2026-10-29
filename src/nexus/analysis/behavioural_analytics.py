@@ -215,7 +215,9 @@ def analytics_for(
     items = analytics(path)
     if not wanted:
         return items
+    from nexus.knowledge.family_registry import families_intersect
+
     return [
         item for item in items
-        if wanted & {str(f).strip().lower() for f in (item.get("families") or [])}
+        if families_intersect(wanted, item.get("families") or [])
     ]

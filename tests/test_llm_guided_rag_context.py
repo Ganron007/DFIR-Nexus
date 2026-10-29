@@ -156,9 +156,12 @@ class TestPlaybookContextInProposals:
         )
 
         # Mock playbook with caveats and Identify steps
+        # A playbook applies by the evidence families it declares (TA-5.1: one matcher); every real playbook
+        # declares them (D199), and a query term no longer selects one.
         mock_pb = {
             "name": "Credential Access Investigation",
             "description": "Investigate credential theft",
+            "families": ["prefetch"],
             "query_terms": ["mimikatz", "lsass", "prefetch"],
             "caveats": [
                 "Dumping LSASS requires SeDebugPrivilege",

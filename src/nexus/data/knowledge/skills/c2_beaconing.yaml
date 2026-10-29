@@ -4,11 +4,9 @@ description: Detect command-and-control traffic — periodic connections, beacon
   and proxy artifacts.
 trigger:
   families:
-  - netstat
-  - dns
+  - kind:network
   - browser
   - evtx
-  - sysmon
   - powershell
   keywords:
   - c2
@@ -35,8 +33,7 @@ steps:
   corroborate: connection-size uniformity + interval variance analysis
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -84,8 +81,7 @@ steps:
   pivot: Image
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -199,8 +195,7 @@ steps:
   pivot: QueryName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -248,8 +243,7 @@ steps:
   pivot: CommandLine
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -337,8 +331,7 @@ steps:
   pivot: ValueName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
     - recmd
   es_source:
     bool:
@@ -464,8 +457,7 @@ steps:
   pivot: PipeName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:
@@ -518,8 +510,7 @@ steps:
   pivot: QueryName
   requires:
     families:
-    - evtxecmd
-    - hayabusa
+    - kind:evtx
   es_source:
     bool:
       filter:

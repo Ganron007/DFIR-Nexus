@@ -366,7 +366,8 @@ def collect_playbook_query_terms(intake: dict[str, str] | None) -> list[str]:
 
 
 def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dict]:
-    """Playbooks whose query_terms/name/description mention any given family."""
+    """Playbooks whose declared evidence families match the case."""
+    from nexus.knowledge.family_registry import families_intersect
     from nexus.knowledge.loader import get_playbook, list_playbook_slugs
 
     fams = {str(f).lower() for f in (families or []) if str(f).strip()}
@@ -377,21 +378,8 @@ def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dic
         pb = get_playbook(slug)
         if not isinstance(pb, dict):
             continue
-        # Explicit family declaration wins (Phase 4g-D tiering): robust matching
-        # for playbooks whose query_terms don't literally contain the family.
         declared = pb.get("families")
-        if isinstance(declared, list) and declared:
-            if any(f in {str(d).lower() for d in declared} for f in fams):
-                out.append(pb)
-            continue
-        terms = pb.get("query_terms") or []
-        term_lower = (
-            {str(t).lower() for t in terms} if isinstance(terms, list) else set()
-        )
-        blob = (
-            str(pb.get("name", "")) + " " + str(pb.get("description", ""))
-        ).lower()
-        if any(f in term_lower or f in blob for f in fams):
+        if isinstance(declared, list) and families_intersect(fams, declared):
             out.append(pb)
     return out
 
@@ -399,8 +387,7 @@ def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dic
 def playbook_terms_for_families(families: set[str] | list[str] | None) -> list[str]:
     """Playbook ``query_terms`` for the given artifact families (WP 4g-A).
 
-    Family-matched against each playbook's terms and name/description, so
-    expanding the playbook YAML expands Mode 1's starting vocabulary.
+    Family-matched against each playbook's declared evidence families.
     """
     out: list[str] = []
     for pb in _family_matched_playbooks(families):
@@ -449,11 +436,11 @@ def playbook_strong_terms_for_families(families: set[str] | list[str] | None) ->
 
 
 def _present_families(case_dir: Path, run_id: str = "") -> list[str]:
-    """This case's evidence families, from its own tool-run ledger.
+    """This case's evidence families, from its tool ledger and imported rows.
 
     WO-R1F item 6: with no playbooks, the needle packs are chosen from the
-    families the evidence actually holds. Read from the ledger (the record of
-    what parsed), never by guessing from a directory listing.
+    families the evidence actually holds. Read from the ledger and actual
+    imported records, never by guessing from a directory listing.
     """
     import json
 
@@ -462,12 +449,12 @@ def _present_families(case_dir: Path, run_id: str = "") -> list[str]:
     ledger_path = resolve_tools_extractions(
         Path(case_dir), run_id=run_id
     ) / "_tool_lane_ledger.json"
-    if not ledger_path.is_file():
-        return []
-    try:
-        rows = json.loads(ledger_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
+    rows: Any = []
+    if ledger_path.is_file():
+        try:
+            rows = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            rows = []
     fams: list[str] = []
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
@@ -477,6 +464,19 @@ def _present_families(case_dir: Path, run_id: str = "") -> list[str]:
         family = str(row.get("tool") or "").strip().lower()
         if family and family not in fams:
             fams.append(family)
+    # Imported records are produced by the importer lane, not the tool ledger.
+    # Their class is meaningful only when captured in the provenance ledger.
+    from nexus.ingest.provenance import importer_leaves
+    from nexus.knowledge.family_registry import get_family_registry
+
+    registry = get_family_registry()
+    for _line, family, _text, _timestamp, record in iter_ingest_records(case_dir):
+        observed = {family}
+        if record.get("importer_chains"):
+            observed.update(registry.importer_families(importer_leaves(record["importer_chains"])))
+        for name in sorted(observed):
+            if name and name not in fams:
+                fams.append(name)
     return fams
 
 
@@ -782,6 +782,9 @@ def iter_ingest_records(case_dir: Path):
     path = Path(case_dir) / "ingest" / "artifacts.jsonl"
     if not path.is_file():
         return
+    from nexus.ingest.provenance import artifact_key_digest, load_provenance
+
+    provenance = load_provenance(case_dir)
     try:
         with path.open(encoding="utf-8", errors="replace") as fh:
             for n, line in enumerate(fh, start=1):
@@ -794,6 +797,9 @@ def iter_ingest_records(case_dir: Path):
                     continue
                 if not isinstance(d, dict):
                     continue
+                chains = provenance.get(artifact_key_digest(d)) if provenance else None
+                if chains:
+                    d["importer_chains"] = [list(chain) for chain in sorted(chains)]
                 fam = str(d.get("source") or "ingest").strip().lower() or "ingest"
                 yield (n, fam, render_ingest_row(d), str(d.get("timestamp") or ""), d)
     except OSError:
@@ -876,6 +882,10 @@ def _hits_from_ingest(
             "terms_list": matched,
             "text": text,
         }
+        if record.get("importer_chains"):
+            from nexus.ingest.provenance import importer_leaves
+
+            hit["importer_leaf"] = importer_leaves(record["importer_chains"])
         if classified.get("facts"):
             hit["fact_terms"] = classified["facts"]
             hit["fact_sites"] = classified["sites"]
@@ -1847,7 +1857,7 @@ def iter_ingest_hits(
                 matched = ["*"]
         if not _row_in_window(text, start, end):
             continue
-        yield {
+        hit = {
             "family": fam,
             "file": "ingest/artifacts.jsonl",
             "line": str(line_no),
@@ -1855,6 +1865,11 @@ def iter_ingest_hits(
             "terms_list": matched,
             "text": text,
         }
+        if record.get("importer_chains"):
+            from nexus.ingest.provenance import importer_leaves
+
+            hit["importer_leaf"] = importer_leaves(record["importer_chains"])
+        yield hit
     if stats is not None:
         stats["backend"] = "csv"
         stats["exhaustive"] = True
