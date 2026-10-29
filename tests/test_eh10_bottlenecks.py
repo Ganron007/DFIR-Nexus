@@ -145,7 +145,6 @@ def _patch_es(monkeypatch, fake):
     monkeypatch.setattr(case_index, "_client", lambda: fake)
     monkeypatch.setattr(case_index, "ensure_index", lambda _cid: "nexus-case-x")
     monkeypatch.setattr(case_index, "es_url", lambda: "http://localhost:9200")
-    monkeypatch.setattr(case_index, "_newest_extraction_mtime", lambda _cd: 0.0)
 
 
 def test_index_case_incremental_only_reindexes_changed_files(tmp_path, monkeypatch):

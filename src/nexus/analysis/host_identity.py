@@ -35,8 +35,9 @@ MAX_RECORD_GAP = 64
 MAX_TIME_GAP_S = 86_400
 
 _CACHE = "analysis/host_identity.json"
-#: The cached identity's shape: 2 adds the machine accounts (D468). A cache of another shape is recomputed.
-CACHE_SCHEMA = 2
+#: 3 counts a machine account's rows once across all typed representations (TA-5.0).
+#: A cache of another shape is recomputed, including one whose index stamp has not changed.
+CACHE_SCHEMA = 3
 #: The typed fields that hold a row's account and a row's host (D470/D471 type them for every producer).
 USER_FIELDS = ("user", "ecs.user.name", "ecs.user.target.name")
 HOST_FIELDS = ("host", "ecs.host.name")
@@ -216,9 +217,24 @@ def machine_accounts(case_dir: Path) -> list[dict[str, Any]]:
     accounts: dict[str, int] = {}
     for i in range(len(USER_FIELDS)):
         for bucket in (found.get(f"u{i}") or {}).get("buckets") or []:
-            accounts[str(bucket["key"])] = accounts.get(str(bucket["key"]), 0) + int(bucket["doc_count"])
+            # These buckets discover spellings, not row counts: one row may name its account
+            # in both the envelope and ECS, or as both the subject and target of an event.
+            accounts[str(bucket["key"])] = 0
     hosts = [str(b["key"]) for i in range(len(HOST_FIELDS)) for b in (found.get(f"h{i}") or {}).get("buckets") or []]
-    return pair_machine_accounts(accounts, hosts)
+    pairs = pair_machine_accounts(accounts, hosts)
+    if pairs:
+        filters = {str(i): {"bool": {
+            "should": [{"terms": {field: pair["forms"]}} for field in USER_FIELDS],
+            "minimum_should_match": 1,
+        }} for i, pair in enumerate(pairs)}
+        with _client() as client:
+            response = client.post(f"/{index_name(Path(case_dir).name)}/_search", json={
+                "size": 0, "aggs": {"accounts": {"filters": {"filters": filters}}}})
+        response.raise_for_status()
+        buckets = response.json()["aggregations"]["accounts"]["buckets"]
+        for i, pair in enumerate(pairs):
+            pair["rows"] = int(buckets[str(i)]["doc_count"])
+    return sorted(pairs, key=lambda p: (-p["rows"], p["account"].lower()))
 
 
 def _index_stamp(case_dir: Path) -> str:

@@ -215,6 +215,37 @@ def test_sbecmd_messages_log_is_not_a_parser_product():
     assert not is_tool_own_log_name("recmd", Path("!SBECmd_Messages.txt"))
 
 
+def test_memprocfs_run_manifest_is_neither_evidence_nor_a_parser_product(run_case):
+    """TA-5.0: all 569 residual wrapper rows were forensic.json's invocation metadata.
+
+    The excerpt is cut verbatim from T22-R1z4's wrapper manifest. The shared output policy must
+    agree across the lane, the retrieval walk and the index's document/freshness walks.
+    """
+    from nexus.langgraph.case_index import iter_index_doc_batches, iter_index_files
+    from nexus.langgraph.query_pack import iter_extraction_files
+    from nexus.langgraph.tool_lane import ToolJob, _new_output_files, _produced_expected_output
+
+    case_dir, extractions = run_case
+    excerpt = (Path(__file__).parent / "fixtures/memprocfs_run_manifest_excerpt.txt").read_bytes()
+    out = extractions / "memprocfs" / "image.raw"
+    out.mkdir(parents=True)
+    manifest = out / "forensic.json"
+    manifest.write_bytes(excerpt)
+    other = extractions / "generic_jsonl" / "forensic.json"
+    other.parent.mkdir()
+    other.write_bytes(excerpt)
+    job = ToolJob(host="windows", tool="memprocfs", purpose="memory forensic output",
+                  argv=["memprocfs", "--out", str(out)],
+                  output_files=[{"path": str(manifest), "kind": "file"}])
+
+    assert _new_output_files([out], set(), tool="memprocfs") == []
+    assert not _produced_expected_output(job)
+    assert {p for p, _root, _fam in iter_extraction_files(case_dir)} == {other}
+    assert set(iter_index_files(case_dir)) == {other}
+    docs = [doc for batch in iter_index_doc_batches(case_dir) for doc in batch]
+    assert docs and {doc["family"] for doc in docs} == {"generic_jsonl"}
+
+
 def test_progress_rows_keep_durations_for_repeated_supported_tool_jobs(lane_case, monkeypatch):
     from nexus.case.evidence_service import register_evidence
     from nexus.langgraph import tool_lane

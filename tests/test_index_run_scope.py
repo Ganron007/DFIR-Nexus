@@ -78,15 +78,22 @@ def test_the_document_stream_carries_the_named_runs_rows(two_runs):
 
 
 def test_the_index_state_records_the_run_it_indexed(two_runs):
+    import os
+
     from nexus.langgraph import case_index
 
-    case_dir, _old_ext, new_ext = two_runs
+    case_dir, old_ext, new_ext = two_runs
+    # Distinct mtimes expose an implicit lookup of the older committed run. Metadata and
+    # rows must describe the same explicitly named run even before its final commit.
+    os.utime(old_ext / "evtxecmd/OLD_EvtxECmd.csv", (100, 100))
+    os.utime(new_ext / "evtxecmd/NEW_EvtxECmd.csv", (200, 200))
 
     case_index.write_index_state(case_dir, {"docs": 1, "index": "nexus-case-scope01"}, run_id=NEW_RUN)
     state = json.loads((case_dir / "analysis" / "index_state.json").read_text(encoding="utf-8"))
 
     assert state["source_extractions"] == str(new_ext)
     assert set(state["file_mtimes"]) == {"evtxecmd/NEW_EvtxECmd.csv"}
+    assert state["newest_extraction_mtime"] == 200
 
 
 def test_the_extraction_listing_takes_the_named_run(two_runs):

@@ -119,3 +119,39 @@ def test_a_case_without_an_index_gets_no_block(tmp_path, monkeypatch):
 
     monkeypatch.setenv("NEXUS_ES_URL", "")
     assert host_identity_block(tmp_path / "CASE-NONE") == ""
+
+
+def test_machine_account_counts_each_row_once_across_typed_fields(tmp_path, monkeypatch):
+    """T22-R1z4: 129 real rows carry 218 occurrences across user and ecs.user fields."""
+    from pathlib import Path
+
+    import httpx
+
+    from nexus.analysis.host_identity import HOST_FIELDS, USER_FIELDS, machine_accounts
+    from nexus.langgraph import case_index
+
+    fixture = json.loads((Path(__file__).parent / "fixtures/t22_machine_account_counts.json")
+                         .read_text(encoding="utf-8"))
+    responses = iter([fixture["grouped"], fixture["counted"]])
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json=next(responses))
+
+    monkeypatch.setattr(case_index, "_client", lambda: httpx.Client(
+        base_url="http://fixture.invalid", transport=httpx.MockTransport(respond)))
+    pairs = machine_accounts(tmp_path / "CASE-ACCOUNT-COUNT")
+    assert len(pairs) == 1
+    assert pairs[0]["rows"] == 129
+    assert pairs[0]["account"] == "BASE-RD-01$"
+    assert pairs[0]["host"] == "base-rd-01.shieldbase.lan"
+    assert len(requests) == 2
+    query = requests[1]["aggs"]["accounts"]["filters"]["filters"]["0"]
+    assert query == {"bool": {"should": [{"terms": {field: pairs[0]["forms"]}} for field in USER_FIELDS],
+                              "minimum_should_match": 1}}
+    # The original response really includes both an envelope and an ECS representation.
+    witness = fixture["witnesses"]["hits"]["hits"][0]["_source"]
+    assert witness["user"].lower() == witness["ecs"]["user"]["name"].lower()
+    assert set(requests[0]["aggs"]) == {*(f"u{i}" for i in range(len(USER_FIELDS))),
+                                        *(f"h{i}" for i in range(len(HOST_FIELDS)))}

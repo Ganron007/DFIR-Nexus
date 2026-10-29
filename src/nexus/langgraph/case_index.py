@@ -140,7 +140,8 @@ _FORENSIC_TEXT_ANALYSIS = {
 # connection's addresses; a scheduled task's principal id is no account), and a Windows event's user is the pinned
 # EvtxECmd map's `UserName` whichever tool read the event. An index built before it has no channel on any event read
 # from memory, so every stored Windows-event query missed those rows, and must be rebuilt.
-INDEX_SCHEMA_VERSION = 20
+# 21 = the MemProcFS wrapper's forensic.json is execution metadata, not evidence (TA-5.0).
+INDEX_SCHEMA_VERSION = 21
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -1816,7 +1817,7 @@ def delete_index(case_id: str) -> dict[str, Any]:
         return {"index": name, "deleted": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
-def _newest_extraction_mtime(case_dir: Path) -> float:
+def _newest_extraction_mtime(case_dir: Path, run_id: str = "") -> float:
     """Newest mtime across this case's processed outputs (0 when none).
 
     Uses ``iter_index_files`` so the ingest artifact store and files beyond
@@ -1824,7 +1825,7 @@ def _newest_extraction_mtime(case_dir: Path) -> float:
     index stale.
     """
     newest = 0.0
-    for path in iter_index_files(case_dir):
+    for path in iter_index_files(case_dir, run_id):
         try:
             newest = max(newest, path.stat().st_mtime)
         except OSError:
@@ -1884,7 +1885,7 @@ def write_index_state(
     from datetime import UTC, datetime
 
     case_dir = Path(case_dir)
-    newest = _newest_extraction_mtime(case_dir)
+    newest = _newest_extraction_mtime(case_dir, run_id)
     state = {
         "indexed_at": datetime.now(UTC).isoformat(),
         "newest_extraction_mtime": newest,

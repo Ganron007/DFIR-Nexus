@@ -81,7 +81,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # nfdump's summary its own record, keyword sub-fields to 8,191 characters (D399-D403). Rebuild before it.
     # v20: MemProcFS read per table (an event from memory has its channel, code and host), a Windows event's user
     # is the pinned map's whichever tool read it (D470/D471). Rebuild before it.
-    assert INDEX_SCHEMA_VERSION == 20
+    # v21: the MemProcFS wrapper's execution manifest is metadata, not evidence. Old indexes
+    # retain its line fragments until rebuilt, so this version change is required (TA-5.0).
+    assert INDEX_SCHEMA_VERSION == 21
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

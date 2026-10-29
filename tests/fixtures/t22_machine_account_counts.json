@@ -1,0 +1,177 @@
+{
+  "source": "T22 RUN-20261029T063407340478Z-tools-be661567, raw Elasticsearch responses",
+  "grouped": {
+    "took": 1,
+    "timed_out": false,
+    "_shards": {
+      "total": 1,
+      "successful": 1,
+      "skipped": 0,
+      "failed": 0
+    },
+    "hits": {
+      "max_score": null,
+      "hits": []
+    },
+    "aggregations": {
+      "h0": {
+        "doc_count_error_upper_bound": 0,
+        "sum_other_doc_count": 0,
+        "buckets": [
+          {
+            "key": "base-rd-01.shieldbase.lan",
+            "doc_count": 42640
+          },
+          {
+            "key": "win10-test",
+            "doc_count": 138
+          },
+          {
+            "key": "microso-f9qcq4i",
+            "doc_count": 90
+          },
+          {
+            "key": "base-rd-01",
+            "doc_count": 63
+          }
+        ]
+      },
+      "h1": {
+        "doc_count_error_upper_bound": 0,
+        "sum_other_doc_count": 0,
+        "buckets": [
+          {
+            "key": "base-rd-01.shieldbase.lan",
+            "doc_count": 42640
+          },
+          {
+            "key": "win10-test",
+            "doc_count": 138
+          },
+          {
+            "key": "MICROSO-F9QCQ4I",
+            "doc_count": 90
+          },
+          {
+            "key": "base-rd-01",
+            "doc_count": 60
+          },
+          {
+            "key": "BASE-RD-01",
+            "doc_count": 3
+          }
+        ]
+      },
+      "u0": {
+        "doc_count_error_upper_bound": 0,
+        "sum_other_doc_count": 0,
+        "buckets": [
+          {
+            "key": "shieldbase\\base-rd-01$",
+            "doc_count": 89
+          }
+        ]
+      },
+      "u1": {
+        "doc_count_error_upper_bound": 0,
+        "sum_other_doc_count": 0,
+        "buckets": [
+          {
+            "key": "shieldbase\\BASE-RD-01$",
+            "doc_count": 89
+          }
+        ]
+      },
+      "u2": {
+        "doc_count_error_upper_bound": 0,
+        "sum_other_doc_count": 0,
+        "buckets": [
+          {
+            "key": "BASE-RD-01$",
+            "doc_count": 40
+          },
+          {
+            "key": "BASE-HUNT$",
+            "doc_count": 3
+          }
+        ]
+      }
+    }
+  },
+  "counted": {
+    "took": 21,
+    "timed_out": false,
+    "_shards": {
+      "total": 1,
+      "successful": 1,
+      "skipped": 0,
+      "failed": 0
+    },
+    "hits": {
+      "total": {
+        "value": 10000,
+        "relation": "gte"
+      },
+      "max_score": null,
+      "hits": []
+    },
+    "aggregations": {
+      "accounts": {
+        "buckets": {
+          "0": {
+            "doc_count": 129
+          }
+        }
+      }
+    }
+  },
+  "witnesses": {
+    "took": 4,
+    "timed_out": false,
+    "_shards": {
+      "total": 1,
+      "successful": 1,
+      "skipped": 0,
+      "failed": 0
+    },
+    "hits": {
+      "total": {
+        "value": 129,
+        "relation": "eq"
+      },
+      "max_score": 2.0,
+      "hits": [
+        {
+          "_index": "nexus-case-case-4387eb47",
+          "_id": "4824060928f49755094b7a7234f209f7aa763f5d",
+          "_score": 2.0,
+          "_source": {
+            "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+            "line": 7037,
+            "user": "shieldbase\\base-rd-01$",
+            "ecs": {
+              "user": {
+                "name": "shieldbase\\BASE-RD-01$"
+              }
+            }
+          }
+        },
+        {
+          "_index": "nexus-case-case-4387eb47",
+          "_id": "5ca8bd2b68a597ba5ce1612e3f9143df8f043495",
+          "_score": 2.0,
+          "_source": {
+            "file": "memprocfs/mem-be7f9d308d-mem-3e82ddd2.raw/forensic/csv/eventlog.csv",
+            "line": 7147,
+            "user": "shieldbase\\base-rd-01$",
+            "ecs": {
+              "user": {
+                "name": "shieldbase\\BASE-RD-01$"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
