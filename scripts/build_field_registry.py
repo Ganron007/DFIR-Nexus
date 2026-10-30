@@ -31,6 +31,9 @@ from typing import Any
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+from devtools.scratch import POPULATION_PROFILES
+
 SRC_DIR = REPO / "Evidence-files" / "ES-Mapping" / "es_mappings"
 OUT = REPO / "src" / "nexus" / "data" / "schema" / "field_registry.yaml"
 
@@ -254,16 +257,17 @@ def load_supplement() -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
 def _population_profiles() -> list[Path]:
     """The baseline profile and additional profiles measured from newer pipeline outputs (D500).
 
-    A new export format may expose values the original population never held. Keep those measurements beside the
-    baseline instead of replacing its wider coverage; every future regeneration must check them too.
+    A new export format may expose values the original population never held. Keep those measurements in the
+    canonical scratch snapshots, preserving the baseline's wider coverage; every regeneration checks both.
     """
-    return sorted(SRC_DIR.glob("_population*.json"))
+    baseline = SRC_DIR / "_population.json"
+    return ([baseline] if baseline.is_file() else []) + sorted(POPULATION_PROFILES.glob("*.json"))
 
 
 def load_population() -> dict[str, set[str]]:
     """column -> the families whose documents actually filled it (WO-KM1 item 3).
 
-    Read from `_population*.json`, mechanical profiles of the population corpus and newer pipeline outputs.
+    Read the reference `_population.json` and scratch snapshots measured from newer pipeline outputs.
     `families` stays the declared set; this is the populated one, and
     forbidden item 11 says a claim of validity must be shown on populated fields.
     """
@@ -574,7 +578,7 @@ def main() -> int:
     payload = {
         "version": 1,
         "generated": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "Evidence-files/ES-Mapping/es_mappings (validated tool-run catalog)",
+        "source": "Evidence-files/ES-Mapping/es_mappings (validated tool-run catalog) plus scratch population snapshots",
         "policy": (
             "one case index holds all families: int-only->long; int+double->double; "
             "numeric/date win over text only for ports/process-ids/temporal names; any other "

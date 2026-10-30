@@ -70,6 +70,8 @@ def test_new_pipeline_profiles_join_the_baseline_type_samples(tmp_path, monkeypa
     monkeypatch.setattr(pipeline_runs, "resolve_tools_extractions", lambda case_dir, run_id="": case_dir / "extractions")
     catalog = tmp_path / "catalog"
     catalog.mkdir()
+    supplemental = tmp_path / "profiles"
+    supplemental.mkdir()
     for family, fixture, profile_name in (
         ("chainsaw", "d474_chainsaw_t12_sigma.csv", "_population.json"),
         ("zircolite", "d474_zircolite_t12.ndjson", "_population-new-export.json"),
@@ -82,10 +84,12 @@ def test_new_pipeline_profiles_join_the_baseline_type_samples(tmp_path, monkeypa
         }), encoding="utf-8")
         assert profiler._layout(corpus, case)["placed"] == 1
         measured = profiler.profile(case)
-        (catalog / profile_name).write_text(json.dumps(measured), encoding="utf-8")
+        destination = catalog if profile_name == "_population.json" else supplemental
+        (destination / profile_name).write_text(json.dumps(measured), encoding="utf-8")
 
     builder = _builder()
     monkeypatch.setattr(builder, "SRC_DIR", catalog)
+    monkeypatch.setattr(builder, "POPULATION_PROFILES", supplemental)
     samples = builder.load_samples()
     first = json.loads((REPO / "tests/fixtures/d474_zircolite_t12.ndjson").read_text(encoding="utf-8").splitlines()[0])
     assert ("zircolite", str(first["ProcessId"])) in samples["ProcessId"]

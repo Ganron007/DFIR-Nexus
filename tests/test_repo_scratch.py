@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from devtools.scratch import (
+    POPULATION_PROFILES,
     PYTEST_ROOT,
     PYTEST_TMP,
     SCRATCH,
@@ -53,6 +54,7 @@ def test_scratch_is_gitignored_and_inside_the_repository():
     probe = "scratch/pytest/x.txt"
     assert subprocess.run(["git", "check-ignore", "-q", probe], cwd=REPO).returncode == 0
     assert inside_scratch(SNAPSHOTS)
+    assert inside_scratch(POPULATION_PROFILES)
 
 
 def test_a_pytest_root_outside_scratch_is_refused(tmp_path):

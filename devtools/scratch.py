@@ -25,6 +25,8 @@ PYTEST_TMP = SCRATCH / "pytest-tmp"
 TMP_ROOT = SCRATCH / "tmp"
 #: The pinned upstream snapshots (clones at a recorded commit) the `devtools/knowledge` importers and checks read.
 SNAPSHOTS = SCRATCH / "kl2b-snapshots"
+#: Additional field-population measurements consumed by the shipped registry's build-time type proof.
+POPULATION_PROFILES = SNAPSHOTS / "field-population"
 #: The gates' logs (`devtools/runbook/gates.ps1`).
 GATES = SCRATCH / "gates"
 #: An agent's own working scripts and logs.
