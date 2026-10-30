@@ -60,7 +60,7 @@ class _FakeClient:
 @pytest.fixture
 def indexer(tmp_path, monkeypatch):
     from nexus.ingest import fingerprint
-    from nexus.langgraph import case_index, lane_gate
+    from nexus.langgraph import case_index, lane_gate, pipeline_runs
 
     recreated: list[str] = []
 
@@ -79,6 +79,11 @@ def indexer(tmp_path, monkeypatch):
     monkeypatch.setattr(case_index, "iter_index_doc_batches", one_batch)
     case = tmp_path / "CASE-RUN"
     (case / "analysis").mkdir(parents=True)
+    # D483 validates the named run's catalog before any index write. Keep these index-policy tests isolated from
+    # file/ES I/O as before, but supply genuine run manifests through the product API instead of nonexistent names.
+    # The replacement, incremental, provenance and empty-resolution expectations below remain unchanged.
+    for run_id in ("RUN-OLD", "RUN-NEW", "RUN-SAME", "RUN-NONE"):
+        pipeline_runs.create_run(case, "tools", run_id=run_id)
     return case_index, case, recreated
 
 
