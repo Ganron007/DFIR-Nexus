@@ -28,6 +28,11 @@ class KnowledgeRecord:
         self._skills: dict[tuple[str, str], dict[str, Any]] = {}
         self._playbooks: dict[str, dict[str, Any]] = {}
         self._analytics: dict[str, dict[str, Any]] = {}
+        # Native call measurement shares this run's lifecycle and ContextVar;
+        # it is kept out of the knowledge section and written as its own field.
+        self.model_calls: Any = None
+        self.model_meter_available = False
+        self.unbound_model_calls = 0
 
     def skill(self, skill_id: str, version: str, score: int, why: Iterable[str]) -> None:
         with self._lock:

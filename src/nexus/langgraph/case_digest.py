@@ -136,6 +136,9 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         ],
     }
 
+    from nexus.analysis.model_calls import note_inputs
+
+    note_inputs(case_dir, brief)
     # D456: no threat-intel block. The digest is built before the run's TI stage (which needs the
     # leads above), so `analysis/ti_context.md` here was the previous run's; the run's own TI block
     # reaches the prompt beside the digest.

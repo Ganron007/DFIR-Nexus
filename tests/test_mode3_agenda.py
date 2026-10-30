@@ -92,7 +92,7 @@ def test_questions_and_pivots_take_turns_for_seats():
     from nexus.modes.multi_agent import _spawns_for_agenda, question_id
 
     texts = [f"question {n}?" for n in range(10)]
-    agenda = {"crit_leads": [],
+    agenda = {"leads": [],
               "questions": [{"id": question_id(t), "text": t} for t in texts],
               "pivots": [{"entity_type": "process", "entity_value": f"p{n}.exe", "why": "x"} for n in range(10)]}
     spawns = _spawns_for_agenda(agenda, [], max_agents=6, question="Compromise suspected.", superstep=3)
@@ -139,7 +139,7 @@ def test_the_run_settles_once_its_questions_are_settled(tmp_path, monkeypatch):
                        seat_fn=_settling_seat([]), es_ok=True)
     assert record["stop_reason"] == "settled", (record["stop_reason"], record["open_agenda"])
     assert record["superstep"] == 2
-    assert record["open_agenda"] == {"questions": [], "crit_leads": [], "pivots": []}
+    assert record["open_agenda"] == {"questions": [], "leads": [], "pivots": [], "verification": []}
     statuses = sorted(item["status"] for item in record["question_dispositions"].values())
     assert statuses == ["answered"] * 9 + ["unanswerable"] * 3
     assert sum("not answerable from this evidence" in gap for gap in record["gaps"]) == 3

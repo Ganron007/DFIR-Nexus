@@ -166,6 +166,15 @@ def review(tag: str, case: str, mode: str) -> dict:
     print(f"   model={model or '?'} minutes={duration} audited calls={calls} unknown-field hints={hints} "
           f"other tool errors={sum(errors.values())} log-only errors={unaudited} tracebacks={len(tracebacks)} "
           f"expected_model={expected_model or '?'}")
+    measurement = record.get("model_measurement")
+    if isinstance(measurement, dict):
+        inputs = measurement.get("inputs") or {}
+        print(f"   native model measurement={measurement.get('status')} calls={measurement.get('calls')} "
+              f"prompt_chars={measurement.get('prompt_chars')} pending={measurement.get('pending')} "
+              f"indexed_rows={inputs.get('indexed_rows')} leads={inputs.get('leads')}")
+        for reason in (measurement.get("reason"), inputs.get("index_error"), inputs.get("lead_error")):
+            if reason:
+                print(f"     measurement unavailable: {reason}")
     if knowledge is not None:
         ran = [a for a in knowledge.get("analytics") or [] if a.get("outcome") == "ran"]
         print(f"   knowledge: {len(knowledge.get('skills') or [])} skill(s), "
@@ -185,6 +194,7 @@ def review(tag: str, case: str, mode: str) -> dict:
     return {"run_id": run_id, "status": status, "stop_reason": stop, "model": model,
             "expected_model": expected_model,
             "minutes": minutes, "candidates": candidates, "audited_calls": calls,
+            "model_measurement": measurement,
             "tool_errors": sum(errors.values()), "unaudited_tool_errors": unaudited,
             "unknown_field_hints": hints, "tracebacks": len(tracebacks), "issues": issues}
 

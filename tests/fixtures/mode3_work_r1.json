@@ -1,0 +1,325 @@
+[
+  {
+    "source": "cases/CASE-7FA5756A/analysis/mode3_runs/M3-20261026T000323-c85c18.json",
+    "lead_source": "cases/CASE-7FA5756A/analysis/leads.jsonl",
+    "selection": "Verbatim lead identity/priority and native execution/disposition metadata; event rows and claim text omitted. One native investigated-question text and its actual spawned settlement metadata, cut verbatim.",
+    "leads": [
+      {
+        "kind": "rule_engine",
+        "subject": "Base64 Encoded PowerShell Command Detected",
+        "family": "hayabusa",
+        "score": 0.9,
+        "extra": {
+          "attack_ids": [
+            "T1027",
+            "T1140",
+            "T1059.001"
+          ],
+          "attack_names": [
+            "T1027 Obfuscated Files or Information",
+            "T1140 Deobfuscate/Decode Files or Information",
+            "T1059.001 PowerShell"
+          ],
+          "attack_source": "rule",
+          "count": 6,
+          "crit_high": true,
+          "engine": "hayabusa",
+          "engines": [
+            "hayabusa"
+          ],
+          "first": "2021-04-21T14:56:43Z",
+          "hosts": [
+            "fs03vuln.offsec.lan",
+            "srvdefender01.offsec.lan"
+          ],
+          "last": "2021-04-22T08:51:05Z",
+          "level": "high",
+          "rule_id": "c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7"
+        }
+      },
+      {
+        "kind": "rule_engine",
+        "subject": "Active Directory Replication from Non Machine Account - DcSync Indicator",
+        "family": "hayabusa",
+        "score": 0.6,
+        "extra": {
+          "attack_ids": [
+            "T1003.006"
+          ],
+          "attack_names": [
+            "T1003.006 DCSync"
+          ],
+          "attack_source": "rule",
+          "count": 1,
+          "crit_high": false,
+          "engine": "hayabusa",
+          "engines": [
+            "hayabusa"
+          ],
+          "first": "2021-04-27T11:04:03Z",
+          "hosts": [
+            "rootdc1.offsec.lan"
+          ],
+          "last": "2021-04-27T11:04:03Z",
+          "level": "med",
+          "rule_id": "5c8e2537-5c7f-56d8-de80-1f0746b61067"
+        }
+      },
+      {
+        "kind": "rule_engine",
+        "subject": "Cmd Launched with Hidden Start Flags to Suspicious Targets",
+        "family": "hayabusa",
+        "score": 0.6,
+        "extra": {
+          "attack_ids": [
+            "T1564.003"
+          ],
+          "attack_names": [
+            "T1564.003 Hidden Window"
+          ],
+          "attack_source": "rule",
+          "count": 2,
+          "crit_high": false,
+          "engine": "hayabusa",
+          "engines": [
+            "hayabusa"
+          ],
+          "first": "2021-04-21T14:56:43Z",
+          "hosts": [
+            "fs03vuln.offsec.lan",
+            "srvdefender01.offsec.lan"
+          ],
+          "last": "2021-04-22T08:51:04Z",
+          "level": "med",
+          "rule_id": "568b2ac8-83d2-2e23-94e9-f2a5dcdb457f"
+        }
+      }
+    ],
+    "outcome": {
+      "agent_id": "evidence:hayabusa:1",
+      "role": "evidence",
+      "family": "hayabusa",
+      "superstep": 1,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "lead": "Base64 Encoded PowerShell Command Detected",
+      "lead_disposition": {
+        "lead": "Base64 Encoded PowerShell Command Detected [audit_id nexus-claudebot-20261025-005]",
+        "status": "supported",
+        "basis": "The alert corresponds to a real multi-stage service-triggered execution chain (services.exe\u2192cmd.exe\u2192powershell.exe\u2192syswow64 powershell.exe) with gzip+base64-encoded payloads, observed on two hosts (srvdefender01.offsec.lan first, fs03vuln.offsec.lan ~18 h later), with a randomly-named persistence service 'iOWamcEn' created by a domain user. The TTP is consistent with T1059.001 + T1543 (Create or M"
+      }
+    },
+    "claim_entry": {
+      "agent_id": "evidence:hayabusa:1",
+      "role": "evidence",
+      "family": "hayabusa",
+      "superstep": 1,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "claims": [
+        {
+          "entity_type": "service",
+          "entity_value": "iOWamcEn",
+          "claim_kind": "presence",
+          "polarity": "affirm",
+          "subject": {
+            "type": "process",
+            "value": "c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+            "category": "process_creation"
+          },
+          "audit_ids": [
+            "nexus-claudebot-20261026-031"
+          ]
+        }
+      ]
+    },
+    "verdict_entry": {
+      "agent_id": "verifier:board:2",
+      "role": "verifier",
+      "family": "",
+      "superstep": 2,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "verdicts": [
+        {
+          "subject": "process=c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+          "class": "confirmed",
+          "audit_ids": [
+            "nexus-claudebot-20261026-160"
+          ]
+        }
+      ]
+    },
+    "question_source": {
+      "agent_id": "correlation:board:9",
+      "role": "correlation",
+      "family": "",
+      "superstep": 9,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "open_questions": [
+        "Does the hayabusa lane contain a 4673 (LsaRegisterLogonProcess) event on fs03vuln.offsec.lan with fs03vuln$ as subject, as the board entry (nexus-claudebot-20261026-519) asserts? The evtxecmd lane shows zero such events; a hayabusa-lane check (fields.EventID=4673, ecs.host.name=fs03vuln.offsec.lan, text wildcard *fs03vuln*) would confirm or refute the board entry."
+      ]
+    },
+    "question_settler": {
+      "agent_id": "evidence:board:10",
+      "role": "evidence",
+      "family": "",
+      "superstep": 10,
+      "finish_reason": "answer_text",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "question_ids": [
+        "Qd8fedc"
+      ],
+      "question_dispositions": []
+    },
+    "question_id": "Qd8fedc"
+  },
+  {
+    "source": "cases/CASE-4387EB47/analysis/mode3_runs/M3-20261028T170325-969bbd.json",
+    "lead_source": "cases/CASE-4387EB47/analysis/leads.jsonl",
+    "selection": "Verbatim lead identity/priority and native execution/disposition metadata; event rows and claim text omitted.",
+    "leads": [
+      {
+        "kind": "rule_engine",
+        "subject": "mcshield.exe (pid 3836)",
+        "family": "memprocfs",
+        "score": 1.0,
+        "extra": {
+          "count": 4,
+          "crit_high": true,
+          "engine": "memprocfs-yara",
+          "level": "severity 100",
+          "object": "",
+          "pid": "3836",
+          "process": "mcshield.exe",
+          "rules": [
+            "Windows_Ransomware_Clop_e04959b5",
+            "Windows_Ransomware_Ryuk_878bae7e",
+            "Windows_Trojan_Generic_9e4bb0ce"
+          ],
+          "software": [
+            {
+              "id": "S0446",
+              "name": "Ryuk"
+            },
+            {
+              "id": "S0611",
+              "name": "Clop"
+            }
+          ],
+          "threats": [
+            "Windows.Ransomware.Clop",
+            "Windows.Ransomware.Ryuk",
+            "Windows.Trojan.Generic"
+          ]
+        }
+      },
+      {
+        "kind": "rule_engine",
+        "subject": "DRIVER_PATH System",
+        "family": "memprocfs",
+        "score": 0.5,
+        "extra": {
+          "count": 2,
+          "crit_high": false,
+          "engine": "memprocfs-findevil",
+          "fp_rating": "MEDIUM",
+          "level": "",
+          "process": "System",
+          "verdict": "DRIVER_PATH"
+        }
+      },
+      {
+        "kind": "rule_engine",
+        "subject": "HIGH_ENTROPY OUTLOOK.EXE",
+        "family": "memprocfs",
+        "score": 0.5,
+        "extra": {
+          "count": 3,
+          "crit_high": false,
+          "engine": "memprocfs-findevil",
+          "findevil_context": [
+            {
+              "count": 19,
+              "detail": "MemProcFS FindEvil PE_PATCHED: 19 row(s) in OUTLOOK.EXE (pid 904): 000030428000 0100000030428025 A r-x ffff930eef117bf0 00009a2fe000 0a0000009a2fe121 A Image ---wxc; 0000bad2d000 01000000bad2d025 A r-x ffff930eef117bf0 0000ac12e000 0a000000ac12e121 A Image ---wxc; 00003232e000 010000003232e005 A r-x ffff930eef117bf0 00009b15c000 0a0000009b15c121 A Image ---wxc [MemProcFS rates PE_PATCHED false positives HIGH]",
+              "fp_rating": "HIGH",
+              "verdict": "PE_PATCHED"
+            }
+          ],
+          "fp_rating": "MEDIUM",
+          "level": "",
+          "process": "OUTLOOK.EXE",
+          "verdict": "HIGH_ENTROPY"
+        }
+      }
+    ],
+    "outcome": {
+      "agent_id": "evidence:memprocfs:1",
+      "role": "evidence",
+      "family": "memprocfs",
+      "superstep": 1,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "lead": "mcshield.exe (pid 3836)",
+      "lead_disposition": {
+        "lead": "mcshield.exe (pid 3836) [audit_id nexus-claudebot-20261027-003]",
+        "status": "benign",
+        "basis": "Process is a registered, running McAfee endpoint-protection service with legitimate parent (services.exe), expected modules, ALPC endpoint, and standard registry values; no evidence of masquerading, injection, or malicious behavior. The severity-100 alert was a false positive on a legitimate AV component."
+      }
+    },
+    "claim_entry": {
+      "agent_id": "evidence:memprocfs:1",
+      "role": "evidence",
+      "family": "memprocfs",
+      "superstep": 1,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "claims": [
+        {
+          "entity_type": "file",
+          "entity_value": "C:\\windows\\Mnemosyne.sys",
+          "claim_kind": "presence",
+          "polarity": "affirm",
+          "subject": {
+            "type": "process",
+            "value": "c:\\windows/mnemosyne.sys",
+            "category": "other"
+          },
+          "audit_ids": [
+            "nexus-claudebot-20261028-340",
+            "nexus-claudebot-20261028-404"
+          ]
+        }
+      ]
+    },
+    "verdict_entry": {
+      "agent_id": "verifier:board:2",
+      "role": "verifier",
+      "family": "",
+      "superstep": 2,
+      "finish_reason": "answer_terminal",
+      "evidence_attempted": true,
+      "evidence_read": true,
+      "verdicts": [
+        {
+          "subject": "process=c:\\windows/mnemosyne.sys",
+          "class": "inferred",
+          "audit_ids": [
+            "nexus-claudebot-20261028-445",
+            "nexus-claudebot-20261028-462",
+            "nexus-claudebot-20261028-485",
+            "nexus-claudebot-20261028-505"
+          ]
+        }
+      ]
+    }
+  }
+]

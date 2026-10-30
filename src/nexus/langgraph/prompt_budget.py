@@ -129,22 +129,50 @@ except ImportError:  # pragma: no cover - the package depends on langchain-core;
 class TokenMeter(_CallbackBase):  # type: ignore[misc,valid-type]
     """A LangChain callback that records each chat call's characters and the provider's input-token count (D380)."""
 
-    def __init__(self) -> None:
+    run_inline = True  # Keep the native run ContextVar on async callback starts.
+
+    def __init__(self, model: dict[str, str] | None = None) -> None:
         super().__init__()
         self._chars: dict[Any, int] = {}
+        self._tickets: dict[Any, tuple[Any, float]] = {}
+        self._lock = threading.Lock()
+        self._model = dict(model or {})
+
+    def _start(self, run_id: Any, chars: int) -> None:
+        from nexus.analysis.knowledge_record import current
+
+        with self._lock:
+            self._chars[run_id] = chars
+            record = current()
+            if record is not None:
+                if record.model_calls is None:
+                    record.unbound_model_calls += 1
+                else:
+                    calls = record.model_calls
+                    self._tickets[run_id] = (calls, calls.start(str(run_id), chars, self._model))
+
+    def _finish(self, run_id: Any, *, input_tokens: int = 0, error: BaseException | None = None) -> int:
+        with self._lock:
+            chars = self._chars.pop(run_id, 0)
+            ticket = self._tickets.pop(run_id, None)
+        if ticket is not None:
+            calls, started = ticket
+            calls.finish(str(run_id), started, input_tokens=input_tokens, error=error)
+        return chars
 
     def on_chat_model_start(self, serialized: Any, messages: Any, *, run_id: Any = None, **_: Any) -> None:
-        self._chars[run_id] = sum(len(str(getattr(m, "content", m))) for batch in messages for m in batch)
+        self._start(run_id, sum(len(str(getattr(m, "content", m))) for batch in messages for m in batch))
 
     def on_llm_start(self, serialized: Any, prompts: Any, *, run_id: Any = None, **_: Any) -> None:
-        self._chars[run_id] = sum(len(str(p)) for p in prompts or [])
+        self._start(run_id, sum(len(str(p)) for p in prompts or []))
 
     def on_llm_end(self, response: Any, *, run_id: Any = None, **_: Any) -> None:
-        chars = self._chars.pop(run_id, 0)
-        record_token_count(chars, _input_tokens(response), "usage")
+        tokens = _input_tokens(response)
+        chars = self._finish(run_id, input_tokens=tokens)
+        record_token_count(chars, tokens, "usage")
 
     def on_llm_error(self, error: BaseException, *, run_id: Any = None, **_: Any) -> None:
-        chars = self._chars.pop(run_id, 0)
+        chars = self._finish(run_id, error=error)
         tokens = context_overflow_tokens(str(error))
         if tokens:
             record_token_count(chars, tokens, "refused prompt")

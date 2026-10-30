@@ -422,7 +422,11 @@ def get_model(model_name: str = ""):
     from nexus.langgraph.prompt_budget import TokenMeter
 
     try:
-        model.callbacks = [*(getattr(model, "callbacks", None) or []), TokenMeter()]
+        model.callbacks = [*(getattr(model, "callbacks", None) or []), TokenMeter(built_model_record())]
+        from nexus.analysis.knowledge_record import current
+
+        if current() is not None:
+            current().model_meter_available = True
     except (AttributeError, TypeError, ValueError) as exc:  # a client that takes no callbacks is still usable
         log.warning("model %s takes no callbacks; its prompt sizes are not measured: %s", type(model).__name__, exc)
     return model

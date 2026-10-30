@@ -547,6 +547,10 @@ def create_run(
     pointers[mode] = rid
     pointers[pointer_key] = rid
     _atomic_json(pointer_path, pointers)
+    if mode == "interpret":
+        from nexus.analysis.model_calls import bind as bind_model_calls
+
+        bind_model_calls(case_dir, rid)
     return PipelineRun(rid, mode, run_dir, parent_run_id)
 
 
@@ -567,6 +571,10 @@ def finalize_run(run: PipelineRun, status: str, error: str = "") -> None:
 
     if _knowledge() is not None:
         manifest["knowledge"] = _knowledge().section()
+    from nexus.analysis.model_calls import section as model_call_section
+
+    if (measurement := model_call_section(run.path.parent.parent, run.run_id)) is not None:
+        manifest["model_measurement"] = measurement
     if error:
         manifest["error"] = error[:2000]
     _atomic_json(run.path / "manifest.json", manifest)

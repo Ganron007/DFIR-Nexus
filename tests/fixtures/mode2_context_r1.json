@@ -1,0 +1,407 @@
+{
+  "source": "cases/CASE-7FA5756A/analysis/mode2_runs/M2-20261025T230657-ee1387.json",
+  "selection": "Verbatim first candidate identity and citation fields only; no assertion text or rows. Additional verbatim order family/role and result work identities/questions/entities; note/event text omitted.",
+  "candidate": {
+    "title": "CobaltStrike PowerShell beacon staged and persisted as service 'iOWamcEn' on srvdefender01.offsec.lan and fs03vuln.offsec.lan",
+    "audit_ids": [
+      "nexus-claudebot-20261025-111",
+      "nexus-claudebot-20261025-112",
+      "nexus-claudebot-20261025-145",
+      "nexus-claudebot-20261025-150"
+    ]
+  },
+  "orders": [
+    {
+      "order_id": "wo-681b809f565a",
+      "role": "evidence",
+      "family": "hayabusa"
+    },
+    {
+      "order_id": "wo-757abb12c097",
+      "role": "evidence",
+      "family": "hayabusa"
+    },
+    {
+      "order_id": "wo-88df57079884",
+      "role": "evidence",
+      "family": "hayabusa"
+    },
+    {
+      "order_id": "wo-3ced6fe09970",
+      "role": "evidence",
+      "family": "hayabusa"
+    },
+    {
+      "order_id": "wo-dd0d4d4dd0f3",
+      "role": "correlation",
+      "family": ""
+    },
+    {
+      "order_id": "wo-716b711ce3cd",
+      "role": "pattern",
+      "family": ""
+    },
+    {
+      "order_id": "wo-a4c7d4bbe22a",
+      "role": "evidence",
+      "family": ""
+    },
+    {
+      "order_id": "wo-e0ad09fc1940",
+      "role": "correlation",
+      "family": ""
+    }
+  ],
+  "results": [
+    {
+      "order_id": "wo-681b809f565a",
+      "role": "evidence",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "entities": [
+          "fs03vuln.offsec.lan",
+          "srvdefender01.offsec.lan",
+          "rootdc1.offsec.lan",
+          "0Konuy9q8HtkWeKS",
+          "SRVDEFENDER01$",
+          "ROOTDC1$",
+          "10.23.123.11",
+          "127.0.0.1",
+          "admmig",
+          "hack1",
+          "iOWamcEn (CobaltStrike service)",
+          "__1619425227.894209 (Impacket temp file)"
+        ],
+        "next_questions": [
+          "What is 0Konuy9q8HtkWeKS? Is it a compromised host or the attacker's infrastructure? Check its logons and outbound connections.",
+          "Did the CobaltStrike beacon (iOWamcEn) establish C2? Check DNS/network rows for external connections from srvdefender01.offsec.lan in the 2021-04-21T14:56 UTC window.",
+          "Is 127.0.0.1 / attacker the final target of the Impacket lateral movement? What payload was written to ADMIN$\\__1619425227.894209?",
+          "Who is hack1 and what was the December log clear on fs03vuln.offsec.lan related to?",
+          "Check evtxecmd family for any additional 4688/4624 rows on srvdefender01.offsec.lan and rootdc1.offsec.lan not captured by the hayabusa rules."
+        ],
+        "candidate_findings": [
+          {
+            "title": "Lead 1 confirmed: Base64 PowerShell is CobaltStrike beacon staging"
+          },
+          {
+            "title": "Lead 2 confirmed: CobaltStrike service 'iOWamcEn' installed on srvdefender01.offsec.lan"
+          },
+          {
+            "title": "Lead 3 confirmed: Impacket WMI/Service lateral movement to 127.0.0.1"
+          },
+          {
+            "title": "Lead 4 is a false positive: 'Hermetic Wiper' rule misfired on lateral-movement events"
+          },
+          {
+            "title": "Lead 5 confirmed: Anti-forensics log clearing immediately preceding lateral movement"
+          },
+          {
+            "title": "Lead 6 confirmed: SMB network logon from 0Konuy9q8HtkWeKS consistent with Metasploit/Impacket pivot"
+          }
+        ]
+      }
+    },
+    {
+      "order_id": "wo-757abb12c097",
+      "role": "evidence",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "entities": [
+          "fs03vuln.offsec.lan",
+          "srvdefender01.offsec.lan",
+          "rootdc1.offsec.lan",
+          "admmig",
+          "hack1",
+          "ROOTDC1",
+          "compnay-88$",
+          "PSEXESVC.exe",
+          "PsExec64.exe",
+          "C:\\TOOLS\\PsExec64.exe",
+          "iOWamcEn (CobaltStrike service)",
+          "S-1-5-21-4230534742-2542757381-3142984815-1234",
+          "S-1-5-21-4230534742-2542757381-3142984815-1296",
+          "FB0A150601470195C47B4E8D87FCB3F50292BEB2 (SHA1 PsExec64)"
+        ],
+        "next_questions": [
+          "Was C:\\TOOLS\\PsExec64.exe (SHA1 FB0A1506...) approved in the endpoint software baseline, or is it an unmanaged LOLBin dropped by the attacker?",
+          "What was the actual command executed by the cmd.exe child (line 13) on fs03vuln.offsec.lan? Sysmon EID 1 shows 'cmd' but the subsequent EID 1 / EID 3 events would reveal what was run.",
+          "Did hack1 have prior access to rootdc1.offsec.lan? Check Security 4624 logons and 4672 privilege assignments for hack1 on rootdc1.offsec.lan in the 30 days before 2021-12-14.",
+          "Is 'compnay-88$' a service that existed before the CVE-2021-42287 patch, and was the patch applied to rootdc1.offsec.lan? If unpatched, this is an exploitable LPE.",
+          "Are the April 2021 (admmig) and December 2021 (hack1) events the same campaign or separate intrusions? Cross-reference C2 domains, implant hashes, and source IPs.",
+          "What is the relationship between ROOTDC1 (target of the CVE rename) and the 127.0.0.1 lateral-movement target from the April Impacket events (prior work order Lead 3)?"
+        ],
+        "candidate_findings": [
+          {
+            "title": "Lead 1 HELD: PowerShell Obfuscation is CobaltStrike beacon staging (April 2021)"
+          },
+          {
+            "title": "Lead 2 HELD: PowerShell-as-Service is CobaltStrike service 'iOWamcEn' install (April 2021)"
+          },
+          {
+            "title": "Lead 3 HELD: PsExec local execution on fs03vuln.offsec.lan (December 2021)"
+          },
+          {
+            "title": "Lead 4 HELD: PsExec child process as LOCAL SYSTEM confirmed"
+          },
+          {
+            "title": "Lead 5 HELD: PsExec escalation to LOCAL SYSTEM (T1587.001)"
+          },
+          {
+            "title": "Lead 6 HELD: CVE-2021-42287 LPE via service account rename on rootdc1.offsec.lan"
+          }
+        ]
+      }
+    },
+    {
+      "order_id": "wo-88df57079884",
+      "role": "evidence",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "entities": [
+          "srvdefender01.offsec.lan",
+          "SRVDEFENDER01$",
+          "127.0.0.1",
+          "WmiPrvSE.exe",
+          "cmd.exe",
+          "__1619425227.894209",
+          "iOWamcEn",
+          "admmig"
+        ],
+        "next_questions": [
+          "What is the file __1619425227.894209 that was subsequently placed on \\\\127.0.0.1\\ADMIN$? If 127.0.0.1 is attacker, does the CS beacon or another payload execute from that path?",
+          "Is there a corresponding Security 7045 (service installed) or 4624 type-3 event on 127.0.0.1 that confirms the WMI-created service started on the remote host?",
+          "Does the T1048 mislabel in the rule/lead affect other detections tagged with the same ATT&CK ID in this case?"
+        ],
+        "candidate_findings": [
+          {
+            "title": "Lead 1 HELD (rule fired) but ATT&CK mapping is incorrect: 'Suspicious Redirection to Local Admin Share' is Impacket lateral tool transfer, not T1048 exfiltration"
+          }
+        ]
+      }
+    },
+    {
+      "order_id": "wo-3ced6fe09970",
+      "role": "evidence",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "entities": [
+          "admmig (S-1-5-21-4230534742-2542757381-3142984815-1111, LogonId 0x31A19B0F for DCSync, 0x31A24611 for JUMP01 registration)",
+          "rootdc1.offsec.lan (domain controller, DC=OFFSEC.lan)",
+          "JUMP01$ (S-1-5-21-4230534742-2542757381-3142984815-1106, computer account being configured as jump host)",
+          "domainDNS object %{0b32719a-29a5-4ad5-b9dc-56200eba0ce0}",
+          "domain object %{bf967a86-0de6-11d0-a285-00aa003049e2}",
+          "CN=JUMP01,CN=Servers,CN=OFFSEC-PREMISE,CN=Sites,CN=Configuration (server object created)",
+          "CN=JUMP01,OU=SERVERS,OU=RESOURCES,DC=OFFSEC,DC=lan (computer object SPN modified)"
+        ],
+        "next_questions": [
+          "What is the source IP of LogonId 0x31A19B0F \u2014 is it 0Konuy9q8HtkWeKS (the pivot box) or a different host?",
+          "Did any domain accounts show type-3 Kerberos/NTLM logons from rootdc1.offsec.lan or external IPs in the 24h after the DCSync (indicating harvested credentials were used)?",
+          "Is admmig a member of Domain Admins, or did the DRS access come from a delegated ACL that was later revoked?",
+          "What is the current state of the JUMP01$ account and the 'compnay-88$' service (CVE-2021-42287) \u2014 is there an operational C2 beconing from JUMP01?"
+        ],
+        "candidate_findings": [
+          {
+            "title": "DCSync credential theft by admmig on rootdc1.offsec.lan (T1003.006) confirmed \u2014 hypothesis HELD"
+          }
+        ]
+      }
+    },
+    {
+      "order_id": "wo-dd0d4d4dd0f3",
+      "role": "correlation",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "next_questions": [
+          "What is the identity of 10.23.23.9? Is it fs03vuln or a second IP on 0Konuy9q8HtkWeKS? A 4624 search on fs03vuln.offsec.lan for SourceAddress=10.23.23.9 would resolve this.",
+          "Were the DPAPI blobs (GUID-named files under Microsoft\\Protect) successfully exfiltrated? A 5145 WRITE or file-copy event to an external share would confirm exfiltration.",
+          "Did the CVE-2021-42287 LPE (ROOTDC1) produce a subsequent SYSTEM-level service execution or credential access on rootdc1.offsec.lan? Search 4688/7045 on rootdc1.offsec.lan in the 12-14T14:42\u201315:00 window.",
+          "What is offsec.lan? The JUMP01$ SPNs point to offsec.lan (HOST/jump01.offsec.lan, GC/jump01.offsec.lan/offsec.lan). A cross-domain trust exists. Is offsec.lan the corporate trust or a newly-created domain?",
+          "The ROOTDC1 NTDS Settings object (4929 DestinationDRA) implies ROOTDC1 is a DC. Confirm via 4624 type-3 logons as ROOTDC1$ on rootdc1.offsec.lan or via System 7045 service install on ROOTDC1."
+        ],
+        "candidate_findings": []
+      }
+    },
+    {
+      "order_id": "wo-716b711ce3cd",
+      "role": "pattern",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "next_questions": [
+          "What is 127.0.0.1? Does it resolve to attacker or another host? The Impacket lateral-movement target and the Metasploit SMB source (0Konuy9q8HtkWeKS / 10.23.123.11) need network resolution to complete the lateral-movement map.",
+          "Were there 4624 type-3 logons on 127.0.0.1 (if it is a host) in the 2021-04-26 window confirming the Impacket connection landed? ROOTDC1 EVTX was not captured, so the target-side reception events are absent.",
+          "Does hack1 have a documented admin role, or is this account also compromised? The December events (PsExec Dec 4, CVE-2021-42287 Dec 14, log clear Dec 12) all implicate hack1 but no April-beacon link exists for this account.",
+          "Can the JUMP01$ SPN changes (GC, TERMSRV, WSMAN, E3514235 GUIDs added on 2021-04-27) be tied to a specific jump-host onboarding ticket, or are they part of the intrusion?",
+          "What is the full Kerberos ticket flow for admmig TGT requests to rootdc1.offsec.lan in the \u00b11-hour window around the DCSync? 4768/4769 events for this specific TGT were not checked.",
+          "Were there any 4698/4702 scheduled-task or 7045 service events on rootdc1.offsec.lan (the DC) in the April or December windows indicating additional persistence beyond the CS service?"
+        ],
+        "candidate_findings": []
+      }
+    },
+    {
+      "order_id": "wo-4488db76d7af",
+      "role": "verifier",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "candidate_findings": []
+      }
+    },
+    {
+      "order_id": "wo-a4c7d4bbe22a",
+      "role": "evidence",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "entities": [
+          "0Konuy9q8HtkWeKS (10.23.123.11) \u2014 pivot/infrastructure box, no local EVTX captured",
+          "127.0.0.1 \u2014 lateral-movement target (Impacket ADMIN$/C$ writes)",
+          "SRVDEFENDER01$ \u2014 machine account, Impacket source on srvdefender01.offsec.lan, present in DCSync cluster",
+          "ROOTDC1$ \u2014 machine account, Impacket source on rootdc1.offsec.lan, CVE-2021-42287 LPE target",
+          "hack1 \u2014 December operator (log clear + CVE-2021-42287), SID S-1-5-21-4230534742-2542757381-3142984815-1234",
+          "admmig \u2014 April operator (CS beacon, Impacket, DCSync, log clears), SID S-1-5-21-4230534742-2542757381-3142984815-1111",
+          "JUMP01$ \u2014 computer account, SPN configuration concurrent with DCSync",
+          "C:\\TOOLS\\PsExec64.exe (SHA1 FB0A1506...) \u2014 Sysinternals PsExec, non-standard path"
+        ],
+        "next_questions": [
+          "Can 127.0.0.1 be resolved to a hostname from any available network or DNS data, or is it confirmed as attacker?",
+          "What is the C2 destination IP/DNS for the CS beacon 'iOWamcEn' \u2014 requires netflow or PCAP data not in this case",
+          "Was JUMP01$ a newly created computer account (4720) or a pre-existing one renamed for the CVE-2021-42287 LPE?",
+          "What specific 4662 Property/AccessList fields reference SRVDEFENDER01$ and ROOTDC1$ in the DCSync cluster \u2014 are they in the Subject field or the replicated-object metadata?",
+          "Is hack1 the same individual as admmig (two accounts, one operator) or a second operator in the campaign?"
+        ],
+        "candidate_findings": [
+          {
+            "title": "0Konuy9q8HtkWeKS is the pivot/infrastructure host for the April intrusion, not a separately compromised workstation"
+          },
+          {
+            "title": "CobaltStrike beacon C2 cannot be confirmed or denied \u2014 Sysmon network/DNS coverage gap on srvdefender01.offsec.lan"
+          },
+          {
+            "title": "rootdc1.offsec.lan had no 4688/4624 auditing in the DCSync window \u2014 the DC's event-audit scope was limited to Object Access and account management"
+          },
+          {
+            "title": "SRVDEFENDER01$ and ROOTDC1$ machine accounts appear in the rootdc1.offsec.lan DCSync cluster, indicating credential reuse or harvest"
+          },
+          {
+            "title": "C:\\TOOLS\\PsExec64.exe is a known Sysinternals tool in a non-standard path \u2014 staging indicator, not a signed vendor deployment"
+          },
+          {
+            "title": "The December 2021 log clear on fs03vuln.offsec.lan by hack1 is anti-forensics for a separate operational window, not a routine cleanup"
+          }
+        ]
+      }
+    },
+    {
+      "order_id": "wo-60cf6438c874",
+      "role": "verifier",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "candidate_findings": []
+      }
+    },
+    {
+      "order_id": "wo-e0ad09fc1940",
+      "role": "correlation",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "next_questions": [
+          "Does fs03vuln.offsec.lan have 4624 type-3 logon events for admmig from 0Konuy9q8HtkWeKS in the December 12 window (pre- or post- log clear)? The 5145 events confirm C$ access but the initiating 4624 would confirm the SMB session start.",
+          "What is rootdc1@OFFSEC.LAN? The 4769 on rootdc1.offsec.lan shows rootdc1@OFFSEC.LAN requesting a service ticket for ROOTDC1$ from 0Konuy9q8HtkWeKS. Is rootdc1@OFFSEC.LAN a mail-enabled security group or a user account used as the TGT requester?",
+          "Are there 4624/4688 events on fs03vuln.offsec.lan in the 2021-12-04 PsExec window showing how admmig was already on fs03vuln.offsec.lan (initial logon, RDP, or service)?",
+          "Does the C:\\TOOLS\\ directory contain other tools (PsExec64.exe, PSEXESVC.exe, or others)? A Sysmon EID 11 (FileCreate) or 4688 sweep for C:\\TOOLS\\ would reveal the full staged toolkit.",
+          "What is the relationship between offsec.lan and OFFSEC? The 4624 on rootdc1.offsec.lan shows TargetDomainName offsec.lan for ROOTDC1$, and the 4769 shows TargetDomainName offsec.lan. Is rootdc1.offsec.lan a trust DC?"
+        ],
+        "candidate_findings": []
+      }
+    },
+    {
+      "order_id": "wo-4b2efb79f690",
+      "role": "synthesis",
+      "status": "ok",
+      "partial": false,
+      "parsed": {
+        "entities": [
+          {
+            "role": "Primary operator (April CS beacon, DCSync, Impacket lateral movement, log clears; December PsExec). SID S-1-5-21-4230534742-2542757381-3142984815-1111. User account, not machine.",
+            "type": "account",
+            "value": "admmig"
+          },
+          {
+            "role": "Secondary operator (December log clear on fs03vuln.offsec.lan, CVE-2021-42287 LPE on rootdc1.offsec.lan). SID S-1-5-21-4230534742-2542757381-3142984815-1234. Distinct from admmig.",
+            "type": "account",
+            "value": "hack1"
+          },
+          {
+            "role": "Compromised workstation. CS beacon + service 'iOWamcEn' installed. Impacket WMI source. Log cleared by admmig.",
+            "type": "host",
+            "value": "srvdefender01.offsec.lan"
+          },
+          {
+            "role": "Compromised workstation. CS beacon staged (Apr 22). PsExec re-engagement (Dec 4). Log cleared twice (Apr 22 by admmig, Dec 12 by hack1).",
+            "type": "host",
+            "value": "fs03vuln.offsec.lan"
+          },
+          {
+            "role": "Domain Controller. DCSync target (Apr 27). CVE-2021-42287 LPE target (Dec 14). Impacket service-write source.",
+            "type": "host",
+            "value": "rootdc1.offsec.lan"
+          },
+          {
+            "role": "Operator infrastructure / jump box. 10.23.123.11. Zero local EVTX. Sources SMB connections (port 41747, NTLM V2). Metasploit/Impacket pivot.",
+            "type": "host",
+            "value": "0Konuy9q8HtkWeKS"
+          },
+          {
+            "role": "Lateral-movement target. Receives Impacket writes on ADMIN$ and C$ shares from srvdefender01.offsec.lan and rootdc1.offsec.lan.",
+            "type": "host",
+            "value": "127.0.0.1"
+          },
+          {
+            "role": "Machine account on srvdefender01.offsec.lan. Executed Impacket WMI writes with FULL_TOKEN.",
+            "type": "account",
+            "value": "SRVDEFENDER01$"
+          },
+          {
+            "role": "Machine account on rootdc1.offsec.lan. Executed Impacket service writes. Also the CVE-2021-42287 LPE target name.",
+            "type": "account",
+            "value": "ROOTDC1$"
+          },
+          {
+            "role": "CobaltStrike beacon persistence service on srvdefender01.offsec.lan. LocalSystem, auto-start, random 8-char name, in-memory PowerShell binary path.",
+            "type": "service",
+            "value": "iOWamcEn"
+          },
+          {
+            "role": "Pre-staged Sysinternals PsExec (SHA1 FB0A1506\u2026). Non-standard path. Used for local privilege escalation on fs03vuln.offsec.lan.",
+            "type": "file",
+            "value": "C:\\TOOLS\\PsExec64.exe"
+          },
+          {
+            "role": "Impacket file-staging marker on \\\\127.0.0.1\\ADMIN$. Timestamp-prefixed filename.",
+            "type": "file",
+            "value": "__1619425227.894209"
+          },
+          {
+            "role": "Non-standard service account (typo 'compnay') on rootdc1.offsec.lan. Renamed to ROOTDC1 for CVE-2021-42287 LPE.",
+            "type": "account",
+            "value": "compnay-88$"
+          },
+          {
+            "role": "Computer object whose SPN was concurrently modified during the DCSync window (4742/5136/5137). Potential persistent access mechanism.",
+            "type": "host",
+            "value": "JUMP01"
+          }
+        ],
+        "candidate_findings": []
+      }
+    }
+  ]
+}

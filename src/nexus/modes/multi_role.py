@@ -231,6 +231,60 @@ def _digest_summary(digest: dict[str, Any], *, limit: int = 2400) -> str:
     return "\n\n".join(parts)
 
 
+def _result_pivots(parsed: dict[str, Any]) -> list[str]:
+    """The declared entities carried by one result, shared by replanning and context routing."""
+    entities = [" ".join(str(ent).split()) for ent in parsed.get("entities") or [] if str(ent).strip()]
+    for candidate in (parsed.get("candidate_findings") or parsed.get("findings") or []):
+        if isinstance(candidate, dict):
+            entities.extend(" ".join(str(candidate.get(key)).split()) for key in ("host", "affected_account")
+                            if candidate.get(key))
+    return entities
+
+
+def _followup_sources(
+    state: dict[str, Any], questions: list[str], pivots: list[str], titles: list[str],
+) -> tuple[str, ...] | None:
+    """Explicit origins of dispatched work; unbound legacy work retains the broader run context."""
+    qids = {m.group(0).lower() for q in questions if (m := QUESTION_ID_RE.search(q))}
+    entities = {norm_key(p) for p in pivots}
+    claims = {_title_key({"title": title}) for title in titles}
+    found_q: set[str] = set()
+    found_p: set[str] = set()
+    found_c: set[str] = set()
+    origins: set[str] = set()
+    for result in state.get("results") or []:
+        parsed = result.get("parsed") or {}
+        refs = {question_id(q).lower() for q in parsed.get("next_questions") or []}
+        refs.update(m.group(0).lower() for q in parsed.get("next_questions") or []
+                    for m in QUESTION_ID_RE.finditer(str(q)))
+        qp = qids & refs
+        ep = entities & {norm_key(p) for p in _result_pivots(parsed)}
+        cp = claims & {_title_key(c) for c in (parsed.get("candidate_findings") or parsed.get("findings") or [])
+                       if isinstance(c, dict)}
+        if qp or ep or cp or (claims and result.get("role") == "verifier"):
+            origins.add(str(result.get("order_id") or ""))
+        found_q.update(qp)
+        found_p.update(ep)
+        found_c.update(cp)
+    if qids - found_q or entities - found_p or claims - found_c:
+        return None
+    return tuple(dict.fromkeys(str(r.get("order_id")) for r in state.get("results") or []
+                               if r.get("order_id") in origins))
+
+
+def _previous_results_for_order(state: dict[str, Any], order: WorkOrder) -> list[dict[str, Any]]:
+    """Follow-up dependencies, or a family's work and the run's cross-family perspectives."""
+    results = list(state.get("results") or [])
+    if order.source_orders is not None:
+        return [r for r in results if r.get("order_id") in order.source_orders]
+    if not order.family:
+        return results
+    orders = {o["order_id"]: o for o in state.get("orders") or [] if isinstance(o, dict)}
+    return [r for r in results if r.get("order_id") not in orders
+            or norm_key(orders[r["order_id"]].get("family")) == norm_key(order.family)
+            or orders[r["order_id"]].get("role") in {"correlation", "pattern"}]
+
+
 def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
     """A worker's open questions, by id, and new pivot entities (WO-R1F item 7c).
 
@@ -264,19 +318,7 @@ def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
                 continue  # it restates a question already open
             questions.setdefault(question_id(text), text)
         settled |= settled_question_ids(parsed)
-        # Entities a worker named: in the explicit `entities` list or in its
-        # candidate findings' host/account fields.
-        for ent in parsed.get("entities") or []:
-            text = " ".join(str(ent).split())
-            if text:
-                entities.append(text)
-        for cand in (parsed.get("candidate_findings") or parsed.get("findings") or []):
-            if not isinstance(cand, dict):
-                continue
-            for key in ("host", "affected_account"):
-                text = " ".join(str(cand.get(key) or "").split())
-                if text:
-                    entities.append(text)
+        entities.extend(_result_pivots(parsed))
     open_q = [f"{qid}: {text}" for qid, text in questions.items() if qid not in settled]
     pivots: list[str] = []
     for ent in entities:
@@ -1249,6 +1291,8 @@ class WorkOrder:
     lead_subjects: tuple[str, ...] = ()
     #: Entities explicitly assigned to this order; consumed only by a completed, evidence-reading result.
     pivot_entities: tuple[str, ...] = ()
+    #: Explicit input work for a follow-up; None preserves a cross-family/legacy task's run context.
+    source_orders: tuple[str, ...] | None = None
     crit_high: bool = False
     #: IC-5: the ATT&CK techniques and software (ids) the order's leads name; the seat gets ATT&CK's method
     #: for them (`attack_method_block`).
@@ -1710,10 +1754,10 @@ def run_work_order(
     turn_id = f"turn-{uuid4().hex[:10]}"
     started = time.monotonic()
 
-    work_context = _pack(json.dumps(context or {}, default=str), case_dir)
-    # WO-R1F item 7c: the digest summary this run built reaches every worker.
-    work_context_digest = _pack(str(context.get("digest_summary") or "")
-                                if isinstance(context, dict) else "", case_dir)
+    context_body = dict(context or {})
+    # The shared case facts are rendered once, outside the task's structured payload.
+    work_context_digest = _pack(str(context_body.pop("digest_summary", "") or ""), case_dir)
+    work_context = _pack(json.dumps(context_body, default=str), case_dir)
     skill_block = _pack(_skill_procedure_block(order, case_dir) + attack_method_block(order, case_dir), case_dir)
     shared = mode2_loop_budget(case_dir)
     budget = LoopBudget(
@@ -2167,6 +2211,10 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
 
     if _knowledge() is not None:
         state["knowledge"] = _knowledge().section()
+    from nexus.analysis.model_calls import section as model_call_section
+
+    if (measurement := model_call_section(case_dir, run_id)) is not None:
+        state["model_measurement"] = measurement
     path = Path(case_dir) / _MODE2_DIR / f"{run_id}.json"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2380,6 +2428,10 @@ def _run_mode2(
         except (OSError, ValueError):
             pass
 
+    from nexus.analysis.model_calls import bind as bind_model_calls
+
+    bind_model_calls(case_dir, run_id, model, resuming=resume and state_path.is_file(),
+                     previous=state.get("model_measurement"))
     # Let the shared preflight distinguish a live dashboard worker thread from
     # a dead worker inside the still-running web-server process.
     state["process_pid"] = os.getpid()
@@ -2428,6 +2480,12 @@ def _run_mode2(
 
     def _order_dicts() -> list[dict[str, Any]]:
         return [o if isinstance(o, dict) else o.to_dict() for o in state["orders"]]
+
+    def _work_context(**work: Any) -> dict[str, Any]:
+        # One source of the mandatory context for investigation, verification and synthesis.
+        return {"digest_summary": state.get("digest_summary") or "",
+                "steering": read_steering(case_dir, run_id),
+                "examiner_feedback": state.get("examiner_feedback") or {}, **work}
 
     # ── Director node ──────────────────────────────────────────────────
     def director_node(_state: dict[str, Any]) -> dict[str, Any]:
@@ -2489,22 +2547,21 @@ def _run_mode2(
             return state
         raw = orders[index]
         order = WorkOrder.from_dict(raw)
-        context = {
-            "previous_results": [
+        context = _work_context(
+            previous_results=[
                 {
                     "role": r.get("role"),
                     "order_id": r.get("order_id"),
                     "notes": (r.get("parsed") or {}).get("notes") or [],
                     "candidates": (r.get("parsed") or {}).get("candidate_findings") or [],
                     "coverage": (r.get("parsed") or {}).get("coverage") or {},
+                    "verdicts": (r.get("parsed") or {}).get("verdicts") or [],
+                    "status": r.get("status"),
+                    "partial": bool(r.get("partial")),
                 }
-                for r in state.get("results", [])
+                for r in _previous_results_for_order(state, order)
             ],
-            "steering": read_steering(case_dir, run_id),
-            "examiner_feedback": state.get("examiner_feedback") or {},
-            # WO-R1F item 7c: the digest summary reaches every worker.
-            "digest_summary": state.get("digest_summary") or "",
-        }
+        )
         result = run_work_order(
             order, case_dir=case_dir, model=model, run_id=run_id,
             sink=sink, context=context,
@@ -2552,14 +2609,13 @@ def _run_mode2(
         order = WorkOrder(
             order_id=WorkOrder.new_id(),
             role="verifier",
-            task=("Verify or refute these candidate findings with tool calls:\n"
-                  + _pack(json.dumps(candidates, default=str), case_dir)),
+            task="Verify or refute the candidate findings in the run context with tool calls.",
             why="Adversarial refutation before synthesis",
             acceptance="per-candidate class confirmed/inferred/refuted with basis",
         )
         result = run_work_order(
             order, case_dir=case_dir, model=model, run_id=run_id, sink=sink,
-            context={"candidates": candidates},
+            context=_work_context(candidates=candidates),
         )
         state.setdefault("results", []).append(result.to_dict())
         if result.status == "ok":
@@ -2735,6 +2791,7 @@ def _run_mode2(
             task=" ".join(task_parts),
             why=f"{len(refuted)} refuted / {len(inferred)} inferred candidate(s)",
             pivot_entities=tuple(pivots[:6]),
+            source_orders=_followup_sources(state, next_questions[:6], pivots[:6], [*refuted[:6], *inferred[:6]]),
             priority_tools=priority,
             acceptance=(
                 "per-candidate corroboration or honest exhaustion; no invented "
@@ -2789,25 +2846,17 @@ def _run_mode2(
             order = WorkOrder(
                 order_id=WorkOrder.new_id(),
                 role="synthesis",
-                task=("Build the narrative and final DRAFT candidates from the "
-                      "verified evidence and the run's coverage:\n"
-                      + _pack(json.dumps({
-                          "question": question,
-                          "verdicts": state.get("verdicts") or [],
-                          "candidates": candidates,
-                          "coverage": coverage,
-                          "examiner_feedback": state.get("examiner_feedback") or {},
-                      }, default=str), case_dir)),
+                task=("Build the narrative and final DRAFT candidates from the verified evidence "
+                      "and coverage in the run context; never approve findings."),
                 why="Final narrative + DRAFT candidate findings",
                 acceptance="narrative + findings with audit_ids; no approvals",
             )
             result = run_work_order(
                 order, case_dir=case_dir, model=model, run_id=run_id,
-                sink=sink, context={
-                    "verdicts": state.get("verdicts") or [],
-                    "coverage": coverage,
-                    "examiner_feedback": state.get("examiner_feedback") or {},
-                },
+                sink=sink, context=_work_context(
+                    question=question, verdicts=state.get("verdicts") or [],
+                    candidates=candidates, coverage=coverage,
+                ),
             )
             state.setdefault("results", []).append(result.to_dict())
             parsed = result.parsed or {}

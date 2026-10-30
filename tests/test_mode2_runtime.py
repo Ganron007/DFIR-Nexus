@@ -699,7 +699,7 @@ def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path, monkeypa
     candidate pool, unchanged candidates included (~10 minutes a pass, up to 8 rounds)."""
     monkeypatch.setattr(m3, "_case_family_groups", lambda _case, sources: [{source} for source in sources])
     case = _case(tmp_path)
-    verifier_tasks: list[str] = []
+    verifier_inputs: list[str] = []
     first = {"title": "Suspicious logon", "observation": "o", "interpretation": "i",
              "confidence": "LOW", "audit_ids": ["a-1"]}
     second = {"title": "Service installed", "observation": "o", "interpretation": "i",
@@ -707,7 +707,7 @@ def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path, monkeypa
 
     def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
         if order.role == "verifier":
-            verifier_tasks.append(order.task)
+            verifier_inputs.append(json.dumps(context["candidates"]))
             parsed = {"verdicts": [{"title": c["title"], "class": "inferred", "basis": "one family",
                                     "audit_ids": c["audit_ids"]} for c in context["candidates"]]}
         elif order.role == "synthesis":
@@ -724,9 +724,9 @@ def test_a_follow_up_verifies_only_new_or_re_cited_candidates(tmp_path, monkeypa
              order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
         state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
 
-    assert len(verifier_tasks) >= 2
-    assert "Suspicious logon" in verifier_tasks[0]
-    assert "Service installed" in verifier_tasks[1] and "Suspicious logon" not in verifier_tasks[1]
+    assert len(verifier_inputs) >= 2
+    assert "Suspicious logon" in verifier_inputs[0]
+    assert "Service installed" in verifier_inputs[1] and "Suspicious logon" not in verifier_inputs[1]
     assert {v["title"] for v in state["verdicts"]} == {"Suspicious logon", "Service installed"}
 
 
@@ -954,7 +954,7 @@ def test_a_merged_finding_cites_the_calls_of_the_claims_it_names(tmp_path):
             parsed = {"verdicts": [{"title": c["title"], "class": "confirmed", "basis": "b",
                                     "audit_ids": c["audit_ids"]} for c in context["candidates"]]}
         elif order.role == "synthesis":
-            seen["task"] = order.task
+            seen["candidates"] = context["candidates"]
             parsed = {"narrative": "n", "gaps": [], "coverage": {}, "findings": [{
                 "title": "Scheduled-task persistence for the beacon", "observation": "o",
                 "interpretation": "i", "confidence": "MEDIUM", "audit_ids": ["a-defender"],
@@ -969,7 +969,7 @@ def test_a_merged_finding_cites_the_calls_of_the_claims_it_names(tmp_path):
              order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
         state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
 
-    assert '"candidate_id": "C1"' in seen["task"] and '"candidate_id": "C2"' in seen["task"]
+    assert [c["candidate_id"] for c in seen["candidates"]] == ["C1", "C2"]
     (final,) = state["candidates"]
     assert final["audit_ids"] == ["a-defender", "a-task"]
     assert final["severity"] == "HIGH" and final["benign_alternative"] == "an IT maintenance task"

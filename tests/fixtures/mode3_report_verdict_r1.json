@@ -1,0 +1,54 @@
+{
+  "source": "cases/CASE-7FA5756A/analysis/mode3_runs/M3-20261026T000323-c85c18.json",
+  "selection": "Verbatim native claim and matching verifier outcome, plus execution metadata. Tests do not assert that the model's assertion is true; no event rows or key facts are authored.",
+  "claim_entry": {
+    "agent_id": "evidence:hayabusa:1",
+    "role": "evidence",
+    "family": "hayabusa",
+    "superstep": 1,
+    "finish_reason": "answer_terminal",
+    "evidence_attempted": true,
+    "evidence_read": true,
+    "claims": [
+      {
+        "audit_ids": [
+          "nexus-claudebot-20261026-031"
+        ],
+        "claim_kind": "presence",
+        "confidence": "HIGH",
+        "confidence_justification": "Explicit 4697 event in hayabusa timeline with full service name, path, user, SID, and SvcStartType=3 (demand-start, i.e. manually triggered). Multiple corroborating 4688 records (354578, 354579) show the spawned cmd.exe→powershell.exe chain.",
+        "entity_type": "service",
+        "entity_value": "iOWamcEn",
+        "other_entity_type": "host",
+        "other_entity_value": "srvdefender01.offsec.lan",
+        "polarity": "affirm",
+        "severity": "CRITICAL",
+        "value": "Service 'iOWamcEn' on srvdefender01.offsec.lan was started by admmig (SID S-1-5-21-4230534742-2542757381-3142984815-1111) as LocalSystem at 2021-04-21T14:56:43Z, executing a base64+gzip-encoded PowerShell chain via %COMSPEC% /b /c start /b /min powershell.exe -nop -w hidden -noni. Security 4697 RecordID 354577.",
+        "subject": {
+          "type": "process",
+          "value": "c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+          "category": "process_creation"
+        }
+      }
+    ]
+  },
+  "verdict_entry": {
+    "agent_id": "verifier:board:2",
+    "role": "verifier",
+    "family": "",
+    "superstep": 2,
+    "finish_reason": "answer_terminal",
+    "evidence_attempted": true,
+    "evidence_read": true,
+    "verdicts": [
+      {
+        "subject": "process=c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+        "class": "confirmed",
+        "basis": "Security 4688 RecID 354579 srvdefender01.offsec.lan 2021-04-21T14:56:43Z and RecID 435121 fs03vuln.offsec.lan 2021-04-22T08:51:04Z both show NewProcessName C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "audit_ids": [
+          "nexus-claudebot-20261026-160"
+        ]
+      }
+    ]
+  }
+}

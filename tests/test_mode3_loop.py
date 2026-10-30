@@ -91,7 +91,7 @@ def test_correlation_never_runs_on_an_empty_board(tmp_path, monkeypatch):
     from nexus.modes.multi_agent import _spawns_for_agenda
 
     spawns = _spawns_for_agenda(
-        {"questions": [], "crit_leads": [], "pivots": []},
+        {"questions": [], "leads": [], "pivots": []},
         [],  # empty board
         max_agents=6, question="q", superstep=2,
     )
@@ -100,7 +100,7 @@ def test_correlation_never_runs_on_an_empty_board(tmp_path, monkeypatch):
 
     # With a board, superstep 2 does add them.
     with_board = _spawns_for_agenda(
-        {"questions": [], "crit_leads": [], "pivots": []},
+        {"questions": [], "leads": [], "pivots": []},
         [{"role": "evidence", "claims": [_claim("ws01")]}],
         max_agents=6, question="q", superstep=2,
     )
@@ -558,8 +558,11 @@ def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
     blob = json.dumps(record["candidates"])
     assert "beacon.exe" in blob
     assert "notepad.exe" not in blob
-    assert record["stop_reason"] == "settled" or "settled" in str(record["stop_reason"])
-    assert int(record["superstep"]) < 6
+    # The scripted verifier handles beacon/notepad only. Its domain seats also
+    # return rd01, which is still unverified: claiming convergence was incorrect.
+    assert record["stop_reason"] == "budget: max supersteps"
+    assert int(record["superstep"]) == 6
+    assert set(record["open_agenda"]["verification"]) == {"rd01"}
     assert record["model"] == {"provider": "test", "model": "scripted-seat"}
 
 
@@ -577,7 +580,7 @@ def test_first_superstep_domain_seats_take_memory_first_not_the_first_names():
 
     leads = [{"subject": f"Lead {n}", "family": "hayabusa", "extra": {"level": "crit"}}
              for n in range(6)]
-    spawns = _spawns_for_agenda({"crit_leads": leads, "questions": [], "pivots": []}, [],
+    spawns = _spawns_for_agenda({"leads": leads, "questions": [], "pivots": []}, [],
                                 max_agents=6, question="q", superstep=1, indexed=indexed)
     domains = [s["family"] for s in spawns if not s.get("lead")]
     assert domains == ["vol", "evtxecmd", "mftecmd"]
@@ -681,14 +684,16 @@ def test_seats_get_the_board_view_with_the_last_superstep_whole(tmp_path, monkey
     from nexus.modes import multi_agent
 
     seen: list[int] = []
-    real = multi_agent.board_view
+    real = multi_agent._seat_board_view
 
-    def spy(board, limit=0, whole_from=0):
+    def spy(board, spawn, *, limit=0, whole_from=0):
         seen.append(whole_from)
-        return real(board, limit=limit, whole_from=whole_from)
+        return real(board, spawn, limit=limit, whole_from=whole_from)
 
-    monkeypatch.setattr(multi_agent, "board_view", spy)
+    # Views are now rendered per assigned seat; every superstep must still
+    # carry that step's newest work whole, regardless of its seat count.
+    monkeypatch.setattr(multi_agent, "_seat_board_view", spy)
     monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "3")
     multi_agent.run_mode3(_crit_case(tmp_path), "compromise suspected",
                           families=[("hayabusa", 10)], seat_fn=_seat_answering_until(9), es_ok=True)
-    assert seen[:3] == [0, 1, 2]
+    assert list(dict.fromkeys(seen)) == [0, 1, 2]
