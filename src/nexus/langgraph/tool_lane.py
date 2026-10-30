@@ -4839,6 +4839,16 @@ async def run_tool_lane(
                     status, job.reason = "FAIL", quality_failure
                 elif limitation:
                     status, job.reason = "WARN", limitation
+            if status == "OK" and job.host == "windows":
+                from nexus.langgraph.tool_assets import write_catalog
+
+                try:
+                    catalog = write_catalog(job.tool, _fresh, extractions, aid,
+                                            job_key=_job_reuse_key(job.host, job.tool, job.purpose, job.evidence_sha))
+                    if catalog is not None:
+                        job.output_files.append(str(catalog))
+                except (OSError, ValueError) as exc:
+                    status, job.reason = "FAIL", f"extracted-file catalog failed: {exc}"
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
         if aid:

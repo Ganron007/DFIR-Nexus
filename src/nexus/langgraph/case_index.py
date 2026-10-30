@@ -46,6 +46,12 @@ from nexus.langgraph.query_pack import (
     needle_in_text,
 )
 from nexus.langgraph.timestamps import NO_EVENT_TIME_FIELD, extract_event_ts
+from nexus.langgraph.tool_assets import (
+    catalog_inputs,
+    is_catalog,
+    validate_catalog_row,
+    validate_catalogs,
+)
 
 _LARGE_NEEDLES = (
     "sdelete", ".pst", ".ost", "drivefs", "googledrive", "my drive",
@@ -149,7 +155,8 @@ _FORENSIC_TEXT_ANALYSIS = {
 # address (D474). An index built before it has no process or user on those rows and `***` as an address.
 # 24 = the registry's type proof also reads newer pipeline population profiles. Zircolite's lossless export
 # exposes hexadecimal ProcessId values, so that raw column must remain searchable text (D500).
-INDEX_SCHEMA_VERSION = 24
+# 25 = extracted-image catalogs carry file metadata and their backing files participate in freshness (D483).
+INDEX_SCHEMA_VERSION = 25
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -1081,12 +1088,15 @@ def iter_index_doc_batches(
         if only_files is not None and _index_rel(path, root) not in only_files:
             continue
         header = _index_header(path)
+        catalog = is_catalog(path, root)
         try:
             with _open_text_auto(path) as fh:
                 for i, line, row_fields in iter_indexable_rows(
                     path, fh, header, stats=scan_stats,
                     file_label=_index_rel(path, root)
                 ):
+                    if catalog:
+                        validate_catalog_row(path, root, row_fields)
                     # D116 (2026-10-13): a USN row's parent directory comes from the MFT of the same run.
                     row_fields = resolve_usn_row(path, row_fields)
                     _add(path, root, fam, i, line, row_fields)
@@ -1541,6 +1551,11 @@ def index_case(
     """
     case_dir = Path(case_dir)
     started_at = datetime.now(UTC)
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    extraction_root = resolve_tools_extractions(case_dir, run_id)
+    validate_catalogs(extraction_root)
+    validate_catalogs(extraction_root.parent / "sift" / "extractions")
     # Only the examiner's ingest folder. Tool output already lands in a
     # family-named subfolder, and moving files during the lane would race the
     # tool that is still writing them.
@@ -2017,6 +2032,7 @@ def iter_index_files(case_dir: Path, run_id: str = "") -> list[Path]:
                 if is_staging_copy(p, root):
                     continue
                 out.append(p)
+        out.extend(catalog_inputs(root))
     return out
 
 

@@ -89,7 +89,8 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # and a 4624 source workstation no longer replaces the logging host (D474/D496/D497). Rebuild old indexes.
     # v24: updated population profiles participate in type proof; hexadecimal ProcessId values stay searchable
     # in their raw column rather than being ignored by a decimal-only numeric mapping (D500).
-    assert INDEX_SCHEMA_VERSION == 24
+    # v25: image-extraction metadata is indexed and the backing files are freshness/verification inputs (D483).
+    assert INDEX_SCHEMA_VERSION == 25
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

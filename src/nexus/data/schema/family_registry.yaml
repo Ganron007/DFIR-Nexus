@@ -468,12 +468,12 @@ families:
     - ingest-threatfox
     kinds: []
     kind_sources: {}
-  thumbcache:
-    aliases: []
-    kinds: []
   thumbcache_viewer:
-    aliases: []
+    aliases: [thumbcache]
     kinds: []
+    alias_sources:
+      thumbcache:
+      - tool_lane.py:_plan_single_artifact (thumbcache output folder)
   unknown:
     aliases: []
     kinds: []
