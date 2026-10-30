@@ -75,7 +75,15 @@ def test_local_app_logs_go_to_the_runs_extractions(tmp_path, monkeypatch):
 
     from nexus.langgraph import network_lane as lane
 
-    monkeypatch.setattr(lane, "resolve_local_tool", lambda name: "suricata" if name == "suricata" else None)
+    # A local install the way the lane reads one (D123): the binary beside its suricata.yaml and the rules it names.
+    install = tmp_path / "Suricata"
+    (install / "rules").mkdir(parents=True)
+    (install / "suricata.exe").write_bytes(b"")
+    (install / "suricata.yaml").write_text(
+        f"%YAML 1.1\n---\ndefault-rule-path: {install / 'rules'}\nrule-files:\n  - local.rules\n", encoding="utf-8")
+    (install / "rules" / "local.rules").write_text('alert ip any any -> any any (msg:"x"; sid:1;)\n', encoding="utf-8")
+    monkeypatch.setattr(lane, "resolve_local_tool",
+                        lambda name: str(install / "suricata.exe") if name == "suricata" else None)
     seen: list[list[str]] = []
     monkeypatch.setattr(lane.subprocess, "run",
                         lambda cmd, **_k: seen.append(list(cmd)) or subprocess.CompletedProcess(cmd, 0, "", ""))
@@ -83,6 +91,6 @@ def test_local_app_logs_go_to_the_runs_extractions(tmp_path, monkeypatch):
     case = tmp_path / "CASE-EA24B279"
     run_extractions = case / "runs" / "RUN-1-tools-x" / "extractions"
     lane.enrich_local_network(pcap, case, run_extractions)
-    suricata = next(cmd for cmd in seen if cmd[0] == "suricata")
+    suricata = next(cmd for cmd in seen if cmd[0].endswith("suricata.exe"))
     assert Path(suricata[suricata.index("-l") + 1]) == run_extractions / "network" / "capture" / "suricata"
     assert not (case / "extractions").exists()

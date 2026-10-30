@@ -14,12 +14,83 @@ Planning is pure (testable); execution happens through the existing tool lane
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+_RULE_OVERRIDES = Path(__file__).resolve().parents[1] / "data" / "lane" / "suricata_rules.yaml"
+_SID = re.compile(r"\bsid\s*:\s*(\d+)\s*;")
+_RULES_LOADED = re.compile(r"(\d+) rules successfully loaded, (\d+) rules failed")
+
+
+def suricata_disabled_rules() -> dict[int, dict]:
+    """The recorded disable list (D123, ``data/lane/suricata_rules.yaml``): sid -> its decision."""
+    import yaml
+
+    doc = yaml.safe_load(_RULE_OVERRIDES.read_text(encoding="utf-8")) or {}
+    return {int(entry["sid"]): entry for entry in doc.get("disabled") or []}
+
+
+def suricata_effective_rules(suricata: str | Path) -> dict:
+    """The rule set the lane runs Suricata with (D123, operator 2026-10-13): the rules its own ``suricata.yaml`` loads,
+    minus the recorded disable list, each disabled line kept as a comment that names its decision.
+
+    The installed rules (under Program Files) are not edited. The set is built once per installed-rules digest into the
+    product's data folder (36.9 MB for ET Open 8.0.7), outside every case and run, so the index never reads it. With it
+    ``suricata -T`` passes; the stock config loaded 41,662 of 41,663 rules and failed sid 2065690 (``file.magic``).
+    """
+    import yaml
+
+    from nexus.config import settings
+
+    binary = Path(suricata)
+    text = (binary.parent / "suricata.yaml").read_text(encoding="utf-8", errors="replace")
+    config = yaml.safe_load(text.split("\n", 1)[1] if text.startswith("%YAML") else text) or {}
+    root = Path(str(config.get("default-rule-path") or binary.parent / "rules"))
+    files = [root / name for name in config.get("rule-files") or [] if (root / name).is_file()]
+    disabled = suricata_disabled_rules()
+    digest = hashlib.sha256(repr(sorted(disabled)).encode())
+    for path in files:
+        digest.update(path.name.encode() + b"\0" + hashlib.sha256(path.read_bytes()).digest())
+    target = Path(settings.data_root) / "suricata" / f"effective-{digest.hexdigest()[:16]}.rules"
+    found: set[int] = set()
+    if not target.is_file():
+        lines: list[str] = []
+        for path in files:
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                match = _SID.search(line)
+                sid = int(match.group(1)) if match and not line.lstrip().startswith("#") else 0
+                if sid in disabled:
+                    found.add(sid)
+                    lines.append(f"# DFIR-Nexus disabled ({disabled[sid].get('decided')}): {line}")
+                else:
+                    lines.append(line)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        from nexus.utils import atomic
+
+        atomic.replace(tmp, target)
+    else:
+        with target.open(encoding="utf-8", errors="replace") as fh:
+            found = {int(m.group(1)) for line in fh if line.startswith("# DFIR-Nexus disabled")
+                     for m in [_SID.search(line)] if m}
+    return {"path": str(target), "rule_files": len(files), "disabled": sorted(found),
+            "not_in_rules": sorted(set(disabled) - found)}
+
+
+def suricata_rules_loaded(log_file: Path) -> tuple[int, int] | None:
+    """(rules loaded, rules failed) from Suricata's own log, or None when it does not say."""
+    try:
+        found = _RULES_LOADED.findall(log_file.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    return (int(found[-1][0]), int(found[-1][1])) if found else None
 
 PCAP_SUFFIXES = (".pcap", ".pcapng", ".cap")
 NFDUMP_SUFFIXES = (".nfcapd", ".nfdump", ".nf")
@@ -257,8 +328,16 @@ def enrich_local_network(pcap: str | Path, case_dir: str | Path, extractions: st
     """
     pcap = Path(pcap)
     case_dir = Path(case_dir)
-    result: dict = {"pcap": str(pcap), "steps": [], "errors": []}
+    # `jobs`: each local tool's outcome as a gate row (TA-5.4). The importer pass records them, so a capture's local
+    # Suricata run is a job of the run; it had been in the step log only, and the gate's one `suricata` row was the
+    # SIFT host's opt-in SKIP while T13-T16's local eve.json rows were indexed.
+    result: dict = {"pcap": str(pcap), "steps": [], "errors": [], "jobs": []}
     app_root = Path(extractions or case_dir / "extractions") / "network" / pcap.stem
+
+    def job(tool: str, status: str, reason: str) -> None:
+        result["jobs"].append({"tool": tool, "purpose": f"{tool} on {pcap.name} (local)", "family": tool,
+                               "status": status, "reason": reason[:300]})
+
     zeek = resolve_local_tool("zeek")
     if zeek:
         out = app_root / "zeek"
@@ -271,28 +350,42 @@ def enrich_local_network(pcap: str | Path, case_dir: str | Path, extractions: st
             )
             if proc.returncode == 0:
                 result["steps"].append(f"network: zeek logs -> {out}")
+                job("zeek", "OK", f"logs -> {out}")
             else:
                 result["errors"].append(f"zeek rc={proc.returncode}: {(proc.stderr or '')[:200]}")
+                job("zeek", "FAIL", f"rc={proc.returncode}: {(proc.stderr or '')[:200]}")
         except (OSError, subprocess.TimeoutExpired) as exc:
             result["errors"].append(f"zeek failed: {exc}")
+            job("zeek", "FAIL", str(exc))
     suricata = resolve_local_tool("suricata")
     if suricata:
         out = app_root / "suricata"
         out.mkdir(parents=True, exist_ok=True)
         try:
+            # D123: the effective rule set (the installed rules minus the recorded disable list), passed with -S.
+            # fast.log is off: it is the alerts eve.json already holds, and both were indexed (T13: 85 lines twice).
+            rules = suricata_effective_rules(suricata)
             proc = subprocess.run(
-                [suricata, "-r", str(pcap), "-l", str(out),
-                 "--set", "outputs.1.eve-log.enabled=yes"],
+                [suricata, "-r", str(pcap), "-l", str(out), "-S", rules["path"],
+                 "--set", "outputs.1.eve-log.enabled=yes", "--set", "outputs.0.fast.enabled=no"],
                 capture_output=True, timeout=3600, text=True,
             )
+            loaded = suricata_rules_loaded(out / "suricata.log")
+            lineage = (f"{loaded[0]} rules loaded, {loaded[1]} failed" if loaded else "rule loading not reported")
+            lineage += "; disabled by decision: " + (", ".join(f"sid {s}" for s in rules["disabled"]) or "none")
+            if rules["not_in_rules"]:
+                lineage += "; listed but not in the installed rules: " + ", ".join(map(str, rules["not_in_rules"]))
             if proc.returncode == 0:
                 result["steps"].append(f"network: suricata eve.json -> {out}")
+                job("suricata", "OK" if loaded and not loaded[1] else "WARN", lineage)
             else:
                 result["errors"].append(
                     f"suricata rc={proc.returncode}: {(proc.stderr or '')[:200]}"
                 )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+                job("suricata", "FAIL", f"rc={proc.returncode}: {(proc.stderr or '')[:150]}; {lineage}")
+        except Exception as exc:  # noqa: BLE001 - a broken config or rule set is this job's FAIL, not the capture's
             result["errors"].append(f"suricata failed: {exc}")
+            job("suricata", "FAIL", str(exc))
     flows = project_flows(pcap, case_dir / "ingest" / "network" / f"{pcap.stem}-flows.csv")
     if flows.get("error"):
         result["errors"].append(f"flow projection: {flows['error']}")

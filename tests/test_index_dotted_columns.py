@@ -58,7 +58,7 @@ def test_a_file_with_refused_rows_is_unprocessed_until_it_indexes_whole(tmp_path
     record_index_rejections(tmp_path, {"zeek/dns.log": {"rows": 23, "reason": "failed to parse field [fields.id]"}})
     gate = read_lane_gate(tmp_path)
     assert gate["status"] == "blocked"
-    assert gate["unprocessed"] == [{"tool": "index", "purpose": "index zeek/dns.log",
+    assert gate["unprocessed"] == [{"tool": "index", "purpose": "index zeek/dns.log", "pass": "index",
                                     "reason": "23 row(s) rejected by Elasticsearch: failed to parse field [fields.id]"}]
     record_index_rejections(tmp_path, {})
     assert read_lane_gate(tmp_path)["status"] == "clear"

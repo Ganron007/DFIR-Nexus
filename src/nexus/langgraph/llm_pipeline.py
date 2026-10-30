@@ -1231,6 +1231,8 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 if path.suffix.lower() in (".pcap", ".pcapng", ".cap"):
                     try:
                         net = enrich_local_network(path, case_dir, run_extractions)
+                        # TA-5.4: the capture's local tools (Suricata, Zeek) are jobs of this pass in the gate.
+                        import_rows.extend({**row, "pass": "importer"} for row in net.get("jobs") or [])
                         lines.extend(str(s) for s in (net.get("steps") or []))
                         for err in net.get("errors") or []:
                             lines.append(f"I1 network warning: {err}")

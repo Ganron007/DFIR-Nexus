@@ -132,11 +132,14 @@ def _is_sift_row(row: dict[str, Any]) -> bool:
 
 
 def _pending_entry(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    entry = {
         "tool": str(row.get("tool") or ""),
         "purpose": str(row.get("purpose") or ""),
         "reason": str(row.get("reason") or "")[:300],
     }
+    if row.get("pass"):
+        entry["pass"] = str(row["pass"])
+    return entry
 
 
 def _recompute(gate: dict[str, Any]) -> dict[str, Any]:
@@ -207,8 +210,12 @@ def _jobs_from_ledger(ledger: list[dict[str, Any]]) -> list[dict[str, str]]:
             "family": str(row.get("family") or ""),
             "state": _job_state(str(row.get("status") or "")),
         }
-        if row.get("importer"):
-            job["importer"] = str(row["importer"])
+        for key in ("importer", "pass"):
+            if row.get(key):
+                job[key] = str(row[key])
+        if row.get("pass") and row.get("reason"):
+            # An importer-pass row's reason is its lineage (what it read; Suricata's rules loaded and disabled, D123).
+            job["reason"] = str(row["reason"])[:300]
         jobs.append(job)
     return jobs
 
@@ -466,7 +473,8 @@ def import_row(path: Path | str, info: dict[str, Any] | None, network: dict[str,
     rows = int(info.get("artifacts") or 0)
     flows = int((network or {}).get("flows_rows") or 0)
     source = str(info.get("source") or "")
-    row = {"tool": f"import:{source}" if source else "import", "purpose": f"import {path}", "family": source}
+    row = {"tool": f"import:{source}" if source else "import", "purpose": f"import {path}", "family": source,
+           "pass": "importer"}
     if info.get("importer"):
         # TA-5.3: the class that read the file, as the importer registry names it; one source has several.
         row["importer"] = str(info["importer"])
@@ -517,7 +525,7 @@ def record_index_rejections(case_dir: Path | str, rejected: dict[str, dict[str, 
     gate = dict(read_lane_gate(case_dir))
     if not gate:
         return gate
-    rows = [{"tool": "index", "purpose": f"index {name}", "status": "FAIL",
+    rows = [{"tool": "index", "purpose": f"index {name}", "status": "FAIL", "pass": "index",
              "reason": f"{entry.get('rows')} row(s) rejected by Elasticsearch: {entry.get('reason')}"}
             for name, entry in (rejected or {}).items()]
     gate["jobs"] = [j for j in gate.get("jobs") or [] if j.get("tool") != "index"] + _jobs_from_ledger(rows)
@@ -743,8 +751,8 @@ def reconcile_after_index(
     # rows) T07's 60 task files read as never imported, and a file no importer could read left `unprocessed`.
     if current.get("run_id") == gate_run:
         def other_pass(item: dict[str, Any]) -> bool:
-            tool = str(item.get("tool") or "")
-            return tool == "import" or tool.startswith("import:") or tool == "index"
+            # The importer pass marks its rows (each file, and each capture's local network tool); the index its own.
+            return item.get("pass") in ("importer", "index")
 
         keys = {_key(job) for job in gate.get("jobs") or []}
         carried = [job for job in current.get("jobs") or [] if other_pass(job) and _key(job) not in keys]

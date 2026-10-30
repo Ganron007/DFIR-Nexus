@@ -1,0 +1,10 @@
+# D123 (operator 2026-10-13, "OK"): Windows Suricata runs the installed Emerging Threats Open rules minus this list, as
+# a lane-owned effective rule set passed with -S (network_lane.suricata_effective_rules); the installed rules under
+# Program Files are not edited. Each entry is a decision, with the reason the build cannot load the rule, and the job
+# row that ran Suricata names every disabled sid.
+version: 1
+disabled:
+- sid: 2065690
+  rule: ET EXPLOIT 7-Zip 7z File PPMd Properties Parsing Integer Underflow (CVE-2023-31102)
+  reason: uses file.magic, which this Suricata build cannot load (suricata --build-info, "Libmagic support - no")
+  decided: operator 2026-10-13 (D123)

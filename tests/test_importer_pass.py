@@ -140,7 +140,8 @@ def test_a_file_no_importer_reads_is_unprocessed(case, tmp_path):
     row = import_row(notes, ingest_into_case(notes, case))
     gate = record_import_results(case, [row])
     assert row["status"] == "FAIL" and gate["status"] == "blocked"
-    assert gate["unprocessed"] == [{"tool": row["tool"], "purpose": f"import {notes}", "reason": row["reason"]}]
+    assert gate["unprocessed"] == [{"tool": row["tool"], "purpose": f"import {notes}", "reason": row["reason"],
+                                    "pass": "importer"}]
 
 
 def test_a_yearless_syslog_time_takes_the_year_of_the_cases_dated_evidence(case, tmp_path):
