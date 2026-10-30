@@ -1,0 +1,8 @@
+Aug 29 07:07:44 gw sshd[1108]: Server listening on 0.0.0.0 port 22.
+Aug 29 07:07:44 gw sshd[1108]: Server listening on :: port 22.
+Aug 29 07:08:31 gw login: PAM unable to dlopen(/lib64/security/pam_fprintd.so): /lib64/security/pam_fprintd.so: cannot open shared object file: No such file or directory
+Aug 29 07:08:31 gw login: PAM adding faulty module: /lib64/security/pam_fprintd.so
+Aug 29 07:08:36 gw login: pam_unix(login:session): session opened for user root by LOGIN(uid=0)
+Aug 29 07:08:36 gw login: ROOT LOGIN ON tty1
+Aug 30 11:13:34 gw login: pam_unix(login:session): session closed for user root
+Aug 30 11:13:37 gw sshd[1108]: Received signal 15; terminating.

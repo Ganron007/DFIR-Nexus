@@ -1,0 +1,12 @@
+Aug 29 07:12:41 www sshd[988]: Server listening on 0.0.0.0 port 22.
+Aug 29 07:12:41 www sshd[988]: Server listening on :: port 22.
+Aug 30 07:54:44 www sshd[1798]: Accepted password for root from 172.16.62.42 port 58526 ssh2
+Aug 30 07:54:44 www sshd[1798]: pam_unix(sshd:session): session opened for user root by (uid=0)
+Aug 30 07:57:49 www sshd[1798]: Received disconnect from 172.16.62.42: 11: disconnected by user
+Aug 30 07:57:49 www sshd[1798]: pam_unix(sshd:session): session closed for user root
+Aug 30 11:10:59 www login: PAM unable to dlopen(/lib64/security/pam_fprintd.so): /lib64/security/pam_fprintd.so: cannot open shared object file: No such file or directory
+Aug 30 11:10:59 www login: PAM adding faulty module: /lib64/security/pam_fprintd.so
+Aug 30 11:11:07 www login: pam_unix(login:session): session opened for user root by LOGIN(uid=0)
+Aug 30 11:11:07 www login: ROOT LOGIN ON tty1
+Aug 30 11:11:17 www login: pam_unix(login:session): session closed for user root
+Aug 30 11:11:30 www sshd[988]: Received signal 15; terminating.

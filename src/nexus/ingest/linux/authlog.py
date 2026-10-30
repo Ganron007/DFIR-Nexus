@@ -84,12 +84,13 @@ class AuthLogImporter(Importer):
         if "accepted" in msg_lower or "session opened" in msg_lower:
             severity = Severity.INFORMATIONAL
 
-        # Pull out user
+        # Only user-bearing SSH/PAM grammar identifies a principal. A word
+        # before a source address can be an event descriptor instead.
         user = None
         for pattern in (
-            r"for\s+(?:user\s+)?(\w+)\s+from",
-            r"user\s+(\w+)\s+by",
-            r"(\w+)\s+from\s+(\d+\.\d+\.\d+\.\d+)",
+            r"\bfor\s+(?:(?:invalid\s+)?user\s+)?(\S+)\s+from\b",
+            r"\bsession\s+(?:opened|closed)\s+for\s+user\s+([^\s(]+)",
+            r"^(?:Invalid user|User)\s+(\S+)\s+from\b",
         ):
             m = re.search(pattern, msg)
             if m:
