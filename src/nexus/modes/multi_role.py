@@ -245,7 +245,15 @@ def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
     settled: set[str] = set()
     entities: list[str] = []
     seen_entities: set[str] = set()
+    orders = {o["order_id"]: o for o in state.get("orders") or [] if isinstance(o, dict) and o.get("order_id")}
+    consumed: set[str] = set()
     for result in state.get("results") or []:
+        # Assignment is structured run state, never guessed from the worker's prose. A
+        # failed, partial or blind order has not completed its assigned pivot work.
+        if (result.get("status") == "ok" and not result.get("partial")
+                and (result.get("hits") or any(c.get("read_evidence") for c in result.get("tool_calls") or []))):
+            consumed.update(norm_key(ent) for ent in
+                            orders.get(result.get("order_id"), {}).get("pivot_entities") or [])
         parsed = result.get("parsed") or {}
         if not isinstance(parsed, dict):
             continue
@@ -272,8 +280,8 @@ def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
     open_q = [f"{qid}: {text}" for qid, text in questions.items() if qid not in settled]
     pivots: list[str] = []
     for ent in entities:
-        key = ent.lower()
-        if key in seen_entities:
+        key = norm_key(ent)
+        if key in seen_entities or key in consumed:
             continue
         seen_entities.add(key)
         pivots.append(ent)
@@ -1239,6 +1247,8 @@ class WorkOrder:
     #: IC-3: the leads this order examines (a crit/high order carries several), and whether they are
     #: crit/high leads, which no plan may cut.
     lead_subjects: tuple[str, ...] = ()
+    #: Entities explicitly assigned to this order; consumed only by a completed, evidence-reading result.
+    pivot_entities: tuple[str, ...] = ()
     crit_high: bool = False
     #: IC-5: the ATT&CK techniques and software (ids) the order's leads name; the seat gets ATT&CK's method
     #: for them (`attack_method_block`).
@@ -1269,6 +1279,15 @@ class WorkOrder:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> WorkOrder:
+        """Restore the writer's complete order contract, including on resume.
+
+        A second handwritten list in worker_node dropped lead hypotheses and technique
+        context. The dataclass is the one definition of the persisted order's fields.
+        """
+        return cls(**{key: value for key, value in raw.items() if key in cls.__dataclass_fields__})
 
 
 def validate_work_order(order: WorkOrder) -> list[str]:
@@ -2469,21 +2488,7 @@ def _run_mode2(
         if index >= len(orders):
             return state
         raw = orders[index]
-        order = WorkOrder(
-            order_id=str(raw.get("order_id") or WorkOrder.new_id()),
-            role=str(raw.get("role") or "evidence"),
-            task=str(raw.get("task") or ""),
-            family=str(raw.get("family") or ""),
-            why=str(raw.get("why") or ""),
-            priority_tools=tuple(raw.get("priority_tools") or ()),
-            expected_artifact_ids=tuple(raw.get("expected_artifact_ids") or ()),
-            expected_event_ids=tuple(raw.get("expected_event_ids") or ()),
-            acceptance=str(raw.get("acceptance") or ""),
-            skill_refs=list(raw.get("skill_refs") or []),
-            max_rounds=int(raw.get("max_rounds") or 0),
-            max_calls=int(raw.get("max_calls") or 0),
-            max_seconds=float(raw.get("max_seconds") or 0.0),
-        )
+        order = WorkOrder.from_dict(raw)
         context = {
             "previous_results": [
                 {
@@ -2649,7 +2654,8 @@ def _run_mode2(
                                str(v.get("class") or "").strip().lower()]) for v in verdicts),
         ]
         previous = state.get("evidence_signature")
-        if previous is not None and signature == previous:
+        next_questions, pivots = _replan_inputs(state)
+        if previous is not None and signature == previous and not next_questions and not pivots:
             state["converged_no_new_evidence"] = True
             state["status"] = "assessed"
             blockers = _apply_settle_blockers(
@@ -2668,7 +2674,6 @@ def _run_mode2(
         # surfaced must become new orders too. Before this, follow-ups came only
         # from refuted/inferred verdicts, so "I need X checked" reached no one and
         # the director could never re-plan from what a worker actually found.
-        next_questions, pivots = _replan_inputs(state)
         # WO-1C item 7 (KR4): a run with an indexed, populated artifact family
         # it never successfully queried has not examined the evidence, whatever
         # its verdict classes say. Block settlement and say so, rather than
@@ -2729,6 +2734,7 @@ def _run_mode2(
             role=role,
             task=" ".join(task_parts),
             why=f"{len(refuted)} refuted / {len(inferred)} inferred candidate(s)",
+            pivot_entities=tuple(pivots[:6]),
             priority_tools=priority,
             acceptance=(
                 "per-candidate corroboration or honest exhaustion; no invented "

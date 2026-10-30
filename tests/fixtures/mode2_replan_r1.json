@@ -1,0 +1,411 @@
+[
+  {
+    "source": "cases/CASE-7FA5756A/analysis/mode2_runs/M2-20261025T230657-ee1387.json",
+    "selection": "Verbatim results through the first follow-up: execution status, entities and first evidence-read call metadata only. Orders: first lead and first follow-up. No row payloads.",
+    "orders": [
+      {
+        "order_id": "wo-681b809f565a",
+        "role": "evidence",
+        "task": "Test each of these crit/high leads for the case question Compromise suspected.; every one needs an answer:\n  1. a detection rule fired: Hayabusa high detection [c03c42ba-1e4e-45c3-c0ba-c8d38b077ee7]: Base64 Encoded PowerShell Command Detected \u2014 6 occurrence(s) on fs03vuln.offsec.lan, srvdefender01.offsec.lan; first 2021-04-21T14:56:43Z \u2192 last 2021-04-22T08:51:05Z; ATT&CK T1027 Obfuscated Files or Information, T1140 Deobfuscate/Decode Files or Information, T1059.001 PowerShell [lead rows: audit_id nexus-claudebot-20261025-005]\n  2. a detection rule fired: Hayabusa high detection [3d2e9eef-8851-f3ed-49e1-53e350e277cb]: CobaltStrike Service Installations - Security \u2014 1 occurrence(s) on srvdefender01.offsec.lan; first 2021-04-21T14:56:43Z \u2192 last 2021-04-21T14:56:43Z; ATT&CK T1021.002 SMB/Windows Admin Shares, T1543.003 Windows Service, T1569.002 Service Execution [lead rows: audit_id nexus-claudebot-20261025-006]\n  3. a detection rule fired: Hayabusa high detection [176cddad-09e5-95d1-e061-52b79cdbd6b7]: HackTool - Potential Impacket Lateral Movement Activity \u2014 3 occurrence(s) on srvdefender01.offsec.lan, rootdc1.offsec.lan; first 2021-04-26T08:25:37Z \u2192 last 2021-12-14T14:42:49Z; ATT&CK T1047 Windows Management Instrumentation, T1021.003 Distributed Component Object Model [lead rows: audit_id nexus-claudebot-20261025-007]\n  4. a detection rule fired: Hayabusa high detection [2a9fb7e5-5c2d-b57d-62d3-17245085abdc]: Hermetic Wiper TG Process Patterns \u2014 2 occurrence(s) on srvdefender01.offsec.lan; first 2021-04-26T08:25:37Z \u2192 last 2021-04-26T08:25:38Z; ATT&CK T1021.001 Remote Desktop Protocol [lead rows: audit_id nexus-claudebot-20261025-008]\n  5. a detection rule fired: Hayabusa high detection [c2f690ac-53f8-4745-8cfe-7127dda28c74]: Log Cleared \u2014 3 occurrence(s) on fs03vuln.offsec.lan, srvdefender01.offsec.lan; first 2021-04-22T08:50:53Z \u2192 last 2021-12-12T07:15:28Z; ATT&CK T1070.001 Clear Windows Event Logs [lead rows: audit_id nexus-claudebot-20261025-009]\n  6. a detection rule fired: Hayabusa high detection [827aa6c1-1507-3f0a-385a-ade5251bfd71]: Metasploit SMB Authentication \u2014 1 occurrence(s) on fs03vuln.offsec.lan; first 2021-04-22T08:51:04Z \u2192 last 2021-04-22T08:51:04Z; ATT&CK T1021.002 SMB/Windows Admin Shares [lead rows: audit_id nexus-claudebot-20261025-010]",
+        "lead_kind": "rule_engine",
+        "lead_subjects": [
+          "Base64 Encoded PowerShell Command Detected",
+          "CobaltStrike Service Installations - Security",
+          "HackTool - Potential Impacket Lateral Movement Activity",
+          "Hermetic Wiper TG Process Patterns",
+          "Log Cleared",
+          "Metasploit SMB Authentication"
+        ],
+        "crit_high": true,
+        "techniques": [
+          "T1027",
+          "T1140",
+          "T1059.001",
+          "T1021.002",
+          "T1543.003",
+          "T1569.002",
+          "T1047",
+          "T1021.003",
+          "T1021.001",
+          "T1070.001"
+        ],
+        "software": [],
+        "hypothesis": "6 crit/high lead(s) from rule_engine/hayabusa",
+        "benign_alternative": "a rule that fired on benign activity; the rows decide, not the rule's name",
+        "refutation": "the same rows explained by a change record, and no follow-on behaviour in the surrounding window"
+      },
+      {
+        "order_id": "wo-a4c7d4bbe22a",
+        "role": "evidence",
+        "task": "Follow-up corroboration round 1/8. Examiner question: Compromise suspected.. OPEN QUESTIONS from earlier workers \u2014 answer each or state why it cannot be answered: What is 0Konuy9q8HtkWeKS? Is it a compromised host or the attacker's infrastructure? Check its logons and outbound connections.; Did the CobaltStrike beacon (iOWamcEn) establish C2? Check DNS/network rows for external connections from srvdefender01.offsec.lan in the 2021-04-21T14:56 UTC window.; Is 127.0.0.1 / attacker the final target of the Impacket lateral movement? What payload was written to ADMIN$\\__1619425227.894209?; Who is hack1 and what was the December log clear on fs03vuln.offsec.lan related to?; Check evtxecmd family for any additional 4688/4624 rows on srvdefender01.offsec.lan and rootdc1.offsec.lan not captured by the hayabusa rules.; Was C:\\TOOLS\\PsExec64.exe (SHA1 FB0A1506...) approved in the endpoint software baseline, or is it an unmanaged LOLBin dropped by the attacker?. NEW ENTITIES to pivot on \u2014 check their parentage, persistence, network and credential activity: fs03vuln.offsec.lan; srvdefender01.offsec.lan; rootdc1.offsec.lan; 0Konuy9q8HtkWeKS; SRVDEFENDER01$; ROOTDC1$. Use new queries, not a re-run of the same query. If nothing new exists, say so explicitly and cite run_record.",
+        "lead_kind": "",
+        "lead_subjects": [],
+        "crit_high": false,
+        "techniques": [],
+        "software": [],
+        "hypothesis": "",
+        "benign_alternative": "",
+        "refutation": ""
+      }
+    ],
+    "results": [
+      {
+        "order_id": "wo-681b809f565a",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "fs03vuln.offsec.lan",
+            "srvdefender01.offsec.lan",
+            "rootdc1.offsec.lan",
+            "0Konuy9q8HtkWeKS",
+            "SRVDEFENDER01$",
+            "ROOTDC1$",
+            "10.23.123.11",
+            "127.0.0.1",
+            "admmig",
+            "hack1",
+            "iOWamcEn (CobaltStrike service)",
+            "__1619425227.894209 (Impacket temp file)"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-111",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-757abb12c097",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "fs03vuln.offsec.lan",
+            "srvdefender01.offsec.lan",
+            "rootdc1.offsec.lan",
+            "admmig",
+            "hack1",
+            "ROOTDC1",
+            "compnay-88$",
+            "PSEXESVC.exe",
+            "PsExec64.exe",
+            "C:\\TOOLS\\PsExec64.exe",
+            "iOWamcEn (CobaltStrike service)",
+            "S-1-5-21-4230534742-2542757381-3142984815-1234",
+            "S-1-5-21-4230534742-2542757381-3142984815-1296",
+            "FB0A150601470195C47B4E8D87FCB3F50292BEB2 (SHA1 PsExec64)"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-119",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-88df57079884",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "srvdefender01.offsec.lan",
+            "SRVDEFENDER01$",
+            "127.0.0.1",
+            "WmiPrvSE.exe",
+            "cmd.exe",
+            "__1619425227.894209",
+            "iOWamcEn",
+            "admmig"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-157",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-3ced6fe09970",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "admmig (S-1-5-21-4230534742-2542757381-3142984815-1111, LogonId 0x31A19B0F for DCSync, 0x31A24611 for JUMP01 registration)",
+            "rootdc1.offsec.lan (domain controller, DC=OFFSEC.lan)",
+            "JUMP01$ (S-1-5-21-4230534742-2542757381-3142984815-1106, computer account being configured as jump host)",
+            "domainDNS object %{0b32719a-29a5-4ad5-b9dc-56200eba0ce0}",
+            "domain object %{bf967a86-0de6-11d0-a285-00aa003049e2}",
+            "CN=JUMP01,CN=Servers,CN=OFFSEC-PREMISE,CN=Sites,CN=Configuration (server object created)",
+            "CN=JUMP01,OU=SERVERS,OU=RESOURCES,DC=OFFSEC,DC=lan (computer object SPN modified)"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-159",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-dd0d4d4dd0f3",
+        "role": "correlation",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-165",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-716b711ce3cd",
+        "role": "pattern",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-187",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-4488db76d7af",
+        "role": "verifier",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-190",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-a4c7d4bbe22a",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "0Konuy9q8HtkWeKS (10.23.123.11) \u2014 pivot/infrastructure box, no local EVTX captured",
+            "127.0.0.1 \u2014 lateral-movement target (Impacket ADMIN$/C$ writes)",
+            "SRVDEFENDER01$ \u2014 machine account, Impacket source on srvdefender01.offsec.lan, present in DCSync cluster",
+            "ROOTDC1$ \u2014 machine account, Impacket source on rootdc1.offsec.lan, CVE-2021-42287 LPE target",
+            "hack1 \u2014 December operator (log clear + CVE-2021-42287), SID S-1-5-21-4230534742-2542757381-3142984815-1234",
+            "admmig \u2014 April operator (CS beacon, Impacket, DCSync, log clears), SID S-1-5-21-4230534742-2542757381-3142984815-1111",
+            "JUMP01$ \u2014 computer account, SPN configuration concurrent with DCSync",
+            "C:\\TOOLS\\PsExec64.exe (SHA1 FB0A1506...) \u2014 Sysinternals PsExec, non-standard path"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261025-221",
+            "read_evidence": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "cases/CASE-4387EB47/analysis/mode2_runs/M2-20261028T142946-d9ca87.json",
+    "selection": "Verbatim results through the first follow-up: execution status, entities and first evidence-read call metadata only. Orders: first lead and first follow-up. No row payloads.",
+    "orders": [
+      {
+        "order_id": "wo-41f6a9ea7684",
+        "role": "evidence",
+        "task": "Test each of these crit/high leads for the case question Compromise suspected.; every one needs an answer:\n  1. a detection rule fired: MemProcFS YARA: 3 rule(s) matched the memory of mcshield.exe (pid 3836, \\Device\\HarddiskVolume2\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe, user SYSTEM): Windows.Ransomware.Clop, Windows.Ransomware.Ryuk, Windows.Trojan.Generic [Windows_Ransomware_Clop_e04959b5, Windows_Ransomware_Ryuk_878bae7e, Windows_Trojan_Generic_9e4bb0ce] [lead rows: audit_id nexus-claudebot-20261027-003]\n  2. a detection rule fired: MemProcFS YARA: 1 rule(s) matched the memory of ? (pid ?, user ?): Windows.VulnDriver.AgileRiskManagement [Windows_VulnDriver_AgileRiskManagement_66938a5b] [lead rows: audit_id nexus-claudebot-20261027-004]",
+        "lead_kind": "rule_engine",
+        "lead_subjects": [
+          "mcshield.exe (pid 3836)",
+          "? (pid ?)"
+        ],
+        "crit_high": true,
+        "techniques": [],
+        "software": [
+          "S0446",
+          "S0611"
+        ],
+        "hypothesis": "2 crit/high lead(s) from rule_engine/memprocfs-yara",
+        "benign_alternative": "a rule that fired on benign activity; the rows decide, not the rule's name",
+        "refutation": "the same rows explained by a change record, and no follow-on behaviour in the surrounding window"
+      },
+      {
+        "order_id": "wo-05a8b269a420",
+        "role": "correlation",
+        "task": "Follow-up corroboration round 1/8. Examiner question: Compromise suspected.. INFERRED candidates \u2014 corroborate with an independent family/audit run to escalate, or show the inference is not supported: MemProcFS FindEvil HIGH_ENTROPY in OUTLOOK.EXE (pid 904) is a false positive; does not support the compromise hypothesis. OPEN QUESTIONS from earlier workers, by id \u2014 settle each in question_dispositions (answered with the calls that answer it, or unanswerable with why): Q91e09a: Does the file-system evidence contain any actual RyukReadMe.html or CIopReadMe.txt files outside the AV signature store (which would upgrade Lead 1 from false-positive to true-positive)?; Q7c46cb: What is the specific CVE for the Mnemosyne driver flagged by the AgileRiskManagement YARA rule, and is a patched version available?; Qb081b1: Are there any user-mode processes making IOCTL calls to the mnemosyne driver that are inconsistent with the expected security-product service?; Q66f830: Does the mcshield.exe binary hash match a known-good McAfee release from the 2020-02 era?; Qd4bca4: What is the SHA-256 hash of the mcshield.exe binary, and does it match a known McAfee VirusScan Enterprise release?; Qd52c3c: Were there any unusual network connections originating from PID 3836 (mcshield.exe) in the vol netstat data?. NEW ENTITIES to pivot on \u2014 check their parentage, persistence, network and credential activity: mcshield.exe (pid 3836, C:\\Program Files\\Common Files\\McAfee\\SystemCore\\, SYSTEM); Mnemosyne.sys (C:\\windows\\Mnemosyne.sys, Agile Risk Management LLC); AYAgent.aye; mssecess.exe; RyukReadMe.html; CIopReadMe.txt. Use new queries, not a re-run of the same query. If nothing new exists, say so explicitly and cite run_record.",
+        "lead_kind": "",
+        "lead_subjects": [],
+        "crit_high": false,
+        "techniques": [],
+        "software": [],
+        "hypothesis": "",
+        "benign_alternative": "",
+        "refutation": ""
+      }
+    ],
+    "results": [
+      {
+        "order_id": "wo-41f6a9ea7684",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "mcshield.exe (pid 3836, C:\\Program Files\\Common Files\\McAfee\\SystemCore\\, SYSTEM)",
+            "Mnemosyne.sys (C:\\windows\\Mnemosyne.sys, Agile Risk Management LLC)",
+            "AYAgent.aye",
+            "mssecess.exe",
+            "RyukReadMe.html",
+            "CIopReadMe.txt",
+            "shell\\open\\command",
+            "WinSta0\\Default"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261028-034",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-2fee3f30714e",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "mcshield.exe",
+            "McAfee McShield",
+            "McShield",
+            "C:\\Program Files\\Common Files\\McAfee\\SystemCore\\mcshield.exe",
+            "McAfee VirusScan Enterprise",
+            "base-rd-01.shieldbase.lan"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261028-068",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-02466a6e8625",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "sample_rows",
+            "audit_id": "nexus-claudebot-20261028-088",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-566fbcbf8a55",
+        "role": "evidence",
+        "status": "ok",
+        "partial": false,
+        "parsed": {
+          "entities": [
+            "OUTLOOK.EXE pid 904",
+            "PPID 8652",
+            "SessionId 3",
+            "0xd770000 ---wxc",
+            "0xe360000 --r---",
+            "0xe780000 --r---"
+          ]
+        },
+        "tool_calls": [
+          {
+            "tool": "sample_rows",
+            "audit_id": "nexus-claudebot-20261028-095",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-26770d0b98a4",
+        "role": "correlation",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "sample_rows",
+            "audit_id": "nexus-claudebot-20261028-113",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-7c47240a1900",
+        "role": "pattern",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261028-129",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-b65eaac4180f",
+        "role": "verifier",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261028-136",
+            "read_evidence": true
+          }
+        ]
+      },
+      {
+        "order_id": "wo-05a8b269a420",
+        "role": "correlation",
+        "status": "ok",
+        "partial": false,
+        "parsed": {},
+        "tool_calls": [
+          {
+            "tool": "es_search",
+            "audit_id": "nexus-claudebot-20261028-173",
+            "read_evidence": true
+          }
+        ]
+      }
+    ]
+  }
+]
