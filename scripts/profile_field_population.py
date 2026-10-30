@@ -26,6 +26,8 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from nexus.langgraph.query_pack import EXTRACTION_PATTERNS
+
 CORPUS = REPO / "Evidence-files" / "ES-Mapping" / "_population"
 OUT = REPO / "Evidence-files" / "ES-Mapping" / "es_mappings" / "_population.json"
 
@@ -120,11 +122,7 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
     # The set is built as SUFFIXES WITH THE DOT (`.csv`), because `Path.suffix`
     # includes it - `"csv" in SCANNED` is never true for a file named `x.csv`, which
     # is how this once placed 0 of 115 files while printing a confident skip list.
-    pats = (
-        "*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
-        "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz",
-    )
-    scannable = {p[len("*"):] for p in pats}          # '*.csv.gz' -> '.csv.gz'
+    scannable = {p[len("*"):] for p in EXTRACTION_PATTERNS}  # '*.csv.gz' -> '.csv.gz'
     # a `.gz` file is scanned via its double suffix ('.json.gz'); `.suffix` only
     # returns '.gz', so the inner extension decides.
     SCANNED = scannable | {s.rsplit(".", 1)[0] for s in scannable if s.count(".") > 1
@@ -387,11 +385,9 @@ def absent_families(case_dir: Path, profiled: set[str] | None = None) -> dict[st
             if fam:
                 profiled.add(fam.lower())
 
-    pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
-            "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz")
     # Keep the DOT: `Path.suffix` returns ".csv", so an undotted set made every
     # family's files read as "unscannable" (the false usbdeview reason, item 1b(2)).
-    scannable = {p[len("*"):] for p in pats}
+    scannable = {p[len("*"):] for p in EXTRACTION_PATTERNS}
 
     out: dict[str, dict[str, Any]] = {}
     for fam in sorted(registry - profiled):

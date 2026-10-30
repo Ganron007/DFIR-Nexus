@@ -61,7 +61,6 @@ def test_a_type_is_kept_only_when_every_populated_sample_fits():
 def test_new_pipeline_profiles_join_the_baseline_type_samples(tmp_path, monkeypatch):
     """D500: a changed export must reach type proof without replacing the baseline's wider population."""
     import json
-    import shutil
 
     from nexus.langgraph import pipeline_runs
 
@@ -71,14 +70,17 @@ def test_new_pipeline_profiles_join_the_baseline_type_samples(tmp_path, monkeypa
     monkeypatch.setattr(pipeline_runs, "resolve_tools_extractions", lambda case_dir, run_id="": case_dir / "extractions")
     catalog = tmp_path / "catalog"
     catalog.mkdir()
-    for family, fixture, filename, profile_name in (
-        ("chainsaw", "d474_chainsaw_t12_sigma.csv", "sigma.csv", "_population.json"),
-        ("zircolite", "d474_zircolite_t12.ndjson", "zircolite.ndjson", "_population-new-export.json"),
+    for family, fixture, profile_name in (
+        ("chainsaw", "d474_chainsaw_t12_sigma.csv", "_population.json"),
+        ("zircolite", "d474_zircolite_t12.ndjson", "_population-new-export.json"),
     ):
         case = tmp_path / family
-        folder = case / "extractions" / family
-        folder.mkdir(parents=True)
-        shutil.copyfile(REPO / "tests/fixtures" / fixture, folder / filename)
+        corpus = tmp_path / (family + "-corpus")
+        corpus.mkdir()
+        (corpus / "_staged.json").write_text(json.dumps({
+            "families": {family: [str(REPO / "tests/fixtures" / fixture)]},
+        }), encoding="utf-8")
+        assert profiler._layout(corpus, case)["placed"] == 1
         measured = profiler.profile(case)
         (catalog / profile_name).write_text(json.dumps(measured), encoding="utf-8")
 
