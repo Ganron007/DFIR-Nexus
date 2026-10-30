@@ -156,7 +156,8 @@ _FORENSIC_TEXT_ANALYSIS = {
 # 24 = the registry's type proof also reads newer pipeline population profiles. Zircolite's lossless export
 # exposes hexadecimal ProcessId values, so that raw column must remain searchable text (D500).
 # 25 = extracted-image catalogs carry file metadata and their backing files participate in freshness (D483).
-INDEX_SCHEMA_VERSION = 25
+# 26 = JLECmd's current hexadecimal EntryNumber values participate in type proof and remain searchable (D501).
+INDEX_SCHEMA_VERSION = 26
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")

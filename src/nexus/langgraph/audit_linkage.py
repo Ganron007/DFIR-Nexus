@@ -228,16 +228,23 @@ def linkage_map(
         stamp = (0.0, 0.0)
 
     linkage: dict[str, set[str]] = {}
+    essential_tokens: dict[str, set[str]] = {}
 
-    def add(audit_id: str, tokens: set[str]) -> None:
+    def add(audit_id: str, tokens: set[str], *, essential: set[str]) -> None:
         if not audit_id:
             return
         bucket = linkage.setdefault(str(audit_id), set())
-        # sorted so the 64-token cap is deterministic (family/tool tokens
-        # sort early; set-iteration order used to drop them randomly).
-        for token in sorted(t for t in tokens if t):
-            if len(bucket) < _MAX_TOKENS_PER_ID:
-                bucket.add(token)
+        # D502: filenames can sort before the producing tool's name. Reserve the tool/family tokens rather than
+        # hoping they sort early, then fill the remaining unchanged budget with ordinary linkage tokens. A case
+        # audit entry may add its MCP tool after the ledger filled the bucket, so retain both sets of authorities.
+        priority = essential_tokens.setdefault(str(audit_id), set())
+        priority.update(t for t in essential if t)
+        if len(priority) > _MAX_TOKENS_PER_ID:
+            raise ValueError(f"audit id has too many distinct tool/family identities: {audit_id}")
+        ordinary = sorted((bucket | tokens) - priority)
+        bucket.clear()
+        bucket.update(priority)
+        bucket.update(ordinary[:_MAX_TOKENS_PER_ID - len(priority)])
 
     # 1) tool-lane ledger (caller override wins)
     rows_override = ledger
@@ -264,7 +271,7 @@ def linkage_map(
             _tokens_from_value(row.get("purpose"), tokens)
             for arg in row.get("argv") or []:
                 _tokens_from_value(arg, tokens)
-            add(aid, tokens)
+            add(aid, tokens, essential=tool_tokens(tool))
 
     # 2) case audit log (MCP tools, CLI ingest, bridged SIFT rows)
     audit_dir = case_dir / "audit"
@@ -295,7 +302,7 @@ def linkage_map(
                         _tokens_from_value(entry.get("result_summary"), tokens)
                         for f in entry.get("input_files") or []:
                             _tokens_from_value(f, tokens)
-                        add(aid, tokens)
+                        add(aid, tokens, essential=tool_tokens(tool))
             except OSError:
                 continue
 

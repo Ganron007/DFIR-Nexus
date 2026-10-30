@@ -90,7 +90,8 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # v24: updated population profiles participate in type proof; hexadecimal ProcessId values stay searchable
     # in their raw column rather than being ignored by a decimal-only numeric mapping (D500).
     # v25: image-extraction metadata is indexed and the backing files are freshness/verification inputs (D483).
-    assert INDEX_SCHEMA_VERSION == 25
+    # v26: JLECmd's current EntryNumber values contradict a decimal-only long mapping (D501).
+    assert INDEX_SCHEMA_VERSION == 26
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000
