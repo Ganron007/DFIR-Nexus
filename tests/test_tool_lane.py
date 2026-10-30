@@ -539,6 +539,22 @@ def test_n2_extras_gated_chrome_profile(tmp_path: Path):
     assert "Profile 2" in extra_on[0].purpose
 
 
+def test_hindsight_reads_every_chrome_profile_of_a_drive_tree(tmp_path: Path, monkeypatch):
+    """TA-5.4 (iv): Chrome's profiles beyond Default got no Hindsight run and no row, while Edge's did."""
+    monkeypatch.setattr("nexus.langgraph.tool_lane._windows_tool_available", lambda key: key == "hindsight")
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    profiles = [root / "Users/alice/AppData/Local/Google/Chrome/User Data" / name for name in ("Default", "Profile 2")]
+    profiles.append(root / "Users/alice/AppData/Local/Microsoft/Edge/User Data/Profile 1")
+    for prof in profiles:
+        prof.mkdir(parents=True)
+        (prof / "History").write_bytes(b"sql")
+    (root / "Users/alice/AppData/Local/Google/Chrome/User Data/Crashpad").mkdir()
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    read = {Path(j.argv[j.argv.index("-i") + 1]) for j in jobs if j.tool == "hindsight" and "-i" in j.argv}
+    assert read == set(profiles), "every profile, and no folder that is not one"
+
+
 def test_timeout_for_bytes_scales_and_caps():
     assert timeout_for_bytes(0) == 600
     assert timeout_for_bytes(1024) == 600

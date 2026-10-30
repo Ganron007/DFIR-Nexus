@@ -2985,10 +2985,13 @@ def _plan_gap_parsers(
             d.mkdir(parents=True, exist_ok=True)
             _copy_text(extractions, f"powershell_history/{user.name}-history.txt", hist)
 
-    # Browser profiles — Hindsight reads a profile directory. A registered
-    # History or places database is enough to identify a profile; requiring a
-    # second marker drops valid partial collections. Chrome's non-default
-    # profiles remain examiner opt-in through _plan_n2_extras.
+    # Browser profiles — Hindsight reads every profile directory of every browser.
+    # A registered History or places database is enough to identify a profile;
+    # requiring a second marker drops valid partial collections. Chrome's
+    # profiles beyond Default were left out with no row, so a user's second
+    # profile went unread while Edge's was read (TA-5.4 (iv)); the examiner's
+    # `chrome_profiles` extra adds SQLECmd's History parse of them, as the
+    # default lane does for Default.
     browser_roots = (
         ("Chrome", Path("AppData/Local/Google/Chrome/User Data")),
         ("Edge", Path("AppData/Local/Microsoft/Edge/User Data")),
@@ -3005,10 +3008,6 @@ def _plan_gap_parsers(
                 continue
             for prof in profiles:
                 if not prof.is_dir():
-                    continue
-                if browser == "Chrome" and prof.name.lower() not in {
-                    "default", "system profile", "guest profile"
-                }:
                     continue
                 if not _looks_like_browser_profile(prof):
                     continue
