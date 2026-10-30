@@ -194,8 +194,14 @@ def build(rnd: str | None) -> dict:
                     hits.setdefault(key[0], []).append(f"{c['case']}:{key[1]}")
         return hits
 
-    tool_seen = seen(lambda j: None if j["tool"].startswith("import:") else (j["tool"].lower(), j["state"]))
-    import_seen = seen(lambda j: (j["tool"][7:].lower(), j["state"]) if j["tool"].startswith("import:") else None)
+    from nexus.langgraph.lane_gate import import_source  # noqa: PLC0415
+    from nexus.langgraph.tool_lane import is_lane_note  # noqa: PLC0415
+
+    # A tool's row, by the gate's own naming: not the importer pass's (`import:<source>`, or `import` for a file no
+    # importer recognised) and not one of the lane's notes about the evidence (D493).
+    tool_seen = seen(lambda j: None if import_source(j["tool"]) is not None or is_lane_note(j["tool"])
+                     else (j["tool"].lower(), j["state"]))
+    import_seen = seen(lambda j: (src.lower(), j["state"]) if (src := import_source(j["tool"])) else None)
     # TA-5.3: the class that read each file (a gate written before it names only the source).
     class_seen = seen(lambda j: (j["importer"], j["state"]) if j.get("importer") else None)
     tools = {}
@@ -211,7 +217,7 @@ def build(rnd: str | None) -> dict:
             verdict = "OK" if ok else cls
         tools[name] = {"class": cls, "verdict": verdict, "seen": states, "expect": spec.get("expect", []),
                        "in_code": name in lane_src}
-    unlisted = sorted(set(tool_seen) - set(universe["tools"]) - {"(discovery)"})
+    unlisted = sorted(set(tool_seen) - set(universe["tools"]))
     importers = {}
     for src, classes in lists["importers"].items():
         states = import_seen.get(src, [])

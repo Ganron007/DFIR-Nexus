@@ -39,6 +39,20 @@ from nexus.langgraph.tool_output_policy import is_tool_own_log_name
 
 log = logging.getLogger(__name__)
 
+#: The rows the lane writes about the evidence rather than a tool's run, named in parentheses: no evidence shape it
+#: recognises (or no SIFT evidence root), a file of zeros nothing is handed, and a capture or flow file the SIFT host
+#: does not hold. Every reader of the ledger tells them from tools by this one list; two readers kept their own, and
+#: the plan offered T06's `(empty)` row to the examiner as a parser gap (D493).
+NOTE_DISCOVERY = "(discovery)"
+NOTE_EMPTY = "(empty)"
+NOTE_NETWORK = "(network)"
+LANE_NOTES = frozenset({NOTE_DISCOVERY, NOTE_EMPTY, NOTE_NETWORK})
+
+
+def is_lane_note(tool: str) -> bool:
+    """True for a row the lane wrote about the evidence, not a tool's run."""
+    return tool in LANE_NOTES
+
 
 @dataclass
 class ToolJob:
@@ -843,7 +857,7 @@ def _plan_single_artifact(
         # forever on an all-zero $I30 and rbcmd/recmd write empty shells whose
         # OK rows imply a parse happened. One honest row says what is true.
         jobs.append(ToolJob(
-            host="windows", tool="(empty)", argv=[], status="SKIP",
+            host="windows", tool=NOTE_EMPTY, argv=[], status="SKIP",
             purpose="empty artifact",
             reason=(
                 f"{evidence.name} is {evidence.stat().st_size} bytes of zeros "
@@ -1919,7 +1933,7 @@ def plan_windows_triage(
         if not jobs:
             jobs.append(ToolJob(
                 host="windows",
-                tool="(discovery)",
+                tool=NOTE_DISCOVERY,
                 argv=[],
                 purpose="locate evidence",
                 status="SKIP",
@@ -3903,7 +3917,7 @@ def plan_sift_triage(
     if not root:
         jobs.append(ToolJob(
             host="sift",
-            tool="(discovery)",
+            tool=NOTE_DISCOVERY,
             argv=[],
             purpose="SIFT evidence root",
             status="SKIP",

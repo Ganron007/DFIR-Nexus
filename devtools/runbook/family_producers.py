@@ -13,6 +13,7 @@ from nexus.ingest.registry import get_registry
 from nexus.ingest.schemas import ArtifactSource
 from nexus.langgraph.lane_gate import STAGED_FAMILY
 from nexus.langgraph.query_pack import _FAMILY_HINTS, _TOOL_FAMILIES, _TREE_TOOLS, _family
+from nexus.langgraph.tool_lane import is_lane_note
 
 REPO = Path(__file__).resolve().parents[2]
 LANE = REPO / "src/nexus/langgraph/tool_lane.py"
@@ -72,7 +73,7 @@ def inventory() -> dict:
             # A literal path reference is a candidate: it may be nested or input staging.
             add(_family(root / folder / "rows.csv", root), "direct_path_projection", refs)
     for name, refs in tool_names.items():
-        if not name.startswith("("):
+        if not is_lane_note(name):
             add(name, "literal_job_tool", refs)
     for row in importers:
         add(row["source"], "registered_importer_source", row["classes"])

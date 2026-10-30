@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.tool_lane import LANE_NOTES
 from nexus.modes.llm_guided import corroboration_suggestions
 
 log = logging.getLogger(__name__)
@@ -33,12 +34,13 @@ _KNOWN_EXTRAS = {
 
 # Tools that are platform-inappropriate and should not appear as
 # actionable SKIPs in the plan.  Suzaku is a Linux parser; log2timeline
-# is informational (the plaso suggestion row), not a real SKIP.
+# is informational (the plaso suggestion row), not a real SKIP, and the
+# lane's notes about the evidence name no tool at all (D493).
 _PLATFORM_SKIP = {
     "win32": {"suzaku"},
     "linux": set(),
 }
-_INFORMATIONAL_SKIP = {"(discovery)", "log2timeline"}
+_INFORMATIONAL_SKIP = LANE_NOTES | {"log2timeline"}
 
 
 def _log_agent_run(case_dir: Path, entry: dict[str, Any]) -> None:
@@ -81,7 +83,7 @@ def _load_ledger(case_dir: Path) -> list[dict]:
 
 def _mandatory_lane_complete(ledger: list[dict]) -> bool:
     """True if the ledger has at least one OK mandatory-lane tool."""
-    return any(row.get("status") == "OK" and row.get("tool") not in ("(discovery)", "log2timeline") for row in ledger)
+    return any(row.get("status") == "OK" and row.get("tool") not in _INFORMATIONAL_SKIP for row in ledger)
 
 
 def _rag_methodology_for_skips(skip_tools: list[str]) -> tuple[str, list[dict[str, Any]]]:

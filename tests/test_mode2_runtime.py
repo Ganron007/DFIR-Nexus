@@ -40,7 +40,6 @@ def test_every_skill_maps_to_one_role():
         skill_id = str(skill["skill"])
         role = m3.skill_role(skill_id)
         assert role in m3.ROLES
-        assert role != "reporter"
         seen.add(skill_id)
     assert seen == set(m3.SKILL_ROLES)
 

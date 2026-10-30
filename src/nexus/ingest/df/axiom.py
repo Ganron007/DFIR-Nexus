@@ -25,6 +25,7 @@ from typing import Any
 from nexus.ingest.base import Importer
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 from nexus.ingest.sqlite_snapshot import is_sqlite, snapshot, tables
+from nexus.langgraph.lane_gate import IMPORT_TOOL
 
 _REQUIRED_TABLES = {"scan_artifact_hit", "artifact_version", "fragment_definition", "hit_fragment_string"}
 _FRAGMENT_TABLES = ("hit_fragment_string", "hit_fragment_int", "hit_fragment_float")
@@ -76,7 +77,7 @@ def case_parts(db: Path) -> dict[Path, str]:
 
 def part_gate_rows(db: Path, parts: dict[Path, str]) -> list[dict[str, str]]:
     """The gate's row for each of AXIOM's own files: not read, and why."""
-    return [{"tool": "import:axiom", "purpose": f"import {f}", "family": "axiom", "status": "SKIP",
+    return [{"tool": f"{IMPORT_TOOL}:axiom", "purpose": f"import {f}", "family": "axiom", "status": "SKIP",
              "reason": f"part of the Magnet AXIOM case read from {db.name}: {what}"} for f, what in sorted(parts.items())]
 
 

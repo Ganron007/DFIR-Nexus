@@ -57,7 +57,7 @@ def test_a_tool_csv_in_a_registered_folder_is_indexed_as_that_tool(case, tmp_pat
     assert hashlib.sha256(placed.read_bytes()).digest() == hashlib.sha256(src.read_bytes()).digest()
     assert not (case / "ingest" / "artifacts.jsonl").exists(), "not read a second time as generic rows"
     assert import_row(src, info) == {"tool": "import:evtxecmd", "purpose": f"import {src}", "family": "evtxecmd",
-                                     "pass": "importer", "status": "OK", "reason": "3 row(s)"}
+                                     "status": "OK", "reason": "3 row(s)"}
     entry = _audit(case)[-1]
     assert entry["tool"] == "ingest_auto" and entry["result_summary"]["placed_at"] == str(placed)
     # A second lane run places nothing new.

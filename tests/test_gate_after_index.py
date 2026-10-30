@@ -86,6 +86,29 @@ def test_the_importer_passs_files_survive_the_gate_being_re_derived(tmp_path):
     assert gate["status"] == "blocked"
 
 
+def test_every_row_the_importer_pass_records_survives_the_re_derivation(tmp_path):
+    """D494 (2026-10-30): the pass marker was added by two callers, so an archive's row (and an AXIOM case part's)
+    carried none, and on a drive tree an archive that could not be expanded left `unprocessed` unseen."""
+    from nexus.langgraph.evidence_archives import archive_gate_rows
+    from nexus.langgraph.lane_gate import record_import_results, write_lane_gate
+
+    rows = [_row("Scheduled Tasks", "PRESENT_NO_PARSER")]
+    case = _case_with_completeness(tmp_path, rows)
+    run_id = "RUN-20261011T000000Z-tools-gate"
+    write_lane_gate(case, run_id, [], registered_evidence=[], completeness=rows)
+    record_import_results(case, archive_gate_rows([
+        {"archive": "E:/ev/export.zip", "status": "OK", "reason": "3 file(s) expanded"},
+        {"archive": "E:/ev/broken.zip", "status": "FAIL", "reason": "File is not a zip file"},
+    ]))
+
+    reconcile_after_index(case, {"scheduled_tasks/ingest/artifacts.jsonl": {"docs": 1, "deduped": 0}}, run_id=run_id)
+
+    gate = read_lane_gate(case)
+    assert [(j["purpose"], j["state"]) for j in gate["jobs"] if j["tool"] == "expand"] == [
+        ("expand E:/ev/export.zip", "processed"), ("expand E:/ev/broken.zip", "failed")]
+    assert [u["purpose"] for u in gate["unprocessed"]] == ["expand E:/ev/broken.zip"]
+
+
 def test_scheduled_tasks_with_indexed_documents_become_parsed(tmp_path):
     case = _case_with_completeness(tmp_path, [_row("Scheduled Tasks", "PRESENT_NO_PARSER")])
 

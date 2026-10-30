@@ -398,10 +398,11 @@ wheels.
 tool loop — there is no second bespoke agent loop. It is **multi-role, not
 concurrent multi-agent**: one work order runs at a time.
 
-- **Roles** (`AgentRole`): director, evidence, correlation, pattern, verifier,
-  synthesis, reporter — each with a scoped **read-only** tool allowlist,
-  system prompt, budget (rounds/calls/seconds) and deterministic honest
-  fallback. The allowlist is enforced by `context_loop.allowed_tools`.
+- **Roles** (`AgentRole`): evidence, correlation, pattern, verifier and
+  synthesis — each with a scoped **read-only** tool allowlist, system prompt,
+  budget (rounds/calls/seconds) and deterministic honest fallback. The
+  allowlist is enforced by `context_loop.allowed_tools`. The director is the
+  graph's planning node (`plan_work_orders`), not a role.
 - **Work orders** (`WorkOrder`): task, family, priority tools, expected
   artifact/event IDs, acceptance signal, negative-evidence rule, and
   `skill_refs` (KB skill id + content version + citations) rendered into the

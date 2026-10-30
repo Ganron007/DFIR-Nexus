@@ -651,18 +651,6 @@ ROLES: dict[str, AgentRole] = {
             "candidate the finding is built from. Never approve anything."
         ),
     ),
-    "reporter": AgentRole(
-        name="reporter",
-        description="Report-ready narrative from verified findings.",
-        tools=("run_record", "rag_search"),
-        system_prompt=(
-            "You are the report agent. Write a compact examiner-ready summary "
-            "of the verified findings, their evidence, confidence and the "
-            "remaining gaps. Return JSON: {\"summary\":\"...\","
-            "\"sections\":[{\"title\":\"...\",\"body\":\"...\"}],"
-            "\"gaps\":[\"...\"]}."
-        ),
-    ),
 }
 
 
@@ -868,7 +856,7 @@ def _claim_keys(case_dir: Path, items: list[dict[str, Any]]) -> list[str]:
 
 
 #: Seats whose reply composes the run's results rather than examining the evidence.
-_COMPOSING_ROLES = ("synthesis", "reporter")
+_COMPOSING_ROLES = ("synthesis",)
 
 
 def run_coverage(results: list[dict[str, Any]]) -> dict[str, list[str]]:
@@ -1394,10 +1382,6 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"timeline":[{"ts":"...","event":"...","audit_ids":["..."]}],'
         '"attack_chain":[{"tactic":"...","technique":"T....","what":"...","audit_ids":["..."]}],'
         '"entities":[{"type":"...","value":"...","role":"..."}],"open_questions":["..."]}'
-    ),
-    "reporter": (
-        '{"summary":"...","sections":[{"title":"...","body":"..."}],'
-        '"gaps":["..."]}'
     ),
 }
 

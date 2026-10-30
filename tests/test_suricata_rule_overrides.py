@@ -96,7 +96,7 @@ def test_the_gate_keeps_a_local_tool_job_through_the_index_pass(tmp_path):
     (case / "evidence.json").write_text("[]", encoding="utf-8")
     write_lane_gate(case, run.name, [], registered_evidence=[], completeness=rows)
     record_import_results(case, [{"tool": "suricata", "purpose": "suricata on capture.pcap (local)", "family": "suricata",
-                                  "status": "OK", "reason": "41662 rules loaded, 0 failed", "pass": "importer"}])
+                                  "status": "OK", "reason": "41662 rules loaded, 0 failed"}])
     reconcile_after_index(case, {}, run_id=run.name)
     assert [(j["state"], j["reason"]) for j in read_lane_gate(case)["jobs"] if j["tool"] == "suricata"] == [
         ("processed", "41662 rules loaded, 0 failed")]

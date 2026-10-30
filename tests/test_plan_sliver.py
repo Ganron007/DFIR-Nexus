@@ -55,6 +55,22 @@ class TestPlanExtras:
         skips = [i.get("tool") for i in plan["items"] if i.get("type") == "tool_skip"]
         assert "suzaku" not in skips
 
+    def test_the_lanes_notes_are_never_offered_as_parser_gaps(self, tmp_path):
+        """D493 (T06, 2026-10-30): the lane's row for a file of zeros named no tool, and the plan offered it."""
+        from dataclasses import asdict
+
+        from nexus.langgraph.tool_lane import NOTE_NETWORK, _plan_single_artifact
+
+        case_dir = _make_case(tmp_path)
+        zeros = tmp_path / "$Max"
+        zeros.write_bytes(b"\x00" * 4096)
+        [note] = _plan_single_artifact(zeros, tmp_path / "ex")
+        ledger = json.loads((case_dir / "extractions" / "_tool_lane_ledger.json").read_text())
+        ledger += [asdict(note), {"tool": NOTE_NETWORK, "status": "SKIP", "reason": "capture.pcap is not on SIFT"}]
+        (case_dir / "extractions" / "_tool_lane_ledger.json").write_text(json.dumps(ledger))
+        plan = plan_extras(case_dir, model=None)
+        assert [i["tool"] for i in plan["items"] if i.get("type") == "tool_skip"] == ["srumecmd"]
+
     def test_lane_complete_flag(self, tmp_path):
         case_dir = _make_case(tmp_path, with_ok=True)
         plan = plan_extras(case_dir, model=None)

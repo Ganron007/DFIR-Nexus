@@ -148,7 +148,7 @@ def plan_network_triage(
     Windows path never does. The outputs go to ``remote_extractions`` (the remote case's extractions, which the
     lane pulls); they used to go under the evidence root, which no pull reads. Never silence.
     """
-    from nexus.langgraph.tool_lane import ToolJob
+    from nexus.langgraph.tool_lane import NOTE_NETWORK, ToolJob
 
     jobs: list = []
     root = (remote_root or "").strip().rstrip("/")
@@ -188,7 +188,7 @@ def plan_network_triage(
         out_dir = f"{out_base}/network/{stem}" if out_base else f"{root or '/tmp'}/nexus-network/{stem}"
         if rp is None:
             jobs.append(ToolJob(
-                host="sift", tool="(network)", argv=[],
+                host="sift", tool=NOTE_NETWORK, argv=[],
                 purpose="Network parser visibility", status="SKIP",
                 reason=_not_on_sift(p),
             ))
@@ -234,7 +234,7 @@ def plan_network_triage(
         rp = _remote(p)
         if rp is None:
             jobs.append(ToolJob(
-                host="sift", tool="(network)", argv=[],
+                host="sift", tool=NOTE_NETWORK, argv=[],
                 purpose="Netflow visibility", status="SKIP",
                 reason=_not_on_sift(p).replace("local flow projection still runs",
                                                "the nfdump importer can still parse it locally"),

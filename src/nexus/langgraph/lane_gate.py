@@ -462,6 +462,19 @@ def write_lane_gate(
     return gate
 
 
+#: An importer-pass row is named for the source that read its file, ``import:<source>``, and ``import`` alone when no
+#: importer recognised the file (an empty one). Every reader of the gate tells the pass's files from tools by it.
+IMPORT_TOOL = "import"
+
+
+def import_source(tool: str) -> str | None:
+    """The source an importer-pass row names ("" when no importer read the file); None for a tool's row."""
+    if tool == IMPORT_TOOL:
+        return ""
+    prefix = f"{IMPORT_TOOL}:"
+    return tool[len(prefix):] if tool.startswith(prefix) else None
+
+
 def import_row(path: Path | str, info: dict[str, Any] | None, network: dict[str, Any] | None = None) -> dict[str, str]:
     """The gate row for one file of the importer pass (I1): read, empty, or not read.
 
@@ -473,8 +486,7 @@ def import_row(path: Path | str, info: dict[str, Any] | None, network: dict[str,
     rows = int(info.get("artifacts") or 0)
     flows = int((network or {}).get("flows_rows") or 0)
     source = str(info.get("source") or "")
-    row = {"tool": f"import:{source}" if source else "import", "purpose": f"import {path}", "family": source,
-           "pass": "importer"}
+    row = {"tool": f"{IMPORT_TOOL}:{source}" if source else IMPORT_TOOL, "purpose": f"import {path}", "family": source}
     if info.get("importer"):
         # TA-5.3: the class that read the file, as the importer registry names it; one source has several.
         row["importer"] = str(info["importer"])
@@ -503,10 +515,15 @@ def record_import_results(case_dir: Path | str, rows: list[dict[str, Any]]) -> d
     written, so a network-only case read as "nothing processed" and was blocked with nothing unprocessed (sample
     S03: 19,911 rows indexed), and a file no importer read was never unprocessed. Each file is now a job of the
     pass; one it could not read is unprocessed, and an examiner skip of it still holds.
+
+    Every row recorded here is the pass's, and is marked so: each file, each capture's local network tool, each
+    archive expanded and each AXIOM case part. The post-index re-derivation keeps the rows so marked (TA-5.3); an
+    archive's row carried no mark and would have been dropped on a drive tree, a failed expansion with it (D494).
     """
     gate = dict(read_lane_gate(case_dir))
     if not gate or not rows:
         return gate
+    rows = [{**r, "pass": "importer"} for r in rows]
     keys = {_key(r) for r in rows}
     gate["jobs"] = [j for j in gate.get("jobs") or [] if _key(j) not in keys] + _jobs_from_ledger(rows)
     gate["unprocessed"] = [u for u in gate.get("unprocessed") or [] if _key(u) not in keys] + [
