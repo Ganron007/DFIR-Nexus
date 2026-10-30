@@ -251,27 +251,34 @@ def load_supplement() -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
     return cols, {str(k): str(v) for k, v in req.items()}
 
 
+def _population_profiles() -> list[Path]:
+    """The baseline profile and additional profiles measured from newer pipeline outputs (D500).
+
+    A new export format may expose values the original population never held. Keep those measurements beside the
+    baseline instead of replacing its wider coverage; every future regeneration must check them too.
+    """
+    return sorted(SRC_DIR.glob("_population*.json"))
+
+
 def load_population() -> dict[str, set[str]]:
     """column -> the families whose documents actually filled it (WO-KM1 item 3).
 
-    Read from `_population.json`, the mechanical profile run over the population
-    corpus. `families` stays the declared set; this is the populated one, and
+    Read from `_population*.json`, mechanical profiles of the population corpus and newer pipeline outputs.
+    `families` stays the declared set; this is the populated one, and
     forbidden item 11 says a claim of validity must be shown on populated fields.
     """
     import json
 
-    prof = SRC_DIR / "_population.json"
-    if not prof.is_file():
-        return {}
-    data = json.loads(prof.read_text(encoding="utf-8")) or {}
     out: dict[str, set[str]] = {}
-    for family, body in (data.get("families") or {}).items():
-        cols = body.get("columns") if isinstance(body, dict) else {}
-        for column, info in (cols or {}).items():
-            if column == "__text__":
-                continue
-            if int((info or {}).get("filled") or 0) > 0:
-                out.setdefault(str(column).lower(), set()).add(str(family).lower())
+    for prof in _population_profiles():
+        data = json.loads(prof.read_text(encoding="utf-8")) or {}
+        for family, body in (data.get("families") or {}).items():
+            cols = body.get("columns") if isinstance(body, dict) else {}
+            for column, info in (cols or {}).items():
+                if column == "__text__":
+                    continue
+                if int((info or {}).get("filled") or 0) > 0:
+                    out.setdefault(str(column).lower(), set()).add(str(family).lower())
     return out
 
 
@@ -351,24 +358,22 @@ _NOT_A_VALUE = ("<redacted-path>",)
 
 
 def load_samples() -> dict[str, list[tuple[str, str]]]:
-    """column -> (family, value) for every populated sample in the population profile (all families).
+    """column -> (family, value) for every populated sample in the population profiles (all families).
 
     `type_samples` (one value per distinct shape of the column, D404) when the profile has them, else `samples`.
     """
     import json
 
-    prof = SRC_DIR / "_population.json"
-    if not prof.is_file():
-        return {}
-    data = json.loads(prof.read_text(encoding="utf-8")) or {}
     out: dict[str, list[tuple[str, str]]] = {}
-    for family, body in (data.get("families") or {}).items():
-        for column, info in ((body or {}).get("columns") or {}).items():
-            for value in (info or {}).get("type_samples") or (info or {}).get("samples") or []:
-                text = str(value)
-                if not text or text in _NOT_A_VALUE or text.endswith("..."):
-                    continue
-                out.setdefault(str(column), []).append((str(family), text))
+    for prof in _population_profiles():
+        data = json.loads(prof.read_text(encoding="utf-8")) or {}
+        for family, body in (data.get("families") or {}).items():
+            for column, info in ((body or {}).get("columns") or {}).items():
+                for value in (info or {}).get("type_samples") or (info or {}).get("samples") or []:
+                    text = str(value)
+                    if not text or text in _NOT_A_VALUE or text.endswith("..."):
+                        continue
+                    out.setdefault(str(column), []).append((str(family), text))
     return out
 
 

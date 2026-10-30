@@ -147,7 +147,9 @@ _FORENSIC_TEXT_ANALYSIS = {
 # 23 = a Chainsaw or Zircolite row is read back as its event (its channel, provider, event id and data, by the columns
 # the tools' own files name), so the per-event fields and the event's user apply to it; MemProcFS's `***` is no
 # address (D474). An index built before it has no process or user on those rows and `***` as an address.
-INDEX_SCHEMA_VERSION = 23
+# 24 = the registry's type proof also reads newer pipeline population profiles. Zircolite's lossless export
+# exposes hexadecimal ProcessId values, so that raw column must remain searchable text (D500).
+INDEX_SCHEMA_VERSION = 24
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")

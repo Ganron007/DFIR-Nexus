@@ -58,6 +58,39 @@ def test_a_type_is_kept_only_when_every_populated_sample_fits():
     assert tally == {"proven": 1, "contradicted": 1, "unproven": 1, "supplement": 1}
 
 
+def test_new_pipeline_profiles_join_the_baseline_type_samples(tmp_path, monkeypatch):
+    """D500: a changed export must reach type proof without replacing the baseline's wider population."""
+    import json
+    import shutil
+
+    from nexus.langgraph import pipeline_runs
+
+    spec = importlib.util.spec_from_file_location("profile_d500", REPO / "scripts/profile_field_population.py")
+    profiler = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(profiler)
+    monkeypatch.setattr(pipeline_runs, "resolve_tools_extractions", lambda case_dir, run_id="": case_dir / "extractions")
+    catalog = tmp_path / "catalog"
+    catalog.mkdir()
+    for family, fixture, filename, profile_name in (
+        ("chainsaw", "d474_chainsaw_t12_sigma.csv", "sigma.csv", "_population.json"),
+        ("zircolite", "d474_zircolite_t12.ndjson", "zircolite.ndjson", "_population-new-export.json"),
+    ):
+        case = tmp_path / family
+        folder = case / "extractions" / family
+        folder.mkdir(parents=True)
+        shutil.copyfile(REPO / "tests/fixtures" / fixture, folder / filename)
+        measured = profiler.profile(case)
+        (catalog / profile_name).write_text(json.dumps(measured), encoding="utf-8")
+
+    builder = _builder()
+    monkeypatch.setattr(builder, "SRC_DIR", catalog)
+    samples = builder.load_samples()
+    first = json.loads((REPO / "tests/fixtures/d474_zircolite_t12.ndjson").read_text(encoding="utf-8").splitlines()[0])
+    assert ("zircolite", str(first["ProcessId"])) in samples["ProcessId"]
+    assert {family for family, _value in samples["Computer"]} == {"chainsaw", "zircolite"}
+    assert builder.load_population()["processid"] == {"zircolite"}
+
+
 def test_the_shipped_registry_never_types_a_column_its_values_contradict():
     """The agreement test: every typed column the index maps was checked; none is typed against its real values."""
     columns = (yaml.safe_load(REGISTRY.read_text(encoding="utf-8")) or {}).get("columns") or {}
