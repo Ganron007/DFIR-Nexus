@@ -55,6 +55,9 @@ def test_sources_are_pinned_to_the_reviewed_digests():
             "573adc637f8a15dade1789104070f601db2a3e796d1377b21abf544cf84664d6",
         ("windows-provider-manifest", "10.0.26200.9711", "Microsoft-Windows-Security-Auditing"):
             "f05d09902542c7feba4e410411e3df57297214beec763aa1e402edcb20570f9d",
+        # D474: Sysmon is installed separately from Windows; its own version pins the channel-only manifest.
+        ("windows-provider-manifest", "Sysmon 15.15", "Microsoft-Windows-Sysmon"):
+            "3e759e31e01f9a3a362a5ef0944171af0e0d3709343ebb4fcd5d8dde4f7d575f",
     }
     elastic = next(s for s in doc["sources"] if s["package"].startswith("elastic"))
     assert elastic["licence"] == "Elastic-2.0"

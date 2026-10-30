@@ -18,7 +18,7 @@ import pytest
 
 from nexus.langgraph.ecs_normalize import normalize
 from nexus.langgraph.es_native import _shape_hit
-from nexus.langgraph.event_categories import category_for, provider_for, row_category
+from nexus.langgraph.event_categories import category_for, channel_for, provider_for, row_category
 from nexus.langgraph.evidence_rows import evidence_rows_for_hits
 from nexus.langgraph.subject import derive_subject
 
@@ -49,7 +49,9 @@ def test_the_manifests_say_which_provider_logs_a_channels_event():
     assert provider_for("Security", 4624) == "Microsoft-Windows-Security-Auditing"
     assert provider_for("Microsoft-Windows-Windows Defender/Operational", 1116) == "Microsoft-Windows-Windows Defender"
     assert provider_for("Microsoft-Windows-PowerShell/Operational", 4104) == "Microsoft-Windows-PowerShell"
-    assert provider_for("Microsoft-Windows-Sysmon/Operational", 1) == "", "no Sysmon manifest is pinned"
+    # D474 pins Sysmon 15.15's own manifest; both readers must agree on the channel it declares.
+    assert provider_for("Microsoft-Windows-Sysmon/Operational", 1) == "Microsoft-Windows-Sysmon"
+    assert channel_for("Microsoft-Windows-Sysmon", 1) == "Microsoft-Windows-Sysmon/Operational"
 
 
 @pytest.mark.parametrize("key, entity, category", [

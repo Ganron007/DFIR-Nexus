@@ -29,8 +29,8 @@ log = logging.getLogger(__name__)
 #: The files the index and the N4 scanner read from an extractions root. Every format a lane
 #: job writes must be listed here, or the index never sees it (`.tsv` was missing).
 EXTRACTION_PATTERNS = (
-    "*.csv", "*.tsv", "*.txt", "*.json", "*.jsonl", "*.log",
-    "*.csv.gz", "*.tsv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz",
+    "*.csv", "*.tsv", "*.txt", "*.json", "*.jsonl", "*.ndjson", "*.log",
+    "*.csv.gz", "*.tsv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.ndjson.gz", "*.log.gz",
 )
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?")
 _EXE_RE = re.compile(r"\b[\w.-]+\.exe\b", re.I)

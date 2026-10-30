@@ -621,18 +621,22 @@ def _load_run(case_dir: Path, rid: str, mode: str = "tools") -> PipelineRun:
     )
 
 
-_DATA_SUFFIXES = (".csv", ".json", ".jsonl", ".txt", ".log", ".gz", ".zip")
-
-
 def _extractions_have_data(extractions: Path) -> bool:
     """True when a run's extractions dir holds parsed output (not just _meta)."""
+    import fnmatch
+
+    from nexus.langgraph.query_pack import EXTRACTION_PATTERNS
+
     if not extractions.is_dir():
         return False
     for path in extractions.rglob("*"):
         if (
             path.is_file()
             and not path.name.startswith("_")
-            and path.name.lower().endswith(_DATA_SUFFIXES)
+            # D499: reuse the scanner/index file policy, so a run holding only NDJSON (or TSV) is not data-less.
+            # Preserve recognition of archive containers; the lane expands those before indexing their records.
+            and (any(fnmatch.fnmatchcase(path.name.lower(), pattern) for pattern in EXTRACTION_PATTERNS)
+                 or path.name.lower().endswith((".gz", ".zip")))
         ):
             return True
     return False

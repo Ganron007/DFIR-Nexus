@@ -36,7 +36,10 @@ winlog_event_data:
       LogonType: ecs.winlog.logon.type
       IpAddress: ecs.source.ip
       IpPort: ecs.source.port
-      WorkstationName: ecs.host.name
+      # The logon's source workstation, not the host that logged the event (D497): Elastic's Windows Security
+      # pipeline at the pinned commit 59aa0e9 ("Rename Common Auth Fields", security_standard.yml:3665-3672) puts it
+      # in source.domain. As ecs.host.name it replaced the logging host on Hayabusa's rows (T12: 5 of 47 4624s).
+      WorkstationName: ecs.source.domain
     "4625":
       TargetUserName: ecs.user.target.name
       TargetDomainName: ecs.user.target.domain
@@ -131,6 +134,16 @@ winlog_event_data:
     "5013":
       Value: __registry_assignment__
 
+# ── An event's System fields, by their EVTX path (D474) ──
+# For the tools that write a matched event's System fields as columns of their own (Chainsaw, Zircolite): which
+# column holds which path is the tool's (`tool_event_columns.yaml`), and the path's place in ECS is here, once.
+winlog_system:
+  Event.System.Channel: ecs.winlog.channel
+  Event.System.Provider: ecs.event.provider
+  Event.System.EventID: ecs.event.code
+  Event.System.EventRecordID: ecs.winlog.record_id
+  Event.System.Computer: ecs.host.name
+
 # ── Column -> ECS field, per tool family (from the operator's ES-Mapping) ──
 # `transform` (optional): path_split | hash_list | lower.
 family_columns:
@@ -210,13 +223,7 @@ family_columns:
     Computer: ecs.host.name
     Channel: ecs.winlog.channel
     RecordID: ecs.winlog.record_id
-  chainsaw:
-    Event ID: ecs.event.code
-    Computer: ecs.host.name
-    Event.System.Provider: ecs.event.provider
-    Record ID: ecs.winlog.record_id
-    # `Event Data` is parsed by `normalize` into ecs.winlog.event_data.<key>
-    # (WO-CS1b item 3); it is not a plain field copy.
+  # chainsaw and zircolite: each row is read back as its event (`winlog_system` above, D474).
   # vol (Volatility) pslist/netscan
   vol:
     ImageFileName: ecs.process.name
@@ -366,6 +373,12 @@ absent_values:
     # Zeek 9.0.0 base/protocols/ftp/info.zeek:34 `user: string &log &default="<unknown>";`
     # (sha256 cbf5333fa4c33927e59d73ef6434ebb8e4254382fc457e27efd54275b1b19b93): no USER command was seen.
     user: ["<unknown>"]
+  memprocfs:
+    # MemProcFS 5.19 vmm/vmmnet.c:1158-1166 (sha256 deb7c2a1fdbe9ddc03de4d5c7c539c819eedbbae162fbe9741449bff6c78c1d0)
+    # writes `***` as an endpoint's address when it holds no valid one, and vmm/modules/m_sys_net.c:151-165
+    # (sha256 d88c68e4ac81fc93995e486c53b387c1217da90ddfc1c8ec9571aaaba4a91858) writes that text into net.csv (D474).
+    SrcAddr: ["***"]
+    DstAddr: ["***"]
 
 # ── Fields that must be keyword-typed with a wildcard subfield ──
 # (command lines and paths are searched by wildcard).

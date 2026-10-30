@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.analysis.leads import Lead
+from nexus.langgraph.tool_events import EVENT_ID, chainsaw_event
 
 log = logging.getLogger(__name__)
 
@@ -514,13 +515,15 @@ def chainsaw_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                         rule["first"] = ts
                     if not rule["last"] or ts > rule["last"]:
                         rule["last"] = ts
-                host = _trim(row.get("Computer"), 80)
+                # The event's own fields, by the columns Chainsaw's mapping names for them (D474).
+                system, _data = chainsaw_event(row)
+                host = _trim(system.get("Event.System.Computer"), 80)
                 if host and host not in rule["hosts"]:
                     rule["hosts"].append(host)
                 if len(rule["samples"]) < _SAMPLES_PER_RULE:
                     rule["samples"].append({
                         "rule_title": title,
-                        "event_id": _trim(row.get("Event ID"), 12),
+                        "event_id": _trim(system.get(EVENT_ID), 12),
                         "computer": host,
                         "timestamp": ts,
                         "count": _trim(row.get("count"), 12),

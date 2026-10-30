@@ -41,6 +41,16 @@ def test_a_memory_connection_has_its_addresses_and_its_process():
     assert outlook["process.pid"] == "904" and outlook["process.name"] == "OUTLOOK.EXE"
 
 
+def test_memprocfs_no_address_marker_is_no_address():
+    """D474: MemProcFS 5.19 writes `***` for an endpoint with no valid address (vmm/vmmnet.c:1158-1166) into net.csv's
+    SrcAddr and DstAddr (vmm/modules/m_sys_net.c:151-165). T22's index held it as an address 141 times."""
+    rows = [r for r in ROWS["net.csv"] if "***" in (r.get("SrcAddr"), r.get("DstAddr"))]
+    assert rows, "T22's rows hold the marker"
+    for row in rows:
+        ecs = _flat(normalize("memprocfs", row, table="net.csv"))
+        assert "***" not in (ecs.get("source.ip"), ecs.get("destination.ip"))
+
+
 def test_an_event_read_from_memory_has_its_channel_code_provider_record_and_host():
     service = next(r for r in ROWS["eventlog.csv"] if r["EventID"] == "4697")
     ecs = _flat(normalize("memprocfs", service, table="eventlog.csv"))
@@ -106,7 +116,9 @@ def test_the_index_builder_reads_each_table_by_its_own_entry(tmp_path, monkeypat
     for doc in docs:
         by_table.setdefault(doc["file"].rsplit("/", 1)[-1], []).append(doc)
     assert {d["family"] for d in docs} == {"memprocfs"}
-    assert [d["ecs"]["destination"]["ip"] for d in by_table["net.csv"]] == ["172.16.4.5", "172.16.4.10", "***"]
+    # D474: the third row's `***` is MemProcFS's "no valid address" (vmmnet.c:1158-1166), not an address.
+    assert [d["ecs"].get("destination", {}).get("ip") for d in by_table["net.csv"]] == [
+        "172.16.4.5", "172.16.4.10", None]
     assert all("user" not in d for d in by_table["tasks.csv"])
     events = {d["ecs"]["event"]["code"]: d for d in by_table["eventlog.csv"]}
     assert events["4697"]["user"] == "shieldbase\\cbarton-a" and events["4697"]["host"] == "base-rd-01.shieldbase.lan"

@@ -612,6 +612,27 @@ def find_evtx_dirs(evidence: Path) -> list[Path]:
     return found
 
 
+def _zircolite_root() -> Path | None:
+    """The folder of the installed Zircolite binary, which holds its rules and templates."""
+    try:
+        from nexus.tools.windows import _find_binary
+
+        exe = _find_binary("zircolite")
+    except Exception:  # noqa: BLE001
+        return None
+    return Path(exe).parent if exe else None
+
+
+def _zircolite_template() -> Path | None:
+    """Zircolite's own NDJSON export template: one JSON object per matched event, its values as the event holds them
+    (D496). Its CSV export prefixes `'` to a value that starts with `=`, `+`, `-` or `@` and turns newlines into
+    spaces (Zircolite 4.5.0 `zircolite/utils.py:549-568`), so the index read `'-` for an absent value and a flattened
+    script block; its default JSON export is one array the row indexer cannot read as rows."""
+    root = _zircolite_root()
+    template = root / "templates" / "exportNDJSON.tmpl" if root else None
+    return template if template is not None and template.is_file() else None
+
+
 def _zircolite_rules() -> Path | None:
     """Zircolite's bundled Windows ruleset, preferring the high-confidence set.
 
@@ -619,15 +640,9 @@ def _zircolite_rules() -> Path | None:
     which is why it can be scheduled without a rule-path precondition the way
     Chainsaw needs one.
     """
-    try:
-        from nexus.tools.windows import _find_binary
-
-        exe = _find_binary("zircolite")
-    except Exception:  # noqa: BLE001
+    root = _zircolite_root()
+    if root is None:
         return None
-    if not exe:
-        return None
-    root = Path(exe).parent
     for rel in ("rules/rules_windows_generic_high.json",
                 "rules/rules_windows_generic_medium.json",
                 "rules/rules_windows_generic.json"):
@@ -685,6 +700,7 @@ def schedule_evtx_parsers(
         skip("hayabusa", reason)
         skip("suzaku", reason)
         skip("chainsaw", reason)
+        skip("zircolite", reason)
         skip("evtxecmd", reason)
         return
 
@@ -750,27 +766,25 @@ def schedule_evtx_parsers(
         # rules/rules_windows_generic_high.json, so no external rule path is
         # needed. The ES-Mapping table lists it as its own EVTX pair.
         z_rules = _zircolite_rules() if _lane_opted_in("zircolite") else None
-        if _lane_opted_in("zircolite") and z_rules:
+        z_template = _zircolite_template() if _lane_opted_in("zircolite") else None
+        if _lane_opted_in("zircolite") and z_rules and z_template:
             z_out = extractions / "zircolite" / label if many else extractions / "zircolite"
             z_out.mkdir(parents=True, exist_ok=True)
-            # `--csv` (comma delimiter) instead of the default JSON export. That
-            # export is one pretty-printed array at detection level: under the
-            # row-oriented case indexer a single detection becomes ~28 fragment
-            # lines with its Date split away from the record (measured on R1).
-            # The CSV form writes one row per matched EVENT with the event's own
-            # columns - Computer, EventID, SystemTime, User - which is exactly
-            # what the indexer's field extraction reads. `--keepflat` was tried
-            # first; it does not change the JSON output at all.
+            # One JSON line per matched EVENT, with the event's own fields as written, through Zircolite's own NDJSON
+            # template (D496). The default JSON export is one pretty-printed array at detection level, which the row
+            # indexer split into ~28 fragment lines per detection (R1); the CSV export was lossy. `--nolog` writes no
+            # default detections file beside it, so the index reads each detection once.
             add(
                 "zircolite",
                 ["zircolite", "-e", str(evtx_dir), "-r", str(z_rules),
-                 "-o", str(z_out / "zircolite.csv"), "--csv",
-                 "--csv-delimiter", ","],
+                 "--template", str(z_template), "--template-output", str(z_out / "zircolite.ndjson"),
+                 "--nolog"],
                 f"Zircolite detections {label} ({n} logs)",
                 1800,
             )
         elif _lane_opted_in("zircolite"):
-            skip("zircolite", "bundled Windows ruleset not found under Tools/windows/extra/zircolite")
+            skip("zircolite", "bundled Windows ruleset or templates/exportNDJSON.tmpl not found under "
+                              "Tools/windows/extra/zircolite")
 
     # DeepBlueCLI: one job per channel file its own switch handles (WO-TA item 2); its wrapper reads one file
     # at a time. It is planned here, where every EVTX source is, and not only on a Windows image: a folder of
@@ -816,6 +830,8 @@ def schedule_evtx_parsers(
             "needs mappings/sigma-event-logs-all.yml and a sigma/ rules tree "
             "(Tools/windows/extra/chainsaw)",
         )
+    if not _lane_opted_in("zircolite"):
+        skip("zircolite", "not in the default lane; set NEXUS_LANE_OPT_IN=zircolite")
 
 
 def _plan_single_artifact(
@@ -3029,26 +3045,9 @@ def _plan_gap_parsers(
     # usbstor plugin listed the same hive's devices, and an unelevated `reg load` of the hive fails "a required
     # privilege is not held". RECmd's USBSTOR keys, RegRipper's usbstor/usb plugins and setupapi read USB history.
 
-    # Second Zircolite job (whole-root ruleset). Same opt-in as the EVTX-dir job.
-    if not _lane_opted_in("zircolite"):
-        skip("zircolite", "not in the default lane; set NEXUS_LANE_OPT_IN=zircolite")
-    elif _windows_tool_available("zircolite"):
-        zirc_bin = _windows_tool_path("zircolite")
-        zirc_rules = Path(zirc_bin).parent / "rules" / "rules_windows_merged_high.json"
-        if zirc_rules.is_file():
-            d = extractions / "zircolite"
-            d.mkdir(parents=True, exist_ok=True)
-            add(
-                "zircolite",
-                ["zircolite", "-e", str(root), "-f", "evtx", "-r", str(zirc_rules),
-                 "-o", str(d / "zircolite.csv"), "--csv", "--csv-delimiter", ","],
-                "Zircolite Sigma EVTX analysis (merged-high ruleset)",
-                600,
-            )
-        else:
-            skip("zircolite", f"bundled ruleset missing at {zirc_rules}")
-    else:
-        skip("zircolite", "zircolite not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+    # Zircolite runs once per EVTX source, in schedule_evtx_parsers, which a drive tree's winevt/Logs reaches too. A
+    # second job here read the same root again with `rules_windows_merged_high.json`, a ruleset Zircolite 4.5.0 does
+    # not ship, so an opted-in drive tree got a SKIP row beside the real run (TA-5.4 (v)).
 
     # DeepBlueCLI is planned with the other EVTX parsers (schedule_evtx_parsers), for every EVTX source.
 
@@ -5303,11 +5302,12 @@ def _evtxecmd_review_lines(job: ToolJob, lines: Iterable[str]) -> tuple[str, str
 
 
 # Output-target flags, matched case-insensitively: DeepBlueCLI names its target
-# `-Out`, zircolite uses `-o`, chainsaw `--output`, the Zimmerman tools `--csvf`.
-# A case-sensitive list missed `-Out` entirely, so the named target was never
-# checked and the stdout capture was accepted as the product.
+# `-Out`, zircolite `--template-output` (its `-T`, which case-insensitive matching
+# would confuse with `-t`, the template it reads), chainsaw `--output`, the
+# Zimmerman tools `--csvf`. A case-sensitive list missed `-Out` entirely, so the
+# named target was never checked and the stdout capture was accepted as the product.
 _OUTPUT_FLAGS = frozenset(
-    {"--csv", "--json", "--jsonl", "--out", "-out", "-o", "--output", "-output"}
+    {"--csv", "--json", "--jsonl", "--out", "-out", "-o", "--output", "-output", "--template-output"}
 )
 _NAMED_OUTPUT_FLAGS = frozenset({"--csvf", "--jsonf"})
 # AmcacheParser uses --csvf as a basename for a family of CSVs, e.g.

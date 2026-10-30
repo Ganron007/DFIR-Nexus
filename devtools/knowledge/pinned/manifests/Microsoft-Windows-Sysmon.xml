@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<provider name="Microsoft-Windows-Sysmon" guid="5770385f-c22a-43e0-bf4c-06f5698ffbd9" helpLink="" resourceFileName="C:\Windows\Sysmon64.exe" messageFileName="C:\Windows\Sysmon64.exe" message="" xmlns="http://schemas.microsoft.com/win/2004/08/events">
+  <channels>
+    <channel name="Microsoft-Windows-Sysmon/Operational" id="16" flags="0" message="">
+    </channel>
+  </channels>
+  <levels>
+    <level name="win:Error" value="2" message="Error">
+    </level>
+    <level name="win:Informational" value="4" message="Information">
+    </level>
+  </levels>
+  <opcodes>
+    <opcode name="win:Info" value="0" message="Info">
+    </opcode>
+  </opcodes>
+  <tasks>
+    <task name="SysmonTask-SYSMONEVENT_ERROR" value="255" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee000000ff" message="Error report">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_CREATE_PROCESS" value="1" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000001" message="Process Create (rule: ProcessCreate)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_TIME" value="2" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000002" message="File creation time changed (rule: FileCreateTime)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_NETWORK_CONNECT" value="3" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000003" message="Network connection detected (rule: NetworkConnect)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_SERVICE_STATE_CHANGE" value="4" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000004" message="Sysmon service state changed">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_PROCESS_TERMINATE" value="5" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000005" message="Process terminated (rule: ProcessTerminate)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_DRIVER_LOAD" value="6" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000006" message="Driver loaded (rule: DriverLoad)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_IMAGE_LOAD" value="7" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000007" message="Image loaded (rule: ImageLoad)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_CREATE_REMOTE_THREAD" value="8" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000008" message="CreateRemoteThread detected (rule: CreateRemoteThread)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_RAWACCESS_READ" value="9" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000009" message="RawAccessRead detected (rule: RawAccessRead)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_ACCESS_PROCESS" value="10" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000000a" message="Process accessed (rule: ProcessAccess)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_CREATE" value="11" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000000b" message="File created (rule: FileCreate)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_REG_KEY" value="12" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000000c" message="Registry object added or deleted (rule: RegistryEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_REG_SETVALUE" value="13" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000000d" message="Registry value set (rule: RegistryEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_REG_NAME" value="14" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000000e" message="Registry object renamed (rule: RegistryEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_CREATE_STREAM_HASH" value="15" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000000f" message="File stream created (rule: FileCreateStreamHash)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_SERVICE_CONFIGURATION_CHANGE" value="16" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000010" message="Sysmon config state changed">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_CREATE_NAMEDPIPE" value="17" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000011" message="Pipe Created (rule: PipeEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_CONNECT_NAMEDPIPE" value="18" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000012" message="Pipe Connected (rule: PipeEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_WMI_FILTER" value="19" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000013" message="WmiEventFilter activity detected (rule: WmiEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_WMI_CONSUMER" value="20" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000014" message="WmiEventConsumer activity detected (rule: WmiEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_WMI_BINDING" value="21" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000015" message="WmiEventConsumerToFilter activity detected (rule: WmiEvent)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_DNS_QUERY" value="22" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000016" message="Dns query (rule: DnsQuery)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_DELETE" value="23" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000017" message="File Delete archived (rule: FileDelete)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_CLIPBOARD" value="24" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000018" message="Clipboard changed (rule: ClipboardChange)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_PROCESS_IMAGE_TAMPERING" value="25" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee00000019" message="Process Tampering (rule: ProcessTampering)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_DELETE_DETECTED" value="26" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000001a" message="File Delete logged (rule: FileDeleteDetected)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_BLOCK_EXE" value="27" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000001b" message="File Block Executable (rule: FileBlockExecutable)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_BLOCK_SHREDDING" value="28" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000001c" message="File Block Shredding (rule: FileBlockShredding)">
+    </task>
+    <task name="SysmonTask-SYSMONEVENT_FILE_EXE_DETECTED" value="29" eventGUID="c511ffb3-9fbf-45f5-a97b-9bee0000001d" message="File Executable Detected (rule: FileExecutableDetected)">
+    </task>
+  </tasks>
+  <keywords>
+  </keywords>
+  <events>
+    <event value="1" version="5" opcode="0" channel="16" level="4" task="1" keywords="0x8000000000000000" message="Process Create:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+FileVersion: %6
+Description: %7
+Product: %8
+Company: %9
+OriginalFileName: %10
+CommandLine: %11
+CurrentDirectory: %12
+User: %13
+LogonGuid: %14
+LogonId: %15
+TerminalSessionId: %16
+IntegrityLevel: %17
+Hashes: %18
+ParentProcessGuid: %19
+ParentProcessId: %20
+ParentImage: %21
+ParentCommandLine: %22
+ParentUser: %23">
+    </event>
+    <event value="2" version="5" opcode="0" channel="16" level="4" task="2" keywords="0x8000000000000000" message="File creation time changed:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+TargetFilename: %6
+CreationUtcTime: %7
+PreviousCreationUtcTime: %8
+User: %9">
+    </event>
+    <event value="3" version="5" opcode="0" channel="16" level="4" task="3" keywords="0x8000000000000000" message="Network connection detected:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+User: %6
+Protocol: %7
+Initiated: %8
+SourceIsIpv6: %9
+SourceIp: %10
+SourceHostname: %11
+SourcePort: %12
+SourcePortName: %13
+DestinationIsIpv6: %14
+DestinationIp: %15
+DestinationHostname: %16
+DestinationPort: %17
+DestinationPortName: %18">
+    </event>
+    <event value="4" version="3" opcode="0" channel="16" level="4" task="4" keywords="0x8000000000000000" message="Sysmon service state changed:
+UtcTime: %1
+State: %2
+Version: %3
+SchemaVersion: %4">
+    </event>
+    <event value="5" version="3" opcode="0" channel="16" level="4" task="5" keywords="0x8000000000000000" message="Process terminated:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+User: %6">
+    </event>
+    <event value="6" version="4" opcode="0" channel="16" level="4" task="6" keywords="0x8000000000000000" message="Driver loaded:
+RuleName: %1
+UtcTime: %2
+ImageLoaded: %3
+Hashes: %4
+Signed: %5
+Signature: %6
+SignatureStatus: %7">
+    </event>
+    <event value="7" version="3" opcode="0" channel="16" level="4" task="7" keywords="0x8000000000000000" message="Image loaded:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+ImageLoaded: %6
+FileVersion: %7
+Description: %8
+Product: %9
+Company: %10
+OriginalFileName: %11
+Hashes: %12
+Signed: %13
+Signature: %14
+SignatureStatus: %15
+User: %16">
+    </event>
+    <event value="8" version="2" opcode="0" channel="16" level="4" task="8" keywords="0x8000000000000000" message="CreateRemoteThread detected:
+RuleName: %1
+UtcTime: %2
+SourceProcessGuid: %3
+SourceProcessId: %4
+SourceImage: %5
+TargetProcessGuid: %6
+TargetProcessId: %7
+TargetImage: %8
+NewThreadId: %9
+StartAddress: %10
+StartModule: %11
+StartFunction: %12
+SourceUser: %13
+TargetUser: %14">
+    </event>
+    <event value="9" version="2" opcode="0" channel="16" level="4" task="9" keywords="0x8000000000000000" message="RawAccessRead detected:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+Device: %6
+User: %7">
+    </event>
+    <event value="10" version="3" opcode="0" channel="16" level="4" task="10" keywords="0x8000000000000000" message="Process accessed:
+RuleName: %1
+UtcTime: %2
+SourceProcessGUID: %3
+SourceProcessId: %4
+SourceThreadId: %5
+SourceImage: %6
+TargetProcessGUID: %7
+TargetProcessId: %8
+TargetImage: %9
+GrantedAccess: %10
+CallTrace: %11
+SourceUser: %12
+TargetUser: %13">
+    </event>
+    <event value="11" version="2" opcode="0" channel="16" level="4" task="11" keywords="0x8000000000000000" message="File created:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+TargetFilename: %6
+CreationUtcTime: %7
+User: %8">
+    </event>
+    <event value="12" version="2" opcode="0" channel="16" level="4" task="12" keywords="0x8000000000000000" message="Registry object added or deleted:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+ProcessGuid: %4
+ProcessId: %5
+Image: %6
+TargetObject: %7
+User: %8">
+    </event>
+    <event value="13" version="2" opcode="0" channel="16" level="4" task="13" keywords="0x8000000000000000" message="Registry value set:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+ProcessGuid: %4
+ProcessId: %5
+Image: %6
+TargetObject: %7
+Details: %8
+User: %9">
+    </event>
+    <event value="14" version="2" opcode="0" channel="16" level="4" task="14" keywords="0x8000000000000000" message="Registry object renamed:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+ProcessGuid: %4
+ProcessId: %5
+Image: %6
+TargetObject: %7
+NewName: %8
+User: %9">
+    </event>
+    <event value="15" version="2" opcode="0" channel="16" level="4" task="15" keywords="0x8000000000000000" message="File stream created:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+TargetFilename: %6
+CreationUtcTime: %7
+Hash: %8
+Contents: %9
+User: %10">
+    </event>
+    <event value="16" version="3" opcode="0" channel="16" level="4" task="16" keywords="0x8000000000000000" message="Sysmon config state changed:
+UtcTime: %1
+Configuration: %2
+ConfigurationFileHash: %3">
+    </event>
+    <event value="17" version="1" opcode="0" channel="16" level="4" task="17" keywords="0x8000000000000000" message="Pipe Created:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+ProcessGuid: %4
+ProcessId: %5
+PipeName: %6
+Image: %7
+User: %8">
+    </event>
+    <event value="18" version="1" opcode="0" channel="16" level="4" task="18" keywords="0x8000000000000000" message="Pipe Connected:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+ProcessGuid: %4
+ProcessId: %5
+PipeName: %6
+Image: %7
+User: %8">
+    </event>
+    <event value="19" version="3" opcode="0" channel="16" level="4" task="19" keywords="0x8000000000000000" message="WmiEventFilter activity detected:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+Operation: %4
+User: %5
+EventNamespace: %6
+Name: %7
+Query: %8">
+    </event>
+    <event value="20" version="3" opcode="0" channel="16" level="4" task="20" keywords="0x8000000000000000" message="WmiEventConsumer activity detected:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+Operation: %4
+User: %5
+Name: %6
+Type: %7
+Destination: %8">
+    </event>
+    <event value="21" version="3" opcode="0" channel="16" level="4" task="21" keywords="0x8000000000000000" message="WmiEventConsumerToFilter activity detected:
+RuleName: %1
+EventType: %2
+UtcTime: %3
+Operation: %4
+User: %5
+Consumer: %6
+Filter: %7">
+    </event>
+    <event value="22" version="5" opcode="0" channel="16" level="4" task="22" keywords="0x8000000000000000" message="Dns query:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+QueryName: %5
+QueryStatus: %6
+QueryResults: %7
+Image: %8
+User: %9">
+    </event>
+    <event value="23" version="5" opcode="0" channel="16" level="4" task="23" keywords="0x8000000000000000" message="File Delete archived:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+User: %5
+Image: %6
+TargetFilename: %7
+Hashes: %8
+IsExecutable: %9
+Archived: %10">
+    </event>
+    <event value="24" version="5" opcode="0" channel="16" level="4" task="24" keywords="0x8000000000000000" message="Clipboard changed:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+Session: %6
+ClientInfo: %7
+Hashes: %8
+Archived: %9
+User: %10">
+    </event>
+    <event value="25" version="5" opcode="0" channel="16" level="4" task="25" keywords="0x8000000000000000" message="Process Tampering:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+Image: %5
+Type: %6
+User: %7">
+    </event>
+    <event value="26" version="5" opcode="0" channel="16" level="4" task="26" keywords="0x8000000000000000" message="File Delete logged:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+User: %5
+Image: %6
+TargetFilename: %7
+Hashes: %8
+IsExecutable: %9">
+    </event>
+    <event value="27" version="5" opcode="0" channel="16" level="4" task="27" keywords="0x8000000000000000" message="File Block Executable:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+User: %5
+Image: %6
+TargetFilename: %7
+Hashes: %8">
+    </event>
+    <event value="28" version="5" opcode="0" channel="16" level="4" task="28" keywords="0x8000000000000000" message="File Block Shredding:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+User: %5
+Image: %6
+TargetFilename: %7
+Hashes: %8
+IsExecutable: %9">
+    </event>
+    <event value="29" version="5" opcode="0" channel="16" level="4" task="29" keywords="0x8000000000000000" message="File Executable Detected:
+RuleName: %1
+UtcTime: %2
+ProcessGuid: %3
+ProcessId: %4
+User: %5
+Image: %6
+TargetFilename: %7
+Hashes: %8">
+    </event>
+    <event value="255" version="3" opcode="0" channel="16" level="2" task="255" keywords="0x8000000000000000" message="Error report:
+UtcTime: %1
+ID: %2
+Description: %3">
+    </event>
+  </events>
+</provider>

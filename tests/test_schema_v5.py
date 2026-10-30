@@ -85,7 +85,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # retain its line fragments until rebuilt, so this version change is required (TA-5.0).
     # v22: every row carries its evidence group and an imported row its importer chain (TA-5.1, D480/D481). An old
     # index has no group to select knowledge by, so it must be rebuilt.
-    assert INDEX_SCHEMA_VERSION == 22
+    # v23: detection rows are read as their event before per-event typing; MemProcFS's no-address marker is absent
+    # and a 4624 source workstation no longer replaces the logging host (D474/D496/D497). Rebuild old indexes.
+    assert INDEX_SCHEMA_VERSION == 23
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

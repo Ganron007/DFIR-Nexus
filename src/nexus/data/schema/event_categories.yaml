@@ -49,6 +49,12 @@ sources:
   path: devtools/knowledge/pinned/manifests/Microsoft-Windows-Security-Auditing.xml
   sha256: f05d09902542c7feba4e410411e3df57297214beec763aa1e402edcb20570f9d
   export: wevtutil gp Microsoft-Windows-Security-Auditing /ge /gm:true /f:xml /uni:true
+- package: windows-provider-manifest
+  version: Sysmon 15.15
+  provider: Microsoft-Windows-Sysmon
+  path: devtools/knowledge/pinned/manifests/Microsoft-Windows-Sysmon.xml
+  sha256: 3e759e31e01f9a3a362a5ef0944171af0e0d3709343ebb4fcd5d8dde4f7d575f
+  export: wevtutil gp Microsoft-Windows-Sysmon /ge /gm:true /f:xml
 entries:
 - provider: Microsoft-Windows-PowerShell
   event_id: 4103
@@ -1009,6 +1015,96 @@ channels:
 - channel: Microsoft-Windows-PowerShell/Operational
   event_id: 53508
   provider: Microsoft-Windows-PowerShell
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 1
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 2
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 3
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 4
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 5
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 6
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 7
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 8
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 9
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 10
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 11
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 12
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 13
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 14
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 15
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 16
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 17
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 18
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 19
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 20
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 21
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 22
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 23
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 24
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 25
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 26
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 27
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 28
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 29
+  provider: Microsoft-Windows-Sysmon
+- channel: Microsoft-Windows-Sysmon/Operational
+  event_id: 255
+  provider: Microsoft-Windows-Sysmon
 - channel: Microsoft-Windows-TaskScheduler/Debug
   event_id: 998
   provider: Microsoft-Windows-TaskScheduler

@@ -144,7 +144,10 @@ _FORENSIC_TEXT_ANALYSIS = {
 # 22 = every row carries its evidence group (its source and the importer classes that actually parsed it, from the
 # append-only provenance ledger), and an imported row its importer chain and leaf (TA-5.1, D480/D481, OD-T24). An
 # index built before it has no group, and Modes 2/3 refuse to select knowledge without one: rebuild it.
-INDEX_SCHEMA_VERSION = 22
+# 23 = a Chainsaw or Zircolite row is read back as its event (its channel, provider, event id and data, by the columns
+# the tools' own files name), so the per-event fields and the event's user apply to it; MemProcFS's `***` is no
+# address (D474). An index built before it has no process or user on those rows and `***` as an address.
+INDEX_SCHEMA_VERSION = 23
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -822,6 +825,9 @@ def _host_user_event(
     from nexus.langgraph.ecs_normalize import declared_host_user, is_absent
 
     typed = str(((ecs or {}).get("user") or {}).get("name") or "")
+    # D498: the normalizer already read the event code by the producer's own mapping. Re-reading only generic
+    # column names lost every Chainsaw event id (`Event ID`) despite its typed ecs.event.code.
+    event = str(((ecs or {}).get("event") or {}).get("code") or "") or _pick_field(fields, _EVENT_KEYS)
     declared = None if importer else declared_host_user(family, table)
     if declared is not None:
         host_cols, user_cols = declared
@@ -829,7 +835,7 @@ def _host_user_event(
         def _first(cols: tuple[str, ...]) -> str:
             return next((str(fields[c]) for c in cols if fields.get(c) and not is_absent(family, c, fields[c])), "")
 
-        return _first(host_cols), typed or _first(user_cols), _pick_field(fields, _EVENT_KEYS)
+        return _first(host_cols), typed or _first(user_cols), event
     host = _pick_field(fields, _HOST_KEYS)
     user = typed
     if not user:
@@ -843,7 +849,6 @@ def _host_user_event(
 
                     user = map_value(fields["Channel"], fields["EventId"], name, user)
                 break
-    event = _pick_field(fields, _EVENT_KEYS)
     return host, user, event
 
 

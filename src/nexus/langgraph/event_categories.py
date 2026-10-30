@@ -64,6 +64,24 @@ def provider_for(channel: object, event_id: object) -> str:
     return _channel_owners().get((str(channel or "").strip(), str(event_id or "").strip()), "")
 
 
+@lru_cache(maxsize=1)
+def _provider_channels() -> dict[tuple[str, str], frozenset[str]]:
+    out: dict[tuple[str, str], set[str]] = {}
+    for (channel, event_id), provider in _channel_owners().items():
+        out.setdefault((provider, event_id), set()).add(channel)
+    return {key: frozenset(channels) for key, channels in out.items()}
+
+
+def channel_for(provider: object, event_id: object) -> str:
+    """The channel (provider, event id) is logged to, read from the same pinned manifests as ``provider_for``; '' when
+    none or more than one does.
+
+    For a row that names only its provider, Chainsaw's hunt rows among them (D474).
+    """
+    channels = _provider_channels().get((str(provider or "").strip(), str(event_id or "").strip()), frozenset())
+    return next(iter(channels)) if len(channels) == 1 else ""
+
+
 def category_for(provider: object, event_id: object) -> str:
     """The pinned category of (provider, event id), or ``other``.
 

@@ -19,6 +19,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph import tool_events
+
 _MAP_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "schema" / "ecs_map.yaml"
 )
@@ -183,44 +185,6 @@ def _split_pieces(path_doc: dict[str, Any], dst: str) -> dict[str, Any]:
     }
 
 
-def _parse_chainsaw_event_data(value: Any) -> dict[str, str]:
-    """Chainsaw `Event Data` is `key: value` lines (one per line)."""
-    out: dict[str, str] = {}
-    for line in str(value or "").splitlines():
-        line = line.strip()
-        if not line or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key = key.strip()
-        val = val.strip().strip("'\"")
-        if key:
-            out[key] = val
-    return out
-
-
-def _zircolite_event_data(ecs: dict[str, Any], fields: dict[str, Any],
-                          record: dict[str, Any]) -> None:
-    """Zircolite detection rows: EventData columns -> ecs.winlog.event_data.*.
-
-    A Zircolite row is a rule match with a `matches` list; each match carries the
-    event's own fields. Any field the row already holds that is not a rule column
-    is treated as event data.
-    """
-    rule_cols = {"title", "id", "description", "sigmafile", "sigma", "rule_level",
-                 "tags", "count", "matches"}
-    matches = record.get("matches") if isinstance(record, dict) else None
-    if isinstance(matches, list):
-        for m in matches[:1]:
-            if isinstance(m, dict):
-                for k, v in m.items():
-                    if v not in (None, "", [], {}):
-                        _set(ecs, f"ecs.winlog.event_data.{k}", str(v))
-    for k, v in fields.items():
-        if str(k).lower() in rule_cols or k in ("Event Data",):
-            continue
-        _set(ecs, f"ecs.winlog.event_data.{k}", str(v))
-
-
 def normalize(
     family: str,
     fields: dict[str, Any] | None,
@@ -270,6 +234,15 @@ def normalize(
         for dst, value in (("ecs.winlog.channel", channel), ("ecs.event.provider", provider)):
             if value:
                 _set(ecs, dst, value)
+                from_event.add(dst)
+    elif fam in tool_events.READERS:
+        # D474: a Chainsaw or Zircolite row read back as its event, so the per-event table and the event's user apply
+        # to it as they do to EvtxECmd's and Hayabusa's rows. Its event data used to be added after them.
+        system, ev = tool_events.READERS[fam](fields)
+        channel, event_id = system.get(tool_events.CHANNEL, ""), system.get(tool_events.EVENT_ID, "")
+        for path, dst in (emap.get("winlog_system") or {}).items():
+            if system.get(path):
+                _set(ecs, dst, system[path])
                 from_event.add(dst)
     if ev:
         for name, value in ev.items():
@@ -321,8 +294,8 @@ def normalize(
                 continue
             if declared is not None and table is ingest_table and dst in ("ecs.host.name", "ecs.user.name"):
                 continue  # this family names its own host and user columns (D287)
-            if fam == "hayabusa" and dst in from_event:
-                continue  # its Channel column is the abbreviation; the channel read back stands (D232)
+            if dst in from_event and (fam == "hayabusa" or fam in tool_events.READERS):
+                continue  # the event read back stands: Hayabusa's Channel column is an abbreviation (D232)
             if fam == "evtxecmd":
                 from nexus.langgraph.evtx_templates import map_value, rendered_columns
 
@@ -346,15 +319,6 @@ def normalize(
             joined = next((p for p in file_path_parts if p.strip()), "")
         if joined:
             _apply_mapped(ecs, "ecs.file.path", joined)
-
-    # 2b. WO-CS1b item 3: Chainsaw's `Event Data` is `key: value` lines; Zircolite's
-    #     detection rows carry EventData columns. Both become
-    #     ecs.winlog.event_data.<Name>.
-    if fam == "chainsaw":
-        for name, value in _parse_chainsaw_event_data(fields.get("Event Data")).items():
-            _set(ecs, f"ecs.winlog.event_data.{name}", value, limit=MAX_EVENT_DATA)
-    if fam == "zircolite":
-        _zircolite_event_data(ecs, fields, record)
 
     # 3. Core envelope always present.
     for key, dst in (("family", "ecs.event.dataset"), ("host", "ecs.host.name"),

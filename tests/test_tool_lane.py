@@ -448,6 +448,44 @@ def test_default_lane_leaves_optional_tools_unscheduled(tmp_path: Path, monkeypa
     assert "suzaku" not in pending
 
 
+def test_an_opted_in_drive_tree_runs_zircolite_once_through_its_ndjson_template(tmp_path: Path, monkeypatch):
+    """D496: the lane read Zircolite's CSV export, which prefixes `'` to an absent `-` and flattens newlines, and a
+    second job read the same root again with a ruleset Zircolite 4.5.0 does not ship (a SKIP beside the real run)."""
+    install = tmp_path / "zircolite"
+    (install / "rules").mkdir(parents=True)
+    (install / "templates").mkdir()
+    (install / "rules" / "rules_windows_generic.json").write_text("[]", encoding="utf-8")
+    (install / "templates" / "exportNDJSON.tmpl").write_text("", encoding="utf-8")
+    monkeypatch.setenv("NEXUS_LANE_OPT_IN", "zircolite")
+    monkeypatch.setattr("nexus.langgraph.tool_lane._zircolite_root", lambda: install)
+    root = tmp_path / "C"
+    logs = root / "Windows" / "System32" / "winevt" / "Logs"
+    logs.mkdir(parents=True)
+    (logs / "Security.evtx").write_bytes(b"evtx")
+    jobs = [j for j in plan_windows_triage(str(root), tmp_path / "ex") if j.tool == "zircolite"]
+    assert [j.status for j in jobs] == ["PENDING"], "one job per EVTX source, no second whole-root job"
+    argv = jobs[0].argv
+    assert argv[argv.index("--template") + 1] == str(install / "templates" / "exportNDJSON.tmpl")
+    assert Path(argv[argv.index("--template-output") + 1]).name == "zircolite.ndjson"
+    assert "--nolog" in argv and "--csv" not in argv
+    out = Path(argv[argv.index("--template-output") + 1])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(b"\r\n\r\n")  # what Zircolite writes when no rule matched (T05's PowerShell log, 2026-10-30)
+    from nexus.langgraph.tool_lane import _tool_wrote_structured_output
+
+    assert _tool_wrote_structured_output(jobs[0]), "its template output is the file it is judged by"
+
+
+def test_zircolite_not_opted_in_still_says_so(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("NEXUS_LANE_OPT_IN", raising=False)
+    root = tmp_path / "C"
+    logs = root / "Windows" / "System32" / "winevt" / "Logs"
+    logs.mkdir(parents=True)
+    (logs / "Security.evtx").write_bytes(b"evtx")
+    rows = [(j.status, j.reason) for j in plan_windows_triage(str(root), tmp_path / "ex") if j.tool == "zircolite"]
+    assert rows == [("SKIP", "not in the default lane; set NEXUS_LANE_OPT_IN=zircolite")]
+
+
 def test_usbdeview_is_retired_even_when_opted_in(tmp_path: Path, monkeypatch):
     """TA-6 (operator, 2026-10-30): USBDeview's `/regfile` needs an elevated process. On T01-OPT it wrote only a
     header row from a SYSTEM hive whose USBSTOR lists devices, and the lane recorded OK; it is no longer planned."""
