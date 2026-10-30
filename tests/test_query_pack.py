@@ -230,12 +230,12 @@ def test_write_snippets_also_writes_query_pack(tmp_path: Path):
 
 def test_run_scoped_snippets_keep_case_intake_and_run_scope(tmp_path: Path, monkeypatch):
     from nexus.langgraph import query_pack, timeline_merge
+    from nexus.langgraph.pipeline_runs import create_run
     from nexus.langgraph.snippets import write_snippets
 
     case = tmp_path / "case"
     run_id = "RUN-20261022T000000000000Z-tools-test"
-    run_dir = case / "runs" / run_id
-    (run_dir / "extractions").mkdir(parents=True)
+    run_dir = create_run(case, "tools", run_id=run_id).path
     (case / "CASE.yaml").write_text(
         "intake:\n  question: Compromise suspected.\n  set_by: examiner\n",
         encoding="utf-8",

@@ -1,0 +1,236 @@
+{
+  "previous": {
+    "run_id": "RUN-20261029T185436171483Z-tools-71bb09d2",
+    "ledger": [
+      {
+        "tool": "log2timeline",
+        "status": "SKIP"
+      },
+      {
+        "tool": "hayabusa",
+        "status": "SKIP"
+      },
+      {
+        "tool": "suzaku",
+        "status": "SKIP"
+      },
+      {
+        "tool": "chainsaw",
+        "status": "SKIP"
+      },
+      {
+        "tool": "evtxecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "pecmd",
+        "status": "OK"
+      },
+      {
+        "tool": "amcacheparser",
+        "status": "WARN"
+      },
+      {
+        "tool": "appcompatcacheparser",
+        "status": "OK"
+      },
+      {
+        "tool": "srumecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "mftecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "mftecmd-usn",
+        "status": "SKIP"
+      },
+      {
+        "tool": "rbcmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "lecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "jlecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "sbecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "wxtcmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "sqlecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "recmd",
+        "status": "OK"
+      },
+      {
+        "tool": "regripper",
+        "status": "OK"
+      },
+      {
+        "tool": "mplog",
+        "status": "SKIP"
+      },
+      {
+        "tool": "dhparser",
+        "status": "SKIP"
+      },
+      {
+        "tool": "wmi-parser",
+        "status": "SKIP"
+      },
+      {
+        "tool": "sidr",
+        "status": "SKIP"
+      },
+      {
+        "tool": "pstranscript",
+        "status": "SKIP"
+      },
+      {
+        "tool": "wer",
+        "status": "SKIP"
+      },
+      {
+        "tool": "pff-ost",
+        "status": "SKIP"
+      },
+      {
+        "tool": "mftecmd-logfile",
+        "status": "SKIP"
+      },
+      {
+        "tool": "usbdeview",
+        "status": "OK"
+      },
+      {
+        "tool": "zircolite",
+        "status": "SKIP"
+      }
+    ]
+  },
+  "current": {
+    "run_id": "RUN-20261030T204311093669Z-tools-4d97c75c",
+    "ledger": [
+      {
+        "tool": "log2timeline",
+        "status": "SKIP"
+      },
+      {
+        "tool": "hayabusa",
+        "status": "SKIP"
+      },
+      {
+        "tool": "suzaku",
+        "status": "SKIP"
+      },
+      {
+        "tool": "chainsaw",
+        "status": "SKIP"
+      },
+      {
+        "tool": "zircolite",
+        "status": "SKIP"
+      },
+      {
+        "tool": "evtxecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "pecmd",
+        "status": "OK"
+      },
+      {
+        "tool": "amcacheparser",
+        "status": "WARN"
+      },
+      {
+        "tool": "appcompatcacheparser",
+        "status": "OK"
+      },
+      {
+        "tool": "srumecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "mftecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "mftecmd-usn",
+        "status": "SKIP"
+      },
+      {
+        "tool": "rbcmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "lecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "jlecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "sbecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "wxtcmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "sqlecmd",
+        "status": "SKIP"
+      },
+      {
+        "tool": "recmd",
+        "status": "OK"
+      },
+      {
+        "tool": "mplog",
+        "status": "SKIP"
+      },
+      {
+        "tool": "dhparser",
+        "status": "SKIP"
+      },
+      {
+        "tool": "wmi-parser",
+        "status": "SKIP"
+      },
+      {
+        "tool": "sidr",
+        "status": "SKIP"
+      },
+      {
+        "tool": "pstranscript",
+        "status": "SKIP"
+      },
+      {
+        "tool": "wer",
+        "status": "SKIP"
+      },
+      {
+        "tool": "pff-ost",
+        "status": "SKIP"
+      },
+      {
+        "tool": "mftecmd-logfile",
+        "status": "SKIP"
+      }
+    ]
+  }
+}

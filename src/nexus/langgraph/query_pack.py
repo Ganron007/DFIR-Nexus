@@ -1603,7 +1603,9 @@ def n4_aggregate(
     }
 
 
-def extras_gap_notes(case_dir: Path, intake: dict[str, str] | None = None) -> list[str]:
+def extras_gap_notes(
+    case_dir: Path, intake: dict[str, str] | None = None, run_id: str = "",
+) -> list[str]:
     """Honest N2 extra-parser status until the examiner gates them on."""
     intake = intake if intake is not None else load_case_intake(case_dir)
     raw = (intake.get("extras") or "").replace(";", ",")
@@ -1616,7 +1618,7 @@ def extras_gap_notes(case_dir: Path, intake: dict[str, str] | None = None) -> li
     }
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    ext = resolve_tools_extractions(Path(case_dir))
+    ext = resolve_tools_extractions(Path(case_dir), run_id=run_id)
     present = {
         "chrome_profiles": (ext / "sqlecmd").is_dir() and any(
             "profile" in p.name.lower() for p in (ext / "sqlecmd").rglob("*")
@@ -2015,7 +2017,7 @@ def build_query_pack_markdown(
     if ledger is None:
         from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-        lp = resolve_tools_extractions(case_dir) / "_tool_lane_ledger.json"
+        lp = resolve_tools_extractions(case_dir, run_id=run_id) / "_tool_lane_ledger.json"
         ledger = []
         if lp.is_file():
             import json
@@ -2051,7 +2053,7 @@ def build_query_pack_markdown(
         f"## Hit families ({len(families)}): {', '.join(families) or '(none)'}\n",
     ]
     parts.extend(["## N2 extras", ""])
-    parts.extend(extras_gap_notes(case_dir, intake))
+    parts.extend(extras_gap_notes(case_dir, intake, run_id=run_id))
     parts.append("")
     incomplete_reasons = _incomplete_reasons(pack_stats)
     parts.append(
