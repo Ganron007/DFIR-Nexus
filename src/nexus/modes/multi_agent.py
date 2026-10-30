@@ -476,6 +476,7 @@ def compose_case(
     model: Any,
     sink: Any,
     not_answered: list[str] | None = None,
+    case_facts: str = "",
 ) -> dict[str, Any]:
     """The case Mode 3's settled board makes, composed by the synthesis seat Mode 2 uses (IC-10, D237).
 
@@ -530,7 +531,8 @@ def compose_case(
         why="The case from the settled board (IC-10)",
         acceptance="narrative, timeline, attack chain, entities, open questions; findings with audit_ids",
     )
-    result = run_work_order(order, case_dir=case_dir, model=model, run_id=run_id, sink=sink, context={})
+    result = run_work_order(order, case_dir=case_dir, model=model, run_id=run_id, sink=sink,
+                            context={"digest_summary": case_facts})
     parsed = result.parsed or {}
     if result.status in {"failed", "error", "invalid", "unparsed", "fallback"} or not parsed:
         out["gaps"].append(f"the case was not composed: the synthesis seat {result.status or 'failed'}"
@@ -2663,7 +2665,7 @@ def _run_mode3(
             detail=f"{len(candidates)} candidate(s)",
         ))
         composed = compose_case(case_dir, run_id, question, candidates, list(disputes), model=model, sink=sink,
-                                not_answered=_board_gaps(list(state.get("board") or [])))
+                                not_answered=_board_gaps(list(state.get("board") or [])), case_facts=case_facts)
         return {"candidates": composed["findings"], "settled": candidates,
                 "candidate_gaps": candidate_gaps + composed["gaps"], "narrative": composed["narrative"],
                 "case": composed["case"], "absences": composed["absences"]}

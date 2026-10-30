@@ -68,7 +68,10 @@ def test_mode2_synthesis_is_given_the_coverage_and_does_not_author_it(tmp_path):
              order_id="wo-1", role="pattern", task="t", family="memprocfs")]):
         state = m2.run_mode2(case, "Compromise suspected.", model=object(), es_ok=True)
 
-    assert NETWORK in str(seen["task"]) and NETWORK in seen["context"]["coverage"]["checked"]
+    # Coverage now travels once through context, rather than also duplicating
+    # its JSON in task text. Its delivery and deterministic ownership remain required.
+    assert NETWORK not in str(seen["task"])
+    assert NETWORK in seen["context"]["coverage"]["checked"]
     assert state["coverage"]["checked"] == run_coverage(state["results"])["checked"]
     assert NETWORK in state["coverage"]["checked"]
     assert FALSE_GAP not in state["gaps"]

@@ -1,0 +1,27 @@
+{
+  "source": "cases/CASE-4387EB47/analysis/mode3_runs/M3-20261028T170325-969bbd.json",
+  "selection": "Verbatim native T22 composed candidate identity and citations only; used for context routing, never as ground truth.",
+  "candidate": {
+    "title": "Non-baseline kernel driver Mnemosyne.sys installed as service and loaded into lsass.exe",
+    "audit_ids": [
+      "nexus-claudebot-20261028-340",
+      "nexus-claudebot-20261028-404",
+      "nexus-claudebot-20261028-403",
+      "nexus-claudebot-20261028-402",
+      "nexus-claudebot-20261028-629",
+      "nexus-claudebot-20261028-630",
+      "nexus-claudebot-20261028-631",
+      "nexus-claudebot-20261028-611",
+      "nexus-claudebot-20261028-732",
+      "nexus-claudebot-20261028-733",
+      "nexus-claudebot-20261028-734",
+      "nexus-claudebot-20261028-1252",
+      "nexus-claudebot-20261028-1253",
+      "nexus-claudebot-20261028-1291",
+      "nexus-claudebot-20261028-1267",
+      "nexus-claudebot-20261028-1268",
+      "nexus-claudebot-20261028-1278",
+      "nexus-claudebot-20261028-1234"
+    ]
+  }
+}
