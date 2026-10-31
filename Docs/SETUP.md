@@ -229,6 +229,10 @@ The pytest suite and the script suites redirect the paths they touch to a temp
 directory and refuse to write your real store, so a test run never needs
 `USERPROFILE` redirected. See [`../tests/README.md`](../tests/README.md).
 
+Native mode effort is stored with the case: `.trace/model_calls-<run-id>.jsonl` and the run record's `model_measurement` section. It reports model invocation counts, prompt-content characters, elapsed model time, pending calls and initial indexed-row/lead counts. Missing callback support or interrupted/resumed measurement is reported explicitly. These are client invocation measurements, not billed-token totals or provider HTTP-request counts. The trace contains measurement metadata; existing context audits are separate.
+
+Use the normal native mode commands; no monitoring wrapper, model/environment change or extra service is needed. See [NEXUS-MODE.md](NEXUS-MODE.md#what-stays-constant-across-all-modes) and [ARCHITECTURE.md](ARCHITECTURE.md#native-model-effort-measurement).
+
 ### 2e. RAG index and triage baselines
 
 Both knowledge stores are looked for locally first (`~/.nexus/data/rag`,

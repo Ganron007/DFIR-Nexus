@@ -405,14 +405,18 @@ concurrent multi-agent**: one work order runs at a time.
   graph's planning node (`plan_work_orders`), not a role.
 - **Work orders** (`WorkOrder`): task, family, priority tools, expected
   artifact/event IDs, acceptance signal, negative-evidence rule, and
-  `skill_refs` (KB skill id + content version + citations) rendered into the
-  prompt as step queries.
+  `skill_refs` (shipped skill id + content version + citations) rendered into the
+  prompt as step queries. Restoring an order preserves its lead hypothesis,
+  alternative, refutation, technique, source orders and assigned pivot entities.
 - **Graph**: `director → worker(s) → verify → assess → synthesis`, with a
   `pause`/halt node. `assess` appends follow-up orders for inferred or
   refuted candidates (`NEXUS_MODE2_FOLLOWUPS`, default 8, up to 24) and stops
   early on `converged_no_new_evidence`. Each worker receives the attached KB
   skill procedures and the prior agents' notes, packed to the case context
-  window. Examiner findings-feedback (approved → deepen, rejected →
+  window. Mandatory case facts render once for each role; prior results follow
+  structured assignments and dependencies. Only completed evidence-reading work
+  consumes assigned pivots. Pending questions/pivots prevent early convergence;
+  failed, partial or blind work remains open. Examiner findings-feedback (approved → deepen, rejected →
   exclusion, draft → de-dup) is read at plan time.
 - **Events** (`AgentEvent`): one envelope (`run_id/turn_id/agent_id/call_id`,
   tool/why/audit_id/status/detail) persisted to
@@ -456,6 +460,16 @@ per run (shared across seats); a run governor caps agents / supersteps / calls
 / seconds; pause / stop / steer apply at superstep boundaries with a
 file-based `resume_state`. Surfaces: `nexus mode3`,
 `/portal/api/mode3/run*`, and the **Investigation Board** on Agent Run.
+
+Mode 3 convergence uses the full board's questions, every lead, pivots and pending verifier work. Seat context is selected through structured assignments while shared settlements remain visible. Only eligible evidence-backed dispositions settle work or add verifier corroboration to reports. Mandatory facts are built once and passed through final composition as well as the seats. Existing budgets can terminate a run with explicit gaps; they do not convert open work into a verdict.
+
+### Native model effort measurement
+
+`analysis/model_calls.py` binds the existing `TokenMeter` callback and knowledge-record lifecycle to an explicit case and run. All three native run writers persist `model_measurement`; append-only `.trace/model_calls-<run-id>.jsonl` records starts, finishes, failures, input snapshots and resume state with flush/fsync. The initial snapshot records exact indexed family counts and the uncapped lead total. Missing callback support, interrupted calls and resumed unavailable measurement stay explicit. Concurrent seats share the run's synchronized recorder.
+
+The effort trace records invocation counts, prompt-content character counts and elapsed model time, not prompt bodies or provider error bodies. Counts describe client invocations, not billed tokens or provider HTTP attempts. Existing context audits remain separate. Measurement requires no runner wrapper, alternate model or second run lifecycle.
+
+Named-run report metadata uses the same explicit run resolution as evidence readers, including while a tools run is uncommitted. Extracted-image catalogs expose citable file metadata; index freshness and source checks include the backing files. Metadata does not establish visual content.
 
 ### Finding subject and category
 

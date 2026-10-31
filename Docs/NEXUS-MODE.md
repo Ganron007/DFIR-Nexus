@@ -368,14 +368,16 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
 ```
 
 **What the agents do in Mode 2:**
-- Plan and run bounded read-only tool calls against the case index, KB and RAG
-- Follow KB-cited skill steps, cite rows with audit IDs, state coverage and gaps
+- Plan and run bounded read-only tool calls against the case index, shipped versioned skills and optional RAG
+- Follow cited skill steps, cite rows with audit IDs, state coverage and gaps
 - Corroborate or refute candidates; drop refuted items; stop on convergence
 
 **What the agents do NOT do in Mode 2:**
 - No write/approve/stage tools — staging is the examiner's Agent Run action
 - No skipped mandatory lane, no invented evidence (negative-evidence rule)
 - No hidden chain-of-thought — plans, work orders, tool calls and outputs are recorded and streamed
+
+Mode 2 restores the full persisted work order and selects prior results through structured assignments and dependencies. Every role receives the same mandatory case facts once. Assigned pivots are consumed only by completed work that read evidence; failed, partial or blind work remains open. Convergence requires the remaining questions and pivots to be settled within the existing budgets.
 
 ### What stays constant across all modes
 
@@ -405,8 +407,8 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
    concurrent Investigation Board (Mode 3, `nexus mode3`).
    **Status: the supervised multi-role runtime M1–M7 is complete (2026-09-25);
    the concurrent multi-agent runtime (reducer board, `Send` seats, disputes,
-   model supervisor, Board UI, CLI) is complete. The operator gate pass
-   (GATE-B / 4j-D / 4j-E) is the next step.**
+   model supervisor, Board UI, CLI) is implemented. This dated build history
+   does not certify current release acceptance.**
 4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
    replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.
    **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening +
@@ -425,8 +427,9 @@ context, role allowlist and budget, and each publishes one **BoardEntry** of
 audit-backed claims. The **join** groups claims by the subject their cited rows
 give and the claim kind (`(subject type, subject value, claim_kind)`), never
 by the seats' wording. It opens **disputes** on polarity conflicts (differing
-wording is not one) and can re-dispatch the named seats (bounded); it settles
-after quiet supersteps or when re-dispatch is exhausted. Unresolved disputes
+wording is not one) and can re-dispatch the named seats within existing budgets.
+Completion accounts for all leads, questions, pivots and pending verifier work;
+quiet wording alone cannot settle open work. A budget stop can leave explicit gaps. Unresolved disputes
 are **gaps, never findings**; only settled, audit-backed claims become DRAFT
 candidates. A draft's subject and the cross-mode comparison use the same
 subject (ARCHITECTURE.md, Finding subject and category). Known gap: a
@@ -439,6 +442,10 @@ run|status|board|steer|pause|resume|stop|stage|export`, the API
 (concurrent board, disputes, join decisions, live SSE, steer/pause/resume/stop,
 examiner staging). Same rules as every mode: read-only tools, every call
 audited, DRAFT-only, examiner approves.
+
+Every Mode 3 seat receives mandatory case facts plus context selected by its structured assignment. Shared settlements remain visible, and final composition receives the same once-built facts. Failed, blind or assignment-only seats cannot supply an evidence-backed disposition or verifier corroboration.
+
+All three native modes record model effort in their run record and case-local trace: invocation counts, prompt-content characters, elapsed model time and initial indexed-row/lead counts. Unavailable or interrupted measurements stay explicit. These are client invocation measurements, not billed-token or provider HTTP-request counts. See [SETUP.md](SETUP.md#2d-3-where-the-data-lives) for storage and [ARCHITECTURE.md](ARCHITECTURE.md#native-model-effort-measurement) for the callback lifecycle.
 
 ## Product flow (canonical)
 
