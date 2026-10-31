@@ -2,3 +2,5 @@
 devtools/knowledge/pinned/** -text
 # Shell scripts run under bash on Windows too: a CRLF checkout breaks every line ($'\r': command not found).
 *.sh text eol=lf
+# Verbatim Linux evidence fixtures keep their original line endings on every platform.
+tests/fixtures/d514_authlog/** -text
