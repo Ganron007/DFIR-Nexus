@@ -469,6 +469,8 @@ Mode 3 convergence uses the full board's questions, every lead, pivots and pendi
 
 The effort trace records invocation counts, prompt-content character counts and elapsed model time, not prompt bodies or provider error bodies. Counts describe client invocations, not billed tokens or provider HTTP attempts. Existing context audits remain separate. Measurement requires no runner wrapper, alternate model or second run lifecycle.
 
+Command capture identity is independent of clock resolution: `case/outputs.py` atomically reserves a stem per invocation and uses it for stdout, stderr and metadata. `case/run_paths.py` owns the shared run-ID/path contract without orchestration dependencies, so the SIFT executor can use it without LangGraph. Explicit case/run identity reaches execution, audit, output-directory preparation and the run-only pull. Retrieval completes before the ledger and gate are finalized. Failed delivery records the actual operator-host transfer failure while preserving the remote command result; the ordinary failure gate applies.
+
 Named-run report metadata uses the same explicit run resolution as evidence readers, including while a tools run is uncommitted. Extracted-image catalogs expose citable file metadata; index freshness and source checks include the backing files. Metadata does not establish visual content.
 
 ### Finding subject and category

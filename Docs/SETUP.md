@@ -654,29 +654,31 @@ the host) — so the lane can find the evidence.
 
 **Reading a SIFT run.** Three behaviours matter when you read the ledger:
 
-- **The lane sets the host's active case for you.** `run_command` persists into
-  the SIFT host's *active* case, while the pull reads
-  `<remote_cases_root>/<case_id>/extractions`; if the two disagree, every output
-  is written where the pull never looks while the run still reports OK. The lane
-  aligns the host to this case with `case_activate` before its jobs, so a host
-  left on another case by hand is corrected on the next run.
+- **The lane names its case and run explicitly.** Command captures, tool output
+  directories and retrieval share
+  `<remote_cases_root>/<case_id>/runs/<run_id>/extractions`. A new run collects
+  only its own products; older remote files remain untouched. The lane also
+  aligns the active case for legacy tools. Standalone `run_command` calls may
+  omit run identity; a named lane run always supplies both IDs.
 - **A saved output is the whole capture**, not the reply slice the MCP returns.
   The command capture has no application-defined byte ceiling. The MCP reply
   may show a bounded preview, while the complete stdout and stderr are saved
-  under the case extraction path. A tool timeout or non-zero exit remains a
-  failed job and cannot clear the evidence gate.
+  under the selected extraction path. Each invocation reserves a distinct
+  capture name, including calls within the same clock tick. A tool timeout or
+  non-zero exit remains visible as a failed job.
 - **A row can be `WARN`.** The job ran and returned an output, but a
   prerequisite was empty: a process-list plugin with `psscan` > 0, or a registry
   key read when the module list is unreadable. A `WARN` is a **coverage gap, not
   a finding of absence** — it records a `coverage_gap` note that renders in the
   report's coverage section.
 
-**Refusal semantics:** only a case that SELECTS the lane can be refused — and
-only its SIFT jobs. While the host is unreachable the SIFT jobs FAIL, the
-evidence gate blocks analysis (the same 409 semantics as ES-down for Modes
-2/3), and the recoveries are exactly three: bring the host up and re-run,
-clear the selection (`nexus sift disable`), or the examiner's audited skip
-(`nexus lane skip`). Windows evidence on the same case keeps processing.
+**Refusal semantics:** a case that selects unavailable SIFT work receives
+explicit failed jobs in tools mode. The gate lists deferred SIFT work as waiting;
+other evidence can be analyzed while it waits. A failed output transfer is an
+operator-host processing failure and blocks the gate. Recover by restoring the
+host and re-running, changing the examiner's selection (`nexus sift disable`),
+or recording the examiner's audited skip (`nexus lane skip`). Windows evidence
+on the same case keeps processing.
 
 **Ingest-only (no SIFT host required):** outputs the examiner brings (plaso
 CSV, TSK lists, vol JSON) are staged and indexed:
