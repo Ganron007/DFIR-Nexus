@@ -19,7 +19,9 @@ import logging
 import os
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+from nexus.case.run_paths import run_extractions_dir
 
 log = logging.getLogger(__name__)
 
@@ -46,16 +48,6 @@ def _ssh_opts() -> dict[str, str]:
             "/home/sansforensics/.nexus/cases",
         ).strip().rstrip("/"),
     }
-
-
-def _scp_base(key: Path) -> list[str]:
-    return [
-        "scp",
-        "-i", str(key),
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "BatchMode=yes",
-        "-o", f"ConnectTimeout={_SSH_CONNECT_TIMEOUT}",
-    ]
 
 
 def sift_reachable() -> tuple[bool, str]:
@@ -98,8 +90,10 @@ def pull_sift_extractions(
     case_id: str,
     local_case_dir: Path,
     local_output_dir: Path | None = None,
+    *,
+    run_id: str = "",
 ) -> Path | None:
-    """scp remote case extractions into a new local destination."""
+    """Copy only the named remote run; standalone legacy pulls may omit run_id."""
     if not sync_enabled():
         log.info("SIFT sync disabled (NEXUS_SIFT_SYNC=0) — skip pull")
         return None
@@ -109,6 +103,12 @@ def pull_sift_extractions(
         log.warning("SIFT SSH key missing: %s — skip pull", key)
         return None
 
+    from nexus.discipline import validate_case_id
+
+    if error := validate_case_id(case_id):
+        raise ValueError(error)
+    remote_case = PurePosixPath(opts["remote_cases"]) / case_id
+    remote_output = run_extractions_dir(remote_case, run_id) if run_id else remote_case / "extractions"
     dest = Path(local_output_dir) if local_output_dir else Path(local_case_dir) / "sift" / "extractions"
     # A pull adds what the local copy does not have yet, and never overwrites a local file. An empty folder is
     # no copy: the lane creates one before the pull, and the old guard refused every pull into it, so no SIFT
@@ -118,10 +118,7 @@ def pull_sift_extractions(
         shutil.rmtree(staging, ignore_errors=True)  # our own staging folder, left by an earlier attempt
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    remote = (
-        f"{opts['user']}@{opts['host']}:"
-        f"{opts['remote_cases']}/{case_id}/extractions"
-    )
+    remote = f"{opts['user']}@{opts['host']}:{remote_output}"
     # scp -r remote/. dest/
     cmd = [
         "scp",

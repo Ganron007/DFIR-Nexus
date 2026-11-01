@@ -395,40 +395,27 @@ def _active_case_dir() -> Path | None:
 
 
 def _case_dir_for_id(case_id: str) -> Path | None:
-    """The directory of a named case under the configured cases root, or None."""
-    from nexus.config import settings
-    from nexus.discipline import validate_case_id
+    """The directory of a named case, with no active-case fallback."""
+    from nexus.case.outputs import resolve_output_case_dir
 
-    if validate_case_id(case_id):
-        return None
-    path = Path(settings.cases_root) / case_id
-    return path if path.is_dir() else None
+    return resolve_output_case_dir(case_id) if case_id else None
 
 
 def _output_case_dir(case_id: str = "") -> Path | None:
-    """The case a run's output is saved into and registered in (D41, output path).
+    from nexus.case.outputs import resolve_output_case_dir
 
-    A run that names its case saves into that case. Saving into the active case instead
-    put a run's stdout into another case's evidence (36d guard proof, 2026-10-10).
-    """
-    if case_id:
-        return _case_dir_for_id(case_id)
-    return _active_case_dir()
-
-
-_RUN_ID_RE = re.compile(r"^RUN-[A-Za-z0-9_.-]+$")
+    return resolve_output_case_dir(case_id, active_resolver=_active_case_dir)
 
 
 def _run_extractions_dir(case_dir: Path, run_id: str) -> Path | None:
-    """The extractions folder of the run a lane command belongs to (D41, lane staging).
+    from nexus.case.run_paths import run_extractions_dir
 
-    The lane stages copies of evidence under its own run's extractions and names those
-    copies in the command, so that folder is a root beside the registered evidence. A
-    run id that is not a plain run name is refused, never joined onto the path.
-    """
-    if not run_id or not _RUN_ID_RE.fullmatch(run_id) or ".." in run_id:
+    if not run_id:
         return None
-    return case_dir / "runs" / run_id / "extractions"
+    try:
+        return run_extractions_dir(case_dir, run_id)
+    except ValueError:
+        return None
 
 
 def _case_pipeline_roots(case_id: str = "", run_id: str = "") -> list[Path] | None:
@@ -1024,6 +1011,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 case_dir=output_case,
                 register_evidence=False,  # a tool's stdout is not evidence (D57)
                 extractions_root=run_extractions,
+                use_active_case=False,
             )
             output_files = persisted.get("output_files") or []
             save_warning = persisted.get("warning") or ""

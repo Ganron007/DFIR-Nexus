@@ -7,7 +7,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -16,11 +15,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from nexus.case.run_paths import RUN_ID_RE as _RUN_ID
+from nexus.case.run_paths import run_extractions_dir
 from nexus.utils import atomic
 
 log = logging.getLogger(__name__)
 
-_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,95}$")
 _MODE_RUN_PREFIXES = {"M2-": "mode2_runs", "M3-": "mode3_runs"}
 _MODE_RUN_LIVE_STATUSES = {"running", "planned", "verified", "assessed"}
 
@@ -493,7 +493,7 @@ def create_run(
     if parent_run_id and not _RUN_ID.fullmatch(parent_run_id):
         raise ValueError("Invalid parent_run_id")
 
-    run_dir = case_dir / "runs" / rid
+    run_dir = run_extractions_dir(case_dir, rid).parent
     run_dir.mkdir(parents=True, exist_ok=False)
     for name in ("extractions", "analysis", "reports", "ledger"):
         (run_dir / name).mkdir()
@@ -619,7 +619,7 @@ def resolve_run(case_dir: Path, mode: str = "tools", run_id: str = "") -> Pipeli
 def _load_run(case_dir: Path, rid: str, mode: str = "tools") -> PipelineRun:
     if not rid or not _RUN_ID.fullmatch(rid):
         raise ValueError(f"No active {mode} run in case {case_dir.name}")
-    run_dir = case_dir / "runs" / rid
+    run_dir = run_extractions_dir(case_dir, rid).parent
     if not run_dir.is_dir():
         raise ValueError(f"Run not found: {rid}")
     manifest = load_manifest(run_dir)

@@ -31,7 +31,7 @@ import shutil
 import subprocess
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from nexus.langgraph.tool_call import call_tool
@@ -3381,6 +3381,35 @@ def _remote_cases_root() -> str:
     return _ssh_opts()["remote_cases"]
 
 
+def _pull_sift_run_outputs(
+    case_dir: Path, run_id: str, jobs: list[ToolJob], ledger: list[dict[str, Any]],
+) -> str:
+    """Collect this run before ledger/gate finalization; missing output is a failure."""
+    if not _sift_jobs_ran(jobs):
+        return ""
+    from nexus.case.run_paths import run_extractions_dir
+    from nexus.case.sift_sync import pull_sift_extractions
+
+    try:
+        dest = run_extractions_dir(case_dir, run_id).parent / "sift" / "extractions"
+        pulled = pull_sift_extractions(case_dir.name, case_dir, dest, run_id=run_id)
+        if pulled is None:
+            raise RuntimeError("named run output pull produced no local destination")
+        promoted = _promote_sift_pull(Path(pulled))
+        return f"; sift_pull={pulled} promoted={len(promoted)}"
+    except Exception as exc:  # the failed transfer must be visible to the gate
+        reason = f"SIFT named-run output pull failed: {exc}"
+        log.error("%s", reason)
+        # The command ran remotely; delivery is an operator-host operation.
+        # Keep its actual result. A failed transfer is not deferred SIFT work.
+        ledger.append({
+            "tool": "sift_pull", "host": "operator", "status": "FAIL",
+            "purpose": f"collect SIFT outputs for {case_dir.name}/{run_id}",
+            "reason": reason,
+        })
+        return f"; sift_pull_error={exc}"
+
+
 def _sift_jobs_ran(jobs: list[ToolJob]) -> bool:
     """Whether this run sent any job to the SIFT host (a skipped, blocked or unsent one is not sent)."""
     return any(j.host == "sift" and str(j.status).upper() not in ("SKIP", "BLOCKED", "PENDING") for j in jobs)
@@ -4070,7 +4099,10 @@ def plan_sift_triage(
     return jobs
 
 
-async def _create_sift_output_dirs(job: ToolJob, sift_tool: Any, parse_result: Callable[[Any], dict]) -> str:
+async def _create_sift_output_dirs(
+    job: ToolJob, sift_tool: Any, parse_result: Callable[[Any], dict], *,
+    case_id: str = "", run_id: str = "",
+) -> str:
     """Create the folders a SIFT job writes into, before the job runs. "" when all exist, else why not.
 
     A tool that writes into a folder (Suricata's -l) refuses one that is missing, and the lane created nothing on
@@ -4081,7 +4113,8 @@ async def _create_sift_output_dirs(job: ToolJob, sift_tool: Any, parse_result: C
             made = parse_result(await call_tool(
                 sift_tool,
                 {"command": f"mkdir -p {shlex.quote(folder)}",
-                 "purpose": f"create the output folder for {job.tool}", "timeout": 60},
+                 "purpose": f"create the output folder for {job.tool}", "timeout": 60,
+                 "save_output": False, "case_id": case_id, "run_id": run_id},
                 timeout=60,
                 label=f"run_command(mkdir {job.tool})",
             ))
@@ -4397,6 +4430,7 @@ async def run_tool_lane(
     Pipeline callers defer N4 output until after I1; standalone lane retries
     keep the default immediate query-pack/timeline write.
     """
+    from nexus.case.run_paths import run_extractions_dir
     from nexus.config import settings
 
     ctx = dict(case_context or {})
@@ -4527,8 +4561,10 @@ async def run_tool_lane(
         disk_offset=str(ctx.get("sift_disk_offset") or "").strip() or None,
         declared=str(ctx.get("sift_required") or "").strip().lower() in ("1", "true", "yes"),
         network_inputs=_net_inputs,
-        # Where the pull reads (sift_sync.pull_sift_extractions): the remote case's extractions.
-        remote_extractions=f"{_remote_cases_root()}/{Path(case_dir).name}/extractions",
+        # Executor, explicit-output tools and pull share this named run's root.
+        remote_extractions=str(run_extractions_dir(
+            PurePosixPath(_remote_cases_root()) / Path(case_dir).name, run_id,
+        )),
     ))
     # The SIFT jobs, planned just above, take the same reuse; the retry's rules apply to every job.
     apply_prior_ok(
@@ -4735,7 +4771,9 @@ async def run_tool_lane(
                 _finish(status, job.reason, reason=job.reason)
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
-            prep_failure = await _create_sift_output_dirs(job, sift_tool, parse_result)
+            prep_failure = await _create_sift_output_dirs(
+                job, sift_tool, parse_result, case_id=case_id, run_id=run_id,
+            )
             if prep_failure:
                 job.reason = prep_failure
                 _finish("FAIL", job.reason[:300], reason=job.reason)
@@ -4747,6 +4785,8 @@ async def run_tool_lane(
                         "command": cmd,
                         "purpose": job.purpose,
                         "timeout": job.timeout,
+                        "case_id": case_id,
+                        "run_id": run_id,
                     },
                     timeout=job.timeout,
                     label=f"run_command({job.tool})",
@@ -5002,11 +5042,14 @@ async def run_tool_lane(
     if warned_hives or warned_repairs:
         _write_progress()
 
+    pull_note = _pull_sift_run_outputs(case_dir, run_id, jobs, ledger)
+    _write_progress()
+
     ok = sum(1 for j in ledger if j.get("status") == "OK")
     warn = sum(1 for j in ledger if j.get("status") == "WARN")
     fail = sum(1 for j in ledger if j.get("status") == "FAIL")
     skip = sum(1 for j in ledger if j.get("status") == "SKIP")
-    summary = f"Tool lane complete: OK={ok} WARN={warn} FAIL={fail} SKIP={skip} (case={case_id})"
+    summary = f"Tool lane complete: OK={ok} WARN={warn} FAIL={fail} SKIP={skip} (case={case_id}){pull_note}"
     if coverage_warned:
         summary = (
             f"{summary} - {len(coverage_warned)} process-list plugin(s) WARN: "
@@ -5101,28 +5144,6 @@ async def run_tool_lane(
             log.warning(summary)
     except Exception as exc:  # noqa: BLE001 - never die writing the gate
         log.warning("lane gate write failed: %s", exc)
-
-    # Pull SIFT extractions onto examiner case (scp) so LLM + report see them. Only a run that sent jobs to the
-    # SIFT host has SIFT output of its own: the pull used to run for every lane run, and on a Windows-only sample
-    # (S01, 2026-10-18) it reached for a remote case folder that did not exist; on a case that had one it would
-    # have filed an earlier run's output under this run.
-    if _sift_jobs_ran(jobs):
-        try:
-            from nexus.case.sift_sync import pull_sift_extractions
-
-            pulled = pull_sift_extractions(
-                case_id,
-                case_dir,
-                pipeline_run.path / "sift" / "extractions",
-            )
-            if pulled:
-                promoted = _promote_sift_pull(Path(pulled))
-                summary = f"{summary}; sift_pull={pulled}"
-                if promoted:
-                    summary = f"{summary} promoted={len(promoted)}"
-        except Exception as exc:  # noqa: BLE001
-            log.warning("SIFT pull failed: %s", exc)
-            summary = f"{summary}; sift_pull_error={exc}"
 
     analysis_error = ""
     if defer_analysis:

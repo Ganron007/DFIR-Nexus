@@ -68,6 +68,19 @@ def resolve_active_case_dir() -> Path | None:
     return None
 
 
+def resolve_output_case_dir(case_id: str = "", *, active_resolver=None) -> Path | None:
+    """Resolve a named tool case without falling back to another active case."""
+    if not case_id:
+        return (active_resolver or resolve_active_case_dir)()
+    from nexus.config import settings
+    from nexus.discipline import validate_case_id
+
+    if validate_case_id(case_id):
+        return None
+    case = Path(settings.cases_root) / case_id
+    return case if case.is_dir() else None
+
+
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
@@ -90,11 +103,13 @@ def persist_tool_output(
     case_dir: Path | None = None,
     register_evidence: bool = False,
     extractions_root: Path | None = None,
+    use_active_case: bool = True,
 ) -> dict[str, Any]:
     """Write tool stdout/stderr (+ meta) under ``case/extractions/``.
 
     ``extractions_root`` writes into a run's own folder instead (the lane's run), so a run's
-    output stays with the run.
+    output stays with the run. ``use_active_case=False`` pins an absent case
+    as absent; an executor that already resolved its case must not resolve again.
 
     ``register_evidence`` is off by default. A tool's own stdout is not evidence (D57): it is
     recorded by the run's ledger and folder. Before this default was changed, every lane output was
@@ -105,7 +120,7 @@ def persist_tool_output(
     Returns ``{output_files: [...], case_dir, warning?}``.
     """
     out: dict[str, Any] = {"output_files": [], "case_dir": None, "warning": ""}
-    case = case_dir or resolve_active_case_dir()
+    case = case_dir or (resolve_active_case_dir() if use_active_case else None)
     if case is None:
         out["warning"] = "No active case — tool output was not persisted to extractions/"
         return out
@@ -117,9 +132,17 @@ def persist_tool_output(
     extractions = base / safe
     try:
         extractions.mkdir(parents=True, exist_ok=True)
+        # Reserve one invocation's name atomically. A clock tick is not an
+        # execution identity: rapid/concurrent Windows and SIFT calls share it.
+        meta_fd, meta_name = tempfile.mkstemp(
+            prefix=f"{ts}_", suffix=f"_{safe}_meta.json", dir=extractions,
+        )
+        os.close(meta_fd)
     except OSError as exc:
-        out["warning"] = f"Could not create extractions dir: {exc}"
+        out["warning"] = f"Could not create tool output capture: {exc}"
         return out
+    meta_path = Path(meta_name)
+    capture_stem = meta_path.name.removesuffix("_meta.json")
 
     meta = {
         "tool": tool_key,
@@ -135,7 +158,7 @@ def persist_tool_output(
         if body is None:
             return None
         # Persist even empty stdout when paired with stderr, but skip both-empty
-        path = extractions / f"{ts}_{safe}_{name}"
+        path = extractions / f"{capture_stem}_{name}"
         try:
             path.write_text(body, encoding="utf-8", errors="replace")
         except OSError as exc:
@@ -144,7 +167,6 @@ def persist_tool_output(
         return path
 
     # Always keep a meta sidecar so the run is discoverable even if stdout empty
-    meta_path = extractions / f"{ts}_{safe}_meta.json"
     stdout_path = _write("stdout.txt", stdout if stdout is not None else "")
     stderr_path = None
     if stderr:

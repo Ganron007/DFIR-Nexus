@@ -572,6 +572,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         preview_lines: int = 50,
         save_output: bool = True,
         full_output: bool = False,
+        case_id: str = "",
+        run_id: str = "",
     ) -> dict:
         """Run a forensic tool on the SIFT workstation.
 
@@ -591,8 +593,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             timeout: Override default timeout (seconds).
             input_files: Files this command reads (for provenance chain).
             preview_lines: Lines of output to return (0 = all).
-            save_output: Persist the capture into the active case. False for a
+            save_output: Persist the capture into the selected case. False for a
                 probe (a tool-usage banner is not evidence).
+            case_id: Explicit case identity; never falls back when unresolved.
+            run_id: Named lane output workspace; requires case_id.
             full_output: Return the whole capture instead of the reply-budget
                 slice. For a machine consumer that must read past the budget —
                 `vol -h` lists plugins after 21 KB, so a slice-only probe sees
@@ -600,6 +604,19 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         """
         start_time = time.time()
         cmd_timeout = timeout if timeout > 0 else settings.command_timeout
+        from nexus.case.outputs import resolve_output_case_dir
+        from nexus.case.run_paths import run_extractions_dir
+
+        if run_id and not case_id:
+            return {"success": False, "error": "run_id requires an explicit case_id"}
+        output_case = resolve_output_case_dir(case_id)
+        if case_id and output_case is None:
+            return {"success": False, "error": f"Case not found: {case_id}"}
+        try:
+            run_output = run_extractions_dir(output_case, run_id) if run_id else None
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
+        identity = {"case_id": case_id, "run_id": run_id} if case_id else {}
 
         # Parse command
         parts = shlex.split(command)
@@ -612,7 +629,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         base_binary = Path(binary).stem.lower()
         if _is_denied(binary):
             audit.log(tool="run_command_blocked",
-                      params={"command": command[:200], "reason": "denied_binary"},
+                      params={"command": command[:200], "reason": "denied_binary", **identity},
                       result_summary={"status": "blocked"})
             return {"success": False, "error": f"Binary denied: {base_binary}. "
                     "This binary is on the hardcoded denylist."}
@@ -658,6 +675,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             exec_cwd = str(resolved_path.parent)
         else:
             cmd_list = [resolved] + safe_args
+        if run_output is not None:
+            try:
+                run_output.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                return {"success": False, "error": f"Cannot prepare named run output: {exc}"}
         result = _execute(cmd_list, timeout=cmd_timeout, cwd=exec_cwd)
 
         # Design contract: always persist tool output into the active case,
@@ -668,7 +690,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         persisted: dict = {}
         output_files: list[dict] = []
         if save_output:
-            from nexus.case.outputs import persist_tool_output, resolve_active_case_dir
+            from nexus.case.outputs import persist_tool_output
 
         # Persist the CAPTURE, not the reply slice: the case file is the
         # evidence, and the response budget is a transport detail. Writing the
@@ -684,7 +706,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 stderr=result.get("stderr", "") or "",
                 command=command,
                 purpose=purpose,
-                case_dir=resolve_active_case_dir(),
+                case_dir=output_case,
+                extractions_root=run_output,
+                use_active_case=False,
                 register_evidence=False,  # a tool's stdout is not evidence (D57)
             )
             output_files = persisted.get("output_files") or []
@@ -724,7 +748,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         audit_id = audit.log(
             tool="run_command",
-            params={"command": command[:500], "purpose": purpose[:200]},
+            params={"command": command[:500], "purpose": purpose[:200], **identity},
             result_summary={
                 "exit_code": result.get("exit_code"),
                 "elapsed_seconds": result.get("elapsed_seconds"),
@@ -746,6 +770,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         response["data"] = full_stdout if full_output else result.get("stdout", "")
         response["stderr"] = result.get("stderr", "")[:2000] or ""
         response["output_files"] = output_files
+        response.update(identity)
         response["tool_lineage"] = tool_lineage
         response["persist_truncated"] = bool(result.get("persist_truncated"))
         # Rows in the capture. The reply body (`data`) is the 10 KB slice, so a
