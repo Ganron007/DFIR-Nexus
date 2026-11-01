@@ -3915,6 +3915,7 @@ def plan_sift_triage(
     sift_os: str | None = None,
     disk_image: str | None = None,
     disk_offset: str | int | None = None,
+    remote_extractions: str = "",
 ) -> list[ToolJob]:
     """Build SIFT jobs when a Linux-visible evidence root is configured.
 
@@ -3954,6 +3955,9 @@ def plan_sift_triage(
             ),
         ))
         return jobs
+
+    # Native lanes supply the same run root as capture persistence and pull.
+    output_root = (remote_extractions or "").strip().rstrip("/") or root
 
     # Memory: the examiner's declared file, or the SIFT root's own env. There is
     # deliberately NO default file name: a hard-coded "the memory is at
@@ -4034,20 +4038,20 @@ def plan_sift_triage(
     # log2timeline is opt-in (SIFT disk often cannot hold a multi-GB store).
     plaso = os.environ.get("NEXUS_SIFT_PLASO", "").strip().lower() in ("1", "true", "yes")
     if plaso:
-        store = f"{root}/plaso.plaso"
+        store = f"{output_root}/plaso.plaso"
         jobs.append(ToolJob(
             host="sift",
             tool="log2timeline",
             argv=["log2timeline.py", "--storage-file", store, root],
             purpose="Plaso super-timeline (NEXUS_SIFT_PLASO=1 — large disk required)",
-            timeout=7200,
+            timeout=7200, prep_dirs=[output_root],
         ))
         jobs.append(ToolJob(
             host="sift",
             tool="psort",
-            argv=["psort.py", "-o", "l2tcsv", "-w", f"{root}/plaso.csv", store],
+            argv=["psort.py", "-o", "l2tcsv", "-w", f"{output_root}/plaso.csv", store],
             purpose="psort Plaso store to CSV",
-            timeout=3600,
+            timeout=3600, prep_dirs=[output_root],
         ))
 
     # Raw disk image: SleuthKit is the unique solver on SIFT (the Windows lane
@@ -4080,9 +4084,9 @@ def plan_sift_triage(
             jobs.append(ToolJob(
                 host="sift",
                 tool="bulk_extractor",
-                argv=["bulk_extractor", "-o", f"{root}/bulk_extractor", disk],
+                argv=["bulk_extractor", "-o", f"{output_root}/bulk_extractor", disk],
                 purpose="bulk_extractor record carving (NEXUS_SIFT_BULK=1)",
-                timeout=7200,
+                timeout=7200, prep_dirs=[output_root],
             ))
 
     # E01 / fls only when the operator explicitly points at an image.
@@ -4174,6 +4178,7 @@ def sift_jobs_for_lane(
         sift_os=sift_os,
         disk_image=disk_image,
         disk_offset=disk_offset,
+        remote_extractions=remote_extractions,
     )
     # EH-14b: Zeek/Suricata/nfdump for captures visible under the SIFT root.
     # Captures registered on Windows are planned with an honest SKIP row —

@@ -151,3 +151,30 @@ def test_missing_run_pull_is_a_visible_failed_transfer_and_blocks_the_gate(tmp_p
     assert gate["status"] == "blocked"
     assert gate["blocked_count"] == 1
     assert gate["waiting_count"] == 0
+
+
+@pytest.mark.parametrize("feature", ["plaso", "bulk"])
+def test_opt_in_sift_file_products_use_the_named_output_root(feature, monkeypatch):
+    """Planning control only: no file contents are fabricated or tools executed."""
+    from nexus.langgraph.tool_lane import sift_jobs_for_lane
+
+    for name in ("NEXUS_SIFT_MEMORY_FILE", "NEXUS_SIFT_E01", "NEXUS_SIFT_DISK"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NEXUS_SIFT_PLASO", "1" if feature == "plaso" else "0")
+    monkeypatch.setenv("NEXUS_SIFT_BULK", "1" if feature == "bulk" else "0")
+    evidence = "/srv/cases/CASE-NAMED/evidence"
+    output = f"/srv/cases/CASE-NAMED/runs/{RUN}/extractions"
+    jobs = sift_jobs_for_lane(evidence, has_sift_mcp=True, disk_image=f"{evidence}/disk.dd",
+                             remote_extractions=output)
+    if feature == "plaso":
+        plaso = next(job for job in jobs if job.tool == "log2timeline")
+        store = plaso.argv[plaso.argv.index("--storage-file") + 1]
+        assert store == f"{output}/plaso.plaso"
+        psort = next(job for job in jobs if job.tool == "psort")
+        assert psort.argv[-1] == store
+        assert psort.argv[psort.argv.index("-w") + 1] == f"{output}/plaso.csv"
+        assert plaso.prep_dirs == [output]
+    else:
+        bulk = next(job for job in jobs if job.tool == "bulk_extractor")
+        assert bulk.argv[bulk.argv.index("-o") + 1] == f"{output}/bulk_extractor"
+        assert bulk.prep_dirs == [output], "bulk_extractor creates its own child directory"
