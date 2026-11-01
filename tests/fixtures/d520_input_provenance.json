@@ -1,0 +1,11 @@
+{
+  "fixture_sha256": "de2e9946fb66c8672c2dfb4dd760a630722ea2a5e4814de345ab2faec07767cc",
+  "source_name": "AuditLog_2020-09-10_2020-10-04.csv",
+  "source_sha256": "a6ab455c0f9a44447324a734ed7db8730c7b4f17dcf0a8335d3318c5c007cb94",
+  "source_record_lines": [
+    2,
+    2
+  ],
+  "header_lines": 1,
+  "capture": "Original header and one complete original CSV record, byte-for-byte; no values authored."
+}

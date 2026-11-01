@@ -211,7 +211,9 @@ class M365Importer(Importer):
             timestamp=ts,
             ts_synthesized=ts_synthesized,
             severity=severity,
-            host=str(audit.get("WorkstationName") or audit.get("ClientIP") or "") or None,
+            # ClientIP is a client/proxy address, not a workstation name.
+            # Its network identity is retained by source_ip above.
+            host=str(audit.get("WorkstationName") or "") or None,
             user=user,
             source_ip=source_ip,
             description=description,
