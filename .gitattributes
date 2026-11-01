@@ -4,3 +4,6 @@ devtools/knowledge/pinned/** -text
 *.sh text eol=lf
 # Verbatim Linux evidence fixtures keep their original line endings on every platform.
 tests/fixtures/d514_authlog/** -text
+# Hash-verified captured CSV records retain the original evidence bytes (including CRLF).
+tests/fixtures/d518_RBCmd_Output.csv -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+tests/fixtures/d520_m365_clientip.csv -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
