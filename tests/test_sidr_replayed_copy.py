@@ -9,6 +9,7 @@ when that state is Clean Shutdown. No repair (/p) and no ignored logs (/i) are e
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -32,10 +33,12 @@ def _sidr_jobs(root, extractions, monkeypatch, state: str):
     from nexus.langgraph import tool_lane
 
     replayed: list[tuple[str, tuple[str, ...]]] = []
-    monkeypatch.setattr(
-        tool_lane, "_esentutl_replay",
-        lambda work, *, log_bases: replayed.append((work.name, tuple(log_bases))),
-    )
+    def replay(argv, **kwargs):
+        assert argv[:2] == ["esentutl.exe", "/r"]
+        replayed.append((Path(kwargs["cwd"]).name, (argv[2],)))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(tool_lane.subprocess, "run", replay)
     monkeypatch.setattr(tool_lane, "_ese_state", lambda database: state)
     jobs = tool_lane.plan_windows_triage(str(root), extractions)
     return [j for j in jobs if j.tool == "sidr"], replayed
@@ -50,6 +53,8 @@ def test_sidr_is_planned_on_the_replayed_copy_when_the_database_is_clean(search_
     assert (work / "Windows.edb").is_file() and (work / "edb00060.jtx").is_file()
     assert not (work / "GatherLogs").exists()
     assert replayed == [("workdir", ("edb",))]
+    assert sidr[0].preflight["state_after_replay"] == "Clean Shutdown"
+    assert sidr[0].preflight["esentutl_replay"][0]["returncode"] == 0
 
 
 def test_sidr_is_blocked_when_the_replay_does_not_reach_a_clean_shutdown(search_volume, monkeypatch):
@@ -57,6 +62,7 @@ def test_sidr_is_blocked_when_the_replay_does_not_reach_a_clean_shutdown(search_
     sidr, _ = _sidr_jobs(root, extractions, monkeypatch, "Dirty Shutdown")
     assert len(sidr) == 1 and sidr[0].status == "BLOCKED" and not sidr[0].argv
     assert "Dirty Shutdown" in sidr[0].reason and "sidr is not run on it" in sidr[0].reason
+    assert sidr[0].preflight["state_after_replay"] == "Dirty Shutdown"
 
 
 def test_the_state_is_read_from_the_database_header(tmp_path, monkeypatch):

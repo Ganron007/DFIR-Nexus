@@ -342,7 +342,7 @@ def test_srum_folder_plans_the_database_only(tmp_path, monkeypatch):
         (work / "SRUDB.dat").write_bytes(b"ese")
 
     monkeypatch.setattr(lane, "_copy_ese_siblings", _fake_copy)
-    monkeypatch.setattr(lane, "_esentutl_replay", lambda *a, **k: None)
+    monkeypatch.setattr(lane, "_esentutl_replay", lambda *a, **k: [])
 
     jobs, _ = _jobs(tmp_path, {
         "SRUDB.dat": b"ese",

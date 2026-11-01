@@ -392,7 +392,14 @@ def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> 
             os.chmod(dst, 0o666)
 
 
-def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> list[dict[str, Any]]:
+# Microsoft ESE file names: a three-character base, optional five/eight hex
+# generation digits, and legacy .log or modern .jtx. Temporary/reserve files and
+# database names do not identify another recovery family.
+# https://learn.microsoft.com/en-us/windows/win32/extensible-storage-engine/extensible-storage-engine-files
+_ESE_TRANSACTION_LOG = re.compile(r"([a-z0-9]{3})(?:[0-9a-f]{5}|[0-9a-f]{8})?\.(?:log|jtx)", re.I)
+
+
+def _esentutl_replay(work: Path) -> list[dict[str, Any]]:
     """Replay the transaction logs in the work copy (esentutl /r), with no repair and no ignored logs.
 
     Operator decision 2026-10-11: the lane does not run ``/p`` (repair, which can discard data) or
@@ -415,9 +422,13 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> list[dict[str
         text = _ANSI_RE.sub("", text).strip()
         return text[-2000:]
 
-    base = ",".join(log_bases)
-    try:
-        for base in log_bases:
+    log_bases = sorted({
+        match.group(1).lower()
+        for path in work.iterdir()
+        if path.is_file() and (match := _ESE_TRANSACTION_LOG.fullmatch(path.name))
+    })
+    for base in log_bases:
+        try:
             result = subprocess.run(
                 ["esentutl.exe", "/r", base, f"/l{work}", f"/s{work}", f"/d{work}"],
                 cwd=str(work),
@@ -441,10 +452,29 @@ def _esentutl_replay(work: Path, *, log_bases: tuple[str, ...]) -> list[dict[str
                     outcome["returncode"],
                     detail or "no stdout/stderr",
                 )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        outcomes.append({"log_base": base, "error": str(exc)[:2000]})
-        log.warning("esentutl replay skipped for %s: %s", ",".join(log_bases), exc)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            outcomes.append({"log_base": base, "error": str(exc)[:2000]})
+            log.warning("esentutl replay failed for %s: %s", base, exc)
     return outcomes
+
+
+def _ese_preflight(work: Path, database: Path) -> dict[str, Any]:
+    """Persist actual recovery attempts and the independently read database state."""
+    return {
+        "esentutl_replay": _esentutl_replay(work),
+        "state_after_replay": _ese_state(database),
+    }
+
+
+def _ese_preparation_note(preflight: dict[str, Any]) -> str:
+    replay = preflight["esentutl_replay"]
+    if not replay:
+        recovery = "no transaction logs available"
+    elif any(item.get("error") or item.get("returncode") != 0 for item in replay):
+        recovery = "replay incomplete"
+    else:
+        recovery = "replay completed"
+    return f"{recovery}; database state {preflight['state_after_replay'] or 'unreadable'}"
 
 
 def _ese_state(database: Path) -> str:
@@ -1168,14 +1198,14 @@ def _plan_single_artifact(
         work = d / f"{_stem(evidence)}-workdir"
         try:
             _copy_ese_siblings(evidence.parent, work, ("QMGR", "EDB"))
-            _esentutl_replay(work, log_bases=("edb", "qmgr"))
             staged = work / evidence.name
+            preflight = _ese_preflight(work, staged)
             if staged.is_file():
                 add("bitsparser", ["bitsparser", "-i", str(staged), "--carvedb",
                                    "-o", str(d / f"{_stem(evidence)}.json")],
-                    f"BITS job queue ({evidence.name}, staged copy, logs replayed)",
+                    f"BITS job queue ({evidence.name}, staged copy, {_ese_preparation_note(preflight)})",
                     timeout_for_bytes(staged.stat().st_size),
-                    source=str(evidence))
+                    source=str(evidence), preflight=preflight)
             else:
                 jobs.append(ToolJob(
                     host="windows", tool="bitsparser", argv=[], status="SKIP",
@@ -1343,8 +1373,8 @@ def _plan_single_artifact(
         try:
             work = extractions / "_staged" / "sru"
             _copy_ese_siblings(evidence.parent, work, ("SRU",))
-            replay = _esentutl_replay(work, log_bases=("sru",))
             candidate = work / evidence.name
+            preflight = _ese_preflight(work, candidate)
             if candidate.is_file():
                 staged = candidate
             else:
@@ -1362,11 +1392,8 @@ def _plan_single_artifact(
             ))
             return jobs
         add("srumecmd", ["srumecmd", "-f", str(staged), "--csv", str(d)],
-            "SRUM database", 600, source=str(evidence),
-            preflight={
-                "esentutl_replay": replay,
-                "state_after_replay": _ese_state(staged),
-            })
+            f"SRUM database (staged copy, {_ese_preparation_note(preflight)})", 600,
+            source=str(evidence), preflight=preflight)
     elif _hive_kind(evidence) in _NAMED_HIVE_KINDS:
         # The kind, not the name: NTUSER-fredr.DAT and S09's SYSTEM_clean are the
         # same hives as NTUSER.DAT and SYSTEM, and SYSTEM_clean needs the
@@ -2019,14 +2046,14 @@ def plan_windows_triage(
             preflight=preflight or {},
         ))
 
-    def skip(tool: str, reason: str) -> None:
+    def skip(tool: str, reason: str, *, preflight: dict[str, Any] | None = None) -> None:
         jobs.append(ToolJob(
             host="windows",
             tool=tool,
             argv=[],
             purpose="",
             status="SKIP",
-            reason=reason,
+            reason=reason, preflight=preflight or {},
         ))
 
     schedule_evtx_parsers(jobs, evtx_dirs, extractions)
@@ -2072,16 +2099,13 @@ def plan_windows_triage(
         work = d / "workdir"
         try:
             _copy_ese_siblings(srum.parent, work, ("SRU",))
-            replay = _esentutl_replay(work, log_bases=("sru",))
             srum_target = work / "SRUDB.dat"
+            preflight = _ese_preflight(work, srum_target)
             argv = ["srumecmd", "-f", str(srum_target), "--csv", str(d)]
             if software_hive.is_file():
                 argv.extend(["-r", str(software_hive)])
-            add("srumecmd", argv, "SRUM database (staged copy, logs replayed)", 600,
-                source=str(srum), preflight={
-                    "esentutl_replay": replay,
-                    "state_after_replay": _ese_state(srum_target),
-                })
+            add("srumecmd", argv, f"SRUM database (staged copy, {_ese_preparation_note(preflight)})", 600,
+                source=str(srum), preflight=preflight)
         except OSError as exc:
             skip("srumecmd", f"could not stage SRUDB copy: {exc}")
     else:
@@ -2358,12 +2382,12 @@ def plan_windows_triage(
         else:
             skip("regripper", "no hives found for RegRipper")
 
-    def blocked(tool: str, reason: str) -> None:
+    def blocked(tool: str, reason: str, *, preflight: dict[str, Any] | None = None) -> None:
         # A parser that cannot run on evidence that IS present. The gate counts it as
         # unprocessed; a SKIP would read as not applicable (D43, D53).
         jobs.append(ToolJob(
             host="windows", tool=tool, argv=[], purpose="",
-            status="BLOCKED", reason=reason,
+            status="BLOCKED", reason=reason, preflight=preflight or {},
         ))
 
     _plan_gap_parsers(
@@ -2698,13 +2722,15 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
     of text artifacts get unique names, so files that share a name stay apart.
     """
     def present_tool(key: str, argv: list[str], purpose: str, timeout: int = 600,
-                     *, source: str = "") -> None:
+                     *, source: str = "", preflight: dict[str, Any] | None = None) -> None:
         # The artifact is on the evidence. A missing parser is BLOCKED, not SKIPPED.
         if not _windows_tool_available(key):
             blocked(key, f"{key} not installed: the evidence is present and was not examined. "
-                         "Run tools/fetch-windows-tools.ps1 then nexus doctor")
+                         "Run tools/fetch-windows-tools.ps1 then nexus doctor",
+                    **({"preflight": preflight} if preflight is not None else {}))
             return
-        add_installed(key, argv, purpose, timeout, source=source)
+        add_installed(key, argv, purpose, timeout, source=source,
+                      **({"preflight": preflight} if preflight is not None else {}))
 
     support = root / "ProgramData/Microsoft/Windows Defender/Support"
     if support.is_dir() and any(support.glob("MPLog-*.log")):
@@ -2739,29 +2765,29 @@ def _plan_defender_and_search(root: Path, extractions: Path, add_installed, skip
 
     search_db = root / "ProgramData/Microsoft/Search/Data/Applications/Windows/Windows.edb"
     if search_db.is_file():
-        # sidr reads the Windows Search index from a replayed copy (2026-10-11). Replay only: no repair and
-        # no ignored logs. The log generations are complete on the evidence, so the replay reaches a clean
-        # shutdown with nothing discarded. sidr runs only on a clean copy, and writes CSV reports into the
-        # sidr folder, which the index reads.
+        # SIDR reads only a clean staged copy. Recovery attempts and the independently
+        # read database state remain separate; missing generations can prevent recovery.
+        # No repair or ignored logs. The index reads SIDR's own CSV reports.
         sidr_dir = extractions / "sidr"
         sidr_work = sidr_dir / "workdir"
         try:
             _copy_ese_siblings(search_db.parent, sidr_work, ("WINDOWS", "EDB"))
-            _esentutl_replay(sidr_work, log_bases=("edb",))
-            state = _ese_state(sidr_work / "Windows.edb")
+            preflight = _ese_preflight(sidr_work, sidr_work / "Windows.edb")
+            state = preflight["state_after_replay"]
             if state == "Clean Shutdown":
                 present_tool(
                     "sidr",
                     ["sidr", "-f", "csv", "-o", str(sidr_dir), str(sidr_work)],
-                    "Windows Search index (SIDR, replayed copy)",
+                    f"Windows Search index (SIDR, staged copy, {_ese_preparation_note(preflight)})",
                     900,
-                    source=str(search_db),
+                    source=str(search_db), preflight=preflight,
                 )
             else:
                 blocked(
                     "sidr",
                     "Windows.edb did not reach a clean shutdown after the replay "
                     f"({state or 'state unreadable'}): sidr is not run on it",
+                    preflight=preflight,
                 )
         except OSError as exc:
             skip("sidr", f"could not stage the Windows Search copy: {exc}")
@@ -2826,11 +2852,12 @@ def _plan_gap_parsers(
             )
 
     def add_installed(key: str, argv: list[str], purpose: str, timeout: int = 600,
-                      *, source: str = "") -> bool:
+                      *, source: str = "", preflight: dict[str, Any] | None = None) -> bool:
         if not _windows_tool_available(key):
             skip(key, f"{key} not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
             return False
-        add(key, argv, purpose, timeout, source=source)
+        add(key, argv, purpose, timeout, source=source,
+            **({"preflight": preflight} if preflight is not None else {}))
         return True
 
     _plan_defender_and_search(root, extractions, add_installed, skip, blocked or skip)
@@ -2915,8 +2942,8 @@ def _plan_gap_parsers(
             out.mkdir(parents=True, exist_ok=True)
             try:
                 _copy_ese_siblings(qmgr.parent, work, ("QMGR", "EDB"))
-                _esentutl_replay(work, log_bases=("edb", "qmgr"))
                 staged = work / qmgr.name
+                preflight = _ese_preflight(work, staged)
                 if not staged.is_file():
                     skip("bitsparser", f"staged {qmgr.name} missing after copy")
                 else:
@@ -2925,9 +2952,9 @@ def _plan_gap_parsers(
                         "bitsparser",
                         ["bitsparser", "-i", str(staged), "--carvedb",
                          "-o", str(out / "bits.json")],
-                        f"BITS job queue ({qmgr.name}, staged copy, logs replayed)",
+                        f"BITS job queue ({qmgr.name}, staged copy, {_ese_preparation_note(preflight)})",
                         timeout_for_bytes(sz),
-                        source=str(qmgr),
+                        source=str(qmgr), preflight=preflight,
                     )
             except OSError as exc:
                 skip("bitsparser", f"could not stage qmgr: {exc}")

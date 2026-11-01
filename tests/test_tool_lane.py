@@ -345,7 +345,7 @@ def test_gap_parsers_are_practical(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("NEXUS_TOOL_LANE_QUICK", raising=False)
     monkeypatch.setattr(
         "nexus.langgraph.tool_lane._esentutl_replay",
-        lambda *a, **k: None,
+        lambda *a, **k: [],
     )
     root = tmp_path / "C"
     (root / "Windows" / "System32").mkdir(parents=True)
@@ -681,9 +681,9 @@ def test_bitsparser_stages_a_staged_copy_with_its_logs_replayed(tmp_path: Path, 
     )
     called: dict = {}
 
-    def _fake_replay(work, *, log_bases):
+    def _fake_replay(work):
         called["work"] = work
-        called["log_bases"] = log_bases
+        return []
 
     monkeypatch.setattr(
         "nexus.langgraph.tool_lane._esentutl_replay",
@@ -707,7 +707,7 @@ def test_bitsparser_stages_a_staged_copy_with_its_logs_replayed(tmp_path: Path, 
     assert "--carvedb" in bp.argv
     assert "--carveall" not in bp.argv
     assert Path(called["work"]) == staged.parent, "the replay runs in the staged copy's folder"
-    assert called["log_bases"] == ("edb", "qmgr")
+    assert bp.preflight["esentutl_replay"] == []
 
 
 def test_apply_prior_ok_reuses_matching_purpose(tmp_path: Path, monkeypatch):

@@ -67,9 +67,7 @@ def test_the_retry_plans_srum_over_a_fresh_copy(tmp_path, monkeypatch):
         "stderr": "log generation mismatch",
     }]
 
-    def replay(work, *, log_bases):
-        if tuple(log_bases) != ("sru",):
-            return []
+    def replay(work):
         files_seen_by_replay.append(sorted(p.name for p in work.iterdir()))
         (work / "SRU03FBB.log").write_bytes(b"generation written by the replay")  # what esentutl /r leaves
         return replay_outcome

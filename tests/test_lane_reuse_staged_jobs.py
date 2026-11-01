@@ -68,7 +68,7 @@ def test_the_planner_names_the_registered_source_of_the_srum_and_search_copies(t
     search = root / "ProgramData" / "Microsoft" / "Search" / "Data" / "Applications" / "Windows"
     search.mkdir(parents=True)
     (search / "Windows.edb").write_bytes(b"ese" * 100)
-    monkeypatch.setattr(tool_lane, "_esentutl_replay", lambda work, *, log_bases: None)
+    monkeypatch.setattr(tool_lane, "_esentutl_replay", lambda work: [])
     monkeypatch.setattr(tool_lane, "_ese_state", lambda database: "Clean Shutdown")
     monkeypatch.setattr(tool_lane, "_windows_tool_available", lambda key: True)
 

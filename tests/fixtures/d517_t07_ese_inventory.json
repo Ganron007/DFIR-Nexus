@@ -1,0 +1,62 @@
+{
+  "purpose": "Planner control only; companion files are metadata placeholders, no parser executes.",
+  "source": "Public staged T07-files.tsv and verbatim first 64 bytes of the matched qmgr.db",
+  "files": [
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edb.chk",
+      "bytes": "8192",
+      "sha256": "95cbba6eb1245caa8672719fa92b2c5c4f204140f7a2afda65103fd072450eb8"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edb.log",
+      "bytes": "1310720",
+      "sha256": "455a071f033cb1375d7df65a7b85e66508b87d59a0f1e1331afe947449863f64"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edb00005.log",
+      "bytes": "1310720",
+      "sha256": "a4255c59ff5ba4512cfdfc8482a623e3eed6553572a4292803431868796dbedb"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edb00006.log",
+      "bytes": "1310720",
+      "sha256": "34d8d8e3144d08bb5ecd9b39ca1fd464ff8164cfdd94554089fbf20dec8b513d"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edb00007.log",
+      "bytes": "1310720",
+      "sha256": "7b41e442efb779a259ae3546e3de3505f054ca335a8d6911f2c787d0e1a43686"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edbres00001.jrs",
+      "bytes": "1310720",
+      "sha256": "439292e489a0a35e4a3a0fe304ea1a680337243fa53b135aa9310881e1d7e078"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edbres00002.jrs",
+      "bytes": "1310720",
+      "sha256": "439292e489a0a35e4a3a0fe304ea1a680337243fa53b135aa9310881e1d7e078"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/edbtmp.log",
+      "bytes": "1310720",
+      "sha256": "8469bb8bdd3fe3b0534f43d482c9247392bf604b1a973f26c64b40faaa0ad451"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/qmgr.db",
+      "bytes": "1572864",
+      "sha256": "23209fcbf057be40680916ac4ec0d90f53213d64299845faef66ebd3c18b4b10"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/qmgr.jfm",
+      "bytes": "16384",
+      "sha256": "fc4791f34b1083bedcc7cb16eb3eb464960e21e880d902902bd8af7758754866"
+    },
+    {
+      "path": "C/ProgramData/Microsoft/Network/Downloader/qmgr0.bak",
+      "bytes": "16384",
+      "sha256": "2213cacb3111a1263d3a1d39aaba84dbde70962c87a6568f647f167a76cebef3"
+    }
+  ],
+  "database_header_hex": "617e9158efcdab8920060000000000006b380000000000002683e007161610140a78150800000000000000000000000000000000020000006e04010108000000"
+}

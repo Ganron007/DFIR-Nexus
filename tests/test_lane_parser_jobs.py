@@ -44,17 +44,18 @@ def planned(triage, tmp_path):
     extractions = tmp_path / "extractions"
     jobs: list = []
 
-    def add_installed(key, argv, purpose, timeout=600, *, source=""):
+    def add_installed(key, argv, purpose, timeout=600, *, source="", preflight=None):
         jobs.append(tool_lane.ToolJob(host="windows", tool=key, argv=argv,
-                                      purpose=purpose, timeout=timeout, source=source))
+                                      purpose=purpose, timeout=timeout, source=source,
+                                      preflight=preflight or {}))
 
     def skip(tool, reason):
         jobs.append(tool_lane.ToolJob(host="windows", tool=tool, argv=[], purpose="",
                                       status="SKIP", reason=reason))
 
-    def blocked(tool, reason):
+    def blocked(tool, reason, *, preflight=None):
         jobs.append(tool_lane.ToolJob(host="windows", tool=tool, argv=[], purpose="",
-                                      status="BLOCKED", reason=reason))
+                                      status="BLOCKED", reason=reason, preflight=preflight or {}))
 
     tool_lane._plan_defender_and_search(triage, extractions, add_installed, skip, blocked)
     return jobs, extractions
@@ -94,7 +95,7 @@ def test_a_missing_parser_on_present_evidence_is_blocked_not_skipped(triage, tmp
         triage, tmp_path / "e",
         lambda key, argv, purpose, timeout=600, *, source="": None,
         lambda tool, reason: None,
-        lambda tool, reason: blocked.setdefault(tool, reason),
+        lambda tool, reason, **_metadata: blocked.setdefault(tool, reason),
     )
     assert "mplog" in blocked and "not installed" in blocked["mplog"]
 
@@ -124,17 +125,16 @@ def test_the_ese_replay_only_replays_logs_and_never_repairs_or_ignores_them(tmp_
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setattr(tool_lane.subprocess, "run", record)
-    outcomes = tool_lane._esentutl_replay(tmp_path, log_bases=("edb", "qmgr"))
+    (tmp_path / "edb.log").touch()  # captured T07 transaction filename
+    outcomes = tool_lane._esentutl_replay(tmp_path)
     # The log, system and database folders are the work copy: the log records the original location.
     folders = [f"/l{tmp_path}", f"/s{tmp_path}", f"/d{tmp_path}"]
     assert calls == [
         ["esentutl.exe", "/r", "edb", *folders],
-        ["esentutl.exe", "/r", "qmgr", *folders],
     ]
     assert all("/p" not in argv and "/i" not in argv for argv in calls)
     assert outcomes == [
         {"log_base": "edb", "returncode": 0, "stdout": "", "stderr": ""},
-        {"log_base": "qmgr", "returncode": 0, "stdout": "", "stderr": ""},
     ]
 
 
@@ -146,8 +146,9 @@ def test_failed_ese_replay_keeps_return_code_and_diagnostic(caplog, tmp_path, mo
             argv, 3, stdout="Recovery started", stderr="log generation mismatch"
         ),
     )
+    (tmp_path / "SRU.log").touch()  # captured SRUM transaction filename
     with caplog.at_level("WARNING", logger="nexus.langgraph.tool_lane"):
-        outcomes = tool_lane._esentutl_replay(tmp_path, log_bases=("sru",))
+        outcomes = tool_lane._esentutl_replay(tmp_path)
 
     assert "esentutl replay for log base sru exited 3" in caplog.text
     assert "Recovery started" in caplog.text

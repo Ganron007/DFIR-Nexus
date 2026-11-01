@@ -101,9 +101,9 @@ def test_bitsparser_stages_a_staged_copy_for_a_single_database(tmp_path, monkeyp
 
     called: dict = {}
 
-    def _fake_replay(work, *, log_bases):
+    def _fake_replay(work):
         called["work"] = work
-        called["log_bases"] = log_bases
+        return []
 
     monkeypatch.setattr(tl, "_esentutl_replay", _fake_replay)
     f = _make(tmp_path, "qmgr.db", b"ese" * 32)
@@ -116,7 +116,8 @@ def test_bitsparser_stages_a_staged_copy_for_a_single_database(tmp_path, monkeyp
     assert staged.is_file()
     assert "staged copy" in bp.purpose and "repaired" not in bp.purpose
     assert Path(called["work"]) == staged.parent
-    assert called["log_bases"] == ("edb", "qmgr")
+    assert bp.preflight["esentutl_replay"] == []
+    assert "no transaction logs available" in bp.purpose
     assert "--carvedb" in bp.argv
     assert "--carveall" not in bp.argv
     assert bp.optional_output is False
