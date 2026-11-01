@@ -1,0 +1,14 @@
+{
+  "d518_RBCmd_Output.csv": {
+    "source_name": "RBCmd_Output.csv",
+    "sha256": "8698cfac755e055cf0abb8076eac061ed4e5531dd5c64928e1a12c99733118fa",
+    "bytes": 3361,
+    "source": "Verbatim public T09 inventory input; no records generated"
+  },
+  "d518_USB_Detective_Timeline.xlsx": {
+    "source_name": "USB Detective Timeline.xlsx",
+    "sha256": "fcfd9367de1b4199d422afc99ef498a68817a75b9b4f7e844dc7c50e5d756829",
+    "bytes": 24346,
+    "source": "Verbatim public T09 inventory input; no records generated"
+  }
+}

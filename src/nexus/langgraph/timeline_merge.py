@@ -500,6 +500,12 @@ def ingest_into_case(
     except (OSError, EOFError) as exc:
         return {"success": False, "error": f"gzip: {exc}", "artifacts": 0, "path": str(original)}
     path = working or original
+    audit_params = {
+        "case_id": Path(case_dir).name,
+        "path": str(original),
+        "source": source or "",
+        **({"working_copy": str(working)} if working else {}),
+    }
     if source is None:
         placed = _placed_tool_csv(path, Path(case_dir))
         if placed is not None:
@@ -510,8 +516,7 @@ def ingest_into_case(
 
                     AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").log(
                         tool="ingest_auto",
-                        params={"path": str(original), "source": "",
-                                **({"working_copy": str(working)} if working else {})},
+                        params=audit_params,
                         result_summary={"success": True, "artifacts": rows, "source": family,
                                         "placed_at": str(dest)},
                         source="pipeline",
@@ -553,8 +558,7 @@ def ingest_into_case(
 
             AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").log(
                 tool="ingest_auto",
-                params={"path": str(original), "source": source or "",
-                        **({"working_copy": str(working)} if working else {})},
+                params=audit_params,
                 result_summary={
                     "success": result.success,
                     "artifacts": result.parsed_lines,

@@ -170,6 +170,26 @@ def _named_case(params: Any) -> str:
     return value
 
 
+def _case_at_audit_dir(audit_dir: Path) -> str:
+    """The registered case scope of a case audit directory, otherwise no case.
+
+    A custom process log remains a custom log; a case folder is recognized by
+    its position under the configured case store, not by an ambient variable.
+    """
+    from nexus.discipline import validate_case_id
+
+    try:
+        relative = audit_dir.resolve().relative_to(Path(settings.cases_root).resolve())
+    except (OSError, ValueError):
+        return ""
+    if len(relative.parts) != 2 or relative.parts[1] != "audit":
+        return ""
+    case_id = relative.parts[0]
+    if validate_case_id(case_id) or not audit_dir.parent.is_dir():
+        return ""
+    return case_id
+
+
 class AuditWriter:
     """Append-only audit trail writer.
     Writes JSONL entries to {audit_dir}/{mcp_name}.jsonl with:
@@ -178,7 +198,7 @@ class AuditWriter:
     - tool: tool name
     - audit_id: unique ID per entry
     - examiner: resolved examiner
-    - case_id: active case
+    - case_id: named/resolved case scope
     - params, result_summary: call data
     - sha256: content hash of the entry
     """
@@ -206,12 +226,15 @@ class AuditWriter:
         """Write an audit entry. Returns the audit_id or None on failure."""
         try:
             named = _named_case(params)
-            case_id = named or os.environ.get("NEXUS_ACTIVE_CASE", "")
             examiner = resolve_examiner()
 
             audit_dir = self._get_audit_dir(named)
             if audit_dir is None:
                 return None
+            bound = _case_at_audit_dir(audit_dir)
+            if bound and named and (Path(settings.cases_root) / named).resolve() != audit_dir.parent.resolve():
+                raise ValueError(f"named case {named} contradicts bound audit case {bound}")
+            case_id = bound or named or os.environ.get("NEXUS_ACTIVE_CASE", "")
             audit_dir.mkdir(parents=True, exist_ok=True)
             log_path = audit_dir / f"{self.mcp_name}.jsonl"
 

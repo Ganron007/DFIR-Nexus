@@ -328,7 +328,7 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
 | Findings | DRAFT by default. Only `nexus approve` (CLI, password via getpass) or `/portal/api/commit` (browser, Web Crypto HMAC challenge-response) can change status. The LLM cannot approve. |
 | Approvals | PBKDF2-SHA256 hashed passwords, HMAC verification ledger, 15-min lockout after 3 failed attempts |
 | Transparency | Every commit (approval) is also appended to a hash-chained transparency log (`transparency.jsonl`). `transparency_verify()` walks the chain; a tampered case directory is detectable without trusting `~/.nexus/verification/` |
-| Audit | Every tool call logged with SHA-256 hash. Findings must reference valid audit IDs from the active case |
+| Audit | Every tool call logged with SHA-256 hash. Findings must reference valid audit IDs from their named/resolved case |
 | SIFT execution | Hardcoded denylist (25 binaries), argument sanitization, shell metacharacter blocking, input path validation |
 | Windows execution | Hardcoded denylist + catalog allowlist, script auto-expansion, 24h result caching |
 | HTTP mode | Bearer token authentication; expose publicly only behind a reverse proxy enforcing TLS |
@@ -470,6 +470,8 @@ Mode 3 convergence uses the full board's questions, every lead, pivots and pendi
 The effort trace records invocation counts, prompt-content character counts and elapsed model time, not prompt bodies or provider error bodies. Counts describe client invocations, not billed tokens or provider HTTP attempts. Existing context audits remain separate. Measurement requires no runner wrapper, alternate model or second run lifecycle.
 
 Command capture identity is independent of clock resolution: `case/outputs.py` atomically reserves a stem per invocation and uses it for stdout, stderr and metadata. `case/run_paths.py` owns the shared run-ID/path contract without orchestration dependencies, so the SIFT executor can use it without LangGraph. Explicit case/run identity reaches execution, audit, output-directory preparation and the run-only pull. Retrieval completes before the ledger and gate are finalized. Failed delivery records the actual operator-host transfer failure while preserving the remote command result; the ordinary failure gate applies.
+
+Audit records carry the identity of their resolved case directory. The importer pass names its case in both copied-export and registry-import audit parameters. A named case that contradicts a bound case audit directory is refused before a record is written. Audit entries remain append-only.
 
 Named-run report metadata uses the same explicit run resolution as evidence readers, including while a tools run is uncommitted. Extracted-image catalogs expose citable file metadata; index freshness and source checks include the backing files. Metadata does not establish visual content.
 

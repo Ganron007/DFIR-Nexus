@@ -7,7 +7,7 @@ artifacts_parsed: [outlook_mail_store]
 
 caveats:
   - "Columns: folder, delivery_time, sender_name, subject, body_preview. body_preview is the plain-text body cut to 2000 characters, with line breaks replaced by spaces"
-  - "Messages with HTML-only bodies have an empty body_preview"
+  - "HTML and compressed-RTF bodies are converted to readable text when available; body_preview remains bounded"
   - "Attachments are not extracted; only the message fields are written"
 
 output_notes:
