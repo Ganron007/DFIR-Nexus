@@ -41,8 +41,8 @@ Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the bin
 | `appcompatcacheparser` | AppCompatCacheParser | `tools/zimmerman/appcompatcacheparser.yaml` | `shimcache` | **mandatory** if SYSTEM hive |
 | `evtxecmd` | EvtxECmd | `tools/zimmerman/evtxecmd.yaml` | all `event_logs_*` | **mandatory** if `Logs\*.evtx` (`-d Logs`) |
 | `hayabusa` | Hayabusa | `tools/timeline/hayabusa.yaml` | all `event_logs_*`, `hayabusa_alerts` | **mandatory** (same EVTX dir; Sigma timeline) |
-| `suzaku` | suzaku | `tools/timeline/suzaku.yaml` | all `event_logs_*` | **extra** — Hayabusa-family alternative, not a second EVTX parser |
-| `chainsaw` | chainsaw | `tools/timeline/chainsaw.yaml` | all `event_logs_*` | **extra** — same |
+| `suzaku` | suzaku | `tools/timeline/suzaku.yaml` | all `event_logs_*` | **extra, cloud-only** — cloud-log analysis; excluded from EVTX processing |
+| `chainsaw` | chainsaw | `tools/timeline/chainsaw.yaml` | all `event_logs_*` | **extra** — optional EVTX detection; excluded from the default lane |
 | `zircolite` | Zircolite | `tools/analysis/zircolite.yaml` | all `event_logs_*` | **extra** — optional merged-high JSON ruleset (`-f evtx`); excluded from the default lane |
 | `deepbluecli` | run-deepblue.ps1 | `tools/analysis/deepbluecli.yaml` | all `event_logs_*` | **extra, examiner-only** — explicit examiner invocation through the retained JSON wrapper; automatic lane records a policy SKIP |
 | `pecmd` | PECmd | `tools/zimmerman/pecmd.yaml` | `prefetch` | **mandatory** if Prefetch dir |
@@ -157,7 +157,7 @@ Presence comes from `locations` globbed against the image root (`artifact_map.py
 | browser_history | SQLECmd, Hindsight | mandatory SQLECmd |
 | userassist, bam, mountpoints2, user_activity_mru | RECmd | mandatory RECmd NTUSER; RegRipper 3.0 runs alongside per hive (text plugin coverage — not a substitute) |
 | registry_run_keys, registry_services | RECmd, autorunsc | mandatory RECmd; autorunsc live-only |
-| event_logs_* (11 channels) | EvtxECmd, Hayabusa, Suzaku, Chainsaw, Zircolite, DeepBlueCLI | mandatory Hayabusa + EvtxECmd; DeepBlueCLI is examiner-only with a visible policy SKIP; other detection tools follow their optional lane policy |
+| event_logs_* (11 channels) | EvtxECmd, Hayabusa, Suzaku (cloud-only), Chainsaw, Zircolite, DeepBlueCLI | mandatory Hayabusa + EvtxECmd; DeepBlueCLI is examiner-only with a visible policy SKIP; other detection tools follow their optional lane policy |
 | hayabusa_alerts | Hayabusa | covered by Hayabusa job |
 | scheduled_tasks | EvtxECmd, Hayabusa, RECmd | EVTX + SOFTWARE hive; XML under `Tasks\` is not a separate parser |
 | wmi_persistence | RECmd, autorunsc, EvtxECmd, Hayabusa | same |
