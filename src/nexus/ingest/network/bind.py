@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from nexus.ingest.base import Importer
@@ -70,19 +70,17 @@ class BindQueryLogImporter(Importer):
     def _artifact(m: re.Match[str], line: str) -> Artifact:
         stamp = m.group("ts")
         fmt = "%d-%b-%Y %H:%M:%S.%f" if "." in stamp else "%d-%b-%Y %H:%M:%S"
-        synthesized = False
         try:
-            ts = datetime.strptime(stamp, fmt).replace(tzinfo=UTC)
+            local_time = datetime.strptime(stamp, fmt)
         except ValueError:
-            ts, synthesized = datetime.now(UTC), True
+            local_time = None
         flags = m.group("flags")
         qname, qtype = m.group("qname"), m.group("qtype")
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=ArtifactType.DNS,
             source=ArtifactSource.BIND,
-            timestamp=ts,
-            ts_synthesized=synthesized,
+            **Importer.resolve_timestamp_fields(local_time),
             severity=Severity.INFORMATIONAL,
             source_ip=m.group("ip"),
             source_port=int(m.group("port")),

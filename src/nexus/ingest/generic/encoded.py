@@ -18,7 +18,7 @@ import re
 import tempfile
 import zipfile
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO
 
@@ -164,8 +164,7 @@ class Base64FileImporter(Importer):
             id=Artifact.new_id(),
             artifact_type=ArtifactType.FILE,
             source=ArtifactSource.ENCODED_FILE,
-            timestamp=datetime.now(UTC),
-            ts_synthesized=True,
+            **self.resolve_timestamp_fields(None),
             severity=Severity.INFORMATIONAL,
             file_path=str(path),
             description=(f"{Path(path).name}: base64 of a {kind}, {size} bytes, SHA-256 {identity['decoded_sha256']}"
@@ -176,21 +175,21 @@ class Base64FileImporter(Importer):
         )
         for m in members:
             try:
-                when, synthesized = datetime(*m.date_time, tzinfo=UTC), False
+                local_time = datetime(*m.date_time)
             except ValueError:
-                when, synthesized = datetime.now(UTC), True
+                local_time = None
+            time_fields = self.resolve_timestamp_fields(local_time)
             yield Artifact(
                 id=Artifact.new_id(),
                 artifact_type=ArtifactType.FILE,
                 source=ArtifactSource.ENCODED_FILE,
-                timestamp=when,
-                ts_synthesized=synthesized,
+                **time_fields,
                 severity=Severity.INFORMATIONAL,
                 file_path=m.filename,
                 description=(f"{m.filename} in the ZIP archive base64-encoded in {Path(path).name}: {m.file_size} bytes "
                              f"({m.compress_size} compressed), CRC {m.CRC:08x}"),
                 raw={"container": str(path), "container_sha256": identity["decoded_sha256"], "member": m.filename,
                      "size": m.file_size, "compressed_size": m.compress_size, "crc32": f"{m.CRC:08x}",
-                     "modified": when.isoformat() if not synthesized else ""},
+                     "modified": time_fields["timestamp"].isoformat() if not time_fields["ts_synthesized"] else ""},
                 tags=["encoded", "base64", "zip-member"],
             )

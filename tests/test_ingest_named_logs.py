@@ -63,6 +63,7 @@ def test_a_bind_query_log_is_read_query_by_query(tmp_path):
     first = rows[0]
     assert first.artifact_type == ArtifactType.DNS
     assert first.timestamp.isoformat() == "2016-07-12T09:45:59.115000+00:00"
+    assert all(row.ts_tz_assumed and not row.ts_synthesized for row in rows)
     assert (first.source_ip, first.source_port, first.dest_ip) == ("10.10.10.5", 42935, "10.10.10.5")
     assert (first.raw["query"], first.raw["qtype"], first.raw["flags"]) == ("google.com", "A", "+E")
     assert rows[2].raw["qtype"] == "SRV" and rows[2].raw["query"] == "_ldap._tcp.dc._msdcs.pwnd.biz"

@@ -194,12 +194,24 @@ class Importer(ABC):
         ingest time was substituted (EH-7). ``year_assumed`` is True for the
         RFC 3164 syslog form, which has no year (the current year is used).
         """
-        import datetime as _dt
+        fields = Importer.resolve_timestamp_fields(value)
+        return fields["timestamp"], fields["ts_synthesized"], fields["ts_year_assumed"]
 
+    @staticmethod
+    def resolve_timestamp_fields(value: Any) -> dict[str, Any]:
+        """Resolve a source clock and carry all existing Artifact time flags.
+
+        A local clock without a zone is normalized using the UTC policy, with
+        that assumption retained. Epoch/offset clocks carry their own zone;
+        a substituted ingest time is synthesized rather than a source clock.
+        """
         ts, flags = Importer.normalize_timestamp_ex(value)
-        if ts is None:
-            return _dt.datetime.now(_dt.UTC), True, False
-        return ts, False, bool(flags.get("year_assumed"))
+        return {
+            "timestamp": ts if ts is not None else datetime.now(UTC),
+            "ts_synthesized": ts is None,
+            "ts_year_assumed": bool(flags.get("year_assumed")),
+            "ts_tz_assumed": bool(flags.get("tz_assumed")),
+        }
 
     @staticmethod
     def normalize_timestamp(value: Any) -> datetime | None:
@@ -223,7 +235,9 @@ class Importer(ABC):
         if value is None:
             return None, {}
         if isinstance(value, datetime):
-            return (value if value.tzinfo else value.replace(tzinfo=UTC)), {}
+            if value.tzinfo is None or value.utcoffset() is None:
+                return value.replace(tzinfo=UTC), {"tz_assumed": True}
+            return value, {}
         if isinstance(value, (int, float)):
             ts = float(value)
             if ts > 1e12:  # milliseconds
@@ -249,11 +263,13 @@ class Importer(ABC):
                 if mon:
                     year = datetime.now(UTC).year
                     try:
-                        return datetime(
+                        local = datetime(
                             year, mon, int(_rfc3164.group(2)),
                             int(_rfc3164.group(3)), int(_rfc3164.group(4)),
-                            int(_rfc3164.group(5)), tzinfo=UTC,
-                        ), {"year_assumed": True}
+                            int(_rfc3164.group(5)),
+                        )
+                        ts, flags = Importer.normalize_timestamp_ex(local)
+                        return ts, {**flags, "year_assumed": True}
                     except ValueError:
                         pass
             # Space before the offset is not ISO-8601 but is ubiquitous in
@@ -273,17 +289,11 @@ class Importer(ABC):
                         offset = f"{offset[:3]}:{offset[3:]}"
                     iso += offset
                 try:
-                    dt = datetime.fromisoformat(iso)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=UTC)
-                    return dt, {}
+                    return Importer.normalize_timestamp_ex(datetime.fromisoformat(iso))
                 except ValueError:
                     pass
             try:
-                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                return dt, {}
+                return Importer.normalize_timestamp_ex(datetime.fromisoformat(s.replace("Z", "+00:00")))
             except ValueError:
                 pass
             try:

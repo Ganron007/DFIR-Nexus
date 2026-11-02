@@ -63,17 +63,18 @@ class AuthLogImporter(Importer):
             proc = m.group("proc")
             pid = m.group("pid")
             msg = m.group("msg")
-            ts, ts_synthesized, ts_year_assumed = self.resolve_timestamp_ex(ts_str)
+            time_fields = self.resolve_timestamp_fields(ts_str)
+            ts = time_fields.pop("timestamp")
             yield self._build_artifact(
-                ts, host, proc, pid, msg, ts_synthesized, ts_year_assumed,
-                raw_record=raw_log_record(path, number, line),
+                ts, host, proc, pid, msg,
+                raw_record=raw_log_record(path, number, line), **time_fields,
             )
 
     @staticmethod
     def _build_artifact(
         ts: datetime, host: str, proc: str, pid: str | None, msg: str,
         ts_synthesized: bool = False, ts_year_assumed: bool = False,
-        *, raw_record: dict,
+        *, raw_record: dict, ts_tz_assumed: bool = False,
     ) -> Artifact:
         """Map a parsed auth.log line to an Artifact."""
         # Severity
@@ -123,6 +124,7 @@ class AuthLogImporter(Importer):
             timestamp=ts,
             ts_synthesized=ts_synthesized,
             ts_year_assumed=ts_year_assumed,
+            ts_tz_assumed=ts_tz_assumed,
             severity=severity,
             host=host,
             user=user,

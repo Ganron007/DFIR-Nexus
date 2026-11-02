@@ -56,7 +56,7 @@ def _severity(level: int | None) -> Severity:
 
 def _time(text: str | None) -> datetime | None:
     try:
-        return datetime.strptime(text or "", "%Y %b %d %H:%M:%S").replace(tzinfo=UTC)
+        return datetime.strptime(text or "", "%Y %b %d %H:%M:%S")
     except ValueError:
         return None
 
@@ -133,8 +133,7 @@ class OssecAlertsImporter(Importer):
             id=Artifact.new_id(),
             artifact_type=ArtifactType.ALERT if alert.get("rule_id") else ArtifactType.UNKNOWN,
             source=ArtifactSource.OSSEC,
-            timestamp=ts or datetime.now(UTC),
-            ts_synthesized=ts is None,
+            **Importer.resolve_timestamp_fields(ts),
             severity=_severity(level),
             host=event.get("computer") or alert.get("location"),
             user=None if user in ("", "(no user)") else user,
