@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, raw_log_record
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -54,7 +54,7 @@ class AuthLogImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per auth.log line."""
-        for _n, line in self.read_lines(path):
+        for number, line in self.read_lines(path):
             m = self.LINE_RE.match(line)
             if not m:
                 continue
@@ -65,13 +65,15 @@ class AuthLogImporter(Importer):
             msg = m.group("msg")
             ts, ts_synthesized, ts_year_assumed = self.resolve_timestamp_ex(ts_str)
             yield self._build_artifact(
-                ts, host, proc, pid, msg, ts_synthesized, ts_year_assumed
+                ts, host, proc, pid, msg, ts_synthesized, ts_year_assumed,
+                raw_record=raw_log_record(path, number, line),
             )
 
     @staticmethod
     def _build_artifact(
         ts: datetime, host: str, proc: str, pid: str | None, msg: str,
         ts_synthesized: bool = False, ts_year_assumed: bool = False,
+        *, raw_record: dict,
     ) -> Artifact:
         """Map a parsed auth.log line to an Artifact."""
         # Severity
@@ -129,6 +131,6 @@ class AuthLogImporter(Importer):
             process_id=int(pid) if pid and pid.isdigit() else None,
             action=action,
             description=msg[:500],
-            raw={"line": f"{ts} {host} {proc}[{pid}]: {msg}"},
+            raw=raw_record,
             tags=["authlog", f"proc.{proc.lower()}"],
         )

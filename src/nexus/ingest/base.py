@@ -24,6 +24,15 @@ from nexus.ingest.schemas import (
 log = logging.getLogger(__name__)
 
 
+def raw_log_record(path: Path, line_number: int, line: str, **attributes: Any) -> dict[str, Any]:
+    """Literal log record with its actual source position, not reconstructed text.
+
+    This is the Linux service-log record contract. The shared content-key store
+    can distinguish separate positions while re-importing one stays idempotent.
+    """
+    return {**attributes, "source_file": str(path), "source_line": line_number, "line": line}
+
+
 class ImporterError(Exception):
     """Raised when an importer fails to read or parse input data."""
 

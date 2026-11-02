@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
-from nexus.ingest.base import Importer, ImporterError
+from nexus.ingest.base import Importer, ImporterError, raw_log_record
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -135,12 +135,7 @@ class LinuxLogImporter(Importer):
         kind: str,
         match: re.Match[str] | None,
     ) -> Artifact:
-        raw: dict[str, object] = {
-            "format": kind,
-            "source_file": str(path),
-            "source_line": line_number,
-            "line": line,
-        }
+        raw: dict[str, object] = raw_log_record(path, line_number, line, format=kind)
         artifact_type = ArtifactType.UNKNOWN
         severity = Severity.INFORMATIONAL
         process_name: str | None = None

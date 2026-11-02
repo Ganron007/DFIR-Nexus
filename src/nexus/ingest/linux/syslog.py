@@ -11,7 +11,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, raw_log_record
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -67,9 +67,10 @@ class SyslogImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per syslog line."""
-        for _n, line in self.read_lines(path):
+        for number, line in self.read_lines(path):
             artifact = self._line_to_artifact(line)
             if artifact is not None:
+                artifact.raw = raw_log_record(path, number, line)
                 yield artifact
 
     def _line_to_artifact(self, line: str) -> Artifact | None:
@@ -82,6 +83,7 @@ class SyslogImporter(Importer):
                 m.group("proc"),
                 m.group("pid"),
                 m.group("msg"),
+                raw_line=line,
             )
         m = self.RFC3164_RE.match(line)
         if m:
@@ -91,6 +93,7 @@ class SyslogImporter(Importer):
                 m.group("proc"),
                 m.group("pid"),
                 m.group("msg"),
+                raw_line=line,
             )
         return None
 
@@ -101,6 +104,8 @@ class SyslogImporter(Importer):
         proc: str,
         pid: str | None,
         msg: str,
+        *,
+        raw_line: str,
     ) -> Artifact:
         """Build an Artifact from parsed syslog fields."""
         ts, ts_synthesized, ts_year_assumed = self.resolve_timestamp_ex(ts_str)
@@ -135,6 +140,6 @@ class SyslogImporter(Importer):
             process_name=proc,
             process_id=int(pid) if pid and pid.isdigit() else None,
             description=msg[:500],
-            raw={"line": f"{ts_str} {host} {proc}[{pid}]: {msg}"},
+            raw={"line": raw_line},
             tags=["syslog", f"proc.{proc_lower}"],
         )
