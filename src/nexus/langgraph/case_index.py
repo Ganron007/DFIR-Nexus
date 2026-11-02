@@ -1673,16 +1673,13 @@ def index_case(
                     docs_total = int(count_resp.json().get("count") or 0)
                 except ValueError:
                     docs_total = prior.get("docs", 0)
-        prior_coverage = {}
         prior_counts: dict[str, Any] = {}
         try:
             prior_meta = json.loads(
                 (out / "es_index.json").read_text(encoding="utf-8")
             )
-            prior_coverage = prior_meta.get("ts_coverage") or {}
             prior_counts = prior_meta.get("file_counts") or {}
         except (OSError, ValueError):
-            prior_coverage = {}
             prior_counts = {}
         # WO-3: per-file counts survive for untouched files; changed files get
         # a fresh count and removed files drop out.
@@ -1720,10 +1717,6 @@ def index_case(
             "provenance_changed": provenance_changed,
             "purge_refused": purge_refused,
             "purge_refused_reason": purge_refused_reason,
-            # Coverage is only exact on full rebuilds; an incremental pass
-            # keeps the prior full picture rather than replacing it with a
-            # partial one (4k.4.3 review fix).
-            "ts_coverage": prior_coverage or cap_stats.get("ts_coverage") or {},
             "file_counts": merged_counts,
             "caps": cap_stats,
             "capped": bool(
@@ -1796,7 +1789,6 @@ def index_case(
             "incremental": False,
             "purge_refused": purge_refused,
             "purge_refused_reason": purge_refused_reason,
-            "ts_coverage": cap_stats.get("ts_coverage") or {},
             "file_counts": cap_stats.get("file_counts") or {},
             "caps": cap_stats,
             "capped": bool(
@@ -1805,6 +1797,12 @@ def index_case(
                 or cap_stats.get("files_capped")
             ),
         }
+
+    # Scan counters describe this pass's inputs. The report and case facts
+    # describe the complete current index, including untouched/removed files,
+    # rejected rows and a populated index retained after a refused purge.
+    with _client() as client:
+        meta["ts_coverage"] = indexed_timestamp_coverage(client, name, case_dir.name)
 
     # WO-TA item 10: the build's own duration (purge, load, refresh), recorded beside the counts so the
     # speed of indexing is measured here, not inferred from when the state file was last written.
@@ -1898,6 +1896,63 @@ def _source_extractions_text(case_dir: Path, run_id: str = "") -> str:
         return str(resolve_tools_extractions(case_dir, run_id))
     except Exception:  # noqa: BLE001 - an unresolvable case records no source
         return ""
+
+
+def indexed_timestamp_coverage(client: Any, name: str, case_id: str) -> dict[str, dict[str, int]]:
+    """Exact current per-family clock counts, independent of changed-file scans.
+
+    Composite pages exhaust the family census. An unavailable or partial
+    response must fail the index report, never replace it with old counters.
+    """
+    filters = {
+        "present": {"exists": {"field": "ts"}},
+        "missing": {"bool": {"must_not": [{"exists": {"field": "ts"}}]}},
+        "synthesized": {"term": {"ts_src": "synthesized"}},
+        "tz_assumed": {"term": {"ts_tz_assumed": True}},
+        "year_assumed": {"term": {"ts_year_assumed": True}},
+    }
+    coverage: dict[str, dict[str, int]] = {}
+    after = None
+    expected_total = None
+    while True:
+        composite: dict[str, Any] = {
+            "size": 1000, "sources": [{"family": {"terms": {"field": "family"}}}],
+        }
+        if after is not None:
+            composite["after"] = after
+        response = client.post(f"/{name}/_search", json={
+            "size": 0, "track_total_hits": True,
+            "query": {"term": {"case_id": case_id}},
+            "aggs": {"families": {"composite": composite,
+                                  "aggs": {"clocks": {"filters": {"filters": filters}}}}},
+        })
+        if response.status_code >= 400:
+            raise RuntimeError(f"timestamp coverage aggregation failed: HTTP {response.status_code}")
+        data = response.json()
+        if data.get("timed_out") or (data.get("_shards") or {}).get("failed"):
+            raise RuntimeError("timestamp coverage aggregation was incomplete")
+        total = data["hits"]["total"]
+        if total["relation"] != "eq" or (expected_total is not None and total["value"] != expected_total):
+            raise RuntimeError("timestamp coverage total was inexact or changed during paging")
+        expected_total = total["value"]
+        result = data["aggregations"]["families"]
+        for bucket in result["buckets"]:
+            family = bucket["key"]["family"]
+            if family in coverage:
+                raise RuntimeError("timestamp coverage family repeated during paging")
+            counts = {key: int(bucket["clocks"]["buckets"][key]["doc_count"]) for key in filters}
+            if counts["present"] + counts["missing"] != bucket["doc_count"]:
+                raise RuntimeError("timestamp coverage counts do not cover the indexed family")
+            coverage[family] = counts
+        following = result.get("after_key")
+        if not result["buckets"] or following is None:
+            break
+        if following == after:
+            raise RuntimeError("timestamp coverage cursor did not advance")
+        after = following
+    if sum(value["present"] + value["missing"] for value in coverage.values()) != expected_total:
+        raise RuntimeError("timestamp coverage omitted indexed documents")
+    return coverage
 
 
 def unindexed_field_values(client: Any, name: str) -> dict[str, dict[str, Any]]:

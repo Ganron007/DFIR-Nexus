@@ -9,6 +9,18 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_timestamp_reporter(monkeypatch):
+    from nexus.langgraph import case_index
+
+    # These tests own purge/drop/timeout policy; their ES double has no
+    # aggregation protocol. The actual reporter and its refused-purge caller
+    # are covered together in test_index_timestamp_coverage.
+    monkeypatch.setattr(case_index, "indexed_timestamp_coverage", lambda *_: {})
+
 
 class _Resp:
     def __init__(self, code: int = 200, payload: dict | None = None):

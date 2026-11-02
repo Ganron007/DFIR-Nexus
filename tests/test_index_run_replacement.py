@@ -70,6 +70,10 @@ def indexer(tmp_path, monkeypatch):
 
     monkeypatch.setattr(case_index, "ensure_index", fake_ensure)
     monkeypatch.setattr(case_index, "write_index_state", lambda *args, **kwargs: None)
+    # Keep this run-replacement double scoped to its original policy. Exact
+    # current census/paging/error behavior is tested through the real reporter
+    # in test_index_timestamp_coverage, including all index completion branches.
+    monkeypatch.setattr(case_index, "indexed_timestamp_coverage", lambda *_: {})
     monkeypatch.setattr(fingerprint, "place_loose_csvs", lambda *args, **kwargs: None)
     monkeypatch.setattr(lane_gate, "reconcile_after_index", lambda *args, **kwargs: None)
 

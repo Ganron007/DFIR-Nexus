@@ -145,6 +145,9 @@ def _patch_es(monkeypatch, fake):
     monkeypatch.setattr(case_index, "_client", lambda: fake)
     monkeypatch.setattr(case_index, "ensure_index", lambda _cid: "nexus-case-x")
     monkeypatch.setattr(case_index, "es_url", lambda: "http://localhost:9200")
+    # This double tests file replacement/bulk I/O, not ES aggregations.
+    # The complete reporter contract is covered by test_index_timestamp_coverage.
+    monkeypatch.setattr(case_index, "indexed_timestamp_coverage", lambda *_: {})
 
 
 def test_index_case_incremental_only_reindexes_changed_files(tmp_path, monkeypatch):

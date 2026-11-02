@@ -169,6 +169,7 @@ def test_empty_rebuild_clears_stale_index_documents(tmp_path: Path):
 
     with patch.object(case_index, "iter_index_docs", return_value=[]), \
          patch.object(case_index, "ensure_index", return_value="nexus-case-empty"), \
+         patch.object(case_index, "indexed_timestamp_coverage", return_value={}), \
          patch.object(case_index, "_client", return_value=client):
         result = case_index.index_case(case)
 
