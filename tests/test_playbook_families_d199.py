@@ -47,6 +47,19 @@ def test_a_browser_history_case_no_longer_chooses_web_shell():
     assert any("Browser" in name for name in chosen)
 
 
+def test_operator_exclusion_preserves_supported_family_vocabulary():
+    from nexus.knowledge.family_registry import get_family_registry
+    from nexus.langgraph.tool_lane import _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS
+
+    families, tools = _script().vocabulary()
+    registry = get_family_registry()
+    for tool in _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS:
+        assert registry.known(tool), tool
+        family = registry.canonical_family(tool)
+        assert family in families, tool
+        assert tools[tool] == family
+
+
 def test_the_script_reproduces_what_the_playbooks_declare():
     script = _script()
     families, tools = script.vocabulary()

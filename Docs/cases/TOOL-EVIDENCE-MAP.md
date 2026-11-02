@@ -21,7 +21,9 @@ because YAML `quick_start` is not structured enough to execute.
 | **design** | yes, whole process | extras + interpret | same lane **first** | ReAct may **add** playbook/corroboration tools. Must not skip present artifacts or report with zero tool `audit_id`s. |
 | **interpret** | yes | interpret | no (reuse ledger) | `--from-case` |
 
-**Relevant** = artifact **present on this evidence**. SKIP = absent, or an
+**DeepBlueCLI is examiner-only.** Its manual Windows wrapper and historical outputs remain supported. The automatic lane records a policy SKIP, which describes execution policy and makes no claim that relevant event-log channels are absent. Hayabusa and EvtxECmd remain the automatic EVTX tools.
+
+**Relevant** = artifact **present on this evidence**. SKIP = absent, policy-excluded, or an
 unverified CLI (Thumbcache / LogFileParser). FAIL = present, parser ran and
 broke. **Do not SKIP because a portable parser was never fetched** — run
 `tools/fetch-windows-tools.ps1` / `tools/fetch-linux-tools.sh` and `nexus doctor`
@@ -122,7 +124,7 @@ additionally mounted: `H:\` (KAPE triage volume) and `E:\Evidence_files\500`
 
 | Family | Sample here | Windows tools | SIFT default tools |
 |---|---|---|---|
-| EVTX | `01-windows/evtx/` (500 / 504-win10 / h-triage / Yamato attack samples, 1 192 files), `rocba-fredr/evtx`, `showcase/rocba-500/host/evtx` | EvtxECmd, Hayabusa, Suzaku, Chainsaw, Zircolite, DeepBlueCLI | evtx_dump family, plaso (`log2timeline.py`) |
+| EVTX | `01-windows/evtx/` (500 / 504-win10 / h-triage / Yamato attack samples, 1 192 files), `rocba-fredr/evtx`, `showcase/rocba-500/host/evtx` | EvtxECmd + Hayabusa automatic; Suzaku, Chainsaw and Zircolite optional; DeepBlueCLI examiner-only | evtx_dump family, plaso (`log2timeline.py`) |
 | Registry hives | `01-windows/registry/{NTUSER.DAT,SAM,SECURITY,SOFTWARE,SYSTEM}`, `01-windows/504-win10-ws/SOFTWARE`, `rocba-fredr/registry`, showcase | RECmd (+ AppCompatCacheParser shimcache, AmcacheParser), RegRipper 3.0 (text plugins) | RECmd (dotnet), regripper (`misc.yaml`) |
 | Prefetch | `01-windows/prefetch/*.pf` (331) | PECmd | plaso (prefetch parser) |
 | Amcache | `01-windows/amcache/Amcache.hve`, `rocba-fredr/amcache` | AmcacheParser | AmcacheParser (dotnet) |

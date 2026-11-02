@@ -4,14 +4,14 @@
 (`query_pack._family_matched_playbooks`), and a generic word selected loosely: Web Shell for a browser-history case.
 
 Nothing here is typed per playbook. The family vocabulary is the product's own: the folders the lane writes tool
-output to (`tool_lane.py`, `network_lane.py`; staging folders excluded) and the importers' sources
-(`ArtifactSource`). A playbook's families are:
+output to (`tool_lane.py`, `network_lane.py`; staging folders excluded), retained examiner-only producers
+(the canonical execution policy and family registry), and the importers' sources (`ArtifactSource`). A playbook's families are:
 * every tool it names, as a word (a tool's family is its output folder, as the lane schedules it); a family's own
   name is not read, since many are ordinary words (history, email, usb, tasks);
 * every artifact it names (an artifact file's `name` under `src/nexus/data/knowledge/artifacts/`, singular or
   plural): the families of that artifact's `related_tools`;
 * the families of the event-log artifacts' tools, when it names event logs (EVTX, an event log, an event ID).
-A tool the lane does not run (grep, strings) gives no family. Steps of a Correlate or Document phase are not read:
+A tool with neither a lane output family nor retained examiner-only support gives no family. Steps of a Correlate or Document phase are not read:
 they name what the evidence is checked against, not the evidence the playbook investigates.
 
     python devtools/knowledge/declare_playbook_families.py          (dry run: the table, for review)
@@ -20,6 +20,7 @@ they name what the evidence is checked against, not the evidence the playbook in
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import sys
 from pathlib import Path
@@ -38,8 +39,26 @@ _NOT_ITS_EVIDENCE = {"correlate", "document", "report", "recommend"}
 _EVENT_LOGS = re.compile(r"(?<![a-z0-9])(?:evtx|event logs?|event ids?|eid \d{3,4}|security log|4[0-9]{3})(?![a-z0-9])")
 
 
+def retained_policy_families() -> dict[str, str]:
+    """Supported examiner-only producers retain their canonical output family.
+
+    Execution policy is not output-reader capability. Read both existing owners
+    rather than inferring retirement from the absence of an automatic folder.
+    """
+    from nexus.knowledge.family_registry import get_family_registry
+    from nexus.langgraph.tool_lane import _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS
+
+    registry = get_family_registry()
+    result = {}
+    for tool in _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS:
+        if not registry.known(tool):
+            raise ValueError(f"policy-excluded tool {tool!r} has no registered family")
+        result[tool] = registry.canonical_family(tool)
+    return result
+
+
 def lane_families() -> tuple[set[str], dict[str, str]]:
-    """(every family the lane writes, {tool key: its family}) from the lane's own code.
+    """Automatic and retained examiner-only families, with each tool's family.
 
     A tool the lane runs for more than one artifact (`strings` over the WMI repository and other blobs) is a helper,
     not a family of its own, and is left out.
@@ -56,6 +75,9 @@ def lane_families() -> tuple[set[str], dict[str, str]]:
             if near:
                 seen.setdefault(m.group(1), set()).add(near[-1])
     tool_family = {tool: next(iter(fams)) for tool, fams in seen.items() if len(fams) == 1}
+    retained = retained_policy_families()
+    families.update(retained.values())
+    tool_family.update(retained)
     return families, tool_family
 
 
@@ -176,11 +198,20 @@ def derive(doc: dict, arts: list[tuple[str, list[str]]], families: set[str],
 
 
 def evtx_families() -> list[str]:
-    """The output folders `tool_lane.schedule_evtx_parsers` writes: the event-log families."""
+    """EVTX producer families, including retained examiner-only policy rows."""
     text = (LANE / "tool_lane.py").read_text(encoding="utf-8")
     start = text.index("def schedule_evtx_parsers(")
     end = text.index("\ndef ", start + 1)
-    return sorted({m.group(1) for m in _FOLDER.finditer(text[start:end]) if not m.group(1).startswith(("_", "stage"))})
+    source = text[start:end]
+    families = {m.group(1) for m in _FOLDER.finditer(source) if not m.group(1).startswith(("_", "stage"))}
+    retained = retained_policy_families()
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "skip"
+                and node.args and isinstance(node.args[0], ast.Constant)):
+            family = retained.get(node.args[0].value)
+            if family:
+                families.add(family)
+    return sorted(families)
 
 
 def main() -> int:
