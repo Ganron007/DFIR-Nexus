@@ -901,7 +901,8 @@ def test_default_optional_tools_are_explicit_skips():
     # the lane no longer plans LogFileParser, so the policy leaves a LogFileParser row as it is.
     assert _apply_default_optional_tool_skips(jobs) == 2
     assert [job.status for job in jobs] == ["PENDING", "SKIP", "PENDING", "SKIP", "SKIP"]
-    assert "long channel scans" in jobs[1].reason
+    assert "examiner-only" in jobs[1].reason
+    assert not jobs[1].argv
     assert jobs[4].reason == "missing artifact"
     assert jobs[3].audit_id == ""
     assert jobs[3].output_saved_to == ""

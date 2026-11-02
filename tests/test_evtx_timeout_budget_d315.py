@@ -31,12 +31,10 @@ def test_evtxecmd_timeout_uses_total_directory_bytes(tmp_path, monkeypatch):
     tl.schedule_evtx_parsers(jobs, [logs], tmp_path / "extractions")
 
     evtxecmd = next(job for job in jobs if job.tool == "evtxecmd")
-    deepblue = next(
-        job for job in jobs
-        if job.tool == "deepbluecli" and "Security.evtx" in job.purpose
-    )
+    deepblue = next(job for job in jobs if job.tool == "deepbluecli")
     assert evtxecmd.timeout == 323  # 300 s base + 23 MiB at 1 s/MiB
-    assert deepblue.timeout == 1500  # 300 s base + 20 MiB at 60 s/MiB
+    assert deepblue.status == "SKIP" and not deepblue.argv
+    assert deepblue.reason == tl._DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"]
 
 
 def test_evtxecmd_budget_scales_past_the_old_folder_ceiling():
@@ -48,7 +46,10 @@ def test_evtxecmd_budget_scales_past_the_old_folder_ceiling():
     assert tl._evtxecmd_timeout_for_bytes(10_000 * MIB) == 7200
 
 
-def test_deepbluecli_budget_has_headroom_for_dense_security_logs():
-    assert tl._deepbluecli_timeout_for_bytes(20 * MIB) == 1500
-    assert tl._deepbluecli_timeout_for_bytes(200 * MIB) == 3600
-    assert tl._deepbluecli_timeout_for_bytes(None) == 3600
+def test_examiner_only_deepblue_does_not_get_an_automatic_workload(tmp_path, monkeypatch):
+    monkeypatch.setattr(tl, "_windows_tool_available", lambda _tool: True)
+    jobs = []
+    tl.schedule_evtx_parsers(jobs, [tmp_path], tmp_path / "out")
+    (job,) = [job for job in jobs if job.tool == "deepbluecli"]
+    assert job.status == "SKIP" and not job.argv
+    assert job.reason == tl._DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"]

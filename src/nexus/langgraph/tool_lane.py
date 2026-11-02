@@ -114,8 +114,8 @@ class ToolJob:
 # no longer planned at all; an examiner's LogFileParser CSV is still recognised by the importer path.
 _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS = {
     "deepbluecli": (
-        "optional by operator policy; DeepBlueCLI is excluded from the default lane "
-        "to avoid long channel scans"
+        "examiner-only by operator policy; DeepBlueCLI is available for explicit examiner use "
+        "and excluded from the automatic lane"
     ),
 }
 
@@ -123,17 +123,22 @@ _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS = {
 def _apply_default_optional_tool_skips(jobs: list[ToolJob]) -> int:
     """Mark the operator-approved optional parsers as visible lane skips.
 
-    Existing planner SKIPs keep their more specific reason. Every other planned
-    state is replaced so prior-run reuse or an unavailable optional executable
-    cannot turn this policy into a tool invocation or a blocking row.
+    The execution policy is the actual skip cause even when an older planner
+    already marked a row SKIP. Discard stale execution references; neither an
+    eligibility guess nor prior-run reuse can turn this into automatic work.
     """
     skipped = 0
     for job in jobs:
         reason = _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS.get(str(job.tool or "").strip().lower())
-        if reason is None or job.status == "SKIP":
+        if reason is None:
+            continue
+        if (job.status == "SKIP" and job.reason == reason
+                and not (job.argv or job.audit_id or job.output_saved_to or job.output_files
+                         or job.result or job.lineage or job.duration_s or job.tool_elapsed_s)):
             continue
         job.status = "SKIP"
         job.reason = reason
+        job.argv = []
         job.audit_id = ""
         job.output_saved_to = ""
         job.output_files = []
@@ -314,18 +319,6 @@ def _evtxecmd_timeout(evtx_dir: Path) -> int:
     return _evtxecmd_timeout_for_bytes(total_bytes)
 
 
-def _deepbluecli_timeout_for_bytes(nbytes: int | None) -> int:
-    """Scale DeepBlueCLI's per-channel budget with headroom for dense logs (D315).
-
-    S08's 20 MiB Security.evtx jobs got 900 s under the old slope; two timed
-    out at that exact limit while another same-sized job completed in 601 s.
-    The steeper slope gives that input 1,500 s while keeping the existing
-    one-hour ceiling for the larger channels.
-    """
-    if nbytes is None:
-        # Unknown input size must not receive the minimum-size budget.
-        return 3600
-    return timeout_for_bytes(nbytes, base=300, per_mb=60, cap=3600)
 
 
 def _stem(evidence: Path) -> str:
@@ -816,41 +809,9 @@ def schedule_evtx_parsers(
             skip("zircolite", "bundled Windows ruleset or templates/exportNDJSON.tmpl not found under "
                               "Tools/windows/extra/zircolite")
 
-    # DeepBlueCLI: one job per channel file its own switch handles (WO-TA item 2); its wrapper reads one file
-    # at a time. It is planned here, where every EVTX source is, and not only on a Windows image: a folder of
-    # EVTX (sample S01, 361 logs) got Hayabusa and EvtxECmd and no DeepBlueCLI, because the job sat in the
-    # image-only planner (2026-10-18).
-    if _windows_tool_available("deepbluecli"):
-        channel_files: list[tuple[str, Path]] = []
-        seen_files: set[Path] = set()
-        for evtx_dir in evtx_dirs:
-            for evtx in _deepblue_channel_files(evtx_dir):
-                key = evtx.resolve()
-                if key not in seen_files:
-                    seen_files.add(key)
-                    channel_files.append((_evtx_label(evtx_dir), evtx))
-        if channel_files:
-            for label, evtx in channel_files:
-                d = extractions / "deepbluecli" / label if many else extractions / "deepbluecli"
-                d.mkdir(parents=True, exist_ok=True)
-                try:
-                    nbytes = evtx.stat().st_size
-                except OSError:
-                    nbytes = None
-                # The old 30s/MiB slope gave a 20 MiB Security.evtx 900s; two S08
-                # files timed out at that exact limit while another same-sized
-                # file took 601s. Keep the per-file budget size-based, with
-                # headroom for dense logs rather than raising every job equally.
-                add(
-                    "deepbluecli",
-                    ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
-                    f"DeepBlueCLI attack patterns ({evtx.name})",
-                    _deepbluecli_timeout_for_bytes(nbytes),
-                )
-        else:
-            skip("deepbluecli", "no EVTX for a channel DeepBlueCLI handles (" + ", ".join(DEEPBLUE_LOGNAMES) + ")")
-    else:
-        skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+    # Examiner-only support is retained outside this automatic lane. Do not
+    # infer channel absence from filenames or probe an unused executable.
+    skip("deepbluecli", _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"])
 
     if not _lane_opted_in("chainsaw"):
         skip("chainsaw", "not in the default lane; set NEXUS_LANE_OPT_IN=chainsaw")
@@ -3387,18 +3348,6 @@ def lineage_version(lineage: dict) -> str:
     return ""
 
 
-#: The LogName values DeepBlueCLI's own switch handles (DeepBlue.ps1, the
-#: ``switch ($event.LogName)`` block, lines 672-680). Any other channel makes it exit with
-#: "Logic error 3", so the lane never offers it one.
-DEEPBLUE_LOGNAMES = (
-    "Security",
-    "System",
-    "Application",
-    "Microsoft-Windows-AppLocker/EXE and DLL",
-    "Microsoft-Windows-PowerShell/Operational",
-    "Microsoft-Windows-Sysmon/Operational",
-    "Microsoft-Windows-WMI-Activity/Operational",
-)
 
 
 def _remote_cases_root() -> str:
@@ -3442,18 +3391,6 @@ def _sift_jobs_ran(jobs: list[ToolJob]) -> bool:
     return any(j.host == "sift" and str(j.status).upper() not in ("SKIP", "BLOCKED", "PENDING") for j in jobs)
 
 
-def _deepblue_channel_files(root: Path) -> list[Path]:
-    """The EVTX files under ``root`` whose channel DeepBlueCLI handles, in a stable order.
-
-    A channel's file is named after it with ``/`` written as ``%4`` (for example
-    ``Microsoft-Windows-PowerShell%4Operational.evtx``).
-    """
-    wanted = {name.lower() for name in DEEPBLUE_LOGNAMES}
-    out: list[Path] = []
-    for evtx in sorted(root.rglob("*.evtx")):
-        if evtx.stem.replace("%4", "/").lower() in wanted:
-            out.append(evtx)
-    return out
 
 
 async def _align_remote_active_case(activate_tool, case_id: str) -> str:

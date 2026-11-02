@@ -1,9 +1,7 @@
-"""DeepBlueCLI reads every EVTX source, and the SIFT pull runs only for a run that sent jobs to SIFT (2026-10-18).
+"""EVTX sources keep required parser outputs scoped; DeepBlueCLI is examiner-only.
 
-Sample S01 (361 EVTX of one Windows 10 host, no image around them) got Hayabusa and EvtxECmd and no DeepBlueCLI:
-its job sat in the planner that only runs on a Windows image. The same run then reached over SSH for a SIFT case
-folder that did not exist, though it had sent nothing to SIFT. File names are channels as Windows writes them (as
-in S01's folder); planning reads names only.
+The former per-channel automatic DeepBlue planning contract is superseded by
+OD-T26. SIFT pulls still require an actually dispatched SIFT job.
 """
 from __future__ import annotations
 
@@ -30,32 +28,38 @@ def _write(folder: Path, names: list[str]) -> None:
 
 
 def _deepblue(jobs: list[ToolJob]) -> list[ToolJob]:
-    return [j for j in jobs if j.tool == "deepbluecli" and j.status == "PENDING"]
+    return [j for j in jobs if j.tool == "deepbluecli"]
 
 
-def test_a_folder_of_evtx_gets_deepbluecli_for_each_channel_it_handles(tmp_path):
+def test_a_folder_of_evtx_records_one_examiner_only_deepblue_skip(tmp_path):
     _write(tmp_path / "S01" / "evtx", CHANNELS + OTHER)
     jobs = plan_windows_triage(str(tmp_path / "S01"), tmp_path / "x")
-    assert sorted(Path(j.argv[1]).name for j in _deepblue(jobs)) == sorted(CHANNELS)
-    assert {Path(j.argv[2]).parent for j in _deepblue(jobs)} == {tmp_path / "x" / "deepbluecli"}
-    # Beside the other EVTX parsers, as before.
+    (job,) = _deepblue(jobs)
+    assert job.status == "SKIP" and not job.argv
+    assert job.reason == tool_lane._DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"]
     assert {"hayabusa", "evtxecmd"} <= {j.tool for j in jobs if j.status == "PENDING"}
 
 
-def test_a_windows_image_gets_each_channel_once(tmp_path):
+def test_a_windows_image_retains_the_same_examiner_only_policy(tmp_path):
     root = tmp_path / "C"
     _write(root / "Windows" / "System32" / "winevt" / "Logs", CHANNELS + OTHER)
-    jobs = plan_windows_triage(str(root), tmp_path / "x")
-    assert sorted(Path(j.argv[1]).name for j in _deepblue(jobs)) == sorted(CHANNELS)
+    (job,) = _deepblue(plan_windows_triage(str(root), tmp_path / "x"))
+    assert job.status == "SKIP" and not job.argv
+    assert job.reason == tool_lane._DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"]
 
 
-def test_two_evtx_folders_keep_their_outputs_apart(tmp_path):
+def test_two_evtx_folders_keep_required_parser_outputs_apart(tmp_path):
     _write(tmp_path / "pack" / "host-a", ["Security.evtx"])
     _write(tmp_path / "pack" / "host-b", ["Security.evtx"])
-    jobs = _deepblue(plan_windows_triage(str(tmp_path / "pack"), tmp_path / "x"))
-    assert len(jobs) == 2
-    outputs = {j.argv[2] for j in jobs}
-    assert len(outputs) == 2 and all(Path(o).is_relative_to(tmp_path / "x" / "deepbluecli") for o in outputs)
+    jobs = plan_windows_triage(str(tmp_path / "pack"), tmp_path / "x")
+    (deepblue,) = _deepblue(jobs)
+    assert deepblue.status == "SKIP" and not deepblue.argv
+    for family, option in (("hayabusa", "-o"), ("evtxecmd", "--csv")):
+        selected = [job for job in jobs if job.tool == family and job.status == "PENDING"]
+        assert len(selected) == 2
+        outputs = {Path(job.argv[job.argv.index(option) + 1]) for job in selected}
+        assert len(outputs) == 2
+        assert all(path.is_relative_to(tmp_path / "x" / family) for path in outputs)
 
 
 def test_evtxecmd_parses_every_input_and_counts_nested_logs(tmp_path):

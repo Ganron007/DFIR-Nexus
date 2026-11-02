@@ -2,8 +2,8 @@
 
 Each test names the defect it guards, so a regression reads as the original finding:
 
-* DeepBlueCLI ran on a directory and on every .evtx on the volume (361 jobs). It now runs
-  once per channel that its own switch handles (DeepBlue.ps1 lines 672-680).
+* DeepBlueCLI is now examiner-only (OD-T26); automatic plans record policy exclusion
+  without inferring absent channels from canonical filenames.
 * A stdout-only capture was promoted to the run's extractions root, which the indexer
   reads as a family of its own. It now lands in the job's family folder.
 * RECmd's user-hive batch was UserActivity.reb (45 key paths on tdungan's NTUSER.DAT),
@@ -14,12 +14,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from nexus.langgraph.tool_lane import (
-    DEEPBLUE_LOGNAMES,
+    _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS,
     ToolJob,
-    _deepblue_channel_files,
     _find_recmd_user_batch,
     _promotion_dir,
     lineage_version,
+    schedule_evtx_parsers,
 )
 
 # The file names Windows writes for the channels DeepBlueCLI handles, plus the ones it does not.
@@ -48,19 +48,24 @@ def _logs(tmp_path: Path, names: list[str]) -> Path:
     return tmp_path / "H" / "C"
 
 
-def test_deepblue_runs_once_per_channel_its_switch_handles(tmp_path):
+def test_deepblue_is_examiner_only_for_canonical_channel_filenames(tmp_path, monkeypatch):
     root = _logs(tmp_path, CHANNEL_FILES + NOT_HANDLED)
+    monkeypatch.setattr("nexus.langgraph.tool_lane._windows_tool_available", lambda _tool: True)
+    jobs = []
+    schedule_evtx_parsers(jobs, [root], tmp_path / "out")
+    (job,) = [job for job in jobs if job.tool == "deepbluecli"]
+    assert job.status == "SKIP" and not job.argv
+    assert job.reason == _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"]
 
-    picked = sorted(p.name for p in _deepblue_channel_files(root))
 
-    assert picked == sorted(CHANNEL_FILES), "one file per DeepBlue channel, nothing else"
-
-
-def test_deepblue_channel_list_is_the_switch_in_deepblue_ps1():
-    # DeepBlue.ps1 lines 672-680: the LogName values its switch maps (WMI-Activity included).
-    assert "Microsoft-Windows-WMI-Activity/Operational" in DEEPBLUE_LOGNAMES
-    assert "Windows PowerShell" not in DEEPBLUE_LOGNAMES
-    assert len(DEEPBLUE_LOGNAMES) == 7
+def test_deepblue_skip_does_not_infer_channel_absence_from_other_filenames(tmp_path, monkeypatch):
+    root = _logs(tmp_path, NOT_HANDLED)
+    monkeypatch.setattr("nexus.langgraph.tool_lane._windows_tool_available", lambda _tool: True)
+    jobs = []
+    schedule_evtx_parsers(jobs, [root], tmp_path / "out")
+    (job,) = [job for job in jobs if job.tool == "deepbluecli"]
+    assert job.status == "SKIP" and not job.argv
+    assert job.reason == _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS["deepbluecli"]
 
 
 def test_a_stdout_capture_is_promoted_into_its_own_family_folder(tmp_path):
