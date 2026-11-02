@@ -1,10 +1,10 @@
 """Email (.eml / .msg) importer.
 
-Parses RFC 2822 ``.eml`` files using Python's ``email`` standard library.
-Extracts headers (From, To, Subject, Date), body text, and basic
-attachments metadata. ``.msg`` (Outlook) files are flagged but require
-optional ``olefile`` dependency for full parsing — plain-text fallback
-attempts header extraction.
+Parses RFC mail headers using Python's ``email`` standard library. EML
+records retain headers, a 500-character body preview and attachment names;
+observable extraction scans at most 2,000 decoded body characters. No
+attachment is extracted. MSG reads a transport/header stream with optional
+``olefile``, otherwise a bounded raw-header scan; it is header-only support.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import email
 import email.policy
 import logging
 from collections.abc import Iterator
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,22 @@ log = logging.getLogger(__name__)
 
 class EmailImporter(Importer):
     """Parser for RFC 2822 .eml email files."""
+
+    @staticmethod
+    def resolve_timestamp_fields(value: Any) -> dict[str, Any]:
+        """Read mail Date syntax, then use the shared time-origin policy.
+
+        Preserve accepted generic clock forms and explicit synthesis when a
+        missing/invalid header provides no source clock. Unknown source-zone
+        dates remain naive until the shared resolver qualifies them.
+        """
+        if isinstance(value, str):
+            try:
+                source_clock = parsedate_to_datetime(value)
+            except (TypeError, ValueError):
+                return Importer.resolve_timestamp_fields(value)
+            return Importer.resolve_timestamp_fields(source_clock)
+        return Importer.resolve_timestamp_fields(value)
 
     @classmethod
     def source_class(cls) -> ArtifactSource:
@@ -118,7 +135,7 @@ class EmailImporter(Importer):
                 elif line.startswith("Date:"):
                     headers["Date"] = line[5:].strip()
 
-            ts, ts_synthesized = self.resolve_timestamp(headers.get("Date"))
+            time_fields = self.resolve_timestamp_fields(headers.get("Date"))
 
             from_addr = headers.get("From", "")
             to_addr = headers.get("To", "")
@@ -128,8 +145,7 @@ class EmailImporter(Importer):
                 id=Artifact.new_id(),
                 artifact_type=ArtifactType.SMTP,
                 source=ArtifactSource.GENERIC_JSONL,
-                timestamp=ts,
-            ts_synthesized=ts_synthesized,
+                **time_fields,
                 severity=Severity.INFORMATIONAL,
                 user=from_addr or None,
                 description=f"Email: {subject} (from {from_addr} to {to_addr})",
@@ -150,7 +166,7 @@ class EmailImporter(Importer):
             date_str = str(msg.get("Date", ""))
             message_id = str(msg.get("Message-ID", ""))
 
-            ts, ts_synthesized = self.resolve_timestamp(date_str)
+            time_fields = self.resolve_timestamp_fields(date_str)
 
             # Extract body text
             body = ""
@@ -192,8 +208,7 @@ class EmailImporter(Importer):
                 id=Artifact.new_id(),
                 artifact_type=ArtifactType.SMTP,
                 source=ArtifactSource.GENERIC_JSONL,
-                timestamp=ts,
-            ts_synthesized=ts_synthesized,
+                **time_fields,
                 severity=Severity.INFORMATIONAL,
                 user=from_addr or None,
                 description=description,

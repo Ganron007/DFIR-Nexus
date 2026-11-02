@@ -23,6 +23,8 @@ because YAML `quick_start` is not structured enough to execute.
 
 **DeepBlueCLI is examiner-only.** Its manual Windows wrapper and historical outputs remain supported. The automatic lane records a policy SKIP, which describes execution policy and makes no claim that relevant event-log channels are absent. Hayabusa and EvtxECmd remain the automatic EVTX tools.
 
+**Loose-mail metadata scope.** EML imports retain headers, a 500-character body preview and attachment names. Mail Date values use their source format and the shared synthesis/year/timezone flags. MSG support reads a transport/header stream when available, then falls back to a bounded raw-header scan; it is header-only support. PST/OST stores use the separate PFF lane and its declared preview limits. These paths do not provide full-body or attachment extraction.
+
 **Relevant** = artifact **present on this evidence**. SKIP = absent, policy-excluded, or an
 unverified CLI (Thumbcache / LogFileParser). FAIL = present, parser ran and
 broke. **Do not SKIP because a portable parser was never fetched** — run
@@ -155,7 +157,7 @@ additionally mounted: `H:\` (KAPE triage volume) and `E:\Evidence_files\500`
 | SIEM Elastic/ECS | `05-siem/elastic.ndjson`, `05-siem/cadre-elk/*.ndjson` (11) | ingest importers | — |
 | SIEM Splunk / Wazuh | `05-siem/splunk.csv`, `05-siem/wazuh.json` | ingest importers | — |
 | Cloud AWS/Azure/M365/GCP/K8s | `03-linux/608-sift/aws/cloudtrail/**` (47 k gz), `06-cloud/{cloudtrail-sample,azure-activity-sample,m365-ual}.json`, `06-cloud/500-cloud-logs/*.csv`, `06-cloud/509-section6/{gcp,k8slogs}.zip` | ingest importers | — |
-| Email | `09-email-archives/{sample.pst,fred.ost,phishing.eml}`, recycle `$I*.pst` | ingest email importers | — |
+| Email | `09-email-archives/{sample.pst,fred.ost,phishing.eml}`, recycle `$I*.pst` | PST/OST: PFF lane; loose EML/MSG: email metadata importer (scope above) | — |
 | IR platforms | `08-ir-platforms/` (Velociraptor sample + server config, CyberTriage fixture, TheHive/IRIS JSON) | N2 VR IRTriage path / ingest | — |
 | TI samples | `07-ti/**` (abuseipdb, MB, MISP, OTX, URLhaus, VT) | `ti_lookup` / `ti_fanout` | — |
 | Sigma rules | `10-sigma/rules` (4 252) | detection indexer | Zircolite bundled ruleset |
