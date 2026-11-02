@@ -157,7 +157,8 @@ _FORENSIC_TEXT_ANALYSIS = {
 # exposes hexadecimal ProcessId values, so that raw column must remain searchable text (D500).
 # 25 = extracted-image catalogs carry file metadata and their backing files participate in freshness (D483).
 # 26 = JLECmd's current hexadecimal EntryNumber values participate in type proof and remain searchable (D501).
-INDEX_SCHEMA_VERSION = 26
+# 27 = raw CSV cell whitespace and embedded line endings survive index/search projections (D521).
+INDEX_SCHEMA_VERSION = 27
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -489,12 +490,13 @@ def iter_record_rows(fh, delimiter: str = ",", *, on_fallback=None):
 def _fields_from_values(header: list[str], values: list[str]) -> dict[str, str]:
     """Parsed columns for one row, at FULL value length (WO-CS1b item 1 / D37).
 
-    No per-value truncation here: `normalize()` and the index must read the
-    full parsed row, or an EvtxECmd `Payload` may be cut and EventData lost.
+    Preserve literal cell whitespace; semantic normalization belongs in the
+    typed layer. `normalize()` and the index must read the full parsed row,
+    or an EvtxECmd `Payload` may be cut and EventData lost.
     """
     out: dict[str, str] = {}
     for name, value in zip(header, values, strict=False):
-        v = str(value).strip()
+        v = str(value)
         if v and not str(name).startswith("_"):
             out[str(name)] = v
     return out
@@ -886,16 +888,16 @@ def _text_encoding(head: bytes) -> str:
 
 
 def _open_text_auto(path: Path):
-    """Text open with transparent gzip decompression (EH-11) and the file's own encoding (D207)."""
+    """Decode the file/gzip in its own encoding without translating embedded newlines."""
     if str(path).lower().endswith(".gz"):
         import gzip
 
         with gzip.open(path, "rb") as raw:
             head = raw.read(64)
-        return gzip.open(path, "rt", encoding=_text_encoding(head), errors="replace")
+        return gzip.open(path, "rt", encoding=_text_encoding(head), errors="replace", newline="")
     with path.open("rb") as raw:
         head = raw.read(64)
-    return path.open(encoding=_text_encoding(head), errors="replace")
+    return path.open(encoding=_text_encoding(head), errors="replace", newline="")
 
 
 def _index_header(path: Path) -> list[str] | None:
@@ -990,7 +992,7 @@ def iter_index_doc_batches(
         # metadata, never evidence text. Replace those values outright and
         # normalize remaining machine prefixes (raw files untouched).
         text = sanitize_row_text(
-            line.strip(), fields, case_dir, roots=sanitize_roots,
+            line.rstrip("\r\n"), fields, case_dir, roots=sanitize_roots,
             family=fam
         )
         key = hashlib.sha1(

@@ -154,12 +154,10 @@ def _is_structurally_strong(term: str) -> bool:
 
 
 def _open_text(path: Path):
-    """Open a text file, transparently decompressing .gz (EH-11)."""
-    if str(path).lower().endswith(".gz"):
-        import gzip
+    """Use the indexer's one encoding/newline/gzip contract for CSV search and export."""
+    from nexus.langgraph.case_index import _open_text_auto
 
-        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
-    return path.open(encoding="utf-8", errors="replace")
+    return _open_text_auto(path)
 
 
 def needle_in_text(low: str, term: str) -> bool:
@@ -714,7 +712,7 @@ def _hits_from_file(
             if not _row_in_window(line, start, end):
                 continue
             pri = _hit_rank(matched, strong)
-            raw.append((pri, i, matched, line.strip(), classified))
+            raw.append((pri, i, matched, line.rstrip("\r\n"), classified))
     raw.sort(key=lambda row: (row[0], row[1]))
     hits: list[dict[str, Any]] = []
     for _pri, i, matched, text, classified in raw:
@@ -1776,7 +1774,7 @@ def _iter_matching_rows(
                     matched = ["*"]
             if not _row_in_window(line, start, end):
                 continue
-            yield i, matched, line.strip()
+            yield i, matched, line.rstrip("\r\n")
 
 
 def iter_extraction_hits(

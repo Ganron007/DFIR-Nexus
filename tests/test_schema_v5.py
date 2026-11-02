@@ -91,7 +91,8 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # in their raw column rather than being ignored by a decimal-only numeric mapping (D500).
     # v25: image-extraction metadata is indexed and the backing files are freshness/verification inputs (D483).
     # v26: JLECmd's current EntryNumber values contradict a decimal-only long mapping (D501).
-    assert INDEX_SCHEMA_VERSION == 26
+    # v27: raw CSV cell whitespace and embedded line endings survive derived projections (D521).
+    assert INDEX_SCHEMA_VERSION == 27
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000
