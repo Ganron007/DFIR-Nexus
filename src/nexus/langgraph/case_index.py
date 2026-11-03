@@ -158,7 +158,8 @@ _FORENSIC_TEXT_ANALYSIS = {
 # 25 = extracted-image catalogs carry file metadata and their backing files participate in freshness (D483).
 # 26 = JLECmd's current hexadecimal EntryNumber values participate in type proof and remain searchable (D501).
 # 27 = raw CSV cell whitespace and embedded line endings survive index/search projections (D521).
-INDEX_SCHEMA_VERSION = 29
+# 30 = asctime clocks retain their explicit source year; old primary-time projections must rebuild.
+INDEX_SCHEMA_VERSION = 30
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")

@@ -240,6 +240,7 @@ class Importer(ABC):
         - forensic exports with a SPACE before the offset
           (``2024-11-23 04:06:23.634 +05:30`` — Hayabusa/FOR508 CSVs)
         - Unix epoch seconds or milliseconds
+        - asctime timestamps with an explicit year
         - RFC 3164 syslog (no year → ``year_assumed`` flag)
         - datetime objects (returned as-is)
         - None
@@ -262,28 +263,16 @@ class Importer(ABC):
             s = value.strip()
             if not s:
                 return None, {}
-            _RFC3164_MONTHS = {
-                "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-                "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-            }
+            from nexus.langgraph.timestamps import parse_named_month_time
+
+            named = parse_named_month_time(s)
+            if named and named["raw"] == s:
+                return named["dt"], {
+                    "tz_assumed": named["tz_assumed"],
+                    "year_assumed": named["year_assumed"],
+                }
             import re as _re
-            _rfc3164 = _re.match(
-                r"^(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})$", s
-            )
-            if _rfc3164:
-                mon = _RFC3164_MONTHS.get(_rfc3164.group(1).lower())
-                if mon:
-                    year = datetime.now(UTC).year
-                    try:
-                        local = datetime(
-                            year, mon, int(_rfc3164.group(2)),
-                            int(_rfc3164.group(3)), int(_rfc3164.group(4)),
-                            int(_rfc3164.group(5)),
-                        )
-                        ts, flags = Importer.normalize_timestamp_ex(local)
-                        return ts, {**flags, "year_assumed": True}
-                    except ValueError:
-                        pass
+
             # Space before the offset is not ISO-8601 but is ubiquitous in
             # forensic exports (Hayabusa, FOR508 CSVs): normalize then parse.
             _spaced = _re.match(

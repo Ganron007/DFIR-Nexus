@@ -42,9 +42,19 @@ _US_RE = re.compile(
     r"(?:\.(?P<frac>\d{1,9}))?\s*(?P<ampm>AM|PM|am|pm)?"
     r"(?:\s*(?P<tz>Z|UTC\b|[+-]\d{2}(?::?\d{2})?))?)?"
 )
-_SYSLOG_RE = re.compile(
-    r"\b(?P<mon>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-    r"(?P<d>\d{1,2})\s+(?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})\b",
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_NAMED_MONTH_CLOCK = (
+    r"(?P<mon>" + "|".join(_MONTHS) + r")\s+"
+    r"(?P<d>\d{1,2})\s+(?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})"
+)
+_SYSLOG_RE = re.compile(r"\b" + _NAMED_MONTH_CLOCK + r"\b", re.IGNORECASE)
+_CTIME_RE = re.compile(
+    r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+"
+    + _NAMED_MONTH_CLOCK
+    + r"\s+(?P<y>\d{4})(?!\d)",
     re.IGNORECASE,
 )
 # D120 (2026-10-13): a number is a time only as the whole value of a time column. Inside free text a 10-digit field is
@@ -62,11 +72,6 @@ _CELL_DOTNET_DATE_RE = re.compile(r"\\?/Date\((-?\d+)(?:[+-]\d{4})?\)\\?/")
 #: A reader sets this field on a row that has no event time of its own: a YARA match, a registry value row. Its dates
 #: stay searchable as fields, but none is read as the time the row happened (D120, 2026-10-13).
 NO_EVENT_TIME_FIELD = "ts_none"
-
-_MONTHS = {
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-}
 
 _MIN_YEAR = 1990
 _MAX_YEAR = 2100
@@ -265,8 +270,30 @@ def source_timestamp_ns(value: object, normalized: datetime | None) -> int | Non
     return datetime_epoch_ns(normalized) + info["epoch_ns"] % 1000
 
 
+def parse_named_month_time(raw: str, *, year_hint: int | None = None) -> dict | None:
+    """Read a full asctime year before considering a yearless RFC3164 clock."""
+    text = str(raw or "").strip()
+    explicit = _CTIME_RE.search(text)
+    match = explicit or _SYSLOG_RE.search(text)
+    if match is None:
+        return None
+    year = int(explicit.group("y")) if explicit else year_hint or datetime.now(UTC).year
+    try:
+        dt = datetime(
+            year, _MONTHS[match.group("mon").lower()], int(match.group("d")),
+            int(match.group("H")), int(match.group("M")), int(match.group("S")),
+            tzinfo=UTC,
+        )
+    except ValueError:
+        return None
+    if not _plausible(dt):
+        return None
+    return _time_info(dt, match.group(0).strip(), "s", tz_assumed=True,
+                      year_assumed=explicit is None)
+
+
 def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
-    """The first ISO, US or syslog time in free text. A bare number is never a time here (D120)."""
+    """The first ISO, US, asctime or syslog time in free text. A bare number is never a time here (D120)."""
     text = str(raw or "").strip()
     if not text:
         return None
@@ -289,20 +316,7 @@ def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
                 tz_assumed=not (m.group("tz") or "").strip(),
                 epoch_ns=datetime_epoch_ns(dt) + int(frac[6:].ljust(3, "0") or "0"),
             )
-    m = _SYSLOG_RE.search(text)
-    if m:
-        year = year_hint or datetime.now(UTC).year
-        try:
-            dt = datetime(
-                year, _MONTHS[m.group("mon").lower()], int(m.group("d")),
-                int(m.group("H")), int(m.group("M")), int(m.group("S")),
-                tzinfo=UTC,
-            )
-        except ValueError:
-            dt = None
-        if dt and _plausible(dt):
-            return _time_info(dt, m.group(0).strip(), "s", tz_assumed=True, year_assumed=True)
-    return None
+    return parse_named_month_time(text, year_hint=year_hint)
 
 
 def extract_event_ts(

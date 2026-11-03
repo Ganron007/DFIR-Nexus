@@ -1,6 +1,7 @@
 """Precision contracts on date primitives and unchanged published real rows."""
 import csv
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,53 @@ def _parts(value):
     assert value.endswith("Z")
     head, dot, fraction = value[:-1].partition(".")
     return head, fraction.ljust(9, "0") if dot else "000000000"
+
+
+@pytest.mark.parametrize("raw", [
+    "Wed Mar  6 12:34:56 2024",
+    "Wed Mar 6 12:34:56 2024",
+])
+def test_named_month_explicit_year_agrees_across_clock_consumers(raw):
+    from nexus.ingest.base import Importer
+    from nexus.langgraph.evidence_rows import hit_time_of
+    from nexus.langgraph.timestamps import parse_text_time
+
+    expected = datetime(2024, 3, 6, 12, 34, 56, tzinfo=UTC)
+    info = parse_time_value(raw, year_hint=1999)
+    assert info["dt"] == expected
+    assert info["raw"] == raw
+    assert info["year_assumed"] is False
+    assert info["tz_assumed"] is True
+    assert parse_text_time(f"clock={raw};", year_hint=1999)["dt"] == expected
+    fields = Importer.resolve_timestamp_fields(raw)
+    assert fields["timestamp"] == expected
+    assert fields["ts_synthesized"] is False
+    assert fields["ts_year_assumed"] is False
+    assert fields["ts_tz_assumed"] is True
+    assert hit_time_of({"text": raw}) == expected.isoformat().replace("+00:00", "Z")
+
+
+@pytest.mark.parametrize("raw", [
+    "Wed Feb 30 12:34:56 2024",
+    "Wed Mar 6 12:34:56 2101",
+])
+def test_invalid_explicit_named_month_clock_does_not_become_yearless(raw):
+    from nexus.ingest.base import Importer
+
+    assert parse_time_value(raw, year_hint=1999) is None
+    assert Importer.normalize_timestamp(raw) is None
+
+
+def test_truly_yearless_month_clock_keeps_its_assumption_flags():
+    from nexus.ingest.base import Importer
+
+    raw = "Mar 6 12:34:56"
+    info = parse_time_value(raw, year_hint=2001)
+    assert info["dt"].year == 2001
+    assert info["year_assumed"] is True and info["tz_assumed"] is True
+    fields = Importer.resolve_timestamp_fields(raw)
+    assert fields["timestamp"].year == datetime.now(UTC).year
+    assert fields["ts_year_assumed"] is True and fields["ts_tz_assumed"] is True
 
 
 @pytest.mark.parametrize("raw, microseconds, precision", [
