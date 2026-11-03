@@ -4580,11 +4580,11 @@ async def run_tool_lane(
         except Exception:  # noqa: BLE001 — display only
             return ""
 
-    def _emit(status: str, job: ToolJob, detail: str = "", **extra: Any) -> None:
-        """Live per-tool event for the UI feed (best-effort, never raises)."""
+    def _emit(status: str, job: ToolJob | None, detail: str = "", **extra: Any) -> None:
+        """Live job/phase event for the UI feed (best-effort, never raises)."""
         if on_event is None:
             return
-        payload: dict[str, Any] = {"tool": job.tool, "host": job.host}
+        payload: dict[str, Any] = {"tool": job.tool, "host": job.host} if job is not None else {}
         payload.update(extra)
         try:
             on_event(status, str(detail)[:300], payload)
@@ -5106,7 +5106,9 @@ async def run_tool_lane(
         )
         if gate.get("status") == "blocked":
             if defer_analysis and gate.get("no_evidence_processed") and not gate.get("blocked_count"):
-                summary = f"{summary} - EVIDENCE GATE PENDING: awaiting I1 importer pass; no evidence processed yet"
+                pending = "awaiting evidence import; no evidence processed yet"
+                summary = f"{summary} - EVIDENCE GATE PENDING: {pending}"
+                _emit("PENDING", None, pending)
                 log.info(summary)
             else:
                 cause = (f"{gate.get('blocked_count')} unprocessed item(s)" if gate.get("blocked_count")

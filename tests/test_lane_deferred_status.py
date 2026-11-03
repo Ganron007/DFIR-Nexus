@@ -28,9 +28,17 @@ def test_actual_lane_distinguishes_pending_importer_from_examiner_action(monkeyp
     monkeypatch.setattr(freshness, "capture_freshness", lambda *a, **k: {"items": [], "result": "unknown"})
     monkeypatch.setattr(case_index, "es_available", lambda: False)
     monkeypatch.setattr(snippets, "write_snippets", lambda *a, **k: {})
+    from nexus.langgraph.llm_pipeline import emit_stage
+
+    progress = case / "progress.jsonl"
+
+    def receive(status, detail, extra):
+        emit_stage({"progress_path": str(progress)}, "tool", status, detail, **extra)
+
     result = asyncio.run(run_tool_lane(
         tools={}, evidence_path=str(case), case_id=case.name, run_id=run.run_id,
         parse_result=json.loads, pipeline_mode="tools", strict=False, defer_analysis=deferred,
+        on_event=receive,
     ))
     gate = json.loads((case / "analysis/lane_gate.json").read_text(encoding="utf-8"))
     message = " ".join(result["step_log"])
@@ -38,11 +46,18 @@ def test_actual_lane_distinguishes_pending_importer_from_examiner_action(monkeyp
     assert gate["no_evidence_processed"] is True
     if deferred and job_status == "SKIP":
         assert gate["blocked_count"] == 0
-        assert "awaiting I1 importer pass" in message
+        assert "awaiting evidence import" in message
         assert "examiner re-runs or skips" not in message
+        events = [json.loads(line) for line in progress.read_text(encoding="utf-8").splitlines()]
+        pending = [event for event in events if event["status"] == "PENDING"]
+        assert len(pending) == 1, "Pending status must reach the actual pipeline progress publisher"
+        assert "tool" not in pending[0], "A phase notification must not invent a tool job"
+        assert pending[0]["detail"] == "awaiting evidence import; no evidence processed yet"
     else:
         assert "EVIDENCE GATE BLOCKED" in message
-        assert "awaiting I1 importer pass" not in message
+        assert "awaiting evidence import" not in message
+        assert all(json.loads(line)["status"] != "PENDING"
+                   for line in progress.read_text(encoding="utf-8").splitlines())
         if job_status == "BLOCKED":
             assert gate["blocked_count"] == 1
             assert "examiner re-runs or skips" in message
