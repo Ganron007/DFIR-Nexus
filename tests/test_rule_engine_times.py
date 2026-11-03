@@ -4,7 +4,7 @@ Hayabusa writes its Timestamp in the lane host's zone with the offset. The leads
 and the rows) and the briefing's alert list took it as written, beside EvtxECmd rows in UTC, and the modes
 wrote "2022-12-14T19:49:38Z" for a logon the index has at 14:19:38Z. The rows are CASE-C5B04D31's, verbatim
 from its index (tests/fixtures/defender_rows.json); a Hayabusa row and the EvtxECmd row of the same event
-(record 6355) must read the same time.
+(record 6355) must retain their own source precision and agree in UTC at the shared resolution.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _write_hayabusa(path: Path) -> None:
             writer.writerow([ROWS[key]["fields"].get(col, "") for col in HEADER])
 
 
-def test_a_hayabusa_lead_reads_the_same_time_as_the_events_evtxecmd_row(tmp_path):
+def test_a_hayabusa_lead_retains_its_own_precision_in_the_events_utc_second(tmp_path):
     case = tmp_path / "CASE-D257"
     _write_hayabusa(case / "runs" / "RUN-1" / "extractions" / "hayabusa" / "evtx-timeline.csv")
     lead = next(lead for lead in hayabusa_leads(case)
@@ -38,10 +38,12 @@ def test_a_hayabusa_lead_reads_the_same_time_as_the_events_evtxecmd_row(tmp_path
     same_event = ROWS["evtxecmd_1116_behaviour_svchost"]
     assert same_event["fields"]["EventRecordId"] == ROWS["hayabusa_1116_behaviour_svchost"]["fields"]["RecordID"]
     utc = row_time({"fields": same_event["fields"]})
-    assert utc == "2023-01-24T00:51:58Z"
-    assert lead.extra["first"] == lead.extra["last"] == utc
-    assert lead.rows[0]["timestamp"] == utc
-    assert utc in lead.detail and "+05:30" not in lead.detail
+    assert utc == "2023-01-24T00:51:58.2235274Z"
+    hayabusa_utc = "2023-01-24T00:51:58.223Z"
+    assert row_time({"fields": ROWS["hayabusa_1116_behaviour_svchost"]["fields"]}) == hayabusa_utc
+    assert lead.extra["first"] == lead.extra["last"] == hayabusa_utc
+    assert lead.rows[0]["timestamp"] == hayabusa_utc
+    assert hayabusa_utc in lead.detail and "+05:30" not in lead.detail
 
 
 def test_the_alert_list_gives_utc_times_and_sorts_on_them(tmp_path):
@@ -53,6 +55,6 @@ def test_the_alert_list_gives_utc_times_and_sorts_on_them(tmp_path):
     brief = case_briefing(case)
     times = {a["title"]: a["time"] for a in brief["alerts"]}
     # PowerRunner in msedge.exe, record 6459: 2023-01-25 20:26:43.935 +05:30 as Hayabusa wrote it.
-    assert times["Defender Alert (Severe)"] == "2023-01-25T14:56:43Z", times
+    assert times["Defender Alert (Severe)"] == "2023-01-25T14:56:43.935Z", times
     assert all(t.endswith("Z") for t in times.values()), times
     assert "+05:30" not in briefing_to_markdown(brief).split("## Alert surface")[-1].split("##")[0]

@@ -207,3 +207,16 @@ def test_timeline_window_does_not_floor_a_source_clock_onto_its_upper_bound():
     end = start.replace(microsecond=634567)
     assert _in_window("2020-11-14T04:49:43.634567000Z", start, end)
     assert not _in_window("2020-11-14T04:49:43.634567001Z", start, end)
+
+
+@pytest.mark.parametrize("left, right", [
+    ("2021-04-21T14:56:41.78Z", "2021-04-21T14:56:41.786Z"),
+    ("2021-04-21T14:56:41Z", "2021-04-21T14:56:41.001Z"),
+    ("2021-04-21T20:26:41.000000001+05:30", "2021-04-21T14:56:41.000000002Z"),
+])
+def test_rule_clock_order_uses_complete_instants_with_variable_width_fractions(left, right):
+    from nexus.langgraph.timestamps import time_before
+
+    assert time_before(left, right)
+    assert not time_before(right, left)
+    assert not time_before(left, left)

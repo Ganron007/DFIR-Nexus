@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.analysis.leads import Lead
+from nexus.langgraph.timestamps import time_before
 from nexus.langgraph.tool_events import EVENT_ID, chainsaw_event
 
 log = logging.getLogger(__name__)
@@ -445,9 +446,9 @@ def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                 rule["count"] += 1
                 ts = _utc_time(_trim(row.get("Timestamp"), 40))
                 if ts:
-                    if not rule["first"] or ts < rule["first"]:
+                    if not rule["first"] or time_before(ts, rule["first"]):
                         rule["first"] = ts
-                    if not rule["last"] or ts > rule["last"]:
+                    if not rule["last"] or time_before(rule["last"], ts):
                         rule["last"] = ts
                 host = _trim(row.get("Computer"), 80)
                 if host and host not in rule["hosts"]:
@@ -511,9 +512,9 @@ def chainsaw_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                     rule["count"] += 1
                 ts = _utc_time(_trim(row.get("timestamp"), 40))
                 if ts:
-                    if not rule["first"] or ts < rule["first"]:
+                    if not rule["first"] or time_before(ts, rule["first"]):
                         rule["first"] = ts
-                    if not rule["last"] or ts > rule["last"]:
+                    if not rule["last"] or time_before(rule["last"], ts):
                         rule["last"] = ts
                 # The event's own fields, by the columns Chainsaw's mapping names for them (D474).
                 system, _data = chainsaw_event(row)

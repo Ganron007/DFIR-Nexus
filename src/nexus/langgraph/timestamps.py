@@ -239,6 +239,14 @@ def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
     return parse_text_time(text, year_hint=year_hint)
 
 
+def time_before(left: str, right: str) -> bool:
+    """Compare complete clock instants; retain legacy ordering for unparsed text."""
+    first, second = parse_time_value(left), parse_time_value(right)
+    if first and second:
+        return first["epoch_ns"] < second["epoch_ns"]
+    return left < right
+
+
 def source_timestamp_ns(value: object, normalized: datetime | None) -> int | None:
     """Retain a selected source clock's submicroseconds after explicit zone normalization.
 

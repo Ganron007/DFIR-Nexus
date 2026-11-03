@@ -26,10 +26,18 @@ def _hit(key: str, ts: str = "") -> dict:
     return _shape_hit(doc)
 
 
-def test_one_detection_has_one_time_whichever_tool_wrote_the_row():
+def test_one_detection_retains_each_tools_reported_utc_precision():
+    from datetime import datetime
+
     hayabusa = evidence_rows_for_hits([_hit("hayabusa_1116_behaviour_svchost")])[0]
     evtxecmd = evidence_rows_for_hits([_hit("evtxecmd_1116_behaviour_svchost")])[0]
-    assert hayabusa["time"] == evtxecmd["time"] == "2023-01-24T00:51:58Z"
+    # The captured tools report different precision for the same record. Keep
+    # each literal fraction instead of forcing equality by truncating both.
+    assert ROWS["hayabusa_1116_behaviour_svchost"]["fields"]["RecordID"] == ROWS["evtxecmd_1116_behaviour_svchost"]["fields"]["EventRecordId"]
+    assert hayabusa["time"] == "2023-01-24T00:51:58.223Z"
+    assert evtxecmd["time"] == "2023-01-24T00:51:58.2235274Z"
+    finer = datetime.fromisoformat(evtxecmd["time"])
+    assert finer.replace(microsecond=finer.microsecond // 1000 * 1000) == datetime.fromisoformat(hayabusa["time"])
 
 
 def test_the_indexed_ts_is_the_rows_time():
@@ -45,7 +53,7 @@ def test_a_row_stored_before_the_fix_reads_back_in_utc():
               "artifact": "hayabusa/evtx-timeline.csv", "loc": "hayabusa/evtx-timeline.csv:58385",
               "detail": "RuleTitle: Antivirus - Exploitation Framework Signature",
               "fields": {"Timestamp": ROWS["hayabusa_1116_behaviour_svchost"]["fields"]["Timestamp"]}}
-    assert row_time(stored) == "2023-01-24T00:51:58Z"
+    assert row_time(stored) == "2023-01-24T00:51:58.223Z"
     (table_row,) = normalize_evidence_rows({"evidence": [stored]})
     assert table_row["time"].startswith("2023-01-24")
     assert "00:51:58" in table_row["time"] and "06:21" not in table_row["time"]
