@@ -17,3 +17,15 @@ def test_azure_importer_reads_real_json_lines_export_excerpt():
         "Azure Microsoft.Resourcehealth/healthevent/Updated/action (Succeeded)",
         "Azure Microsoft.Advisor/recommendations/available/action (Succeeded)",
     ]
+    # Literal source clocks in the unchanged two-row captured export. Keep the
+    # compatibility datetime but retain its additional 100-ns digit in storage.
+    assert [artifact.to_dict()["timestamp"] for artifact in artifacts] == [
+        "2023-03-28T00:35:52.121452900Z",
+        "2023-03-28T05:00:22.475768100Z",
+    ]
+    from nexus.ingest.schemas import Artifact
+
+    for artifact in artifacts:
+        assert Artifact.from_dict(artifact.to_dict()).to_dict() == artifact.to_dict()
+        assert artifact.ts_synthesized is False
+        assert artifact.ts_tz_assumed is False

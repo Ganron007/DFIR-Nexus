@@ -100,7 +100,7 @@ class AzureImporter(Importer):
 
     def _record_to_artifact(self, record: dict[str, Any], file: Path) -> Artifact:
         """Map an Azure activity log record to an Artifact."""
-        ts, ts_synthesized = self.resolve_timestamp(
+        time_fields = self.resolve_timestamp_fields(
             record.get("eventTimestamp") or record.get("time")
         )
 
@@ -131,8 +131,7 @@ class AzureImporter(Importer):
             id=Artifact.new_id(),
             artifact_type=ArtifactType.NETWORK,
             source=ArtifactSource.AZURE,
-            timestamp=ts,
-            ts_synthesized=ts_synthesized,
+            **time_fields,
             severity=severity,
             user=user,
             description=f"Azure {operation} ({status or 'Succeeded'})",
