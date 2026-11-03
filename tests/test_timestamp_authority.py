@@ -153,7 +153,8 @@ def test_a_number_inside_free_text_is_not_a_time():
 def test_a_nine_digit_epoch_cell_is_a_time():
     # Zeek writes 2000-era epochs with nine digits: the time column is read, not dropped (D120).
     got = extract_event_ts("964953086.310131\tCabc", {"ts": "964953086.310131"})
-    assert got is not None and got["dt"].isoformat() == "2000-07-30T10:31:26+00:00"
+    # The source's fractional seconds are part of the instant (D527).
+    assert got is not None and got["dt"].isoformat() == "2000-07-30T10:31:26.310131+00:00"
 
 
 def test_a_filetime_inside_free_text_is_not_a_time():

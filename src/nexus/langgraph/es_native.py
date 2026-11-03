@@ -107,6 +107,11 @@ def _prepare_request_sort(sort, types, search_after=None):
     # Validate before the legacy normalizer can drop entries or truncate a list.
     _validate_request_sort(raw)
     normalized, notes = normalize_sort(sort, types)
+    for entry in normalized:
+        if isinstance(entry, dict):
+            field, spec = next(iter(entry.items()))
+            if isinstance(spec, dict) and "format" in spec and types.get(field) not in query_contract.DATE_TYPES:
+                raise ESQueryError(f"sort format requires a date or date_nanos field: {field}")
     raw_fields = [entry if isinstance(entry, str) else next(iter(entry)) for entry in raw or []]
     normalized_fields = [entry if isinstance(entry, str) else next(iter(entry)) for entry in normalized]
     if search_after and raw_fields != normalized_fields:

@@ -158,7 +158,7 @@ _FORENSIC_TEXT_ANALYSIS = {
 # 25 = extracted-image catalogs carry file metadata and their backing files participate in freshness (D483).
 # 26 = JLECmd's current hexadecimal EntryNumber values participate in type proof and remain searchable (D501).
 # 27 = raw CSV cell whitespace and embedded line endings survive index/search projections (D521).
-INDEX_SCHEMA_VERSION = 27
+INDEX_SCHEMA_VERSION = 28
 
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
@@ -1052,7 +1052,7 @@ def iter_index_doc_batches(
         ts_info = extract_event_ts(text, fields, year_hint=year_hint)
         cov = _cov(fam)
         if ts_info:
-            doc["ts"] = ts_info["dt"].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            doc["ts"] = ts_info["iso"]
             doc["ts_raw"] = str(ts_info["raw"])
             synth = bool(fields) and str(fields.get("ts_synthesized") or "").lower() in {
                 "true", "1", "yes",
@@ -1334,7 +1334,7 @@ def _mapping_body() -> dict[str, Any]:
                     "search_analyzer": "forensic_text_search",
                     "fields": {"wc": _wildcard_mapping()},
                 },
-                "ts": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},
+                "ts": {"type": "date_nanos", "format": "strict_date_optional_time_nanos||epoch_millis"},
                 # Phase 4k.4 — timestamp authority: raw text, origin,
                 # precision and the "we had to assume" flags.
                 "ts_raw": {"type": "keyword", "ignore_above": 64},
@@ -2314,11 +2314,7 @@ def ast_to_es(query: Any | None, terms: list[str] | None = None,
     ts_start = getattr(query, "ts_start", None)
     ts_end = getattr(query, "ts_end", None)
     if ts_start is not None or ts_end is not None:
-        rng: dict[str, str] = {}
-        if ts_start is not None:
-            rng["gte"] = ts_start.isoformat()
-        if ts_end is not None:
-            rng["lte"] = ts_end.isoformat()
+        rng = query.time_bounds()
         filt.append({"range": {"ts": rng}})
     for tf in getattr(query, "filters", None) or []:
         filt.extend(_filter_to_es(tf, catalog))
@@ -2442,8 +2438,12 @@ def es_aggregate(
                 agg: dict[str, Any] = {"composite": composite_body}
                 if with_spans and bucket not in ("day", "hour"):
                     agg["aggs"] = {
-                        "first": {"min": {"field": "ts"}},
-                        "last": {"max": {"field": "ts"}},
+                        # ES date_nanos min/max aggregations have millisecond
+                        # resolution. Sorted source hits retain the exact span.
+                        "first": {"top_hits": {"size": 1, "_source": ["ts"],
+                                               "sort": [{"ts": {"order": "asc", "missing": "_last"}}]}},
+                        "last": {"top_hits": {"size": 1, "_source": ["ts"],
+                                              "sort": [{"ts": {"order": "desc", "missing": "_last"}}]}},
                     }
                 body = {
                     "size": 0,
@@ -2497,12 +2497,11 @@ def es_aggregate(
             "count": int(b.get("doc_count") or 0),
         }
         if with_spans:
-            first = (b.get("first") or {}).get("value_as_string") or ""
-            last = (b.get("last") or {}).get("value_as_string") or ""
-            if first:
-                item["first_seen"] = first
-            if last:
-                item["last_seen"] = last
+            for name in ("first", "last"):
+                hits = ((b.get(name) or {}).get("hits") or {}).get("hits") or []
+                value = (hits[0].get("_source") or {}).get("ts") if hits else None
+                if value:
+                    item[name + "_seen"] = value
         ranked.append(item)
     ranked.sort(key=lambda item: (-item["count"], item["value"]))
     all_ranked = ranked

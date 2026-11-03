@@ -367,7 +367,12 @@ def _index_census(case_dir: Path) -> dict[str, Any]:
                 starts = [s.get("first_seen") for s in spans if s.get("first_seen")]
                 ends = [s.get("last_seen") for s in spans if s.get("last_seen")]
                 if starts and ends:
-                    census["time_range"] = {"start": min(starts), "end": max(ends)}
+                    from nexus.langgraph.timestamps import parse_time_value
+
+                    def instant(value):
+                        return parse_time_value(value)["epoch_ns"]
+
+                    census["time_range"] = {"start": min(starts, key=instant), "end": max(ends, key=instant)}
         return census
     except Exception as exc:  # noqa: BLE001 — census is best-effort
         log.debug("index census unavailable: %s", exc)

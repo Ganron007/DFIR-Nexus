@@ -758,6 +758,16 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
             out.append({target: spec})
         else:
             notes.append(f"dropped unusable sort entry {entry!r}")
+    for position, entry in enumerate(out):
+        field = entry if isinstance(entry, str) else next(iter(entry))
+        if types.get(field) == "date_nanos":
+            spec = {"order": "asc"} if isinstance(entry, str) else dict(entry[field])
+            if "format" not in spec:
+                # Nanosecond epoch integers exceed JavaScript's exact integer
+                # range. ISO cursor values survive browser/model round-trips.
+                spec["format"] = "strict_date_optional_time_nanos"
+                notes.append(f"formatted `{field}` sort values as ISO nanoseconds for exact paging")
+            out[position] = {field: spec}
     return out[:MAX_SORT_FIELDS], notes
 
 

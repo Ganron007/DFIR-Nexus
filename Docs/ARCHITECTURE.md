@@ -87,6 +87,8 @@ flowchart TB
 
 Imported records distinguish substituted ingest times (`ts_synthesized`), assumed source years (`ts_year_assumed`) and timezone assumptions (`ts_tz_assumed`). OSSEC local clocks, BIND/RFC3164 logs and ZIP-directory times retain their timezone assumption through storage and indexing. Mail Date headers use their source format before the shared origin policy. Normalizing a local clock using the UTC policy does not establish the source's actual timezone or infer an offset. Case-facts timestamp coverage counts the complete current index after every index pass, including unchanged families and a retained index after a refused purge. Changed-file scan statistics remain separate diagnostics; failed or partial coverage aggregation is an indexing/report error.
 
+Primary event time uses an exact integer nanosecond instant and UTC ISO serialization, retaining supported source fractions, raw text, precision and origin flags. The index maps `ts` as `date_nanos`; a schema change requires the normal evidence lane to rebuild affected indexes. DSL bounds and CSV comparisons use the same exact instant, including strict bounds and the final fraction of a whole-day filter. Native nanosecond-date sorts default to ISO cursor strings for lossless paging. Product first/last summaries select sorted source timestamps because Elasticsearch date aggregations have millisecond resolution; direct native aggregations retain Elasticsearch's documented resolution. A deferred N2-to-I1 pass reports pending importer work without declaring the evidence gate clear or asking for an examiner skip prematurely.
+
 ## Design Principle
 
 **Single FastMCP process. Platform-aware. Multi-server capable.**

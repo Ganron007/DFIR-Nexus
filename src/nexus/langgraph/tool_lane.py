@@ -5105,12 +5105,17 @@ async def run_tool_lane(
             registered_evidence=registered, completeness=completeness,
         )
         if gate.get("status") == "blocked":
-            summary = (
-                f"{summary} - EVIDENCE GATE BLOCKED: {gate.get('blocked_count')} "
-                f"unprocessed item(s); analysis stages will not start until the "
-                f"examiner re-runs or skips them (audited)"
-            )
-            log.warning(summary)
+            if defer_analysis and gate.get("no_evidence_processed") and not gate.get("blocked_count"):
+                summary = f"{summary} - EVIDENCE GATE PENDING: awaiting I1 importer pass; no evidence processed yet"
+                log.info(summary)
+            else:
+                cause = (f"{gate.get('blocked_count')} unprocessed item(s)" if gate.get("blocked_count")
+                         else "no evidence processed")
+                summary = (
+                    f"{summary} - EVIDENCE GATE BLOCKED: {cause}; analysis stages "
+                    f"will not start until the examiner re-runs or skips them (audited)"
+                )
+                log.warning(summary)
     except Exception as exc:  # noqa: BLE001 - never die writing the gate
         log.warning("lane gate write failed: %s", exc)
 

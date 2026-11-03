@@ -31,6 +31,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from nexus.langgraph.timestamps import datetime_epoch_ns, datetime_from_epoch_ns, utc_iso_from_ns
+
 _FIELDS = frozenset({"family", "host", "user", "event", "file"})
 _TS_FIELDS = frozenset({"ts", "time", "timestamp", "date", "after", "before"})
 # 4k.6: any other identifier becomes a TYPED catalog filter — never a text
@@ -74,7 +76,7 @@ class ParsedQuery:
 
     __slots__ = (
         "or_terms", "and_terms", "not_terms", "fields", "regex",
-        "ts_start", "ts_end", "filters",
+        "ts_start", "ts_end", "ts_start_ns", "ts_end_ns", "filters",
     )
 
     def __init__(self) -> None:
@@ -85,8 +87,23 @@ class ParsedQuery:
         self.regex: re.Pattern[str] | None = None
         self.ts_start: datetime | None = None
         self.ts_end: datetime | None = None
+        self.ts_start_ns: int | None = None
+        self.ts_end_ns: int | None = None
         # Typed catalog filters: {name, resolved, type, op, value|values|lo|hi}
         self.filters: list[dict[str, Any]] = []
+
+    def set_time_bound(self, name: str, epoch_ns: int) -> None:
+        setattr(self, "ts_" + name, datetime_from_epoch_ns(epoch_ns))
+        setattr(self, "ts_" + name + "_ns", epoch_ns)
+
+    def time_bound_ns(self, name: str) -> int | None:
+        dt = getattr(self, "ts_" + name)
+        exact = getattr(self, "ts_" + name + "_ns")
+        return exact if exact is not None else datetime_epoch_ns(dt) if dt is not None else None
+
+    def time_bounds(self) -> dict[str, str]:
+        return {op: utc_iso_from_ns(instant) for name, op in (("start", "gte"), ("end", "lte"))
+                if (instant := self.time_bound_ns(name)) is not None}
 
     def is_empty(self) -> bool:
         return not (
@@ -113,8 +130,8 @@ class ParsedQuery:
         for k in sorted(self.fields):
             parts.append(f"{k}:{self.fields[k]}")
         if self.ts_start or self.ts_end:
-            lo = self.ts_start.isoformat() if self.ts_start else ""
-            hi = self.ts_end.isoformat() if self.ts_end else ""
+            bounds = self.time_bounds()
+            lo, hi = bounds.get("gte", ""), bounds.get("lte", "")
             parts.append(f"ts:{lo}..{hi}")
         for f in self.filters:
             op = f.get("op") or "contains"
@@ -206,31 +223,29 @@ def _set_ts_range(q: ParsedQuery, field: str, value: str) -> None:
 
     if op or field in ("after", "before"):
         got = _parsed(raw)
-        dt = got["dt"]
+        instant = got["epoch_ns"]
         if field == "before" or op == "<":
-            q.ts_end = dt
+            q.set_time_bound("end", instant - (1 if op == "<" else 0))
         elif field == "after" or op == ">" or op == ">=":
-            q.ts_start = dt
+            q.set_time_bound("start", instant + (1 if op == ">" else 0))
         else:  # op == "<="
-            q.ts_end = dt
+            q.set_time_bound("end", instant)
         return
     if ".." in raw:
         lo_raw, _, hi_raw = raw.partition("..")
         if lo_raw.strip():
-            q.ts_start = _parsed(lo_raw.strip())["dt"]
+            q.set_time_bound("start", _parsed(lo_raw.strip())["epoch_ns"])
         if hi_raw.strip():
-            q.ts_end = _parsed(hi_raw.strip())["dt"]
+            q.set_time_bound("end", _parsed(hi_raw.strip())["epoch_ns"])
         return
     got = _parsed(raw)
-    dt = got["dt"]
+    instant = got["epoch_ns"]
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
-        from datetime import timedelta
-
-        q.ts_start = dt
-        q.ts_end = dt + timedelta(days=1) - timedelta(seconds=1)
+        q.set_time_bound("start", instant)
+        q.set_time_bound("end", instant + 86400 * 1_000_000_000 - 1)
     else:
-        q.ts_start = dt
-        q.ts_end = dt
+        q.set_time_bound("start", instant)
+        q.set_time_bound("end", instant)
 
 
 _OPS = ("!=", ">=", "<=", "=", ">", "<")
@@ -388,13 +403,13 @@ def _filter_matches(f: dict[str, Any], row_fields: dict[str, str]) -> bool:
     # numeric / date comparisons
     def _cmp(left: Any, right: Any) -> tuple[Any, Any] | None:
         ln, rn = _as_number(str(left)), _as_number(str(right))
-        if ln is None or rn is None:
+        if f.get("type") in _DATE_TYPES or ln is None or rn is None:
             from nexus.langgraph.timestamps import parse_time_value
 
             g1, g2 = parse_time_value(str(left)), parse_time_value(str(right))
             if g1 is None or g2 is None:
                 return None
-            ln, rn = g1["dt"], g2["dt"]
+            ln, rn = g1["epoch_ns"], g2["epoch_ns"]
         return ln, rn
 
     if op in ("gt", "gte", "lt", "lte"):
@@ -466,13 +481,13 @@ def _term_in(term: str, line_lower: str) -> bool:
     return needle_in_text(line_lower, term)
 
 
-def _row_dt(row_ts: str, line_lower: str) -> datetime | None:
-    from nexus.langgraph.timestamps import parse_text_time, parse_time_value
+def _row_time_ns(row_ts: str, line_lower: str, row_fields: dict[str, str] | None) -> int | None:
+    from nexus.langgraph.timestamps import extract_event_ts, parse_time_value
 
     got = parse_time_value(row_ts or "") if row_ts else None
     if got is None:
-        got = parse_text_time(line_lower or "")
-    return got["dt"] if got else None
+        got = extract_event_ts(line_lower or "", row_fields)
+    return got["epoch_ns"] if got else None
 
 
 def row_matches(
@@ -508,12 +523,13 @@ def row_matches(
     if q.ts_start is not None or q.ts_end is not None:
         # Explicit time filter: a row with no parseable time cannot match —
         # excluding it silently would be a lie; callers count these separately.
-        dt = _row_dt(row_ts, line_lower)
-        if dt is None:
+        instant = _row_time_ns(row_ts, line_lower, row_fields)
+        if instant is None:
             return False, []
-        if q.ts_start is not None and dt < q.ts_start:
+        lo, hi = q.time_bound_ns("start"), q.time_bound_ns("end")
+        if lo is not None and instant < lo:
             return False, []
-        if q.ts_end is not None and dt > q.ts_end:
+        if hi is not None and instant > hi:
             return False, []
     if q.regex is not None and not q.regex.search(hay):
         return False, []

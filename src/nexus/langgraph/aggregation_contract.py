@@ -34,7 +34,7 @@ STRINGS = {"anyOf": [STRING, STRING_LIST]}
 ORDER_MAP = {"type": "object", "minProperties": 1, "additionalProperties": DIRECTION}
 ORDER = {"anyOf": [ORDER_MAP, {"type": "array", "minItems": 1, "items": ORDER_MAP}]}
 SORT_SPEC = {"anyOf": [DIRECTION, object_schema({
-    "order": DIRECTION, "missing": SCALAR, "unmapped_type": STRING,
+    "order": DIRECTION, "missing": SCALAR, "unmapped_type": STRING, "format": STRING,
 })]}
 SORT_ENTRY = {"anyOf": [STRING, {"type": "object", "minProperties": 1, "maxProperties": 1,
                                "additionalProperties": SORT_SPEC}]}

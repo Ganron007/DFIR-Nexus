@@ -39,7 +39,7 @@ _ISO_RE = re.compile(
 _US_RE = re.compile(
     r"\b(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4})"
     r"(?:[ T](?P<H>\d{1,2}):(?P<M>\d{2})(?::(?P<S>\d{2}))?"
-    r"\s*(?P<ampm>AM|PM|am|pm)?"
+    r"(?:\.(?P<frac>\d{1,9}))?\s*(?P<ampm>AM|PM|am|pm)?"
     r"(?:\s*(?P<tz>Z|UTC\b|[+-]\d{2}(?::?\d{2})?))?)?"
 )
 _SYSLOG_RE = re.compile(
@@ -50,7 +50,7 @@ _SYSLOG_RE = re.compile(
 # D120 (2026-10-13): a number is a time only as the whole value of a time column. Inside free text a 10-digit field is
 # a handle, a pointer or an error code: 2033287795 read as 2034-06-07 in a Volatility handle table, 2838623409 as 2059
 # in a registry JSON line. Epoch seconds before 2001-09-09 have nine digits, so the cell form accepts nine.
-_CELL_EPOCH_RE = re.compile(r"(\d{13}|\d{9,10})(?:\.\d+)?")
+_CELL_EPOCH_RE = re.compile(r"(\d{13}|\d{9,10})(?:\.(\d+))?")
 _CELL_FILETIME_RE = re.compile(r"1\d{16,17}")
 # D260 (2026-10-17): .NET's JSON date, as Windows PowerShell's ConvertTo-Json writes a DateTime (DeepBlueCLI's JSON):
 # "/Date(1661972283182)/", the slashes escaped as "\/" in the raw JSON. The number is milliseconds since 1970-01-01
@@ -70,6 +70,46 @@ _MONTHS = {
 
 _MIN_YEAR = 1990
 _MAX_YEAR = 2100
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_NS_PER_SECOND = 1_000_000_000
+
+
+def datetime_epoch_ns(dt: datetime) -> int:
+    """Exact integer instant for a datetime; naive values follow the UTC policy."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    delta = dt.astimezone(UTC) - _EPOCH
+    return (delta.days * 86400 + delta.seconds) * _NS_PER_SECOND + delta.microseconds * 1000
+
+
+def utc_iso_from_ns(epoch_ns: int) -> str:
+    """Serialize the complete instant, without floats or datetime fraction loss."""
+    seconds, fraction = divmod(epoch_ns, _NS_PER_SECOND)
+    head = (_EPOCH + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S")
+    return head + ("." + f"{fraction:09d}".rstrip("0") if fraction else "") + "Z"
+
+
+def datetime_from_epoch_ns(epoch_ns: int) -> datetime:
+    """Compatibility datetime; exact consumers retain the separate integer instant."""
+    return _EPOCH + timedelta(microseconds=epoch_ns // 1000)
+
+
+def _time_info(dt: datetime, raw: str, precision: str, *, tz_assumed: bool = False,
+               year_assumed: bool = False, epoch_ns: int | None = None) -> dict:
+    instant = datetime_epoch_ns(dt) if epoch_ns is None else epoch_ns
+    return {
+        "dt": dt, "epoch_ns": instant, "iso": utc_iso_from_ns(instant),
+        "raw": raw, "precision": precision,
+        "tz_assumed": tz_assumed, "year_assumed": year_assumed,
+    }
+
+
+def _numeric_time(epoch_ns: int, raw: str, precision: str) -> dict | None:
+    try:
+        dt = datetime_from_epoch_ns(epoch_ns)
+    except (OverflowError, ValueError):
+        return None
+    return _time_info(dt, raw, precision, epoch_ns=epoch_ns) if _plausible(dt) else None
 
 
 def _plausible(dt: datetime) -> bool:
@@ -93,7 +133,7 @@ def _with_offset(dt: datetime, tz: str) -> datetime:
     return dt.replace(tzinfo=UTC) - timedelta(hours=sign * hours, minutes=sign * minutes)
 
 
-def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
+def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool, int] | None:
     frac = m.group("frac") or ""
     tz = (m.group("tz") or "").strip()
     tz_assumed = not tz
@@ -104,6 +144,7 @@ def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
             dt = datetime(
                 int(m.group("y")), int(m.group("m")), int(m.group("d")),
                 int(m.group("H")), int(m.group("M")), int(m.group("S") or 0),
+                int(frac[:6].ljust(6, "0")),
             )
     except ValueError:
         return None
@@ -116,7 +157,7 @@ def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
         precision = "m"
     else:
         precision = _precision(frac)
-    return dt, precision, tz_assumed
+    return dt, precision, tz_assumed, datetime_epoch_ns(dt) + int(frac[6:].ljust(3, "0") or "0")
 
 
 def _parse_us(m: re.Match[str]) -> datetime | None:
@@ -129,6 +170,7 @@ def _parse_us(m: re.Match[str]) -> datetime | None:
         dt = datetime(
             int(m.group("y")), int(m.group("m")), int(m.group("d")),
             hour, int(m.group("M") or 0), int(m.group("S") or 0),
+            int((m.group("frac") or "")[:6].ljust(6, "0")),
         )
     except ValueError:
         return None
@@ -154,25 +196,21 @@ def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
             return None
         if not _plausible(dt):
             return None
-        return {"dt": dt, "raw": text, "precision": "ms", "tz_assumed": False, "year_assumed": False}
+        return _time_info(dt, text, "ms")
     m = _CELL_EPOCH_RE.fullmatch(text)
     if m:
-        dt = _from_epoch(int(m.group(1)))
-        if dt is None:
+        whole, fraction = m.group(1), m.group(2) or ""
+        places = 6 if len(whole) == 13 else 9
+        if len(fraction) > places:
             return None
-        return {
-            "dt": dt, "raw": text,
-            "precision": "ms" if len(m.group(1)) == 13 else "s",
-            "tz_assumed": False, "year_assumed": False,
-        }
+        scale = 1_000_000 if len(whole) == 13 else _NS_PER_SECOND
+        instant = int(whole) * scale + int(fraction.ljust(places, "0") or "0")
+        digits = len(fraction) + (3 if len(whole) == 13 else 0)
+        return _numeric_time(instant, text, _precision("0" * digits))
     if _CELL_FILETIME_RE.fullmatch(text):
-        dt = _from_filetime(int(text))
-        if dt is None:
-            return None
-        return {
-            "dt": dt, "raw": text, "precision": "ns",
-            "tz_assumed": False, "year_assumed": False,
-        }
+        # FILETIME is 100-ns ticks since 1601; retain the tick below one microsecond.
+        instant = int(text) * 100 + datetime_epoch_ns(datetime(1601, 1, 1, tzinfo=UTC))
+        return _numeric_time(instant, text, "ns")
     return parse_text_time(text, year_hint=year_hint)
 
 
@@ -187,20 +225,19 @@ def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
     if m and m.group("y"):
         got = _iso_from_match(m)
         if got:
-            dt, precision, tz_assumed = got
-            return {
-                "dt": dt, "raw": m.group(0).strip(), "precision": precision,
-                "tz_assumed": tz_assumed, "year_assumed": False,
-            }
+            dt, precision, tz_assumed, instant = got
+            return _time_info(dt, m.group(0).strip(), precision,
+                              tz_assumed=tz_assumed, epoch_ns=instant)
     m = _US_RE.search(text)
     if m:
         dt = _parse_us(m)
         if dt:
-            return {
-                "dt": dt, "raw": m.group(0).strip(),
-                "precision": "s" if m.group("H") else "d",
-                "tz_assumed": not (m.group("tz") or "").strip(), "year_assumed": False,
-            }
+            frac = m.group("frac") or ""
+            return _time_info(
+                dt, m.group(0).strip(), _precision(frac) if m.group("H") else "d",
+                tz_assumed=not (m.group("tz") or "").strip(),
+                epoch_ns=datetime_epoch_ns(dt) + int(frac[6:].ljust(3, "0") or "0"),
+            )
     m = _SYSLOG_RE.search(text)
     if m:
         year = year_hint or datetime.now(UTC).year
@@ -213,29 +250,8 @@ def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:
         except ValueError:
             dt = None
         if dt and _plausible(dt):
-            return {
-                "dt": dt, "raw": m.group(0).strip(), "precision": "s",
-                "tz_assumed": True, "year_assumed": True,
-            }
+            return _time_info(dt, m.group(0).strip(), "s", tz_assumed=True, year_assumed=True)
     return None
-
-
-def _from_epoch(value: int) -> datetime | None:
-    divisor = 1 if value < 10**11 else 1000
-    try:
-        dt = datetime.fromtimestamp(value / divisor, tz=UTC)
-    except (OverflowError, OSError, ValueError):
-        return None
-    return dt if _plausible(dt) else None
-
-
-def _from_filetime(value: int) -> datetime | None:
-    # Windows FILETIME: 100-ns ticks since 1601-01-01.
-    try:
-        dt = datetime(1601, 1, 1, tzinfo=UTC) + timedelta(microseconds=value // 10)
-    except (OverflowError, ValueError):
-        return None
-    return dt if _plausible(dt) else None
 
 
 def extract_event_ts(
