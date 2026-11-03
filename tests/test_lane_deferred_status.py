@@ -61,3 +61,60 @@ def test_actual_lane_distinguishes_pending_importer_from_examiner_action(monkeyp
         if job_status == "BLOCKED":
             assert gate["blocked_count"] == 1
             assert "examiner re-runs or skips" in message
+
+
+@pytest.mark.parametrize("deferred, completeness_status, job_status, pending", [
+    (True, "STAGED", "OK", True),
+    (True, "PRESENT_NO_PARSER", "OK", True),
+    (True, "FAIL", "OK", False),
+    (True, "STAGED", "BLOCKED", False),
+    (False, "STAGED", "OK", False),
+])
+def test_deferred_completeness_reconciliation_keeps_gate_and_real_failures(
+    monkeypatch, deferred, completeness_status, job_status, pending,
+):
+    from nexus.analysis import freshness
+    from nexus.langgraph import case_index, snippets, tool_lane
+    from nexus.langgraph.llm_pipeline import emit_stage
+    from nexus.langgraph.pipeline_runs import create_run
+
+    case = settings.cases_root / "CASE-DEFERRED-COMPLETENESS"
+    case.mkdir(parents=True)
+    # Status/coverage metadata only; no authored evidence row or source payload.
+    (case / "evidence.json").write_text(json.dumps({"evidence": [{"path": str(case)}]}), encoding="utf-8")
+    run = create_run(case, "tools")
+    monkeypatch.setattr(tool_lane, "plan_windows_triage", lambda *a, **k: [
+        ToolJob(host="windows", tool="discovery", argv=[], purpose="status control",
+                status=job_status, reason="status control"),
+    ])
+    monkeypatch.setattr(tool_lane, "sift_jobs_for_lane", lambda *a, **k: [])
+    monkeypatch.setattr(tool_lane, "_artifact_completeness_for_paths", lambda *a, **k: [{
+        "artifact": "completeness control", "status": completeness_status,
+        "tools": "-", "hits": "1", "reason": "status metadata control",
+    }])
+    monkeypatch.setattr(freshness, "capture_freshness", lambda *a, **k: {"items": [], "result": "unknown"})
+    monkeypatch.setattr(case_index, "es_available", lambda: False)
+    monkeypatch.setattr(snippets, "write_snippets", lambda *a, **k: {})
+    progress = case / "progress.jsonl"
+
+    def receive(status, detail, extra):
+        emit_stage({"progress_path": str(progress)}, "tool", status, detail, **extra)
+
+    result = asyncio.run(run_tool_lane(
+        tools={}, evidence_path=str(case), case_id=case.name, run_id=run.run_id,
+        parse_result=json.loads, pipeline_mode="tools", strict=False, defer_analysis=deferred,
+        on_event=receive,
+    ))
+    gate = json.loads((case / "analysis/lane_gate.json").read_text(encoding="utf-8"))
+    assert gate["status"] == "blocked"
+    assert gate["blocked_count"] == (2 if job_status == "BLOCKED" else 1)
+    message = " ".join(result["step_log"])
+    events = [json.loads(line) for line in progress.read_text(encoding="utf-8").splitlines()]
+    if pending:
+        assert "awaiting evidence import and completeness reconciliation" in message
+        assert "examiner re-runs or skips" not in message
+        assert sum(row["status"] == "PENDING" for row in events) == 1
+    else:
+        assert "EVIDENCE GATE BLOCKED" in message
+        assert "examiner re-runs or skips" in message
+        assert all(row["status"] != "PENDING" for row in events)

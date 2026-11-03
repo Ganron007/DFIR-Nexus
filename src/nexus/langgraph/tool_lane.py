@@ -5105,8 +5105,25 @@ async def run_tool_lane(
             registered_evidence=registered, completeness=completeness,
         )
         if gate.get("status") == "blocked":
-            if defer_analysis and gate.get("no_evidence_processed") and not gate.get("blocked_count"):
-                pending = "awaiting evidence import; no evidence processed yet"
+            unfinished = gate.get("unprocessed") or []
+            awaiting_completeness = bool(unfinished) and all(
+                item.get("kind") == "completeness"
+                and item.get("status") in {"STAGED", "PRESENT_NO_PARSER"}
+                for item in unfinished
+            )
+            if defer_analysis and not gate.get("waiting_count") and (
+                (gate.get("no_evidence_processed") and not gate.get("blocked_count"))
+                or awaiting_completeness
+            ):
+                # N2 has not run I1 or its final completeness reconciliation.
+                # Keep the canonical gate blocked; defer the examiner-action
+                # conclusion for these unfinished rows, never for failed work.
+                pending = (
+                    "awaiting evidence import and completeness reconciliation; "
+                    f"{gate.get('blocked_count')} unprocessed completeness item(s)"
+                    if awaiting_completeness
+                    else "awaiting evidence import; no evidence processed yet"
+                )
                 summary = f"{summary} - EVIDENCE GATE PENDING: {pending}"
                 _emit("PENDING", None, pending)
                 log.info(summary)
