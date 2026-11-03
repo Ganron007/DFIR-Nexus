@@ -44,6 +44,11 @@ def test_primary_index_time_keeps_the_published_windows_source_fraction(tmp_path
     assert _parts(document["ts"]) == _parts(original.replace(" ", "T") + "Z")
     assert document["ts_precision"] == "ns"
     assert document["ts_tz_assumed"] is True
+    from nexus.langgraph.evidence_rows import hit_time_of
+    from nexus.langgraph.timeline_merge import hits_to_events
+
+    assert _parts(hits_to_events([document])[0]["timestamp"]) == _parts(document["ts"])
+    assert _parts(hit_time_of({"text": original})) == _parts(document["ts"])
 
 
 def test_primary_mapping_can_represent_the_declared_source_precision():
@@ -155,3 +160,50 @@ def test_briefing_compares_instants_instead_of_variable_width_iso_strings(tmp_pa
         for i, clock in enumerate(clocks)
     ]})
     assert _index_census(tmp_path)["time_range"] == {"start": clocks[0], "end": clocks[-1]}
+
+
+@pytest.mark.parametrize("raw", ["2020-11-14T04:49:43.634567890Z", "2020-11-14T10:19:43.634567890+05:30"])
+def test_shared_importer_fields_carry_exact_source_time_beside_compatibility_datetime(raw):
+    from nexus.ingest.base import Importer
+
+    fields = Importer.resolve_timestamp_fields(raw)
+    assert fields["timestamp_ns"] == 1605329383634567890
+    assert fields["timestamp"].microsecond == 634567
+    assert fields["ts_synthesized"] is False
+
+
+def test_exact_clock_contract_refuses_rounded_or_noninteger_companions():
+    from datetime import UTC, datetime
+
+    from nexus.langgraph.timestamps import timestamp_epoch_ns, timestamp_iso
+
+    view = datetime(2020, 11, 14, 4, 49, 43, 634567, tzinfo=UTC)
+    exact = 1605329383634567890
+    assert timestamp_epoch_ns(view, exact) == exact
+    assert timestamp_iso(view, exact) == "2020-11-14T04:49:43.634567890Z"
+    assert timestamp_iso(view) == view.isoformat()
+    with pytest.raises(ValueError, match="disagrees"):
+        timestamp_iso(view, exact + 1000)
+    with pytest.raises(ValueError, match="integer nanoseconds"):
+        timestamp_epoch_ns(view, True)
+
+
+def test_exact_zero_fraction_remains_explicit_across_canonical_serialization():
+    from datetime import UTC, datetime
+
+    from nexus.langgraph.timestamps import source_timestamp_ns, timestamp_iso
+
+    view = datetime(2020, 11, 14, 4, 49, 43, tzinfo=UTC)
+    raw = "2020-11-14T04:49:43.000000000Z"
+    assert timestamp_iso(view, source_timestamp_ns(raw, view)) == raw
+
+
+def test_timeline_window_does_not_floor_a_source_clock_onto_its_upper_bound():
+    from datetime import UTC, datetime
+
+    from nexus.langgraph.timeline_merge import _in_window
+
+    start = datetime(2020, 11, 14, 4, 49, 43, tzinfo=UTC)
+    end = start.replace(microsecond=634567)
+    assert _in_window("2020-11-14T04:49:43.634567000Z", start, end)
+    assert not _in_window("2020-11-14T04:49:43.634567001Z", start, end)

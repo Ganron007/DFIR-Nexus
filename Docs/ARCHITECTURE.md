@@ -89,6 +89,8 @@ Imported records distinguish substituted ingest times (`ts_synthesized`), assume
 
 Primary event time uses an exact integer nanosecond instant and UTC ISO serialization, retaining supported source fractions, raw text, precision and origin flags. The index maps `ts` as `date_nanos`; a schema change requires the normal evidence lane to rebuild affected indexes. DSL bounds and CSV comparisons use the same exact instant, including strict bounds and the final fraction of a whole-day filter. Native nanosecond-date sorts default to ISO cursor strings for lossless paging. Product first/last summaries select sorted source timestamps because Elasticsearch date aggregations have millisecond resolution; direct native aggregations retain Elasticsearch's documented resolution. A deferred N2-to-I1 pass reports pending importer work without declaring the evidence gate clear or asking for an examiner skip prematurely.
 
+Artifacts retain a compatibility datetime for existing Python callers and an optional exact nanosecond instant for finer source clocks. Their canonical JSON carries one timestamp string; storage round-trips restore the exact instant. Timeline, correlation, case metadata and beacon consumers use that shared clock contract for serialization and ordering. Source-format adapters retain their existing timezone, year and synthesized-time policies.
+
 ## Design Principle
 
 **Single FastMCP process. Platform-aware. Multi-server capable.**

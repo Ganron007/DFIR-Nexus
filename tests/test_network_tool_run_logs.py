@@ -32,5 +32,5 @@ def test_a_stats_event_has_no_event_time_and_a_dns_event_keeps_its_own(tmp_path)
     docs = {d["line"]: d for d in iter_index_docs(tmp_path) if d["family"] == "suricata"}
     dns, stats = docs[1], docs[2]
     # 2016-01-26T01:27:24.048885+0530, written in the lane host's zone with its offset.
-    assert dns["ts"] == "2016-01-25T19:57:24Z"
+    assert dns["ts"] == "2016-01-25T19:57:24.048885Z"
     assert "ts" not in stats, "the engine's counters are stamped when the engine ran"

@@ -342,6 +342,7 @@ class ScheduledTasksImporter(Importer):
             artifact_type=ArtifactType.PROCESS,
             source=ArtifactSource.SCHEDULED_TASKS,
             timestamp=ts,
+            timestamp_ns=self._source_timestamp_ns(record, ts, ts_synthesized),
             ts_synthesized=ts_synthesized,
             severity=severity,
             # A task file does not say which machine it is on. Its grandparent folder made 218
@@ -354,6 +355,12 @@ class ScheduledTasksImporter(Importer):
             tags=["scheduled_task", f"author.{record.get('author') or 'unknown'}"],
             ts_tz_assumed=timezone_assumed,
         )
+
+    @staticmethod
+    def _source_timestamp_ns(record: dict[str, Any], normalized: datetime, synthesized: bool) -> int | None:
+        from nexus.langgraph.timestamps import source_timestamp_ns
+
+        return None if synthesized else source_timestamp_ns(record.get("registration_date"), normalized)
 
     def _compute_severity(self, record: dict[str, Any]) -> Severity:
         """Compute severity from the actions + principal the record carries."""

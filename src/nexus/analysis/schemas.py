@@ -98,10 +98,13 @@ class TimelineEntry:
     description: str
     severity: str
     technique_ids: list[str] = field(default_factory=list)
+    timestamp_ns: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        from nexus.langgraph.timestamps import timestamp_iso
+
         return {
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": timestamp_iso(self.timestamp, self.timestamp_ns),
             "artifact_id": self.artifact_id,
             "artifact_type": self.artifact_type,
             "source": self.source,
@@ -123,11 +126,15 @@ class TimelineCluster:
     entries: list[TimelineEntry] = field(default_factory=list)
     techniques: list[str] = field(default_factory=list)
     hosts_involved: list[str] = field(default_factory=list)
+    start_ns: int | None = None
+    end_ns: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        from nexus.langgraph.timestamps import timestamp_iso
+
         return {
-            "start": self.start.isoformat(),
-            "end": self.end.isoformat(),
+            "start": timestamp_iso(self.start, self.start_ns),
+            "end": timestamp_iso(self.end, self.end_ns),
             "label": self.label,
             "entry_count": len(self.entries),
             "entries": [e.to_dict() for e in self.entries],

@@ -206,12 +206,24 @@ class Importer(ABC):
         a substituted ingest time is synthesized rather than a source clock.
         """
         ts, flags = Importer.normalize_timestamp_ex(value)
-        return {
+        exact = None
+        if ts is not None and isinstance(value, str):
+            from nexus.langgraph.timestamps import parse_time_value
+
+            info = parse_time_value(value)
+            if info and info["raw"] == value.strip() and info["precision"] == "ns":
+                # The datetime remains a compatibility view. Use the exact
+                # parser's floor rather than float-rounded epoch microseconds.
+                ts, exact = info["dt"], info["epoch_ns"]
+        result = {
             "timestamp": ts if ts is not None else datetime.now(UTC),
             "ts_synthesized": ts is None,
             "ts_year_assumed": bool(flags.get("year_assumed")),
             "ts_tz_assumed": bool(flags.get("tz_assumed")),
         }
+        if exact is not None:
+            result["timestamp_ns"] = exact
+        return result
 
     @staticmethod
     def normalize_timestamp(value: Any) -> datetime | None:

@@ -570,7 +570,7 @@ class CaseManager:
                 "dest_ip": artifact.dest_ip,
                 "process_name": artifact.process_name,
                 "command_line": artifact.command_line,
-                "timestamp": artifact.timestamp.isoformat(),
+                "timestamp": artifact.timestamp_iso(),
                 "technique_ids": list(artifact.technique_ids),
             },
         )

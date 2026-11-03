@@ -16,12 +16,13 @@ from nexus.langgraph.timestamps import parse_time_value
 
 FIXTURE = Path(__file__).parent / "fixtures" / "d260_deepblue_System.json"
 
-# DeepBlueCLI row (line) -> the EvtxECmd TimeCreated of the same System event.
+# DeepBlueCLI row (line) -> its own captured .NET millisecond clock. The
+# EvtxECmd twins establish event identity, not extra precision for this source.
 TWINS = {
-    1: ("7030", "Foxit PDF Reader Update Service", "2022-11-06T23:32:10Z"),   # record 5261, 23:32:10.7638249
-    2: ("7030", "PsShutdown", "2022-08-31T18:58:03Z"),                         # record 857, 18:58:03.1823039
-    3: ("7045", "PsShutdown", "2022-08-31T18:58:03Z"),                         # record 856, 18:58:03.1823039
-    4: ("7030", "Printer Extensions and Notifications", "2022-08-31T17:36:42Z"),  # record 184, 17:36:42.1571813
+    1: ("7030", "Foxit PDF Reader Update Service", "2022-11-06T23:32:10.763Z"),
+    2: ("7030", "PsShutdown", "2022-08-31T18:58:03.182Z"),
+    3: ("7045", "PsShutdown", "2022-08-31T18:58:03.182Z"),
+    4: ("7030", "Printer Extensions and Notifications", "2022-08-31T17:36:42.157Z"),
 }
 
 

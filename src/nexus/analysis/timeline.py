@@ -16,6 +16,7 @@ from nexus.analysis.schemas import (
     TimelineEntry,
 )
 from nexus.ingest.schemas import Artifact
+from nexus.langgraph.timestamps import timedelta_ns, timestamp_epoch_ns
 
 log = logging.getLogger(__name__)
 
@@ -60,12 +61,13 @@ class TimelineBuilder:
             return []
 
         # Sort by timestamp
-        sorted_a = sorted(artifacts, key=lambda a: a.timestamp)
+        sorted_a = sorted(artifacts, key=lambda a: a.timestamp_epoch_ns())
 
         # Build entries
         entries = [
             TimelineEntry(
                 timestamp=a.timestamp,
+                timestamp_ns=a.timestamp_ns,
                 artifact_id=a.id,
                 artifact_type=a.artifact_type.value,
                 source=a.source.value,
@@ -82,7 +84,10 @@ class TimelineBuilder:
         clusters: list[TimelineCluster] = []
         current_cluster: TimelineCluster | None = None
         for entry in entries:
-            if current_cluster is None or (entry.timestamp - current_cluster.end) > self.cluster_window:
+            if current_cluster is None or (
+                timestamp_epoch_ns(entry.timestamp, entry.timestamp_ns)
+                - timestamp_epoch_ns(current_cluster.end, current_cluster.end_ns)
+            ) > timedelta_ns(self.cluster_window):
                 # New cluster
                 if current_cluster is not None:
                     self._finalize_cluster(current_cluster)
@@ -90,11 +95,14 @@ class TimelineBuilder:
                 current_cluster = TimelineCluster(
                     start=entry.timestamp,
                     end=entry.timestamp,
+                    start_ns=entry.timestamp_ns,
+                    end_ns=entry.timestamp_ns,
                     label="Activity",
                     entries=[entry],
                 )
             else:
                 current_cluster.end = entry.timestamp
+                current_cluster.end_ns = entry.timestamp_ns
                 current_cluster.entries.append(entry)
         if current_cluster is not None:
             self._finalize_cluster(current_cluster)

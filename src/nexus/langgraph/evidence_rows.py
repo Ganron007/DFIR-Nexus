@@ -38,13 +38,11 @@ def row_time(row: dict[str, Any]) -> str:
         return ts
     fields = row.get("fields")
     if isinstance(fields, dict) and fields:
-        from datetime import UTC
-
         from nexus.langgraph.timestamps import extract_event_ts
 
         got = extract_event_ts("", fields)
         if got:
-            return got["dt"].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return got["iso"]
     return str(row.get("time") or "")
 
 
@@ -54,13 +52,11 @@ def hit_time_of(hit: dict[str, Any]) -> str:
     # from the raw row text so evidence rows carry a usable time.
     hit_time = row_time(hit)
     if not hit_time:
-        try:
-            from nexus.langgraph.query_pack import _DATE_RE
-            m = _DATE_RE.search(str(hit.get("text", "")))
-            if m:
-                hit_time = m.group(1) + (f"T{m.group(2)}" if m.group(2) else "")
-        except Exception:
-            pass
+        from nexus.langgraph.timestamps import parse_text_time
+
+        parsed = parse_text_time(str(hit.get("text", "")))
+        if parsed:
+            hit_time = parsed["iso"]
     return hit_time
 
 

@@ -15,23 +15,14 @@ from nexus.case.locks import lock_case_writes
 from nexus.ingest.provenance import append_provenance
 from nexus.ingest.provenance import artifact_key as _artifact_key
 from nexus.ingest.schemas import Artifact, ArtifactSource
-from nexus.langgraph.evidence_rows import row_time
-from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_intake_window
+from nexus.langgraph.evidence_rows import hit_time_of, row_time
+from nexus.langgraph.query_pack import load_case_intake, parse_intake_window
 from nexus.utils import atomic
 
 _HOST_RE = re.compile(
     r"\b((?:[a-z0-9][a-z0-9-]{0,24}\.)+(?:local|lan|corp|internal|com|net|org))\b",
     re.I,
 )
-
-
-def _parse_ts(text: str) -> str | None:
-    m = _DATE_RE.search(text or "")
-    if not m:
-        return None
-    if m.group(2):
-        return f"{m.group(1)}T{m.group(2)}Z"
-    return f"{m.group(1)}T00:00:00Z"
 
 
 def _in_window(ts: str | None, start: datetime | None, end: datetime | None) -> bool:
@@ -41,10 +32,11 @@ def _in_window(ts: str | None, start: datetime | None, end: datetime | None) -> 
         d = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except ValueError:
         return True
-    if d.tzinfo is None:
-        from datetime import UTC
-        d = d.replace(tzinfo=UTC)
-    return start <= d <= end
+    from nexus.langgraph.timestamps import datetime_epoch_ns, parse_time_value
+
+    parsed = parse_time_value(ts)
+    instant = parsed["epoch_ns"] if parsed else datetime_epoch_ns(d)
+    return datetime_epoch_ns(start) <= instant <= datetime_epoch_ns(end)
 
 
 def _hit_flag(hit: dict[str, Any], flag: str, text: str) -> bool:
@@ -62,7 +54,7 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
     events: list[dict[str, Any]] = []
     for h in hits:
         text = h.get("text") or ""
-        ts = _parse_ts(text)
+        ts = hit_time_of(h)
         host = ""
         hm = _HOST_RE.search(text)
         if hm:
@@ -120,7 +112,7 @@ def artifacts_to_events(
     for idx, a in enumerate(artifacts):
         if a.source == ArtifactSource.GENERIC_JSONL:
             continue
-        ts = a.timestamp.isoformat() if a.timestamp else ""
+        ts = a.timestamp_iso() or ""
         desc = a.description or a.process_name or a.file_path or a.artifact_type.value
         if store_lines is not None and idx < len(store_lines):
             loc_file = "ingest/artifacts.jsonl"
@@ -201,7 +193,15 @@ def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             seen[key] = len(out)
             out.append(ev)
-    out.sort(key=lambda e: (e.get("timestamp") or "9999", e.get("source") or "", e.get("file") or ""))
+    from nexus.langgraph.timestamps import parse_time_value
+
+    def ordering(event):
+        value = str(event.get("timestamp") or "")
+        info = parse_time_value(value)
+        instant = (0, info["epoch_ns"]) if info else (1, value or "9999")
+        return instant, event.get("source") or "", event.get("file") or ""
+
+    out.sort(key=ordering)
     return out
 
 

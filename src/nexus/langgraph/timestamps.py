@@ -79,14 +79,39 @@ def datetime_epoch_ns(dt: datetime) -> int:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     delta = dt.astimezone(UTC) - _EPOCH
+    return timedelta_ns(delta)
+
+
+def timedelta_ns(delta: timedelta) -> int:
+    """Exact integer duration at datetime's supported microsecond resolution."""
     return (delta.days * 86400 + delta.seconds) * _NS_PER_SECOND + delta.microseconds * 1000
 
 
-def utc_iso_from_ns(epoch_ns: int) -> str:
+def timestamp_epoch_ns(value: datetime, exact_ns: int | None = None) -> int:
+    """Validate one event instant against its compatibility datetime."""
+    compatible = datetime_epoch_ns(value)
+    if exact_ns is None:
+        return compatible
+    if not isinstance(exact_ns, int) or isinstance(exact_ns, bool):
+        raise ValueError("exact artifact timestamp must be integer nanoseconds")
+    if exact_ns // 1000 * 1000 != compatible:
+        raise ValueError("exact artifact timestamp disagrees with its compatibility datetime")
+    return exact_ns
+
+
+def timestamp_iso(value: datetime | None, exact_ns: int | None = None) -> str | None:
+    """Serialize an exact source clock or preserve the legacy datetime form."""
+    if exact_ns is not None:
+        return utc_iso_from_ns(timestamp_epoch_ns(value, exact_ns), precision="ns")
+    return value.isoformat() if value else None
+
+
+def utc_iso_from_ns(epoch_ns: int, *, precision: str = "") -> str:
     """Serialize the complete instant, without floats or datetime fraction loss."""
     seconds, fraction = divmod(epoch_ns, _NS_PER_SECOND)
     head = (_EPOCH + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S")
-    return head + ("." + f"{fraction:09d}".rstrip("0") if fraction else "") + "Z"
+    digits = f"{fraction:09d}" if precision == "ns" else f"{fraction:09d}".rstrip("0")
+    return head + ("." + digits if digits else "") + "Z"
 
 
 def datetime_from_epoch_ns(epoch_ns: int) -> datetime:
@@ -212,6 +237,24 @@ def parse_time_value(raw: str, *, year_hint: int | None = None) -> dict | None:
         instant = int(text) * 100 + datetime_epoch_ns(datetime(1601, 1, 1, tzinfo=UTC))
         return _numeric_time(instant, text, "ns")
     return parse_text_time(text, year_hint=year_hint)
+
+
+def source_timestamp_ns(value: object, normalized: datetime | None) -> int | None:
+    """Retain a selected source clock's submicroseconds after explicit zone normalization.
+
+    The source adapter chooses the clock and supplies its normalized datetime;
+    this helper neither selects a raw field nor infers a timezone. Whole-second
+    zone changes preserve fractions. Refuse rounded microseconds rather than
+    attach a fine tail to a different instant.
+    """
+    if normalized is None or not isinstance(value, str):
+        return None
+    info = parse_time_value(value)
+    if not info or info["raw"] != value.strip() or info["precision"] != "ns":
+        return None
+    if info["dt"].microsecond != normalized.microsecond:
+        raise ValueError("normalized source clock rounded its microseconds")
+    return datetime_epoch_ns(normalized) + info["epoch_ns"] % 1000
 
 
 def parse_text_time(raw: str, *, year_hint: int | None = None) -> dict | None:

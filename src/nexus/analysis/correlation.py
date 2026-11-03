@@ -23,6 +23,7 @@ from nexus.analysis.schemas import (
     CorrelationType,
 )
 from nexus.ingest.schemas import Artifact
+from nexus.langgraph.timestamps import timedelta_ns
 
 log = logging.getLogger(__name__)
 
@@ -171,19 +172,19 @@ class CorrelationEngine:
         if not artifacts:
             return out
         # Sort by timestamp
-        sorted_a = sorted(artifacts, key=lambda a: a.timestamp)
+        sorted_a = sorted(artifacts, key=lambda a: a.timestamp_epoch_ns())
         n = len(sorted_a)
         # Sliding window: for each i, find the largest j where ts[j] - ts[i] <= window
         for i in range(n):
             window_artifacts = [sorted_a[i]]
             for j in range(i + 1, n):
-                if sorted_a[j].timestamp - sorted_a[i].timestamp <= self.time_window:
+                if sorted_a[j].timestamp_epoch_ns() - sorted_a[i].timestamp_epoch_ns() <= timedelta_ns(self.time_window):
                     window_artifacts.append(sorted_a[j])
                 else:
                     break
             if len(window_artifacts) >= 3:
                 # Use the start time as the shared value
-                shared = window_artifacts[0].timestamp.isoformat()
+                shared = window_artifacts[0].timestamp_iso() or ""
                 out.append(self._make_correlation(
                     CorrelationType.TIME_PROXIMITY,
                     window_artifacts,

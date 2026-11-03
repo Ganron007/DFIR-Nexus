@@ -104,10 +104,10 @@ def detect_beacons(artifacts: list[Artifact], min_connections: int = MIN_CONNECT
         if len(arts) < min_connections:
             continue
 
-        sorted_arts = sorted(arts, key=lambda a: a.timestamp)
+        sorted_arts = sorted(arts, key=lambda a: a.timestamp_epoch_ns())
         intervals: list[float] = []
         for i in range(1, len(sorted_arts)):
-            delta = (sorted_arts[i].timestamp - sorted_arts[i - 1].timestamp).total_seconds()
+            delta = (sorted_arts[i].timestamp_epoch_ns() - sorted_arts[i - 1].timestamp_epoch_ns()) / 1_000_000_000
             if delta > 0:
                 intervals.append(delta)
 
@@ -133,8 +133,8 @@ def detect_beacons(artifacts: list[Artifact], min_connections: int = MIN_CONNECT
             jitter_ratio=jitter,
             score=score,
             artifact_ids=[a.id for a in sorted_arts],
-            first_seen=sorted_arts[0].timestamp.isoformat(),
-            last_seen=sorted_arts[-1].timestamp.isoformat(),
+            first_seen=sorted_arts[0].timestamp_iso() or "",
+            last_seen=sorted_arts[-1].timestamp_iso() or "",
         )
         candidates.append(candidate)
 

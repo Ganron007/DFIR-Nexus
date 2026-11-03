@@ -259,20 +259,37 @@ class Artifact:
     # Concrete parsers in execution order, including container delegates. The
     # shared ArtifactSource is not enough to identify a parser.
     importer_chain: list[str] = field(default_factory=list)
+    # Exact event instant when a selected source clock exceeds datetime's
+    # microseconds. Internal companion only: canonical JSON still has one
+    # timestamp string, and readers restore this value on a round-trip.
+    timestamp_ns: int | None = None
 
     @staticmethod
     def new_id() -> str:
         """Generate a new artifact ID."""
         return str(uuid.uuid4())
 
+    def timestamp_epoch_ns(self) -> int:
+        """One exact ordering/comparison instant, validated against the datetime view."""
+        from nexus.langgraph.timestamps import timestamp_epoch_ns
+
+        return timestamp_epoch_ns(self.timestamp, self.timestamp_ns)
+
+    def timestamp_iso(self) -> str | None:
+        """Canonical serialized source clock; legacy microsecond clocks keep their form."""
+        from nexus.langgraph.timestamps import timestamp_iso
+
+        return timestamp_iso(self.timestamp, self.timestamp_ns)
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dict."""
         d = asdict(self)
+        d.pop("timestamp_ns", None)
         d["artifact_type"] = self.artifact_type.value
         d["source"] = self.source.value
         d["severity"] = self.severity.value
         d["protocol"] = self.protocol.value if self.protocol else None
-        d["timestamp"] = self.timestamp.isoformat() if self.timestamp else None
+        d["timestamp"] = self.timestamp_iso()
         d["ingested_at"] = self.ingested_at.isoformat() if self.ingested_at else None
         return d
 
@@ -291,7 +308,14 @@ class Artifact:
             d["protocol"] = NetworkProtocol(d["protocol"])
         for key in ("timestamp", "ingested_at"):
             if isinstance(d.get(key), str):
-                d[key] = datetime.fromisoformat(d[key])
+                raw = d[key]
+                d[key] = datetime.fromisoformat(raw)
+                if key == "timestamp" and d.get("timestamp_ns") is None:
+                    from nexus.langgraph.timestamps import source_timestamp_ns
+
+                    exact = source_timestamp_ns(raw, d[key])
+                    if exact is not None:
+                        d["timestamp_ns"] = exact
         # Preserve the ORIGINAL ingest time: pop+setdefault always overwrote it.
         d["ingested_at"] = d.get("ingested_at") or datetime.now(UTC)
         return cls(**d)

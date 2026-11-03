@@ -235,13 +235,13 @@ class SummaryGenerator:
         lines.append(f"- Users involved: {', '.join(base.users_involved) or 'unknown'}")
         lines.append(f"- Techniques: {', '.join(base.techniques_observed) or 'none'}")
         if artifacts:
-            earliest = min(a.timestamp for a in artifacts)
-            latest = max(a.timestamp for a in artifacts)
-            lines.append(f"- Time range: {earliest.isoformat()} -> {latest.isoformat()}")
+            earliest = min(artifacts, key=lambda a: a.timestamp_epoch_ns())
+            latest = max(artifacts, key=lambda a: a.timestamp_epoch_ns())
+            lines.append(f"- Time range: {earliest.timestamp_iso()} -> {latest.timestamp_iso()}")
         # Top 10 most-severe events
         critical_high = sorted(
             [a for a in artifacts if a.severity in (Severity.CRITICAL, Severity.HIGH)],
-            key=lambda a: (a.severity.value, a.timestamp),
+            key=lambda a: (a.severity.value, a.timestamp_epoch_ns()),
             reverse=True,
         )[:10]
         if critical_high:

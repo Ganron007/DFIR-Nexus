@@ -57,6 +57,51 @@ def test_registration_date_becomes_the_timestamp():
     assert (art.timestamp.year, art.timestamp.month) == (2017, 8)
 
 
+def test_captured_task_source_clock_survives_storage_and_timeline_consumers():
+    from nexus.analysis.timeline import TimelineBuilder
+    from nexus.ingest.correlate import correlate
+    from nexus.ingest.df.scheduled_tasks import ScheduledTasksImporter
+    from nexus.ingest.schemas import Artifact
+    from nexus.langgraph.timeline_merge import artifacts_to_events
+
+    artifact = next(ScheduledTasksImporter().parse(OFFICE))
+    expected = "2017-08-05T12:13:18.004332100Z"
+    stored = artifact.to_dict()
+    assert stored["timestamp"] == expected
+    assert "timestamp_ns" not in stored
+    restored = Artifact.from_dict(json.loads(artifact.to_json()))
+    assert restored.to_dict() == stored
+    assert restored.timestamp_epoch_ns() % 1_000_000_000 == 4_332_100
+    assert artifacts_to_events([restored])[0]["timestamp"] == expected
+    assert correlate([restored]).merged[0].to_dict()["timestamp"] == expected
+    cluster = TimelineBuilder().build([restored])[0].to_dict()
+    assert cluster["start"] == cluster["end"] == expected
+    assert cluster["entries"][0]["timestamp"] == expected
+
+
+def test_all_captured_task_registration_fractions_survive_artifact_roundtrip():
+    import re
+
+    from nexus.ingest.df.scheduled_tasks import ScheduledTasksImporter
+    from nexus.ingest.schemas import Artifact
+
+    checked = 0
+    for path in TASKS.rglob("*"):
+        if not path.is_file() or not ScheduledTasksImporter.can_handle(path):
+            continue
+        for artifact in ScheduledTasksImporter().parse(path):
+            raw = str(artifact.raw.get("registration_date") or "")
+            match = re.search(r"\.(\d{7,9})(?:Z|[+-]\d\d:\d\d)?$", raw)
+            if not match:
+                continue
+            fraction = int(match[1].ljust(9, "0"))
+            assert artifact.timestamp_epoch_ns() % 1_000_000_000 == fraction, path
+            stored = artifact.to_dict()
+            assert Artifact.from_dict(stored).to_dict() == stored, path
+            checked += 1
+    assert checked > 0
+
+
 def test_naive_registration_date_uses_recorded_system_zone_and_dst(tmp_path, monkeypatch):
     from nexus.ingest import windows_timezones
     from nexus.ingest.df.scheduled_tasks import parse_task_record
@@ -112,7 +157,7 @@ def test_naive_registration_date_uses_recorded_system_zone_and_dst(tmp_path, mon
     assert result["success"] is True
     assert result["artifacts"] == 1
     doc = next(d for d in iter_index_docs(case) if d.get("family") == "scheduled_tasks")
-    assert doc["ts"] == "2017-08-05T16:13:18Z"
+    assert doc["ts"] == "2017-08-05T16:13:18.0043321Z"
     assert "ts_tz_assumed" not in doc
     # D399: a flag is written in the form a `boolean` column holds (`str()` wrote "False", which it rejects).
     assert doc["fields"]["ts_tz_assumed"] == "false"
@@ -147,6 +192,10 @@ def test_naive_registration_without_matching_zone_stays_flagged(tmp_path, monkey
 
     artifact = list(ScheduledTasksImporter().parse(OFFICE))[0]
     assert artifact.timestamp == datetime(2017, 8, 5, 12, 13, 18, 4332, tzinfo=UTC)
+    # The datetime remains compatible; canonical storage retains the real
+    # captured XML's additional 100-ns digit instead of silently dropping it.
+    assert artifact.to_dict()["timestamp"] == "2017-08-05T12:13:18.004332100Z"
+    assert type(artifact).from_dict(artifact.to_dict()).to_dict()["timestamp"] == artifact.to_dict()["timestamp"]
     assert artifact.ts_tz_assumed is True
     assert artifact.raw["timezone_assumed"] is True
 
@@ -156,7 +205,7 @@ def test_naive_registration_without_matching_zone_stays_flagged(tmp_path, monkey
 
     append_ingest_artifacts(case, [artifact])
     doc = next(d for d in iter_index_docs(case) if d.get("family") == "scheduled_tasks")
-    assert doc["ts"] == "2017-08-05T12:13:18Z"
+    assert doc["ts"] == "2017-08-05T12:13:18.0043321Z"
     assert doc["ts_tz_assumed"] is True
     assert doc["fields"]["ts_tz_assumed"] == "true"
     assert doc["fields"]["task_timezone_assumed"] == "true"

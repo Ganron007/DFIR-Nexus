@@ -17,10 +17,11 @@ Inspired by DFIR-Companion's correlate.ts (union-find algorithm).
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from nexus.ingest.schemas import Artifact
+from nexus.langgraph.timestamps import timedelta_ns
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class CorrelatedEvent:
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.primary.id,
-            "timestamp": self.primary.timestamp.isoformat(),
+            "timestamp": self.primary.timestamp_iso(),
             "description": self.primary.description,
             "severity": self.primary.severity.value,
             "sources": self.sources,
@@ -110,13 +111,9 @@ def _normalize_path(path: str) -> str:
     return path.replace("\\", "/").lower().rstrip("/")
 
 
-def _time_close(t1: datetime, t2: datetime, window: timedelta = DEFAULT_TIME_WINDOW) -> bool:
+def _time_close(t1: Artifact, t2: Artifact, window: timedelta = DEFAULT_TIME_WINDOW) -> bool:
     """Check if two timestamps are within the time window."""
-    if t1.tzinfo is None:
-        t1 = t1.replace(tzinfo=UTC)
-    if t2.tzinfo is None:
-        t2 = t2.replace(tzinfo=UTC)
-    return abs(t1 - t2) <= window
+    return abs(t1.timestamp_epoch_ns() - t2.timestamp_epoch_ns()) <= timedelta_ns(window)
 
 
 def correlate(
@@ -162,13 +159,13 @@ def correlate(
                 for j_idx in range(i_idx + 1, len(indices)):
                     a_i = artifacts[indices[i_idx]]
                     a_j = artifacts[indices[j_idx]]
-                    if _time_close(a_i.timestamp, a_j.timestamp, time_window):
+                    if _time_close(a_i, a_j, time_window):
                         uf.union(indices[i_idx], indices[j_idx])
 
     # Match exact (timestamp, description) duplicates
-    desc_index: dict[str, list[int]] = {}
+    desc_index: dict[tuple[int, str], list[int]] = {}
     for i, a in enumerate(artifacts):
-        key = f"{a.timestamp.isoformat()}|{a.description}"
+        key = (a.timestamp_epoch_ns(), a.description)
         desc_index.setdefault(key, []).append(i)
 
     for indices in desc_index.values():
@@ -185,5 +182,5 @@ def correlate(
         if merged.is_corroborated:
             result.corroborated += 1
 
-    result.merged.sort(key=lambda e: e.primary.timestamp)
+    result.merged.sort(key=lambda e: e.primary.timestamp_epoch_ns())
     return result
