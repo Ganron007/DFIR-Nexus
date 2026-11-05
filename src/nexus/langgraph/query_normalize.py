@@ -761,7 +761,13 @@ def normalize_sort(sort: Any, types: dict[str, str] | None = None) -> tuple[list
     for position, entry in enumerate(out):
         field = entry if isinstance(entry, str) else next(iter(entry))
         if types.get(field) == "date_nanos":
-            spec = {"order": "asc"} if isinstance(entry, str) else dict(entry[field])
+            val = entry[field] if isinstance(entry, dict) else entry
+            if isinstance(val, str):
+                spec = {"order": val if val != field else "asc"}
+            elif isinstance(val, dict):
+                spec = dict(val)
+            else:
+                spec = {"order": "asc"}
             if "format" not in spec:
                 # Nanosecond epoch integers exceed JavaScript's exact integer
                 # range. ISO cursor values survive browser/model round-trips.

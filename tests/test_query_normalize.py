@@ -102,6 +102,27 @@ def test_sort_on_an_unmapped_field_falls_back_to_ts():
     assert any("not mapped" in n for n in notes)
 
 
+def test_d534_sort_date_nanos_string_and_dict_entries():
+    nanos_types = {**TYPES, "ts": "date_nanos"}
+    # String field sort
+    out, notes = normalize_sort(["ts"], nanos_types)
+    assert out == [{"ts": {"order": "asc", "format": "strict_date_optional_time_nanos"}}]
+    # Unmapped string field fallback to ts
+    out, notes = normalize_sort(["size"], nanos_types)
+    assert out == [{"ts": {"order": "asc", "format": "strict_date_optional_time_nanos"}}]
+    # Dict with string value
+    out, notes = normalize_sort([{"ts": "desc"}], nanos_types)
+    assert out == [{"ts": {"order": "desc", "format": "strict_date_optional_time_nanos"}}]
+    # Multi-field sort with mixed string and dict entries (audit 173 shape)
+    out, notes = normalize_sort([{"ts": {"order": "asc"}}, "size", "family", "why"], nanos_types)
+    assert out == [
+        {"ts": {"order": "asc", "format": "strict_date_optional_time_nanos"}},
+        {"ts": {"order": "asc", "format": "strict_date_optional_time_nanos"}},
+        {"family": "asc"},
+        {"ts": {"order": "asc", "format": "strict_date_optional_time_nanos"}},
+    ]
+
+
 def test_alias_plain_ecs_names():
     out, notes = normalize_query(
         {"term": {"host.name": "WS01"}}, field_types=TYPES
