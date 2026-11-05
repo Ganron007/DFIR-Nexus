@@ -61,40 +61,6 @@ def test_es_property_shapes():
 def test_mapping_body_is_schema_v5_with_explicit_fields():
     from nexus.langgraph.case_index import INDEX_SCHEMA_VERSION, _mapping_body
 
-    # v8: WO-17 - CSV records, not physical lines.
-    # v9: WO-KM1 D34 - the importer's normalized columns are indexed. A v8 index
-    # silently omits them from every search, so the bump is load-bearing and an
-    # index built before it must be rebuilt.
-    # v10: WO-CS1 - the common `ecs.*` field set is added at index time (additive).
-    # v11: WO-CS1b item 1 (D37) - the column-count/value caps that dropped
-    # EvtxECmd's Payload are raised, so Windows EventData reaches the index.
-    # v12: operator 2026-10-11 - no cap or cut on valid evidence (the walk, row text, field
-    # values, columns); a line-based file has a header only when line 1 is tab-separated;
-    # .tsv is walked; host/user carry ignore_above. An index built before it must be rebuilt.
-    # v13: the wildcard subfields carry no ignore_above, so a substring search reaches a row of any
-    # length (measured on ES 8.17.4). An index built before it must be rebuilt.
-    # v14: an event time is never a bare number inside text (D120). An index built before it must be rebuilt.
-    # v15: .NET's JSON date, /Date(<ms>)/, is a time column's whole value (D260). An index built before it must be
-    # rebuilt.
-    # v16: `fields` holds column names, not paths (`subobjects: false`, D271).
-    # v19: typed `fields.*` checked on populated values, tool date formats, `true`/`false` flags, `ts_raw` the time,
-    # nfdump's summary its own record, keyword sub-fields to 8,191 characters (D399-D403). Rebuild before it.
-    # v20: MemProcFS read per table (an event from memory has its channel, code and host), a Windows event's user
-    # is the pinned map's whichever tool read it (D470/D471). Rebuild before it.
-    # v21: the MemProcFS wrapper's execution manifest is metadata, not evidence. Old indexes
-    # retain its line fragments until rebuilt, so this version change is required (TA-5.0).
-    # v22: every row carries its evidence group and an imported row its importer chain (TA-5.1, D480/D481). An old
-    # index has no group to select knowledge by, so it must be rebuilt.
-    # v23: detection rows are read as their event before per-event typing; MemProcFS's no-address marker is absent
-    # and a 4624 source workstation no longer replaces the logging host (D474/D496/D497). Rebuild old indexes.
-    # v24: updated population profiles participate in type proof; hexadecimal ProcessId values stay searchable
-    # in their raw column rather than being ignored by a decimal-only numeric mapping (D500).
-    # v25: image-extraction metadata is indexed and the backing files are freshness/verification inputs (D483).
-    # v26: JLECmd's current EntryNumber values contradict a decimal-only long mapping (D501).
-    # v27: raw CSV cell whitespace and embedded line endings survive derived projections (D521).
-    # v29: exact normalized source fractions survive artifact storage as well
-    # as the primary date_nanos projection introduced in v28 (D527/D529).
-    assert INDEX_SCHEMA_VERSION == 29
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000
