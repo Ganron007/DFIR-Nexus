@@ -3191,8 +3191,7 @@ async def _finalize_if_unfinished(
                 "draft_finding_ids") or [])
             finalize_run(
                 run, "interrupted",
-                f"awaiting approval at {pending[0]}"
-                + (f" ({drafts} DRAFT finding(s) staged)" if drafts else ""),
+                f"awaiting approval at {pending[0]} ({drafts} DRAFT finding(s) staged)",
             )
             log.info("Run paused at %s awaiting approval — not failed", pending[0])
             return

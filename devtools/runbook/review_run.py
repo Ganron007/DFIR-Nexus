@@ -24,7 +24,7 @@ MODEL_ENV = Path(__file__).resolve().parents[2] / ".env"
 STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})Z$")
 RUN_ID = re.compile(r"(RUN-\S+-interpret-\w+|M2-\d{8}T\d{6}-\w{6}|M3-\d{8}T\d{6}-\w{6})")
 TOOL_RESULT = re.compile(r"^\S+\s+tool\.result\s+\S+\s+(\S+)(?:\s+(.*))?$")
-APPROVAL_PAUSE = re.compile(r"awaiting approval at await_approval \((\d+) DRAFT finding\(s\) staged\)")
+APPROVAL_PAUSE = re.compile(r"awaiting approval at await_approval(?:\s+\((\d+)\s+DRAFT finding\(s\) staged\))?")
 
 
 def _record(folder: Path, run_id: str, mode: str, issues: list[str]) -> dict:
@@ -100,7 +100,7 @@ def review(tag: str, case: str, mode: str) -> dict:
         issues.append(f"record status={status}: {stop}")
     candidates = len(record.get("candidates") or [])
     if pause:
-        candidates = int(pause.group(1))
+        candidates = int(pause.group(1)) if pause.group(1) else 0
     tracebacks = [i for i, line in enumerate(lines) if "Traceback (most recent call last)" in line]
     fatal_log = [line for line in lines if re.match(
         r"(?:\S+\s+(?:run|work_order|agent)\.failed\b|"

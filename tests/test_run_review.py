@@ -239,3 +239,30 @@ def test_review_fails_closed_without_configured_operator_model(tmp_path, monkeyp
         f"2026-10-26T08:22:12Z\nrun_id={run_id} status=completed\nMODE2_EXIT=0\n2026-10-26T10:41:00Z\n")
     report = review_run.review("T22-R1z3b", case.name, "2")
     assert any("NEXUS_LLM_MODEL" in issue for issue in report["issues"])
+
+
+def test_review_accepts_mode1_approval_pause_with_zero_or_uncounted_drafts(tmp_path, monkeypatch, capsys):
+    # D535: Mode 1 with 0 staged findings can record either explicit 0 count or bare await_approval.
+    run_id = "RUN-20261106T153237652453Z-interpret-5913bd23"
+    case = _run(tmp_path, monkeypatch, "1", run_id, "interrupted")
+    manifest = case / "runs" / run_id / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["error"] = "awaiting approval at await_approval"
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    (case / ".trace/run-T07-R2-mode1.log").write_text(
+        f"2026-11-06T15:32:18Z\nrun_id={run_id} status=completed mode=interpret\n"
+        "MODE1_EXIT=0\n2026-11-06T15:36:23Z\n")
+    report = review_run.review("T07-R2", case.name, "1")
+    output = capsys.readouterr().out
+    assert report["issues"] == []
+    assert report["status"] == "interrupted"
+    assert "candidates/DRAFTs=0" in output
+
+    # Also test explicit 0 count
+    data["error"] = "awaiting approval at await_approval (0 DRAFT finding(s) staged)"
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    report2 = review_run.review("T07-R2", case.name, "1")
+    output2 = capsys.readouterr().out
+    assert report2["issues"] == []
+    assert report2["status"] == "interrupted"
+    assert "candidates/DRAFTs=0" in output2
