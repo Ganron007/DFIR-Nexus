@@ -1036,7 +1036,9 @@ def run_context_loop(
                 break
             except Exception as exc:  # noqa: BLE001 — one model failure is not fatal
                 from nexus.langgraph.prompt_budget import (
+                    case_window,
                     context_overflow_tokens,
+                    is_context_overflow,
                     record_token_count,
                 )
 
@@ -1101,6 +1103,8 @@ def run_context_loop(
                     retry_round = True
                     break
                 refused_tokens = context_overflow_tokens(str(exc))
+                if refused_tokens is None and is_context_overflow(str(exc)):
+                    refused_tokens = int(case_window(case_dir) * 1.15)
                 if attempt == 1 and refused_tokens:
                     # D380: the provider named the prompt's real size. Record it, so the next pack uses the measured
                     # characters per token, and send the round once more, re-packed to the window.

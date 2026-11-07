@@ -29,7 +29,11 @@ def _fresh_measurements():
 def test_a_refusal_names_the_prompts_real_token_count():
     assert pb.context_overflow_tokens("Error code: 400 - " + REFUSED_INPUT) == 772_709
     assert pb.context_overflow_tokens(REFUSED_TOTAL) == 516_256
+    assert pb.context_overflow_tokens("your messages resulted in 486161 tokens") == 486_161
+    assert pb.context_overflow_tokens("prompt has 12345 tokens") == 12_345
     assert pb.context_overflow_tokens("rate limited") is None
+    assert pb.is_context_overflow("Requested token count exceeds the model's maximum context length") is True
+    assert pb.is_context_overflow("normal response") is False
 
 
 def test_the_character_budget_follows_the_measured_ratio_and_never_rises_above_the_start():
@@ -137,3 +141,86 @@ def test_the_force_answer_prompt_is_clipped_to_the_budget_measured_now():
     _force_answer(model=_M(), base_system="s", question="q", observations=observations,
                   call_chars=10_000_000, prompt_chars=20_000)
     assert len(seen[0]) < 21_000
+
+
+class _AsyncRefusingInterpretModel:
+    def __init__(self, refuse_on_calls: set[int]):
+        import types
+
+        self.refuse_on_calls = set(refuse_on_calls)
+        self.calls: list[list[dict[str, str]]] = []
+        self._types = types
+
+    async def ainvoke(self, messages):
+        idx = len(self.calls)
+        self.calls.append(messages)
+        if idx in self.refuse_on_calls:
+            raise RuntimeError(f"Error code: 400 - {{'error': {{'message': \"{REFUSED_TOTAL}\"}}}}")
+        if idx == 0:
+            content = json.dumps({
+                "hypotheses": [{"id": "H1", "statement": "Test hyp", "why": "w"}],
+                "queries": [{"dsl": "test", "why": "w"}],
+            })
+        elif idx in (1, 2):
+            content = json.dumps({
+                "notes": [{"hypothesis": "H1", "status": "confirmed", "evidence": "test ev", "family": "f"}],
+                "next": [],
+            })
+        else:
+            content = json.dumps([
+                {"title": "Test Finding", "observation": "obs", "interpretation": "interp",
+                 "confidence": "HIGH", "confidence_justification": "cj", "audit_ids": ["a1"]}
+            ])
+        return self._types.SimpleNamespace(content=content)
+
+
+def test_the_interpret_loop_repacks_a_refused_call_and_goes_on(tmp_path):
+    import asyncio
+
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    async def _fake_exec(tool, payload):
+        return {"kind": "es_query", "count": 1, "hits": [{"family": "f", "text": "hit"}]}
+
+    case = tmp_path / "CASE-D536"
+    (case / "analysis").mkdir(parents=True)
+    digest = {
+        "alerts": [{"key": "a1", "audit_ids": ["a1"], "level": "high", "title": "Alert", "host": "h"}],
+        "scope": {},
+    }
+    model = _AsyncRefusingInterpretModel(refuse_on_calls={1})
+    result = asyncio.run(run_interpret_loop(
+        case_dir=case, case_id="CASE-D536", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=digest, digest_md="# Digest",
+        sections=[(1, "query_pack", "evidence row " * 500)],
+        execute=_fake_exec,
+    ))
+    assert result["findings_emitted"] == 1
+    assert len(model.calls) == 4  # orient, verify-refused, verify-repacked, reconcile
+    assert pb.chars_per_token() < 4.0  # token calibration occurred
+
+
+def test_the_interpret_loop_second_refusal_raises(tmp_path):
+    import asyncio
+
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    async def _fake_exec(tool, payload):
+        return {"kind": "es_query", "count": 1, "hits": [{"family": "f", "text": "hit"}]}
+
+    case = tmp_path / "CASE-D536-FAIL"
+    (case / "analysis").mkdir(parents=True)
+    digest = {
+        "alerts": [{"key": "a1", "audit_ids": ["a1"], "level": "high", "title": "Alert", "host": "h"}],
+        "scope": {},
+    }
+    model = _AsyncRefusingInterpretModel(refuse_on_calls={1, 2})
+    with pytest.raises(RuntimeError, match="Requested token count exceeds"):
+        asyncio.run(run_interpret_loop(
+            case_dir=case, case_id="CASE-D536-FAIL", model=model,
+            state={"case_context": {"interpret_rounds": "1"}},
+            digest=digest, digest_md="# Digest",
+            sections=[(1, "query_pack", "evidence row " * 500)],
+            execute=_fake_exec,
+        ))

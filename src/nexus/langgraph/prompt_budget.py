@@ -39,7 +39,23 @@ _measured: list[float] = []
 _OVERFLOW_PATTERNS = (
     re.compile(r"The input \((\d+) tokens\) is longer than the model's context length", re.IGNORECASE),
     re.compile(r"(\d+) tokens from the input messages", re.IGNORECASE),
+    re.compile(r"your messages resulted in (\d+) tokens", re.IGNORECASE),
+    re.compile(r"prompt(?: is| was| has|:)?\s*(\d+) tokens", re.IGNORECASE),
+    re.compile(r"input(?: messages)?(?: was| were|:)?\s*(\d+) tokens", re.IGNORECASE),
 )
+
+
+def is_context_overflow(text: str) -> bool:
+    """True when the error indicates the model's context length or window was exceeded (D536)."""
+    blob = (text or "").lower()
+    return any(sig in blob for sig in (
+        "maximum context length",
+        "context_length_exceeded",
+        "context window",
+        "exceeds the model's maximum context length",
+        "longer than the model's context length",
+        "too many tokens",
+    ))
 
 
 def chars_per_token() -> float:

@@ -687,6 +687,47 @@ async def run_interpret_loop(
         # A Mode 1 run is minutes of model calls; each phase says where it is (2026-10-14).
         emit_stage(dict(state), "interpret", status, detail)
 
+    async def _call_packed(
+        tag: str,
+        extra: list[tuple[int, str, str]],
+        system: str,
+        user_suffix: str,
+        response_format: dict[str, Any] | None = None,
+    ) -> tuple[str, str]:
+        """Pack sections and invoke the model with attempt-1 overflow retry (D536).
+
+        Returns (raw_reply, packed_context).
+        """
+        from nexus.langgraph.prompt_budget import (
+            context_overflow_tokens,
+            is_context_overflow,
+            record_token_count,
+        )
+
+        for attempt in (1, 2):
+            packed = _packed(tag, extra, system=system)
+            user_msg = packed + user_suffix
+            try:
+                raw = await _call_plan(model, [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_msg},
+                ], response_format)
+                return raw, packed
+            except Exception as exc:
+                refused_tokens = context_overflow_tokens(str(exc))
+                if refused_tokens is None and is_context_overflow(str(exc)):
+                    refused_tokens = int(ctx_window * 1.15)
+                if attempt == 1 and refused_tokens:
+                    record_token_count(len(system) + len(user_msg), refused_tokens, "refused prompt")
+                    log.warning(
+                        "interpret loop (%s): prompt was %d tokens, over window (%d); re-packing with measured ratio",
+                        tag, refused_tokens, ctx_window,
+                    )
+                    _progress(tag, f"prompt was {refused_tokens} tokens (over window); re-packing and retrying")
+                    continue
+                raise
+        return "", ""
+
     messages: list[dict[str, str]] = []
     hypotheses: list[dict[str, Any]] = []
     notes_all: list[dict[str, str]] = []
@@ -801,14 +842,14 @@ async def run_interpret_loop(
     # of thousands of rows (2026-10-14: 471,013 and 351,982).
     query_guidance = field_sheet + "\n" + query_protocol_block()
     orient_system = orient_system + skill_block + query_guidance
-    packed = _packed("interpret-orient", [
-        (1, "examiner_intake", intake_block),
-    ], system=orient_system)
     _progress("orient", f"planning hypotheses and queries ({rounds_total} round(s) allowed)")
-    raw = await _call_plan(model, [
-        {"role": "system", "content": orient_system},
-        {"role": "user", "content": packed + "\n\nProduce the plan JSON."},
-    ], plan_format)
+    raw, packed = await _call_packed(
+        "interpret-orient",
+        [(1, "examiner_intake", intake_block)],
+        orient_system,
+        "\n\nProduce the plan JSON.",
+        plan_format,
+    )
     plan_data = _parse_json_blob(raw)
     plan = _normalize_plan(plan_data)
     orient_retry = False
@@ -820,14 +861,19 @@ async def run_interpret_loop(
         orient_retry = True
         _persist_round(case_dir, "round-0-orient-unparsed", {"raw": raw, "chars": len(raw)})
         _progress("orient", f"the plan reply ({len(raw)} chars) did not parse; one corrective retry")
-        raw = await _call_plan(model, [
-            {"role": "system", "content": orient_system},
-            {"role": "user", "content": (
-                packed + "\n\nYour previous reply could not be read as the plan JSON"
-                + _where_it_broke(raw) + f". Return ONLY one JSON object with the keys {plan_keys}. "
-                "Every value must be valid JSON: no comments, no trailing commas and no '...' "
-                "placeholders; close every { and [ you open.")},
-        ], plan_format)
+        orient_retry_suffix = (
+            "\n\nYour previous reply could not be read as the plan JSON"
+            + _where_it_broke(raw) + f". Return ONLY one JSON object with the keys {plan_keys}. "
+            "Every value must be valid JSON: no comments, no trailing commas and no '...' "
+            "placeholders; close every { and [ you open."
+        )
+        raw, packed = await _call_packed(
+            "interpret-orient-corrective",
+            [(1, "examiner_intake", intake_block)],
+            orient_system,
+            orient_retry_suffix,
+            plan_format,
+        )
         plan_data = _parse_json_blob(raw)
         plan = _normalize_plan(plan_data)
     # Part 12 FM-9: every crit/high alert is a hypothesis with its own id, answered by id.
@@ -964,11 +1010,13 @@ async def run_interpret_loop(
             (0, "hypotheses", hyps_block),
             (1, "round_results", results_block),
         ]
-        packed = _packed(f"interpret-verify-{round_no}", plus_sections, system=verify_system)
-        raw = await _call_plan(model, [
-            {"role": "system", "content": verify_system},
-            {"role": "user", "content": packed + "\n\nProduce the notes JSON."},
-        ], verify_format)
+        raw, packed = await _call_packed(
+            f"interpret-verify-{round_no}",
+            plus_sections,
+            verify_system,
+            "\n\nProduce the notes JSON.",
+            verify_format,
+        )
         data = _parse_json_blob(raw)
         verify_retry = False
         if raw.strip() and not (isinstance(data, dict) and ("notes" in data or next_key in data)):
@@ -977,15 +1025,20 @@ async def run_interpret_loop(
             verify_retry = True
             _progress(f"round {round_no}/{rounds_total}",
                       "the verification reply did not parse; one corrective retry")
-            raw = await _call_plan(model, [
-                {"role": "system", "content": verify_system},
-                {"role": "user", "content": (
-                    packed + "\n\nYour previous reply could not be read as the notes JSON"
-                    + _where_it_broke(raw) + ". "
-                    f"Return ONLY one JSON object with the keys notes and {next_key}. Every value must "
-                    "be valid JSON: no comments, no trailing commas and no '...' placeholders; close "
-                    "every { and [ you open.")},
-            ], verify_format)
+            verify_retry_suffix = (
+                "\n\nYour previous reply could not be read as the notes JSON"
+                + _where_it_broke(raw) + ". "
+                f"Return ONLY one JSON object with the keys notes and {next_key}. Every value must "
+                "be valid JSON: no comments, no trailing commas and no '...' placeholders; close "
+                "every { and [ you open."
+            )
+            raw, packed = await _call_packed(
+                f"interpret-verify-{round_no}-corrective",
+                plus_sections,
+                verify_system,
+                verify_retry_suffix,
+                verify_format,
+            )
             data = _parse_json_blob(raw)
         if raw.strip() and not (isinstance(data, dict) and ("notes" in data or next_key in data)):
             _persist_round(case_dir, f"round-{round_no}-notes", {
@@ -1111,16 +1164,12 @@ async def run_interpret_loop(
         (2, "verification_notes", notes_block),
     ]
     _progress("reconcile", f"writing findings from {len(notes_all)} verification note(s)")
-    packed = _packed("interpret-reconcile", reconcile_extra, system=findings_system)
-    # Keep the packing stats so the corrective retry's persisted context carries
-    # the same completeness header as every other stage.
-    _, packed_report = pack_sections(
-        [(0, "case_digest", digest_md), *reconcile_extra], window=ctx_window
+    raw_findings, packed = await _call_packed(
+        "interpret-reconcile",
+        reconcile_extra,
+        findings_system,
+        "\n\nEmit the JSON object.",
     )
-    raw_findings = await _call_model(model, [
-        {"role": "system", "content": findings_system},
-        {"role": "user", "content": packed + "\n\nEmit the JSON object."},
-    ])
 
     from nexus.langgraph.case_digest import reconciliation_checklist
     from nexus.langgraph.hunt_parser import parse_hunt_candidates
@@ -1146,24 +1195,18 @@ async def run_interpret_loop(
                        {"raw": raw_findings, "chars": len(raw_findings or "")})
         _progress("reconcile", "the findings reply did not parse; one corrective retry")
         try:
-            persist_context(
-                case_dir, "interpret-findings-corrective",
-                _model_record(findings_system, packed), packed_report,
-                meta={"case_id": case_id},
+            findings_retry_suffix = (
+                "\n\nYour previous reply could not be parsed as findings. "
+                "Return ONLY a well-formed JSON object {\"findings\": [...], "
+                "\"dispositions\": [...]}. No prose, no fence, no trailing commas. "
+                "If no claim is supportable, findings is []."
             )
-            corrected = await _call_model(model, [
-                {"role": "system", "content": findings_system},
-                {
-                    "role": "user",
-                    "content": (
-                        packed
-                        + "\n\nYour previous reply could not be parsed as findings. "
-                        "Return ONLY a well-formed JSON object {\"findings\": [...], "
-                        "\"dispositions\": [...]}. No prose, no fence, no trailing commas. "
-                        "If no claim is supportable, findings is []."
-                    ),
-                },
-            ])
+            corrected, packed = await _call_packed(
+                "interpret-findings-corrective",
+                reconcile_extra,
+                findings_system,
+                findings_retry_suffix,
+            )
             corrected_found, corrected_dispositions = _split_reconcile_reply(corrected)
             if _candidates(corrected_found):
                 raw_findings = corrected
@@ -1209,19 +1252,13 @@ async def run_interpret_loop(
         )
         extra_sections = reconcile_extra + [(0, "findings_so_far", findings_block),
                                             (0, "unaddressed_items", items_block)]
-        packed_extra, report_extra = pack_sections(
-            [(0, "case_digest", digest_md), *extra_sections],
-            window=ctx_window,
-        )
         try:
-            persist_context(case_dir, "interpret-reconcile-extra",
-                            _model_record(extra_system, packed_extra),
-                            report_extra, meta={"case_id": case_id})
-            log_usage("interpret-reconcile-extra", report_extra)
-            extra_text = await _call_model(model, [
-                {"role": "system", "content": extra_system},
-                {"role": "user", "content": packed_extra + "\n\nEmit the JSON object."},
-            ])
+            extra_text, _ = await _call_packed(
+                "interpret-reconcile-extra",
+                extra_sections,
+                extra_system,
+                "\n\nEmit the JSON object.",
+            )
             extra_found, extra_dispositions = _split_reconcile_reply(extra_text)
             found, revised = _merge_extra_findings(found, extra_found, _candidates)
             dispositions = dispositions + extra_dispositions
