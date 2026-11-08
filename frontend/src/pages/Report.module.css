@@ -13,6 +13,10 @@
   flex-wrap: wrap;
 }
 
+.actionSelect {
+  min-width: 9rem;
+}
+
 .success {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);

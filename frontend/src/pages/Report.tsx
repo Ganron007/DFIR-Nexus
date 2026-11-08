@@ -79,6 +79,10 @@ export default function Report() {
   const [sealing, setSealing] = useState(false);
   const [sealError, setSealError] = useState("");
   const [notice, setNotice] = useState("");
+  const [profile, setProfile] = useState<string>("dfir");
+  const [format, setFormat] = useState<string>("markdown");
+  const [downloading, setDownloading] = useState(false);
+  const [exportingBundle, setExportingBundle] = useState(false);
 
   const findings: Finding[] = useMemo(
     () => findingsQuery.data?.findings ?? [],
@@ -122,9 +126,9 @@ export default function Report() {
   const handleGenerate = async () => {
     setNotice("");
     try {
-      const response = await generate.mutateAsync();
+      const response = await generate.mutateAsync({ profile, llm: true });
       setNotice(
-        `Official report generated — ${response.findings_count ?? 0} approved finding${
+        `Official report (${profile.toUpperCase()}) generated — ${response.findings_count ?? 0} approved finding${
           (response.findings_count ?? 0) === 1 ? "" : "s"
         } incorporated.`,
       );
@@ -132,6 +136,37 @@ export default function Report() {
       if (activeCase) refreshStages(activeCase);
     } catch {
       // the mutation carries the message
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setNotice("");
+    try {
+      await api.reportDownload({ format, profile });
+    } catch {
+      if (format === "markdown") {
+        download(
+          officialMarkdown || "",
+          officialMarkdown ? "REPORT.md" : "DFIR-Nexus-Report.md",
+        );
+      } else {
+        setNotice(`Download failed for ${format}`);
+      }
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleExportBundle = async () => {
+    setExportingBundle(true);
+    setNotice("");
+    try {
+      await api.caseBundleExport();
+    } catch (exc) {
+      setNotice(`Case bundle export failed: ${(exc as Error).message}`);
+    } finally {
+      setExportingBundle(false);
     }
   };
 
@@ -208,8 +243,58 @@ export default function Report() {
         stageCode="N7"
         actions={
           <div className={styles.actions}>
-            <Button variant="primary" size="sm" onClick={handleGenerate} disabled={generate.isPending}>
+            <div className={styles.actionSelect}>
+              <Select
+                value={profile}
+                onChange={(event) => setProfile(event.target.value)}
+                aria-label="Report Profile"
+                data-testid="report-profile-select"
+              >
+                <option value="dfir">The DFIR Report</option>
+                <option value="full">Full IR Report</option>
+                <option value="executive">Executive Summary</option>
+              </Select>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleGenerate}
+              disabled={generate.isPending}
+              data-testid="report-generate-button"
+            >
               {generate.isPending ? "Generating…" : "Generate official report"}
+            </Button>
+            <div className={styles.actionSelect}>
+              <Select
+                value={format}
+                onChange={(event) => setFormat(event.target.value)}
+                aria-label="Export Format"
+                data-testid="report-format-select"
+              >
+                <option value="markdown">Markdown (.md)</option>
+                <option value="html">HTML (.html)</option>
+                <option value="docx">Word (.docx)</option>
+                <option value="stix">STIX 2.1 (.json)</option>
+                <option value="zip">Case Archive (.zip)</option>
+              </Select>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleDownload}
+              disabled={(!officialMarkdown && findings.length === 0) || downloading}
+              title={`Download official report in ${format.toUpperCase()} format`}
+              data-testid="report-download-button"
+            >
+              {downloading ? "Downloading…" : "Download Report"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleExportBundle}
+              disabled={exportingBundle}
+              title="Export complete case findings and timeline as JSON bundle"
+              data-testid="case-bundle-export-button"
+            >
+              {exportingBundle ? "Exporting…" : "Export Bundle"}
             </Button>
             <Button
               size="sm"
@@ -218,18 +303,6 @@ export default function Report() {
               title="Print or save as PDF — ink-on-paper, chrome removed"
             >
               Print / Save PDF
-            </Button>
-            <Button
-              size="sm"
-              onClick={() =>
-                download(
-                  officialMarkdown || "",
-                  officialMarkdown ? "REPORT.md" : "DFIR-Nexus-Report.md",
-                )
-              }
-              disabled={!officialMarkdown && findings.length === 0}
-            >
-              Export Markdown
             </Button>
           </div>
         }

@@ -5947,7 +5947,7 @@ async def api_findings_reject(request):
     return JSONResponse({"ok": True, "rejected": rejected})
 
 
-def _write_case_report(case_dir, *, llm: bool = True, steer: str = ""):
+def _write_case_report(case_dir, *, profile: str = "dfir", llm: bool = True, steer: str = ""):
     """Shared report build — findings/timeline/meta loaded from the case
     dir, markdown written to reports/REPORT.md. Returns the response
     payload or raises."""
@@ -5987,23 +5987,56 @@ def _write_case_report(case_dir, *, llm: bool = True, steer: str = ""):
     questions = _split_questions(str(intake.get("question") or meta.get("question") or ""))
     ledger = load_case_ledger(case_dir)
 
-    report_text = build_dfir_markdown(
-        case_id=case_dir.name,
-        case_name=meta.get("name") or case_dir.name,
-        findings=findings,
-        evidence=evidence,
-        timeline=timeline if isinstance(timeline, list) else [],
-        sift_notes=sift_notes_from_ledger(ledger),
-        examiner=meta.get("examiner") or meta.get("created_by") or "examiner",
-        status=str(meta.get("status") or "open"),
-        severity=str(meta.get("severity") or "unrated"),
-        case_summary=str(meta.get("description") or ""),
-        tool_ledger=ledger,
-        questions=questions,
-        case_dir=case_dir,
-        llm=llm,
-        steer=steer,
-    )
+    norm_profile = (profile or "dfir").strip().lower()
+    if norm_profile == "executive":
+        approved = [f for f in findings if str(f.get("status") or f.get("approval_state") or "").upper() == "APPROVED"]
+        lines = [
+            f"# Executive Summary: {meta.get('name') or case_dir.name}",
+            "",
+            f"**Case ID:** `{case_dir.name}`  ",
+            f"**Status:** {meta.get('status') or 'open'}  ",
+            f"**Severity:** {meta.get('severity') or 'unrated'}  ",
+            f"**Examiner:** {meta.get('examiner') or meta.get('created_by') or 'examiner'}  ",
+            f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%SZ')}  ",
+            "",
+            "## Executive Overview",
+            str(meta.get("description") or meta.get("case_summary") or "Investigation conducted using DFIR-Nexus Cockpit."),
+            "",
+            f"## Approved Findings ({len(approved)})",
+            "",
+        ]
+        if not approved:
+            lines.append("No approved findings recorded for this case.")
+        for f in approved:
+            sev = str(f.get("severity") or "informational").upper()
+            title = f.get("title") or "Untitled finding"
+            obs = f.get("observation") or f.get("description") or ""
+            interp = f.get("interpretation") or ""
+            lines.append(f"### [{sev}] {title}")
+            if obs:
+                lines.append(f"**Observation:** {obs}  ")
+            if interp:
+                lines.append(f"**Impact/Assessment:** {interp}  ")
+            lines.append("")
+        report_text = "\n".join(lines)
+    else:
+        report_text = build_dfir_markdown(
+            case_id=case_dir.name,
+            case_name=meta.get("name") or case_dir.name,
+            findings=findings,
+            evidence=evidence,
+            timeline=timeline if isinstance(timeline, list) else [],
+            sift_notes=sift_notes_from_ledger(ledger),
+            examiner=meta.get("examiner") or meta.get("created_by") or "examiner",
+            status=str(meta.get("status") or "open"),
+            severity=str(meta.get("severity") or "unrated"),
+            case_summary=str(meta.get("description") or ""),
+            tool_ledger=ledger,
+            questions=questions,
+            case_dir=case_dir,
+            llm=llm,
+            steer=steer,
+        )
     reports_dir = case_dir / "reports"
     reports_dir.mkdir(exist_ok=True)
     out_file = reports_dir / "REPORT.md"
@@ -6019,6 +6052,7 @@ def _write_case_report(case_dir, *, llm: bool = True, steer: str = ""):
         "ok": True,
         "report_path": str(out_file),
         "findings_count": approved_count,
+        "profile": norm_profile,
     }
 
 
@@ -6250,6 +6284,10 @@ async def api_report_generate(request):
     with contextlib.suppress(Exception):
         body = await request.json() or {}
 
+    profile = str(body.get("profile") or "dfir").strip().lower()
+    if profile not in {"dfir", "full", "executive", "narrative"} or profile == "markdown":
+        profile = "dfir"
+
     try:
         # N8 analysis layer on by default; {"llm": false} forces the
         # deterministic render (fast regen, offline, tests).
@@ -6257,6 +6295,7 @@ async def api_report_generate(request):
         return JSONResponse(await asyncio.to_thread(
             _write_case_report,
             case_dir,
+            profile=profile,
             llm=bool(body.get("llm", True)),
             steer=_report_steer_context(_load_report_rounds(case_dir)),
         ))
@@ -6414,6 +6453,183 @@ async def api_report_view(request):
         "markdown": report_file.read_text(encoding="utf-8"),
         "title": f"Report: {case_dir.name}",
     })
+
+
+def _load_case_bundle(case_dir: Path) -> dict[str, Any]:
+    import yaml
+
+    from nexus.case.compat import dict_to_case, dict_to_evidence, dict_to_finding
+    from nexus.case.schemas import AuditAction, AuditEntry
+    from nexus.cli.report import _load_flat_evidence
+
+    meta = {}
+    for name in ("CASE.yaml", "case.json"):
+        p = case_dir / name
+        if p.exists():
+            try:
+                if name.endswith(".yaml"):
+                    meta = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+                else:
+                    meta = json.loads(p.read_text(encoding="utf-8"))
+                break
+            except Exception:
+                pass
+    meta.setdefault("id", case_dir.name)
+    meta.setdefault("case_id", case_dir.name)
+    meta.setdefault("name", meta.get("name") or case_dir.name)
+    case_obj = dict_to_case(meta)
+
+    findings_raw = []
+    if (case_dir / "findings.json").is_file():
+        try:
+            findings_raw = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+        except Exception:
+            findings_raw = []
+    findings_objs = [dict_to_finding(f) for f in findings_raw if isinstance(f, dict)]
+
+    evidence_raw = _load_flat_evidence(case_dir)
+    evidence_objs = [dict_to_evidence(ev) for ev in evidence_raw if isinstance(ev, dict)]
+
+    timeline_raw = []
+    if (case_dir / "timeline.json").is_file():
+        try:
+            timeline_raw = json.loads((case_dir / "timeline.json").read_text(encoding="utf-8"))
+        except Exception:
+            timeline_raw = []
+
+    audit_entries: list[AuditEntry] = []
+    audit_file = case_dir / "audit" / "audit.jsonl"
+    if audit_file.is_file():
+        try:
+            for line in audit_file.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    ad = json.loads(line)
+                    action_val = AuditAction.CASE_OPENED
+                    for a in AuditAction:
+                        if a.value == ad.get("action"):
+                            action_val = a
+                            break
+                    ts = datetime.now(UTC)
+                    if "timestamp" in ad:
+                        with contextlib.suppress(Exception):
+                            ts = datetime.fromisoformat(ad["timestamp"])
+                    audit_entries.append(AuditEntry(
+                        id=str(ad.get("id") or ""),
+                        case_id=case_dir.name,
+                        action=action_val,
+                        actor=str(ad.get("actor") or "system"),
+                        timestamp=ts,
+                        payload=ad.get("payload") if isinstance(ad.get("payload"), dict) else {},
+                    ))
+        except Exception:
+            pass
+
+    return {
+        "case": case_obj,
+        "findings": findings_objs,
+        "evidence": evidence_objs,
+        "audit_log": audit_entries,
+        "audit_verified": True,
+        "audit_errors": [],
+        "timeline": timeline_raw,
+    }
+
+
+async def api_report_download(request):
+    """GET /portal/api/report/download — download official report in chosen format.
+
+    Supported formats: markdown, html, docx, stix, zip.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    fmt = (request.query_params.get("format") or "markdown").strip().lower()
+    profile = (request.query_params.get("profile") or "dfir").strip().lower()
+    if profile not in {"dfir", "full", "executive", "narrative"}:
+        profile = "dfir"
+
+    report_file = case_dir / "reports" / "REPORT.md"
+    if not report_file.is_file():
+        _write_case_report(case_dir, profile=profile, llm=False)
+
+    bundle = _load_case_bundle(case_dir)
+    case_id = case_dir.name
+
+    if fmt in ("markdown", "md"):
+        content = report_file.read_text(encoding="utf-8") if report_file.is_file() else "# DFIR-Nexus Report"
+        return Response(
+            content=content,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{case_id}-report.md"'},
+        )
+    elif fmt == "html":
+        from nexus.integration.case_export import export_to_html
+        content = export_to_html(bundle)
+        return Response(
+            content=content,
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{case_id}-report.html"'},
+        )
+    elif fmt == "docx":
+        from nexus.integration.export_formats import export_to_docx
+        docx_bytes = export_to_docx(bundle)
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{case_id}-report.docx"'},
+        )
+    elif fmt in ("stix", "stix2"):
+        from nexus.integration.case_export import export_to_stix
+        content = export_to_stix(bundle)
+        return Response(
+            content=content,
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{case_id}-report.stix.json"'},
+        )
+    elif fmt == "zip":
+        from nexus.integration.export_formats import export_case_zip
+        zip_bytes = export_case_zip(bundle)
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{case_id}-report.zip"'},
+        )
+    else:
+        return JSONResponse(
+            {"error": f"Unsupported format: {fmt}. Must be markdown, html, docx, stix, or zip."},
+            status_code=400,
+        )
+
+
+async def api_case_bundle(request):
+    """GET /portal/api/case/bundle — export case JSON bundle (matching `nexus export`)."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    bundle: dict[str, Any] = {
+        "version": 1,
+        "exported_at": datetime.now(UTC).isoformat(),
+        "case_id": case_dir.name,
+    }
+    since = request.query_params.get("since", "").strip()
+    for name in ("findings", "timeline", "todos", "iocs"):
+        path = case_dir / f"{name}.json"
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if since and isinstance(data, list):
+                    data = [d for d in data if d.get("ts", "") >= since or d.get("timestamp", "") >= since]
+                bundle[name] = data
+            except Exception:
+                bundle[name] = []
+        else:
+            bundle[name] = []
+    filename = f"{case_dir.name}-bundle.json"
+    return Response(
+        content=json.dumps(bundle, indent=2, default=str),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 async def api_evidence_verify(request):
@@ -7430,6 +7646,8 @@ def create_dashboard():
         Route("/portal/api/report/rounds", api_report_rounds, methods=["GET"]),
         Route("/portal/api/report/grade", api_report_grade, methods=["GET"]),
         Route("/portal/api/report/claims", api_report_claims, methods=["GET"]),
+        Route("/portal/api/report/download", api_report_download, methods=["GET"]),
+        Route("/portal/api/case/bundle", api_case_bundle, methods=["GET"]),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # WO-A4: the reproducibility bundle for an approved finding
         Route("/portal/api/finding/exhibit", api_finding_exhibit, methods=["GET"]),

@@ -64,3 +64,37 @@ export function post<T>(path: string, data?: unknown): Promise<T> {
     body: data ? JSON.stringify(data) : undefined,
   });
 }
+
+export async function downloadBlob(
+  path: string,
+  fallbackFilename: string,
+): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { ...caseHeaders() },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(
+      res.status,
+      (body as { error?: string }).error || res.statusText,
+      body,
+    );
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition");
+  let filename = fallbackFilename;
+  if (disposition) {
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.setTimeout(() => URL.revokeObjectURL(url), 200);
+}

@@ -1,13 +1,26 @@
 /**
  * Report domain (WO-U4): generation, viewing and steer rounds.
  */
-import { post, request } from "../transport";
+import { downloadBlob, post, request } from "../transport";
 
 export const reportApi = {
   reportGenerate: (params?: { profile?: string; llm?: boolean }) =>
     post<{ ok: boolean; report_path: string; findings_count: number; error?: string }>("/report/generate", params || {}),
   reportView: () =>
     request<{ ok: boolean; markdown: string; title?: string; error?: string }>("/report/view"),
+  reportDownload: (params?: { format?: string; profile?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.format) sp.set("format", params.format);
+    if (params?.profile) sp.set("profile", params.profile);
+    const qs = sp.toString() ? `?${sp.toString()}` : "";
+    return downloadBlob(`/report/download${qs}`, "report.md");
+  },
+  caseBundleExport: (params?: { since?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.since) sp.set("since", params.since);
+    const qs = sp.toString() ? `?${sp.toString()}` : "";
+    return downloadBlob(`/case/bundle${qs}`, "case-bundle.json");
+  },
   reportSteer: (params: { instruction: string; finding_id?: string; llm?: boolean }) =>
     post<{
       ok: boolean;

@@ -109,11 +109,11 @@ export function useGenerateReport(caseId: string | null | undefined) {
   return useMutation<
     { ok: boolean; findings_count?: number; error?: string },
     Error,
-    void
+    { profile?: string; llm?: boolean } | void
   >({
     mutationKey: caseKey(caseId, "report-generate"),
-    mutationFn: async () => {
-      const response = await api.reportGenerate({ profile: "markdown" });
+    mutationFn: async (params) => {
+      const response = await api.reportGenerate(params || { profile: "dfir" });
       if (!response.ok) {
         throw new Error(response.error || "Failed to generate report");
       }

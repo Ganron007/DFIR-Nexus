@@ -9,7 +9,7 @@
  *   3. provenance (case + how many approved findings) is forced onto the page.
  */
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -278,5 +278,41 @@ describe("Report (migrated)", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("case db locked"),
     );
+  });
+
+  it("renders profile and format selectors and handles report download and bundle export", async () => {
+    withCase("CASE-RPT0011");
+    stubReads();
+    const downloadSpy = vi.spyOn(api, "reportDownload").mockResolvedValue();
+    const bundleSpy = vi.spyOn(api, "caseBundleExport").mockResolvedValue();
+
+    renderPage(<Report />);
+    await screen.findByTestId("report-document");
+
+    const profileSelect = screen.getByTestId("report-profile-select");
+    expect(profileSelect).toHaveValue("dfir");
+    await act(async () => {
+      fireEvent.change(profileSelect, { target: { value: "executive" } });
+    });
+    expect(profileSelect).toHaveValue("executive");
+
+    const formatSelect = screen.getByTestId("report-format-select");
+    expect(formatSelect).toHaveValue("markdown");
+    await act(async () => {
+      fireEvent.change(formatSelect, { target: { value: "docx" } });
+    });
+    expect(formatSelect).toHaveValue("docx");
+
+    const downloadBtn = screen.getByTestId("report-download-button");
+    await act(async () => {
+      fireEvent.click(downloadBtn);
+    });
+    expect(downloadSpy).toHaveBeenCalledWith({ format: "docx", profile: "executive" });
+
+    const bundleBtn = screen.getByTestId("case-bundle-export-button");
+    await act(async () => {
+      fireEvent.click(bundleBtn);
+    });
+    expect(bundleSpy).toHaveBeenCalled();
   });
 });
