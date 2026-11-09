@@ -941,3 +941,15 @@ def test_a_round_sends_the_system_text_once_and_the_task_before_the_observations
     record = sorted((case / "analysis" / "llm_context").glob("*context-loop*round-2*"))[-1]
     text = record.read_text(encoding="utf-8")
     assert "## SYSTEM MESSAGE" in text and "ACTIVE CASE: CASE-LOOP" in text and "WORK ORDER wo-1" in text
+
+
+def test_rag_search_source_ids_normalization():
+    """Verify that rag_search source_ids tolerates and extracts strings from dict items."""
+    from nexus.langgraph.context_loop import _validate_args
+
+    clean, err = _validate_args("rag_search", {
+        "query": "persistence",
+        "source_ids": [{"source": "atomic"}, "mitre", {"id": "win_sec"}],
+    })
+    assert not err
+    assert clean["source_ids"] == ["atomic", "mitre", "win_sec"]

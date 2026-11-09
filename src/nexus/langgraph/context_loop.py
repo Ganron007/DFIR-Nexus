@@ -323,8 +323,19 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
     if "source_ids" in clean:
         source_ids = clean["source_ids"]
         if isinstance(source_ids, str):
-            clean["source_ids"] = [source_ids]
-        elif not isinstance(source_ids, list):
+            clean["source_ids"] = [source_ids] if source_ids.strip() else []
+        elif isinstance(source_ids, list):
+            norm = []
+            for item in source_ids:
+                if isinstance(item, str):
+                    if item.strip():
+                        norm.append(item.strip())
+                elif isinstance(item, dict):
+                    val = item.get("id") or item.get("source") or item.get("source_id") or item.get("name")
+                    if isinstance(val, str) and val.strip():
+                        norm.append(val.strip())
+            clean["source_ids"] = norm
+        else:
             return {}, f"{tool}: source_ids must be a list of strings"
     if tool in ("es_search", "es_aggregate"):
         try:

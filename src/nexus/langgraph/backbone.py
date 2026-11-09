@@ -598,6 +598,17 @@ def _rag_call(audit: AuditWriter | None = None, *, alias: str = "",
     source_ids = kwargs.get("source_ids")
     if isinstance(source_ids, str):
         source_ids = [source_ids] if source_ids.strip() else None
+    elif isinstance(source_ids, list):
+        norm = []
+        for s in source_ids:
+            if isinstance(s, str):
+                if s.strip():
+                    norm.append(s.strip())
+            elif isinstance(s, dict):
+                v = s.get("id") or s.get("source") or s.get("source_id") or s.get("name")
+                if isinstance(v, str) and v.strip():
+                    norm.append(v.strip())
+        source_ids = norm or None
     result = do_forensic_rag_search(
         query=str(kwargs.get("query") or ""),
         top_k=int(kwargs.get("top_k") or 10),

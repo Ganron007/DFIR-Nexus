@@ -687,7 +687,19 @@ class RAGIndex:
         if source or source_ids or technique or platform:
             retrieve_k = min(MAX_RETRIEVE, top_k * 50)
 
-        source_ids_set = set(source_ids) if source_ids else None
+        source_ids_set: set[str] | None = None
+        if source_ids:
+            extracted: set[str] = set()
+            for s in source_ids:
+                if isinstance(s, str):
+                    extracted.add(s)
+                elif isinstance(s, dict):
+                    val = s.get("id") or s.get("source") or s.get("source_id") or s.get("name")
+                    if isinstance(val, str) and val:
+                        extracted.add(val)
+                elif s is not None:
+                    extracted.add(str(s))
+            source_ids_set = extracted or None
         matched_sources = self._get_matching_sources(
             source.lower() if source and not source_ids else None
         )
