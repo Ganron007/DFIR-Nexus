@@ -54,3 +54,42 @@ if (typeof Element.prototype.scrollTo !== "function") {
     }
   };
 }
+
+class LocalStorageStub implements Storage {
+  private store = new Map<string, string>();
+  get length(): number {
+    return this.store.size;
+  }
+  clear(): void {
+    this.store.clear();
+  }
+  getItem(key: string): string | null {
+    return this.store.has(key) ? this.store.get(key)! : null;
+  }
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+}
+
+try {
+  if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localStorage?.clear !== "function") {
+    const stub = new LocalStorageStub();
+    Object.defineProperty(globalThis, "localStorage", { value: stub, writable: true, configurable: true });
+    if (typeof window !== "undefined") {
+      Object.defineProperty(window, "localStorage", { value: stub, writable: true, configurable: true });
+    }
+  }
+} catch {
+  const stub = new LocalStorageStub();
+  Object.defineProperty(globalThis, "localStorage", { value: stub, writable: true, configurable: true });
+  if (typeof window !== "undefined") {
+    Object.defineProperty(window, "localStorage", { value: stub, writable: true, configurable: true });
+  }
+}
+

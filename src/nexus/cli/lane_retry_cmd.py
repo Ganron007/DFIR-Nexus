@@ -146,11 +146,16 @@ def retry(
         and (not tools or str(row.get("tool") or "").lower() in tools)
     ]
     typer.echo(retry_summary_line(ledger_now))
+    from nexus.langgraph.pipeline_runs import PipelineRun, finalize_run
+
+    run_obj = PipelineRun(run_dir.name, "tools", run_dir, "")
     if still:
+        finalize_run(run_obj, "completed_with_failures", f"{len(still)} job(s) still failing")
         for row in still[:10]:
             typer.echo(f"  STILL FAILING {row.get('tool')}: "
                        f"{str(row.get('reason') or '')[:70]}")
         raise typer.Exit(1)
+    finalize_run(run_obj, "completed")
     # The gate is re-derived from the new ledger, so a cleared failure clears the gate
     # rather than leaving it blocked on stale state.
     from nexus.langgraph.lane_gate import write_lane_gate
@@ -250,7 +255,6 @@ def _load_ledger(case_dir) -> tuple[list[dict], Path | None]:
     before runs existed keeps its flat ledger, which has no run folder to retry into.
     """
     from nexus.langgraph.pipeline_runs import (
-        load_manifest,
         resolve_run,
         resolve_tools_extractions,
     )
@@ -263,9 +267,11 @@ def _load_ledger(case_dir) -> tuple[list[dict], Path | None]:
             raise
         active = None
     if active is not None and active.mode == "tools":
-        manifest = load_manifest(active.path)
-        if str(manifest.get("status") or "") != "completed":
-            return _read_rows(active.extractions / "_tool_lane_ledger.json"), active.path
+        rows = _read_rows(active.extractions / "_tool_lane_ledger.json")
+        if not rows:
+            from nexus.langgraph.tool_lane import build_ledger_from_journal
+            rows = build_ledger_from_journal(active.extractions)
+        return rows, active.path
 
     try:
         run_extractions = resolve_tools_extractions(case_dir)
@@ -273,6 +279,9 @@ def _load_ledger(case_dir) -> tuple[list[dict], Path | None]:
         run_extractions = None
     if run_extractions is not None:
         rows = _read_rows(run_extractions / "_tool_lane_ledger.json")
+        if not rows:
+            from nexus.langgraph.tool_lane import build_ledger_from_journal
+            rows = build_ledger_from_journal(run_extractions)
         if rows:
             run_dir = run_extractions.parent
             is_run = run_dir.parent.name == "runs"

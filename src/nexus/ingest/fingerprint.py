@@ -172,6 +172,33 @@ def place_loose_csvs(root: Path) -> list[Path]:
         dest = place_recognized_csv(source, root)
         if dest is None or dest.resolve() == source.resolve():
             continue
-        source.unlink()
+        # D66: Keep original loose CSV for preservation/idempotency; do not unlink.
         placed.append(dest)
     return placed
+
+
+def is_placed_loose_csv(path: Path, root: Path) -> bool:
+    """True if ``path`` is a loose CSV directly in ``root`` that has been placed into a family folder.
+
+    D66: place_loose_csvs leaves original loose CSVs in ingest/ for preservation.
+    The indexer and extraction walks must skip the root copy so rows are not duplicated
+    and the file is indexed only under its assigned family.
+    """
+    try:
+        p = Path(path)
+        r = Path(root)
+        if p.parent.resolve() != r.resolve() or p.suffix.lower() != ".csv":
+            return False
+    except (OSError, ValueError):
+        return False
+
+    for sub in r.iterdir():
+        if sub.is_dir() and not sub.name.startswith("_") and sub.name not in {"workdir", "_staged"}:
+            candidate = sub / p.name
+            if candidate.is_file():
+                return True
+            for match in sub.glob(f"{p.stem}-*.csv"):
+                if match.is_file():
+                    return True
+    return False
+

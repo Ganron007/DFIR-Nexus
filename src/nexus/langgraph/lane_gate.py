@@ -197,6 +197,8 @@ def _job_state(status: str) -> str:
         # A parser that cannot run on evidence that is present (D43/D53). Not a SKIP:
         # the gate treats it as unprocessed, so it never reads as clear.
         "BLOCKED": "blocked",
+        "NOT_RUN": "interrupted",
+        "DEFERRED": "deferred",
     }
     return mapped.get(str(status or "").upper(), "unknown")
 
@@ -406,8 +408,12 @@ def write_lane_gate(
     unprocessed: list[dict[str, Any]] = []
     waiting_sift: list[dict[str, Any]] = []
     not_applicable: list[dict[str, Any]] = []
+    best_effort_warnings: list[dict[str, Any]] = []
+    from nexus.langgraph.tool_lane import BEST_EFFORT_TOOLS
+
     for row in ledger:
         state = _job_state(str(row.get("status") or ""))
+        tool_name = str(row.get("tool") or "").strip().lower()
         if _is_sift_row(row):
             # Waiting is SIFT work that did not run: a job planned with its command that the host could not take.
             # A SIFT row skipped at planning, with no command (no memory image declared, a tool not opted in),
@@ -418,7 +424,12 @@ def write_lane_gate(
             elif state in {"failed", "skipped"}:
                 waiting_sift.append(_pending_entry(row))
             continue
-        if state in ("failed", "blocked"):
+        if state == "failed":
+            if tool_name in BEST_EFFORT_TOOLS:
+                best_effort_warnings.append(_pending_entry(row))
+            else:
+                unprocessed.append(_pending_entry(row))
+        elif state == "blocked":
             unprocessed.append(_pending_entry(row))
         elif state == "skipped":
             not_applicable.append(_pending_entry(row))
@@ -449,6 +460,7 @@ def write_lane_gate(
         "unprocessed": unprocessed,
         "waiting_sift": waiting_sift,
         "not_applicable": not_applicable,
+        "best_effort_warnings": best_effort_warnings,
         "examiner_skips": skips,
         "jobs": jobs,
     }

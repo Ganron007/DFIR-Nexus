@@ -65,7 +65,9 @@ def test_a_csv_dropped_at_the_ingest_root_is_placed_by_family(tmp_path):
     placed = place_loose_csvs(root)
     assert len(placed) == 1
     assert placed[0].parent.name == "pecmd"
-    assert not (root / "prefetch.csv").is_file()
+    # D66: Original loose CSV is preserved for idempotency and data retention
+    assert (root / "prefetch.csv").is_file()
+    assert (root / "pecmd" / "prefetch.csv").is_file()
     assert (root / "pecmd" / "already.csv").is_file()
 
 

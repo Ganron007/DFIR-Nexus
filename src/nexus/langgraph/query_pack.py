@@ -967,6 +967,9 @@ def iter_extraction_files(
             # via load_ingest_artifacts; scanning it as N4 text matches UUIDs.
             if path.name.lower() == "artifacts.jsonl":
                 continue
+            from nexus.ingest.fingerprint import is_placed_loose_csv
+            if is_placed_loose_csv(path, root):
+                continue
             if stats is not None:
                 stats["files_total"] += 1
             fam = _family(path, root)

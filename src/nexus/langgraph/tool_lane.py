@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import re
@@ -38,6 +39,99 @@ from nexus.langgraph.tool_call import call_tool
 from nexus.langgraph.tool_output_policy import is_tool_own_log_name
 
 log = logging.getLogger(__name__)
+
+#: Reliability classes (D153, WO-LR v2 item 7).
+#: Required failures block the evidence gate; best-effort failures become warnings.
+REQUIRED_TOOLS = frozenset({
+    "evtxecmd", "hayabusa", "mftecmd", "recmd", "pecmd", "amcacheparser",
+    "appcompatcacheparser", "lecmd", "jlecmd", "sbecmd", "vol", "memprocfs", "pff-ost",
+})
+BEST_EFFORT_TOOLS = frozenset({
+    "srumecmd", "logfileparser", "deepbluecli", "bmc-tools", "sidr", "bitsparser",
+    "wmi-parser", "maldump", "dhparser", "mplog", "wxtcmd", "sqlecmd", "plaso", "zeek",
+})
+DEFERRED_TOOL_CLASSES = frozenset({"plaso", "zeek_full", "memory_deep"})
+
+
+def journal_path(extractions: Path | str) -> Path:
+    """The path to the lane's per-job append journal (WO-LR v2 item 1)."""
+    return Path(extractions) / "_tool_lane_journal.jsonl"
+
+
+def append_journal_entry(extractions: Path | str, entry: dict[str, Any]) -> None:
+    """Each job state change appends an fsynced line to _tool_lane_journal.jsonl."""
+    path = journal_path(extractions)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(entry, default=str) + "\n"
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(line)
+            fh.flush()
+            os.fsync(fh.fileno())
+    except OSError as exc:
+        log.warning("Could not append to tool lane journal: %s", exc)
+
+
+def build_ledger_from_journal(extractions: Path | str) -> list[dict[str, Any]]:
+    """Build the lane ledger atomically from the journal."""
+    path = journal_path(extractions)
+    if not path.is_file():
+        return []
+    records_by_job: dict[tuple[str, str, str], dict[str, Any]] = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if isinstance(entry, dict):
+                        key = (
+                            str(entry.get("host") or ""),
+                            str(entry.get("tool") or ""),
+                            str(entry.get("purpose") or ""),
+                        )
+                        records_by_job[key] = entry
+                except json.JSONDecodeError:
+                    continue
+    except OSError as exc:
+        log.warning("Could not read tool lane journal: %s", exc)
+        return []
+    return list(records_by_job.values())
+
+
+def supersede_prior_output(target_dir: Path | str, attempt: int = 1) -> Path | None:
+    """Move existing outputs in target_dir into _superseded/<attempt>/<name>.
+
+    WO-LR v2 item 6: Idempotent outputs. A replaced attempt moves to _superseded/
+    (kept for audit, never indexed). The index holds each job's current attempt only.
+    """
+    target = Path(target_dir)
+    if not target.is_dir():
+        return None
+    files = [f for f in target.iterdir() if not f.name.startswith(".")]
+    if not files:
+        return None
+    superseded_base = target.parent / "_superseded"
+    if attempt == 1 and superseded_base.is_dir():
+        existing_attempts = [
+            d for d in superseded_base.iterdir()
+            if d.is_dir() and d.name.startswith("attempt_")
+        ]
+        attempt = len(existing_attempts) + 1
+    dest_dir = superseded_base / f"attempt_{attempt}" / target.name
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        dest = dest_dir / f.name
+        if dest.exists():
+            if dest.is_dir():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+        shutil.move(str(f), str(dest))
+    return dest_dir
+
 
 #: The rows the lane writes about the evidence rather than a tool's run, named in parentheses: no evidence shape it
 #: recognises (or no SIFT evidence root), a file of zeros nothing is handed, and a capture or flow file the SIFT host
@@ -1914,6 +2008,7 @@ def plan_windows_triage(
 
     # Phase 4h: a single .evtx file is valid evidence — stage it into the run
     # so the EVTX parsers (Hayabusa/Chainsaw/EvtxECmd) can run on it.
+    staged_source: str = ""
     if (
         root is None
         and not evtx_dirs
@@ -1927,6 +2022,7 @@ def plan_windows_triage(
             if not target.exists():
                 shutil.copy2(evidence, target)
             evtx_dirs = [staged]
+            staged_source = str(evidence)
         except OSError as exc:
             log.warning("Could not stage EVTX %s: %s", evidence, exc)
 
@@ -1964,6 +2060,10 @@ def plan_windows_triage(
 
     if root is None:
         schedule_evtx_parsers(jobs, evtx_dirs, extractions)
+        if staged_source:
+            for j in jobs:
+                if not j.source:
+                    j.source = staged_source
         # A folder can mix EVTX with prefetch/LNK; schedule those too.
         jobs.extend(_plan_single_artifact(evidence, extractions))
         return jobs
@@ -3177,10 +3277,35 @@ def _prior_ledger_rows(case_dir: Path, extractions: Path | None) -> list[dict[st
             continue
         try:
             loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list) and loaded:
+                return loaded
         except (OSError, json.JSONDecodeError):
             continue
-        if isinstance(loaded, list):
-            return loaded
+
+    # Fallback to current run's journal if ledger is missing or corrupted
+    if extractions is not None:
+        from_journal = build_ledger_from_journal(extractions)
+        if from_journal:
+            return from_journal
+
+    # WO-LR v2 Item 3: Reuse across runs on unchanged registered bytes
+    runs_dir = Path(case_dir) / "runs"
+    if runs_dir.is_dir():
+        for r in sorted(runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if r.is_dir() and (extractions is None or r.resolve() != Path(extractions).parent.resolve()):
+                prior_ledger = r / "extractions" / "_tool_lane_ledger.json"
+                if prior_ledger.is_file():
+                    try:
+                        loaded = json.loads(prior_ledger.read_text(encoding="utf-8"))
+                        if isinstance(loaded, list) and loaded:
+                            return loaded
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                prior_journal = r / "extractions" / "_tool_lane_journal.jsonl"
+                if prior_journal.is_file():
+                    from_j = build_ledger_from_journal(prior_journal.parent)
+                    if from_j:
+                        return from_j
     return []
 
 
@@ -3259,6 +3384,48 @@ def apply_prior_ok(
         job.output_saved_to = str(old.get("output_saved_to") or "")
         job.output_files = list(old.get("output_files") or [])
         job.reason = "reused prior OK (from this run's ledger)"
+        if extractions is not None:
+            extractions_path = Path(extractions)
+            new_output_files = []
+            for item in job.output_files:
+                p_str = item.get("path") if isinstance(item, dict) else str(item)
+                p = Path(p_str)
+                if p.is_file():
+                    try:
+                        if not p.is_relative_to(extractions_path):
+                            dest = extractions_path / job.tool / p.name
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            if not dest.is_file():
+                                try:
+                                    os.link(p, dest)
+                                except (OSError, NotImplementedError):
+                                    shutil.copy2(p, dest)
+                            if isinstance(item, dict):
+                                item_copy = dict(item)
+                                item_copy["path"] = str(dest)
+                                new_output_files.append(item_copy)
+                            else:
+                                new_output_files.append(str(dest))
+                            continue
+                    except Exception:
+                        pass
+                new_output_files.append(item)
+            job.output_files = new_output_files
+            if job.output_saved_to:
+                saved_p = Path(job.output_saved_to)
+                if saved_p.is_file():
+                    try:
+                        if not saved_p.is_relative_to(extractions_path):
+                            saved_dest = extractions_path / job.tool / saved_p.name
+                            saved_dest.parent.mkdir(parents=True, exist_ok=True)
+                            if not saved_dest.is_file():
+                                try:
+                                    os.link(saved_p, saved_dest)
+                                except (OSError, NotImplementedError):
+                                    shutil.copy2(saved_p, saved_dest)
+                            job.output_saved_to = str(saved_dest)
+                    except Exception:
+                        pass
         reused += 1
     return reused
 
@@ -4094,21 +4261,11 @@ async def _create_sift_output_dirs(
 
 
 def sift_unavailable_outcome(job: ToolJob) -> tuple[str, str]:
-    """(status, reason) when the SIFT MCP is not available.
-
-    Declared SIFT-hosted evidence cannot be processed off-host: that is a
-    **FAIL** which blocks the analysis gate - the same refusal semantics as
-    ES-down for Modes 2/3. Environment-only roots keep the historical honest
-    SKIP, so a stale ``NEXUS_SIFT_EVIDENCE_ROOT`` cannot block every case.
-    """
+    """(status, reason) when the SIFT MCP is not available at planning time."""
     if job.critical:
         return (
             "FAIL",
-            "SIFT MCP unreachable and this case selects the SIFT lane "
-            "(sift_required) - the SIFT evidence cannot be processed. Bring the "
-            "SIFT host up (NEXUS_SIFT_MCP_URL) and re-run the lane, clear the "
-            "SIFT selection if this case does not need SIFT, or record an "
-            "examiner skip (audited, `nexus lane skip`).",
+            "SIFT MCP unreachable (sift_required); bring SIFT host up and retry or record examiner skip",
         )
     return "SKIP", "run_command not available on MCP"
 
@@ -4486,6 +4643,13 @@ async def run_tool_lane(
     jobs.extend(_memory_image_jobs(plan_paths, extractions))
     jobs.extend(_memory_vol3_jobs(plan_paths, extractions))
     _assign_private_temp(jobs, extractions)
+    hashes = _registered_evidence_hashes(case_dir)
+    for _job in jobs:
+        if not _job.evidence_sha:
+            _job.evidence_sha = _evidence_sha_for(_job, hashes)
+        _job.reliability_class = "best_effort" if _job.tool in BEST_EFFORT_TOOLS else "required"
+        if _job.tool in DEFERRED_TOOL_CLASSES:
+            _job.deferred = True
     # These parsers are examiner-run optional work. Apply the policy before
     # prior-result reuse so a previous OK cannot bypass the default skip.
     _apply_default_optional_tool_skips(jobs)
@@ -4535,6 +4699,12 @@ async def run_tool_lane(
             PurePosixPath(_remote_cases_root()) / Path(case_dir).name, run_id,
         )),
     ))
+    for _job in jobs:
+        if not _job.evidence_sha:
+            _job.evidence_sha = _evidence_sha_for(_job, hashes)
+        _job.reliability_class = "best_effort" if _job.tool in BEST_EFFORT_TOOLS else "required"
+        if _job.tool in DEFERRED_TOOL_CLASSES:
+            _job.deferred = True
     # The SIFT jobs, planned just above, take the same reuse; the retry's rules apply to every job.
     apply_prior_ok(
         [j for j in jobs if j.host != "windows"], case_dir, extractions=extractions,
@@ -4648,7 +4818,9 @@ async def run_tool_lane(
             pass
 
     def _mark(job: ToolJob) -> None:
-        ledger.append(asdict(job))
+        row = asdict(job)
+        ledger.append(row)
+        append_journal_entry(extractions, row)
         _write_progress()
 
     async def _run_one(job: ToolJob) -> None:
@@ -4684,6 +4856,7 @@ async def run_tool_lane(
             "RUNNING", job, command_text or job.purpose,
             command=command_text, purpose=job.purpose,
         )
+        append_journal_entry(extractions, asdict(job))
         _write_progress()
         t0 = _time.time()
 
@@ -4702,12 +4875,19 @@ async def run_tool_lane(
         # Snapshot the output dirs before the tool runs, so "did this job write
         # anything" can be answered by diff rather than by guessing the naming.
         _out_dirs = _output_dirs_of(job, extractions)
+        for od in _out_dirs:
+            if extractions:
+                try:
+                    if Path(od).resolve().is_relative_to(Path(extractions).resolve()):
+                        supersede_prior_output(od)
+                except (ValueError, OSError):
+                    pass
         _before = _snapshot(_out_dirs)
 
         if job.host == "windows":
             if not win_tool:
-                job.reason = "run_windows_command not available on MCP"
-                _finish("SKIP", job.reason, reason=job.reason)
+                job.reason = "Windows MCP executor unavailable / interrupted (not tool failure)"
+                _finish("NOT_RUN", job.reason, reason=job.reason)
                 return
             try:
                 # The declared timeout is the tool's own subprocess budget. The
@@ -4730,14 +4910,21 @@ async def run_tool_lane(
                 )
                 result = parse_result(raw)
             except Exception as exc:  # noqa: BLE001
-                job.reason = str(exc)
+                job.reason = f"executor exception: {exc}"
                 _finish("FAIL", job.reason[:300], reason=job.reason)
                 return
         else:
             if not sift_tool:
-                status, reason = sift_unavailable_outcome(job)
-                job.reason = reason
-                _finish(status, job.reason, reason=job.reason)
+                if job.critical:
+                    job.reason = (
+                        "SIFT MCP executor unavailable / interrupted (sift_required); "
+                        "bring SIFT host up and resume lane"
+                    )
+                    _finish("NOT_RUN", job.reason, reason=job.reason)
+                else:
+                    status, reason = sift_unavailable_outcome(job)
+                    job.reason = reason
+                    _finish(status, job.reason, reason=job.reason)
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
             prep_failure = await _create_sift_output_dirs(

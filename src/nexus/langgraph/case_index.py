@@ -1915,9 +1915,10 @@ def indexed_timestamp_coverage(client: Any, name: str, case_id: str) -> dict[str
     coverage: dict[str, dict[str, int]] = {}
     after = None
     expected_total = None
+    family_field = "family"
     while True:
         composite: dict[str, Any] = {
-            "size": 1000, "sources": [{"family": {"terms": {"field": "family"}}}],
+            "size": 1000, "sources": [{"family": {"terms": {"field": family_field}}}],
         }
         if after is not None:
             composite["after"] = after
@@ -1927,6 +1928,9 @@ def indexed_timestamp_coverage(client: Any, name: str, case_id: str) -> dict[str
             "aggs": {"families": {"composite": composite,
                                   "aggs": {"clocks": {"filters": {"filters": filters}}}}},
         })
+        if response.status_code == 400 and family_field == "family":
+            family_field = "family.keyword"
+            continue
         if response.status_code >= 400:
             raise RuntimeError(f"timestamp coverage aggregation failed: HTTP {response.status_code}")
         data = response.json()
@@ -2089,6 +2093,9 @@ def iter_index_files(case_dir: Path, run_id: str = "") -> list[Path]:
                 if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES) or is_tool_own_log(p, root):
                     continue
                 if is_staging_copy(p, root):
+                    continue
+                from nexus.ingest.fingerprint import is_placed_loose_csv
+                if is_placed_loose_csv(p, root):
                     continue
                 out.append(p)
         out.extend(catalog_inputs(root))
