@@ -15,7 +15,7 @@ from nexus.audit import AuditWriter
 
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
-    def ingest_auto(path: str, source: str = "") -> dict:
+    def ingest_auto(path: str, source: str = "", case_id: str = "") -> dict:
         """Auto-detect file format and ingest forensic artifacts.
 
         Sniffs the file content to determine the correct importer
@@ -25,6 +25,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         Args:
             path: Path to the forensic artifact file.
             source: Optional ArtifactSource override (e.g. zeek, evtx).
+            case_id: Optional case identifier to bind ingestion to a specific case.
         """
         from pathlib import Path as _Path
 
@@ -32,7 +33,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         target = _Path(path)
         result: dict
-        # When a case is active, PERSIST the artifacts (case store + timeline)
+        # When a case is active or specified, PERSIST the artifacts (case store + timeline)
         # like the CLI does — parsing into nothing made agent-side ingests
         # unretrievable afterward.
         persisted = False
@@ -40,8 +41,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         try:
             from nexus.case_manager import CaseManager
 
-            active = CaseManager().require_active_case()
-            case_dir = _Path(active) if active else None
+            cm = CaseManager()
+            if (case_id or "").strip():
+                case_dir = cm.resolve_case_dir(case_id.strip())
+            else:
+                active = cm.get_active_case()
+                case_dir = _Path(active) if active else None
         except Exception:
             case_dir = None
         if case_dir is not None and _Path(case_dir).is_dir():
@@ -72,6 +77,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     def convert_pcap(
         pcap_path: str,
         display_filter: str = "",
+        case_id: str = "",
     ) -> dict:
         """Convert a raw PCAP/PCAPNG capture to tshark JSON for ingestion.
 
@@ -84,6 +90,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             display_filter: Optional tshark display filter (e.g. "dns",
                 "http.request"). Use only when the investigation specifically
                 selects packet families; otherwise every packet is converted.
+            case_id: Optional case identifier to bind extractions output directory to.
         """
         import re
 
@@ -96,7 +103,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         out_dir = src.parent
         try:
             from nexus.case_manager import CaseManager
-            out_dir = CaseManager().require_active_case() / "extractions"
+            cm = CaseManager()
+            if (case_id or "").strip():
+                out_dir = cm.resolve_case_dir(case_id.strip()) / "extractions"
+            else:
+                active = cm.get_active_case()
+                if active:
+                    out_dir = Path(active) / "extractions"
         except Exception:  # noqa: BLE001
             pass
         try:

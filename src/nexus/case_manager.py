@@ -1211,12 +1211,12 @@ class CaseManager:
             "grade": grade,
         }
 
-    def get_findings(self, status: str | None = None) -> list[dict]:
+    def get_findings(self, status: str | None = None, case_dir: Path | None = None) -> list[dict]:
         try:
-            case_dir = self.resolve_case_dir()
+            target = Path(case_dir) if case_dir is not None else self.resolve_case_dir()
         except ValueError:
             return []
-        findings = self._load_findings(case_dir)
+        findings = self._load_findings(target)
         if status:
             findings = [f for f in findings if f.get("status", "").upper() == status.upper()]
         return findings
@@ -1285,12 +1285,13 @@ class CaseManager:
         return self._stage_timeline_event(case_dir, event, finding.get("examiner", self.examiner))
 
     def get_timeline(self, status: str | None = None, event_type: str | None = None,
-                     start_date: str | None = None, end_date: str | None = None) -> list[dict]:
+                     start_date: str | None = None, end_date: str | None = None,
+                     case_dir: Path | None = None) -> list[dict]:
         try:
-            case_dir = self.resolve_case_dir()
+            target = Path(case_dir) if case_dir is not None else self.resolve_case_dir()
         except ValueError:
             return []
-        events = self._load_timeline(case_dir)
+        events = self._load_timeline(target)
         if status:
             events = [e for e in events if e.get("status", "").upper() == status.upper()]
         if event_type:
@@ -1488,12 +1489,12 @@ class CaseManager:
             })
         return records
 
-    def get_iocs(self) -> list[dict]:
+    def get_iocs(self, case_dir: Path | None = None) -> list[dict]:
         try:
-            case_dir = self.resolve_case_dir()
+            target = Path(case_dir) if case_dir is not None else self.resolve_case_dir()
         except ValueError:
             return []
-        return self._load_iocs(case_dir)
+        return self._load_iocs(target)
 
     # ── Evidence ──────────────────────────────────────────────────────
 
@@ -1507,8 +1508,14 @@ class CaseManager:
         content = json.dumps(evidence, indent=2, default=str)
         _atomic_write(path, content)
 
-    def register_evidence(self, path_str: str, description: str = "", examiner_override: str = "") -> dict:
-        case_dir = self.require_active_case()
+    def register_evidence(
+        self,
+        path_str: str,
+        description: str = "",
+        examiner_override: str = "",
+        case_dir: Path | None = None,
+    ) -> dict:
+        target = Path(case_dir) if case_dir is not None else self.require_active_case()
         exam = (examiner_override.strip().lower()
                 if examiner_override and examiner_override.strip()
                 else self.examiner)
@@ -1517,7 +1524,7 @@ class CaseManager:
             raise FileNotFoundError(f"Evidence path not found: {path_str}")
 
         sha256_hash, file_count, total_bytes = _hash_evidence_path(evidence_path)
-        evidence = self._load_evidence_registry(case_dir)
+        evidence = self._load_evidence_registry(target)
         canonical_path = os.path.normcase(str(evidence_path))
         for existing in evidence:
             if os.path.normcase(str(existing.get("path") or "")) != canonical_path:
@@ -1550,7 +1557,7 @@ class CaseManager:
         }
 
         evidence.append(entry)
-        self._save_evidence(case_dir, evidence)
+        self._save_evidence(target, evidence)
         return {
             "status": "registered",
             "path": str(evidence_path),
@@ -1559,19 +1566,19 @@ class CaseManager:
             "total_bytes": total_bytes,
         }
 
-    def list_evidence(self) -> list[dict]:
+    def list_evidence(self, case_dir: Path | None = None) -> list[dict]:
         try:
-            case_dir = self.resolve_case_dir()
+            target = Path(case_dir) if case_dir is not None else self.resolve_case_dir()
         except ValueError:
             return []
-        return self._load_evidence_registry(case_dir)
+        return self._load_evidence_registry(target)
 
-    def verify_evidence(self) -> dict:
+    def verify_evidence(self, case_dir: Path | None = None) -> dict:
         try:
-            case_dir = self.resolve_case_dir()
+            target = Path(case_dir) if case_dir is not None else self.resolve_case_dir()
         except ValueError:
             return {"status": "no_active_case"}
-        evidence = self._load_evidence_registry(case_dir)
+        evidence = self._load_evidence_registry(target)
         results = []
         all_ok = True
         for entry in evidence:

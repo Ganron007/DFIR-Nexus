@@ -116,13 +116,26 @@ def save_records(
 
 
 def _publish(mirror: Path, content: str | bytes) -> None:
-    """Replace the mirror in one step: a new payload as text, a previous mirror's exact bytes."""
-    tmp = mirror.with_name(mirror.name + ".tmp")
-    if isinstance(content, bytes):
-        tmp.write_bytes(content)
-    else:
-        tmp.write_text(content, encoding="utf-8")
-    atomic.replace(tmp, mirror)
+    """Replace the mirror in one step: a new payload as text, a previous mirror's exact bytes.
+
+    WO-IX1 (third-eye R14): use a process-unique temp file to prevent concurrent writers
+    from colliding on a shared .tmp path.
+    """
+    import contextlib
+    import os
+    import secrets
+
+    tmp = mirror.with_name(f"{mirror.name}.tmp.{os.getpid()}.{secrets.token_hex(4)}")
+    try:
+        if isinstance(content, bytes):
+            tmp.write_bytes(content)
+        else:
+            tmp.write_text(content, encoding="utf-8")
+        atomic.replace(tmp, mirror)
+    finally:
+        if tmp.exists():
+            with contextlib.suppress(OSError):
+                tmp.unlink()
 
 
 def load_records(

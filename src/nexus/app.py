@@ -170,7 +170,7 @@ def in_process_tools(server) -> dict:
     }
 
 
-def create_server(host: str = "127.0.0.1") -> FastMCP:
+def create_server(host: str = "127.0.0.1", executor_only: bool = False) -> FastMCP:
     """Create the MCP server.
 
     ``host`` is the client-facing bind identity used for MCP DNS-rebinding
@@ -178,6 +178,11 @@ def create_server(host: str = "127.0.0.1") -> FastMCP:
     remote lab clients (SIFT IP) are accepted. Extra hosts via
     ``NEXUS_MCP_ALLOWED_HOSTS`` (comma-separated).
     """
+    import os
+
+    executor_only = executor_only or (
+        os.environ.get("NEXUS_EXECUTOR_ONLY", "").strip().lower() in ("1", "true", "yes")
+    )
     from nexus.mcp_security import build_transport_security
 
     transport_security = build_transport_security(host)
@@ -193,6 +198,25 @@ def create_server(host: str = "127.0.0.1") -> FastMCP:
     # server.tool first so they run in worker threads instead of blocking the
     # serving loop (case-file writers keep one shared lock).
     apply_tool_offload(server)
+
+    if executor_only:
+        # Hardened executor-only profile (D150 / T2-45):
+        # Exposes only executor execution tools and case lifecycle tools.
+        # Mutating finding/import/report tools, ES query surfaces, knowledge/RAG,
+        # and triage tools are completely excluded from the MCP surface.
+        from nexus.tools import case
+        case.register_case_lifecycle_tools(server, audit)
+        if _IS_LINUX:
+            from nexus.tools import sift
+            sift.register_tools(server, audit)
+            logger.info("Registered SIFT executor-only tools")
+        if _IS_WINDOWS:
+            from nexus.tools import windows
+            windows.register_tools(server, audit)
+            logger.info("Registered Windows executor-only tools")
+        tool_count = _count_tools(server)
+        logger.info("DFIR-Nexus executor-only ready: %s tools registered on %s (host=%s)", tool_count, sys.platform, host)
+        return server
 
     # ── Universal modules (pure Python, any platform) ──
     from nexus.tools import case, forensic, report

@@ -228,15 +228,17 @@ def reset_password(analyst: str, old_password: str, new_password: str) -> dict:
         return {"status": "error", "message": "No password entry found for this examiner"}
 
     old_salt = entry.get("salt", "")
-    old_key = derive_hmac_key(old_password, old_salt)
+    old_raw = derive_hmac_key(old_password, old_salt)
+    old_purpose = derive_purpose_key(old_raw, SIGNING_PURPOSE)
     new_salt = secrets.token_hex(32)
-    new_key = derive_hmac_key(new_password, new_salt)
+    new_raw = derive_hmac_key(new_password, new_salt)
+    new_purpose = derive_purpose_key(new_raw, SIGNING_PURPOSE)
 
     # Save new password
     pw_hash = hashlib.pbkdf2_hmac("sha256", new_password.encode(), new_salt.encode(), PBKDF2_ITERATIONS).hex()
     _save_password_entry(analyst, {"hash": pw_hash, "salt": new_salt, "iterations": PBKDF2_ITERATIONS, "created": time.time()})
 
-    # Re-HMAC all ledger entries for this examiner
+    # Re-HMAC all ledger entries for this examiner (WO-IX1 / third-eye R08: purpose key derivation)
     re_signed = 0
     for ledger_file in VERIFICATION_DIR.glob("*.jsonl"):
         case_id = ledger_file.stem
@@ -247,10 +249,11 @@ def reset_password(analyst: str, old_password: str, new_password: str) -> dict:
                 updated.append(entry)
                 continue
             desc = entry.get("content_snapshot", "")
-            expected = compute_hmac(old_key, desc)
             actual = entry.get("hmac", "")
-            if hmac.compare_digest(expected, actual):
-                entry["hmac"] = compute_hmac(new_key, desc)
+            expected_purpose = compute_hmac(old_purpose, desc)
+            expected_raw = compute_hmac(old_raw, desc)
+            if hmac.compare_digest(expected_purpose, actual) or hmac.compare_digest(expected_raw, actual):
+                entry["hmac"] = compute_hmac(new_purpose, desc)
                 re_signed += 1
             updated.append(entry)
 

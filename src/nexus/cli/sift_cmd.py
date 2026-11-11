@@ -329,12 +329,15 @@ def setup(
         "ENVF=~/.nexus/sift-mcp.env; "
         "if [ ! -f \"$ENVF\" ]; then SEC=$(openssl rand -hex 32); "
         "printf 'NEXUS_AUDIT_SECRET=%s\\nNEXUS_PORTAL_PASSWORD=siftmcp-%s\\n"
-        f"NEXUS_MCP_ALLOWED_HOSTS={host}\\nNEXUS_BEARER_TOKEN=%s\\n' "
+        f"NEXUS_MCP_ALLOWED_HOSTS={host}\\nNEXUS_BEARER_TOKEN=%s\\nNEXUS_EXECUTOR_ONLY=1\\n' "
         "\"$SEC\" \"$SEC\" \"$SEC\" > \"$ENVF\"; chmod 600 \"$ENVF\"; echo TOKEN-ADDED; "
-        "elif ! grep -q '^NEXUS_BEARER_TOKEN=' \"$ENVF\"; then "
+        "else "
+        "if ! grep -q '^NEXUS_BEARER_TOKEN=' \"$ENVF\"; then "
         "SEC=$(openssl rand -hex 32); printf 'NEXUS_BEARER_TOKEN=%s\\n' \"$SEC\" >> \"$ENVF\"; "
-        "echo TOKEN-ADDED; "
-        "else echo TOKEN-PRESENT; fi"
+        "echo TOKEN-ADDED; fi; "
+        "if ! grep -q '^NEXUS_EXECUTOR_ONLY=' \"$ENVF\"; then "
+        "printf 'NEXUS_EXECUTOR_ONLY=1\\n' >> \"$ENVF\"; fi; "
+        "echo TOKEN-PRESENT; fi"
     )
     rc, out = _ssh(ensure)
     token_added = "TOKEN-ADDED" in out

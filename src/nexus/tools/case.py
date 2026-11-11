@@ -115,7 +115,8 @@ def _build_guidance(caps: dict) -> str:
     return "\n".join(lines)
 
 
-def register_tools(server: FastMCP, audit: AuditWriter):
+def register_case_lifecycle_tools(server: FastMCP, audit: AuditWriter):
+    """Register only case lifecycle tools (case_init and case_activate) for executor-only profiles (D150)."""
     @server.tool()
     def case_init(
         name: str,
@@ -134,7 +135,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"error": f"Case name exceeds {_MAX_NAME} characters"}
 
         exam = resolve_examiner()
-        cases_root = Path(cases_dir) if cases_dir else settings.cases_root
+        cases_root = settings.cases_root
+        if cases_dir and Path(cases_dir).resolve() != cases_root.resolve():
+            return {"error": f"Custom cases_dir is not permitted; canonical root is {cases_root}"}
 
         if case_id:
             err = validate_case_id(case_id)
@@ -145,6 +148,16 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             cid = case_id
         else:
             cid = f"INC-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+
+        # WO-IX1 (third-eye R02): enforce global uniqueness against the SQLite registry
+        # before creating or activating anything. An alias directory cannot shadow a real case.
+        from nexus.case import CaseManager as _SQLiteCaseManager
+        _mgr = _SQLiteCaseManager(cases_root / "cases.db")
+        try:
+            if _mgr.get_case(cid) is not None:
+                return {"error": f"Case already exists in registry: {cid}"}
+        finally:
+            _mgr.close()
 
         case_dir = cases_root / cid
         if case_dir.exists():
@@ -256,6 +269,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         audit.log(tool="case_activate", params={"case_id": case_id}, result_summary=result)
         return result
 
+
+def register_tools(server: FastMCP, audit: AuditWriter):
+    register_case_lifecycle_tools(server, audit)
+
     @server.tool()
     def case_list() -> list:
         """List all cases with their status and examiner."""
@@ -342,26 +359,28 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return result
 
     @server.tool()
-    def evidence_list() -> list:
+    def evidence_list(case_id: str = "") -> list:
         """List all registered evidence with hashes and descriptions."""
         try:
-            return manager.list_evidence()
+            case_dir = manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip() else manager.require_active_case()
+            return manager.list_evidence(case_dir=case_dir)
         except Exception as e:
             return [{"error": str(e)}]
 
     @server.tool()
-    def evidence_verify() -> dict:
+    def evidence_verify(case_id: str = "") -> dict:
         """Re-hash all evidence and compare against registry."""
         try:
-            return manager.verify_evidence()
+            case_dir = manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip() else manager.require_active_case()
+            return manager.verify_evidence(case_dir=case_dir)
         except Exception as e:
             return {"error": str(e)}
 
     @server.tool()
-    def get_case_actions(limit: int = 50) -> list:
-        """Retrieve recent action records for the active case."""
+    def get_case_actions(limit: int = 50, case_id: str = "") -> list:
+        """Retrieve recent action records for the active or named case."""
         try:
-            case_dir = manager.require_active_case()
+            case_dir = manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip() else manager.require_active_case()
         except ValueError:
             return []
         path = case_dir / "actions.jsonl"
@@ -384,10 +403,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
     @server.tool()
     def record_action(description: str, tool: str = "", command: str = "",
-                      analyst_override: str = "") -> dict:
+                      analyst_override: str = "", case_id: str = "") -> dict:
         """Log a supplemental action note. Auto-committed, no approval needed."""
         try:
-            case_dir = manager.require_active_case()
+            case_dir = manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip() else manager.require_active_case()
         except ValueError as e:
             return {"error": str(e)}
 
@@ -419,10 +438,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return {"status": "recorded", "timestamp": now}
 
     @server.tool()
-    def export_case(since: str = "") -> dict:
+    def export_case(since: str = "", case_id: str = "") -> dict:
         """Export case data as a JSON bundle for collaboration."""
         try:
-            case_dir = manager.require_active_case()
+            case_dir = manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip() else manager.require_active_case()
         except ValueError as e:
             return {"error": str(e)}
 
@@ -431,9 +450,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         bundle = {
             "case_id": case_dir.name,
             "exported_at": datetime.now(UTC).isoformat(),
-            "findings": cm.get_findings(None),
-            "timeline": cm.get_timeline(),
-            "iocs": cm.get_iocs(),
+            "findings": cm.get_findings(None, case_dir=case_dir),
+            "timeline": cm.get_timeline(case_dir=case_dir),
+            "iocs": cm.get_iocs(case_dir=case_dir),
         }
         audit.log(tool="export_case", params={"since": since},
                   result_summary={"findings": len(bundle["findings"])})
@@ -518,14 +537,14 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return result
 
     @server.tool()
-    def backup_case(destination: str, purpose: str = "") -> dict:
+    def backup_case(destination: str, purpose: str = "", case_id: str = "") -> dict:
         """Back up case data to a destination directory.
 
         Creates a timestamped backup of metadata, findings, timeline,
         approvals, and reports. Does NOT include evidence files.
         """
         try:
-            case_dir = manager.require_active_case()
+            case_dir = manager.resolve_case_dir(case_id.strip()) if (case_id or "").strip() else manager.require_active_case()
         except ValueError as e:
             return {"error": str(e)}
 

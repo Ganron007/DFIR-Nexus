@@ -459,6 +459,9 @@ def serve(
     dev: bool = typer.Option(
         False, "--dev", help="Debug mode: auto-clean ALL test cases on startup"
     ),
+    executor_only: bool = typer.Option(
+        False, "--executor-only", help="Run in executor-only profile (T2-45/D150)"
+    ),
 ):
     """Start the DFIR-Nexus MCP server.
 
@@ -469,7 +472,10 @@ def serve(
     from nexus.app import create_server
     # Pass bind host into FastMCP so DNS-rebinding allowlist matches
     # client Host headers (fixes SIFT /mcp HTTP 421 for lab IPs).
-    server = create_server(host=host)
+    if executor_only:
+        server = create_server(host=host, executor_only=True)
+    else:
+        server = create_server(host=host)
     if http:
         import uvicorn
 

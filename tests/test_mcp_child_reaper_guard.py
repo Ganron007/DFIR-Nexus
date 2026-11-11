@@ -33,7 +33,7 @@ def _stub_server(monkeypatch, calls: list[str]) -> None:
 
     import nexus.app as app_mod
 
-    monkeypatch.setattr(app_mod, "create_server", lambda host="127.0.0.1": _StubServer())
+    monkeypatch.setattr(app_mod, "create_server", lambda host="127.0.0.1", **kwargs: _StubServer())
 
 
 def test_stdio_serve_as_a_child_does_not_reap(monkeypatch):
