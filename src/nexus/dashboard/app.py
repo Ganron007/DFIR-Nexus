@@ -6698,14 +6698,23 @@ _mode2_thread_lock = threading.Lock()
 def _mode2_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
     context_policy: str = "independent",
+    job_id: str | None = None,
 ) -> None:
+    from nexus.case.jobs import update_job_status
+
+    if job_id:
+        update_job_status(job_id, "running")
     try:
         from nexus.modes.multi_role import run_mode2
 
         run_mode2(case_dir, question, model=model, run_id=run_id, resume=resume,
                   context_policy=context_policy)
-    except Exception:  # noqa: BLE001 — the run record carries the failure
+        if job_id:
+            update_job_status(job_id, "completed")
+    except Exception as exc:  # noqa: BLE001 — the run record carries the failure
         logger.exception("Mode 2 run %s failed", run_id)
+        if job_id:
+            update_job_status(job_id, "failed", error=str(exc)[:300])
     finally:
         with _mode2_thread_lock:
             _mode2_threads.pop(run_id, None)
@@ -6714,19 +6723,24 @@ def _mode2_worker_thread(
 def _start_mode2_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
     context_policy: str = "independent",
-) -> None:
+) -> str:
+    from nexus.case.jobs import create_job
+
+    job = create_job(case_dir.name, "mode2", run_id, question=question, context_policy=context_policy)
+    job_id = job["job_id"]
     with _mode2_thread_lock:
         live = _mode2_threads.get(run_id)
         if live is not None and live.is_alive():
             raise RuntimeError("run already in progress")
         thread = threading.Thread(
             target=_mode2_worker_thread,
-            args=(case_dir, question, model, run_id, resume, context_policy),
+            args=(case_dir, question, model, run_id, resume, context_policy, job_id),
             daemon=True,
             name=f"mode2-{run_id[-8:]}",
         )
         _mode2_threads[run_id] = thread
         thread.start()
+    return job_id
 
 
 # ── Mode 3 concurrent multi-agent run control ──────────────────────────
@@ -6737,7 +6751,12 @@ _mode3_thread_lock = threading.Lock()
 def _mode3_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
     context_policy: str = "independent",
+    job_id: str | None = None,
 ) -> None:
+    from nexus.case.jobs import update_job_status
+
+    if job_id:
+        update_job_status(job_id, "running")
     try:
         from nexus.modes.multi_agent import resume_mode3, run_mode3
 
@@ -6747,8 +6766,12 @@ def _mode3_worker_thread(
         else:
             run_mode3(case_dir, question, model=model, run_id=run_id,
                       context_policy=context_policy)
-    except Exception:  # noqa: BLE001 — the run record carries the failure
+        if job_id:
+            update_job_status(job_id, "completed")
+    except Exception as exc:  # noqa: BLE001 — the run record carries the failure
         logger.exception("Mode 3 run %s failed", run_id)
+        if job_id:
+            update_job_status(job_id, "failed", error=str(exc)[:300])
     finally:
         with _mode3_thread_lock:
             _mode3_threads.pop(run_id, None)
@@ -6757,19 +6780,24 @@ def _mode3_worker_thread(
 def _start_mode3_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
     context_policy: str = "independent",
-) -> None:
+) -> str:
+    from nexus.case.jobs import create_job
+
+    job = create_job(case_dir.name, "mode3", run_id, question=question, context_policy=context_policy)
+    job_id = job["job_id"]
     with _mode3_thread_lock:
         live = _mode3_threads.get(run_id)
         if live is not None and live.is_alive():
             raise RuntimeError("run already in progress")
         thread = threading.Thread(
             target=_mode3_worker_thread,
-            args=(case_dir, question, model, run_id, resume, context_policy),
+            args=(case_dir, question, model, run_id, resume, context_policy, job_id),
             daemon=True,
             name=f"mode3-{run_id[-8:]}",
         )
         _mode3_threads[run_id] = thread
         thread.start()
+    return job_id
 
 
 async def api_mode3_run(request):

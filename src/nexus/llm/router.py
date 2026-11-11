@@ -7,6 +7,8 @@ No vendor lock-in — any service implementing this standard works.
 from __future__ import annotations
 
 import os
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -217,6 +219,14 @@ class LLMRouter:
                     message = {**message, "content": anonymize_text(content, case_dir)}
                 scrubbed.append(message)
             msg_dicts = scrubbed
+
+        from nexus.analysis.llm_journal import record_llm_invocation
+
+        start_t = time.perf_counter()
+        correlation_id = str(uuid.uuid4())
+        prompt_full = "\n".join(str(m.get("content", "")) for m in msg_dicts)
+        model_name = model or getattr(prov, "default_model", "") or prov.name
+
         try:
             raw = await prov.chat(
                 messages=msg_dicts,
@@ -226,14 +236,66 @@ class LLMRouter:
                 tools=tools,
                 tool_choice=tool_choice,
             )
-        except (ProviderAuthError, ProviderRateLimitError):
+        except (ProviderAuthError, ProviderRateLimitError) as exc:
+            record_llm_invocation(
+                case_dir,
+                correlation_id=correlation_id,
+                provider=prov.name,
+                model=model_name,
+                latency_ms=(time.perf_counter() - start_t) * 1000,
+                prompt=prompt_full,
+                response="",
+                finish_reason="error",
+                status="failed",
+                error=f"{type(exc).__name__}: {exc}"[:300],
+            )
             # Let auth/rate-limit errors propagate
             raise
         except ProviderResponseError as e:
+            record_llm_invocation(
+                case_dir,
+                correlation_id=correlation_id,
+                provider=prov.name,
+                model=model_name,
+                latency_ms=(time.perf_counter() - start_t) * 1000,
+                prompt=prompt_full,
+                response="",
+                finish_reason="error",
+                status="failed",
+                error=f"Provider '{prov.name}' failed: {e}"[:300],
+            )
             raise LLMRouterError(
                 f"Provider '{prov.name}' failed: {e}"
             ) from e
+        except Exception as exc:
+            record_llm_invocation(
+                case_dir,
+                correlation_id=correlation_id,
+                provider=prov.name,
+                model=model_name,
+                latency_ms=(time.perf_counter() - start_t) * 1000,
+                prompt=prompt_full,
+                response="",
+                finish_reason="error",
+                status="failed",
+                error=f"{type(exc).__name__}: {exc}"[:300],
+            )
+            raise
+
         response = ChatResponse.from_provider_response(raw)
+        tool_names = [tc.name for tc in response.tool_calls] if response.tool_calls else []
+        record_llm_invocation(
+            case_dir,
+            correlation_id=correlation_id,
+            provider=prov.name,
+            model=model_name,
+            latency_ms=(time.perf_counter() - start_t) * 1000,
+            prompt=prompt_full,
+            response=response.content or "",
+            finish_reason="tool_calls" if tool_names else "stop",
+            status="completed",
+            tool_calls=tool_names,
+        )
         if case_dir is not None:
             response.content = restore_text(response.content, case_dir)
             response.tool_calls = restore_tool_calls(response.tool_calls, case_dir)

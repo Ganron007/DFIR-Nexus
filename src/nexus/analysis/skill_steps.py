@@ -401,10 +401,12 @@ def run_skill_steps(
                             "reason": f"search failed: {type(exc).__name__}: {exc}"})
             continue
         count = int(outcome.get("count") or outcome.get("total") or 0)
+        hits_list = outcome.get("hits") or []
         results.append({
             **record,
             "result": "hit" if count > 0 else "none",
             "hits": count,
+            "sample_rows": hits_list[:limit] if isinstance(hits_list, list) else [],
             # A step that returned nothing is only "none" because it ran.
             "reason": "" if count else "query ran and matched no rows",
         })

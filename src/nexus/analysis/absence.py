@@ -20,8 +20,6 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from nexus.analysis.layers import ENV_LEADS_DISABLE
-
 log = logging.getLogger(__name__)
 
 #: Lead-source names as they appear in a sentence.
@@ -77,7 +75,12 @@ def source_activity(
     rule_leads = [d for d in lead_dicts if str(d.get("kind")) == "rule_engine"]
     engines = {str((d.get("extra") or {}).get("engine") or "") for d in rule_leads}
 
-    from nexus.analysis.layers import leads_enabled
+    from nexus.analysis.layers import (
+        ENV_KNOWLEDGE_DISABLE,
+        ENV_LEADS_DISABLE,
+        knowledge_enabled,
+        leads_enabled,
+    )
 
     try:
         from nexus.analysis.rule_leads import ruleset_note
@@ -90,7 +93,7 @@ def source_activity(
         from nexus.analysis.behavioural_analytics import analytics, analytics_for
 
         analytics_total = len(analytics())
-        analytics_here = len(analytics_for(list(families or []))) if families else analytics_total
+        analytics_here = len(analytics_for(list(families))) if families is not None else analytics_total
     except Exception:  # noqa: BLE001
         analytics_total = analytics_here = 0
 
@@ -101,14 +104,19 @@ def source_activity(
     out: dict[str, dict[str, Any]] = {}
 
     def add(source: str, *, ran: bool, count: int, note: str) -> None:
-        enabled = leads_enabled(source)
+        if source == "skills":
+            enabled = knowledge_enabled("skills")
+            reason = "" if enabled else f"disabled by {ENV_KNOWLEDGE_DISABLE}"
+        else:
+            enabled = leads_enabled(source)
+            reason = "" if enabled else f"disabled by {ENV_LEADS_DISABLE}"
         out[source] = {
             "label": SOURCE_LABELS.get(source, source),
             "enabled": enabled,
             "ran": bool(ran) and enabled,
             "count": int(count),
             "note": note,
-            "reason": "" if enabled else f"disabled by {ENV_LEADS_DISABLE}",
+            "reason": reason,
         }
 
     add("needles", ran=True, count=0,
@@ -127,11 +135,15 @@ def source_activity(
     add("anomaly", ran=True, count=anomaly_count,
         note="" if anomaly_count else "no anomaly probe raised a lead")
 
-    add("analytics", ran=analytics_total > 0, count=analytics_here,
-        note="" if analytics_total else "the analytic pack is unavailable")
+    analytic_lead_count = sum(1 for k in kinds if k in ("behavioral_analytic", "analytic"))
+    analytics_ran = bool(analytics_here > 0) and (families is None or bool(families))
+    add("analytics", ran=analytics_ran, count=analytic_lead_count,
+        note="" if analytic_lead_count else ("no behavioural analytic matched indexed evidence" if analytics_ran else "the analytic pack is unavailable or not applicable"))
 
-    add("skills", ran=True, count=0,
-        note="skills are executed per work order; see the run record for step results")
+    skill_lead_count = sum(1 for k in kinds if k in ("skill_step", "skill"))
+    skills_ran = bool(families) if families is not None else True
+    add("skills", ran=skills_ran, count=skill_lead_count,
+        note="" if skill_lead_count else ("no skill step matched indexed evidence" if skills_ran else "no evidence families present for skills"))
     return out
 
 

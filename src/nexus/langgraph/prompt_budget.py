@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -150,15 +151,19 @@ class TokenMeter(_CallbackBase):  # type: ignore[misc,valid-type]
     def __init__(self, model: dict[str, str] | None = None) -> None:
         super().__init__()
         self._chars: dict[Any, int] = {}
+        self._prompts: dict[Any, str] = {}
+        self._start_times: dict[Any, float] = {}
         self._tickets: dict[Any, tuple[Any, float]] = {}
         self._lock = threading.Lock()
         self._model = dict(model or {})
 
-    def _start(self, run_id: Any, chars: int) -> None:
+    def _start(self, run_id: Any, chars: int, prompt_text: str = "") -> None:
         from nexus.analysis.knowledge_record import current
 
         with self._lock:
             self._chars[run_id] = chars
+            self._prompts[run_id] = prompt_text
+            self._start_times[run_id] = time.perf_counter()
             record = current()
             if record is not None:
                 if record.model_calls is None:
@@ -177,21 +182,96 @@ class TokenMeter(_CallbackBase):  # type: ignore[misc,valid-type]
         return chars
 
     def on_chat_model_start(self, serialized: Any, messages: Any, *, run_id: Any = None, **_: Any) -> None:
-        self._start(run_id, sum(len(str(getattr(m, "content", m))) for batch in messages for m in batch))
+        prompt_text = "\n".join(str(getattr(m, "content", m)) for batch in messages for m in batch)
+        self._start(run_id, len(prompt_text), prompt_text=prompt_text)
 
     def on_llm_start(self, serialized: Any, prompts: Any, *, run_id: Any = None, **_: Any) -> None:
-        self._start(run_id, sum(len(str(p)) for p in prompts or []))
+        prompt_text = "\n".join(str(p) for p in prompts or [])
+        self._start(run_id, len(prompt_text), prompt_text=prompt_text)
 
     def on_llm_end(self, response: Any, *, run_id: Any = None, **_: Any) -> None:
+        with self._lock:
+            prompt_text = self._prompts.pop(run_id, "")
+            started = self._start_times.pop(run_id, time.perf_counter())
         tokens = _input_tokens(response)
         chars = self._finish(run_id, input_tokens=tokens)
         record_token_count(chars, tokens, "usage")
+        try:
+            from nexus.analysis.llm_journal import current_journal
+
+            journal = current_journal()
+            if journal is not None:
+                completion, out_tokens, tool_calls, finish_reason = _extract_completion(response)
+                journal.record_call(
+                    correlation_id=str(run_id) if run_id else None,
+                    provider=self._model.get("provider", ""),
+                    model=self._model.get("model", ""),
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    input_tokens=tokens,
+                    output_tokens=out_tokens,
+                    prompt=prompt_text,
+                    response=completion,
+                    finish_reason=finish_reason,
+                    status="completed",
+                    tool_calls=tool_calls,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("failed to journal LLM completion: %s", exc)
 
     def on_llm_error(self, error: BaseException, *, run_id: Any = None, **_: Any) -> None:
+        with self._lock:
+            prompt_text = self._prompts.pop(run_id, "")
+            started = self._start_times.pop(run_id, time.perf_counter())
         chars = self._finish(run_id, error=error)
         tokens = context_overflow_tokens(str(error))
         if tokens:
             record_token_count(chars, tokens, "refused prompt")
+        try:
+            from nexus.analysis.llm_journal import current_journal
+
+            journal = current_journal()
+            if journal is not None:
+                journal.record_call(
+                    correlation_id=str(run_id) if run_id else None,
+                    provider=self._model.get("provider", ""),
+                    model=self._model.get("model", ""),
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    input_tokens=0,
+                    output_tokens=0,
+                    prompt=prompt_text,
+                    response="",
+                    finish_reason="error",
+                    status="failed",
+                    error=f"{type(error).__name__}: {error}"[:300],
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("failed to journal LLM error: %s", exc)
+
+
+def _extract_completion(response: Any) -> tuple[str, int, list[str], str]:
+    text_parts: list[str] = []
+    output_tokens = 0
+    tool_calls: list[str] = []
+    finish_reason = "stop"
+    usage = (getattr(response, "llm_output", None) or {}).get("token_usage") or {}
+    output_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+    for generations in getattr(response, "generations", None) or []:
+        for gen in generations:
+            msg = getattr(gen, "message", None)
+            if msg:
+                if getattr(msg, "content", None):
+                    text_parts.append(str(msg.content))
+                meta = getattr(msg, "response_metadata", {}) or {}
+                finish_reason = meta.get("finish_reason") or finish_reason
+                usage_meta = getattr(msg, "usage_metadata", {}) or {}
+                if not output_tokens:
+                    output_tokens = usage_meta.get("output_tokens") or 0
+                for tc in getattr(msg, "tool_calls", None) or []:
+                    if isinstance(tc, dict) and tc.get("name"):
+                        tool_calls.append(str(tc["name"]))
+            elif getattr(gen, "text", None):
+                text_parts.append(str(gen.text))
+    return "\n".join(text_parts), int(output_tokens or 0), tool_calls, str(finish_reason or "stop")
 
 
 def _input_tokens(response: Any) -> int:

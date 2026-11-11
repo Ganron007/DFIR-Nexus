@@ -1316,6 +1316,7 @@ class WorkOrder:
     status: str = "pending"
     result: dict[str, Any] | None = None
     error: str = ""
+    director_source: str = ""
 
     @staticmethod
     def new_id() -> str:
@@ -1522,32 +1523,21 @@ def _record_skill_steps(
 ) -> list[dict[str, Any]]:
     """WO-K6: record each applicable step's disposition for the run record.
 
-    The work order asks a worker that carries skill refs to **run** each
-    applicable step and record the outcome, so a step that could not run is never
-    read as a step that found nothing.
-
-    **This surface still runs nothing** - the executor is WO-KR3, not yet wired -
-    so each step is recorded `not_applicable` with that reason. What changed at
-    KR2b: a step now **has** a stored `es:` query, so the reason can no longer say
-    "the step's query is Mode 1 DSL". That was true before the re-conversion and
-    false after it; recording it would have told the examiner a step was
-    unexecutable when the only thing missing was the executor.
-    `max_queries` is retained only so the signature is unchanged. Set
+    The work order asks a worker that carries skill refs to record each applicable
+    step and its disposition. Stored ES queries execute in the lead builder (WO-KR3)
+    so they surface as leads to all modes; on the Mode 2/3 agent surface the steps
+    are recorded not_applicable with that reason.
+    `max_queries` is retained so the signature is unchanged. Set
     `NEXUS_SKILL_STEP_RECORD=0` to skip recording entirely.
     """
     if os.environ.get("NEXUS_SKILL_STEP_RECORD", "1").strip().lower() in ("0", "false", "no"):
         return []
     if not order.skill_refs:
         return []
-    # Mode 2/3 use ES directly (backbone 4k.5.5): the agent surface takes ES query
-    # JSON, and a step's stored `es:` is exactly that. The executor has not been
-    # wired here yet - that is WO-KR3, which runs the stored queries in the lead
-    # builder for every mode - so the honest record is "not wired yet", not "this
-    # surface cannot speak the query".
 
     from nexus.analysis.skill_steps import run_skill_steps
 
-    reason = "stored queries execute in the lead builder (WO-KR3), not wired yet"
+    reason = "stored queries execute in the lead builder (WO-KR3)"
     by_id = _skill_lookup()
     out: list[dict[str, Any]] = []
     for ref in order.skill_refs:
@@ -1557,7 +1547,9 @@ def _record_skill_steps(
             continue
         try:
             record = run_skill_steps(
-                skill, es_search=None, case_families=case_families,
+                skill,
+                es_search=None,
+                case_families=case_families,
                 no_search_reason=reason,
             )
         except Exception as exc:  # noqa: BLE001 - a skill must not fail the order
@@ -1927,16 +1919,80 @@ def run_work_order(
 # ---------------------------------------------------------------------------
 
 
+def _model_supervisor_for_mode2(
+    model: Any,
+    *,
+    case_dir: Path,
+    question: str,
+    families: list[tuple[str, int]],
+    leads: list[Any],
+    max_orders: int,
+) -> list[dict[str, Any]]:
+    """Mode 2 LLM Director: calls model supervisor in sequential, multi-role configuration (WO-KA5 / T2-34)."""
+    from nexus.langgraph.context_loop import _call_model
+    from nexus.modes.multi_agent import loads_model_json
+
+    family_lines = "\n".join(f"- {name} ({rows} rows)" for name, rows in families[:30]) or "(no indexed families)"
+    lead_lines = "\n".join(
+        f"- [{getattr(ld, 'kind', 'lead')}] {getattr(ld, 'subject', '')}: {str(getattr(ld, 'detail', ''))[:140]}"
+        for ld in leads[:20]
+    ) or "(no leads)"
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the investigation director for Mode 2 (sequential multi-role DFIR investigation). "
+                "Choose the sequence of work orders for workers to investigate one at a time. "
+                "Available roles: evidence (examines one family), correlation (cross-family entity pivot), pattern (ATT&CK technique map). "
+                'Reply with ONE JSON object only: {"orders": [{"role": "evidence|correlation|pattern", "family": "<family>", "task": "<investigation task>", "why": "<justification>"}]}. '
+                f"Maximum {max_orders} orders. No prose outside the JSON."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Objective: {question}\n\n"
+                f"Indexed evidence families (ranked by forensic value):\n{family_lines}\n\n"
+                f"Leads raised so far:\n{lead_lines}\n"
+            ),
+        },
+    ]
+    try:
+        raw = _call_model(model, messages)
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end > start:
+            parsed = loads_model_json(raw[start:end + 1])
+            if isinstance(parsed, dict) and isinstance(parsed.get("orders"), list):
+                valid = []
+                for o in parsed["orders"]:
+                    if not isinstance(o, dict):
+                        continue
+                    role = str(o.get("role") or "").strip().lower()
+                    if role in ("evidence", "correlation", "pattern"):
+                        valid.append({
+                            "role": role,
+                            "family": str(o.get("family") or "").strip(),
+                            "task": str(o.get("task") or f"Investigate {role}"),
+                            "why": str(o.get("why") or "model director plan"),
+                        })
+                return valid[:max_orders]
+    except Exception as exc:  # noqa: BLE001 - fallback is the contract
+        log.debug("Mode 2 model director call failed, falling back to rule director: %s", exc)
+    return []
+
+
 def plan_work_orders(
     case_dir: Path,
     question: str,
     *,
     run_id: str,
     sink: EventSink,
+    model: Any = None,
     max_orders: int = 6,
     known_findings: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[WorkOrder]:
-    """Deterministic director: families + correlation/pattern + examiner feedback."""
+    """Director: model supervisor when model configured (WO-KA5), else deterministic rule fallback."""
     case_dir = Path(case_dir)
     audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
     measured_groups = None
@@ -1978,6 +2034,58 @@ def plan_work_orders(
 
     all_groups = groups_for(all_families)
     keywords = _question_keywords(question)
+
+    if model is not None:
+        try:
+            from nexus.analysis.leads import build_leads
+
+            leads = build_leads(case_dir, write=False)
+            families_tuples = [(f, families.get(f, 0)) for f in all_families]
+            spawns = _model_supervisor_for_mode2(
+                model,
+                case_dir=case_dir,
+                question=question,
+                families=families_tuples,
+                leads=leads,
+                max_orders=max_orders,
+            )
+            if spawns:
+                orders = []
+                for sp in spawns:
+                    fam = sp["family"]
+                    sk_fams = [fam] if fam else all_families
+                    orders.append(WorkOrder(
+                        order_id=WorkOrder.new_id(),
+                        role=sp["role"],
+                        task=sp["task"],
+                        family=fam,
+                        why=sp["why"],
+                        priority_tools=("es_mappings", "es_search", "es_aggregate", "run_record"),
+                        acceptance="corroborated candidate findings with audit_ids or explicit none",
+                        skill_refs=_retrieve_skill_refs(sk_fams, keywords, limit=8, family_groups=groups_for(sk_fams)),
+                        director_source="model",
+                    ))
+                for order in orders:
+                    sink.emit(new_event(
+                        run_id, "plan.work_order", actor="director",
+                        data={"order_id": order.order_id, "role": order.role,
+                              "family": order.family, "task": order.task,
+                              "director_source": "model",
+                              "leads": list(order.lead_subjects), "crit_high": order.crit_high,
+                              "skills": [
+                                  {"skill": r.get("skill"), "version": r.get("version"),
+                                   "why": r.get("why")}
+                                  for r in order.skill_refs
+                              ]},
+                    ))
+                sink.emit(new_event(
+                    run_id, "director.planned", actor="director",
+                    detail=f"Model director produced {len(orders)} work order(s)",
+                    data={"source": "model", "orders": len(orders)},
+                ))
+                return orders
+        except Exception as exc:  # noqa: BLE001
+            log.debug("model director plan failed: %s; falling back to rule director", exc)
 
     try:
         lead_orders = orders_from_leads(
@@ -2109,10 +2217,13 @@ def plan_work_orders(
     room = max(0, max_orders - len(crit_orders) - len(orders))
     orders = crit_orders + lead_rest[:room] + orders
     for order in orders:
+        if not order.director_source:
+            order.director_source = "rule_fallback"
         sink.emit(new_event(
             run_id, "plan.work_order", actor="director",
             data={"order_id": order.order_id, "role": order.role,
                   "family": order.family, "task": order.task,
+                  "director_source": order.director_source,
                   "leads": list(order.lead_subjects), "crit_high": order.crit_high,
                   "skills": [
                       {"skill": r.get("skill"), "version": r.get("version"),
@@ -2499,6 +2610,7 @@ def _run_mode2(
         if not state["orders"]:
             orders = plan_work_orders(
                 case_dir, question, run_id=run_id, sink=sink,
+                model=model,
                 max_orders=max_orders,
                 known_findings=state["examiner_feedback"],
             )

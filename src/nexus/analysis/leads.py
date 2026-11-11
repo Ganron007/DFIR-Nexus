@@ -677,6 +677,97 @@ def behavioural_analytics_leads(
     return out
 
 
+def skill_step_leads(
+    case_dir: Path | str,
+    *,
+    probe: Any = None,
+    limit: int = 50,
+) -> list[Lead]:
+    """Matches from stored skill steps as leads (KR3 / D136).
+
+    For every skill whose declared/derived requirements intersect the case's indexed
+    families, executes each search step's stored `es:` query. If matches > 0, produces
+    a Lead with sample rows.
+    """
+    case_dir = Path(case_dir)
+    case_id = case_dir.name
+    try:
+        from nexus.langgraph.es_native import family_doc_counts
+
+        families = list(family_doc_counts(case_id).keys())
+    except Exception as exc:
+        log.debug("could not measure skill step evidence families: %s", exc)
+        families = []
+    if not families:
+        return []
+
+    import yaml
+
+    from nexus.analysis.knowledge_record import note_skill
+    from nexus.analysis.skill_steps import methodology_only, step_source_present
+
+    skills_dir = Path(__file__).resolve().parent.parent / "data" / "knowledge" / "skills"
+    if not skills_dir.is_dir():
+        return []
+
+    out: list[Lead] = []
+    for path in sorted(skills_dir.glob("*.yaml")):
+        try:
+            skill = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        if not isinstance(skill, dict):
+            continue
+        skill_id = str(skill.get("skill") or "")
+        version = str(skill.get("version") or "")
+        if methodology_only(skill, case_families=families):
+            continue
+
+        for step in skill.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            if step.get("kind") == "procedure":
+                continue
+            clause = step.get("es")
+            if not isinstance(clause, dict) or not clause:
+                continue
+            step_name = str(step.get("name") or "")
+            if (
+                not (hasattr(probe, "count_analytic") or hasattr(probe, "analytic_hits"))
+                and step_source_present(step, case_id) is False
+            ):
+                continue
+            try:
+                count, samples = _analytic_matches(case_dir, clause, probe=probe)
+            except Exception as exc:
+                log.debug("skill step %s/%s query failed: %s", skill_id, step_name, exc)
+                continue
+            if count <= 0:
+                continue
+            note_skill(skill_id, version, 80, [f"step {step_name} hit {count} row(s)"])
+            out.append(Lead(
+                kind="skill_step",
+                subject=f"{skill_id}: {step_name}",
+                family=str(step.get("pivot") or "skill step"),
+                detail=f"skill step matched {count} row(s): {str(step.get('look_for') or '')[:160]}",
+                rows=tuple(samples),
+                audit_ids=(),
+                score=0.94,
+                extra={
+                    "skill": skill_id,
+                    "step": step_name,
+                    "count": count,
+                    "pivot": step.get("pivot"),
+                    "look_for": step.get("look_for"),
+                },
+            ))
+            if limit and len(out) >= limit:
+                break
+        if limit and len(out) >= limit:
+            break
+    return out
+
+
 def _hit_rows(hits: list[Any]) -> list[dict[str, Any]]:
     from nexus.langgraph.evidence_rows import evidence_rows_for_hits
 
@@ -698,11 +789,11 @@ def _analytic_matches(
     analytic out of the leads with the reason logged.
     """
     if probe is not None:
-        if hasattr(probe, "count_analytic"):
-            return int(probe.count_analytic(clause) or 0), []
         if hasattr(probe, "analytic_hits"):
             hits = list(probe.analytic_hits(clause) or [])
             return len(hits), _hit_rows(hits[:ANALYTIC_SAMPLE_ROWS])
+        if hasattr(probe, "count_analytic"):
+            return int(probe.count_analytic(clause) or 0), []
     case_id = Path(case_dir).name
     from nexus.langgraph.es_native import es_search
 
@@ -875,6 +966,10 @@ def build_leads(
         # hits become leads and therefore reach every mode through the lead list.
         # They were a layer NAME with nothing running them.
         builders.append(lambda: behavioural_analytics_leads(case_dir, probe=probe))
+    from nexus.analysis.layers import knowledge_enabled
+    if knowledge_enabled("skills"):
+        # KR3 / D136: execute stored queries in applicable skills, turning matches into leads
+        builders.append(lambda: skill_step_leads(case_dir, probe=probe))
 
     for builder in builders:
         try:

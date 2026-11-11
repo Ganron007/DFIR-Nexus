@@ -576,6 +576,15 @@ def _reap_stale_runs() -> None:
     except Exception as exc:  # noqa: BLE001 - startup must never block on this
         typer.echo(f"  WARNING: stale-run reap skipped: {exc}", err=True)
 
+    try:
+        from nexus.case.jobs import reconcile_interrupted_jobs
+
+        reconciled = reconcile_interrupted_jobs()
+        if reconciled:
+            typer.echo(f"  Reconciled {len(reconciled)} interrupted background job(s)")
+    except Exception as exc:  # noqa: BLE001 - startup must never block on this
+        typer.echo(f"  WARNING: background job reconcile skipped: {exc}", err=True)
+
 
 def _debug_autoclean_cases() -> int:
     """Debug mode: delete all case folders + case DB before the server starts.

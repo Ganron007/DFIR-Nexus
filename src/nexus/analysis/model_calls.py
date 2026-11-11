@@ -156,7 +156,13 @@ def bind(case_dir: Path, run_id: str, model: Any = None, *, resuming: bool = Fal
          previous: dict[str, Any] | None = None) -> None:
     """Bind the existing run-recording scope; never infer a case from an active pointer."""
     from nexus.analysis.knowledge_record import current
+    from nexus.analysis.llm_journal import bind_journal
     from nexus.langgraph.prompt_budget import TokenMeter
+
+    try:
+        bind_journal(case_dir, run_id)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("bind_journal failed: %s", exc)
 
     record = current()
     if record is None:
