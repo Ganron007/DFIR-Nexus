@@ -16,6 +16,7 @@ primitives + ES aggregations (exact counts, CSV parity). Written to
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -142,10 +143,17 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
     # D456: no threat-intel block. The digest is built before the run's TI stage (which needs the
     # leads above), so `analysis/ti_context.md` here was the previous run's; the run's own TI block
     # reaches the prompt beside the digest.
+    cov_stmt: dict[str, Any] = {}
+    with contextlib.suppress(Exception):
+        from nexus.knowledge.family_registry import case_coverage_statement
+
+        cov_stmt = case_coverage_statement(case_dir, {k: v["rows"] for k, v in (brief.get("inventory") or {}).items()})
+
     return {
         "case_id": case_dir.name,
         "generated_at": datetime.now(UTC).isoformat(),
         "scope": scope,
+        "coverage_statement": cov_stmt,
         "ts_coverage": _ts_coverage(case_dir),
         "ts_coverage_capped": _ts_coverage_capped(case_dir),
         "inventory": brief.get("inventory") or {},
@@ -283,6 +291,9 @@ def _inventory_lines(digest: dict[str, Any]) -> list[str]:
 def _scope_lines(digest: dict[str, Any]) -> list[str]:
     """What this evidence is and is not."""
     lines = ["## Scope (what this evidence IS — and what it is NOT)"]
+    cov_stmt = (digest.get("coverage_statement") or {}).get("statement")
+    if cov_stmt:
+        lines.append(f"- **Evidence semantics:** {cov_stmt}")
     scope = digest.get("scope") or {}
     for label, values in (scope.get("families_present") or {}).items():
         if values:

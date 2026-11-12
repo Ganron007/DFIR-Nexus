@@ -71,8 +71,8 @@ ORDER_BY_GROUP = {
 #: The columns a family's own rows name the subject with, for families whose rows carry no ECS subject
 #: leaves (checked against the case index, 2026-10-12). Each entry is (subject field, column). A column is
 #: read from the parsed fields first, then from the hit's envelope. Not here, and why: SRUM AppId and
-#: UserId are numeric table ids; Amcache KeyName is a GUID; WER, JSON and CSV name no subject; prefetch
-#: free text (the memory timeline's Text) is not parsed.
+#: UserId are numeric table ids; Amcache KeyName is a GUID; WER, JSON and CSV name no subject.
+#: Note: MemProcFS memory timeline free text (`Text`) is parsed in family_subject_fields (D92, D93).
 FAMILY_SUBJECT_COLUMNS = {
     "pecmd": (("process", "ExecutableName"),),
     "prefetch": (("process", "Process"),),
@@ -267,15 +267,60 @@ def _family_of_rows(rows: list[dict[str, Any]]) -> str:
     return next(family for family in families if counts[family] == top)
 
 
+def parse_memprocfs_timeline_text(text: str) -> dict[str, str]:
+    """Parse subject fields from MemProcFS timeline free-text rows (D92, D93).
+
+    Handles timeline_prefetch, timeline_process, timeline_amcache, and timeline_net.
+    """
+    out: dict[str, str] = {}
+    if not text:
+        return out
+    text = text.strip()
+
+    # 1. Process or Prefetch execution timeline
+    # E.g.: "SEARCHFILTERHOST.EXE - run_count:27560 file:[...]"
+    # E.g.: "SearchFilterHost.exe [*SYSTEM] \Device\..."
+    # E.g.: "MemCompression [*SYSTEM] MemCompression"
+    m_proc = re.match(r"^([a-zA-Z0-9_\-\.]+\.exe)\b", text, re.IGNORECASE) or re.match(r"^([a-zA-Z0-9_\-\.]+)\s+\[\*", text)
+    if m_proc:
+        out["process"] = m_proc.group(1)
+
+    # 2. Amcache file path
+    # E.g.: "AmCache file inventory record updated: c:\users\...\officeclicktorun.exe"
+    m_amca = re.search(r"record updated:\s*([a-zA-Z]:\\[^\r\n]+)", text, re.IGNORECASE)
+    if m_amca:
+        fpath = m_amca.group(1).strip()
+        out["file_path"] = fpath
+        if fpath.lower().endswith(".exe") and "process" not in out:
+            out["process"] = fpath.rsplit("\\", 1)[-1]
+
+    # 3. Net connection
+    # E.g.: "TCPv4 ESTABLISHED 172.16.6.101:62466 172.16.4.10:8080"
+    m_net = re.search(r"\b(\d{1,3}(?:\.\d{1,3}){3}):\d+\s+(\d{1,3}(?:\.\d{1,3}){3}):\d+\b", text)
+    if m_net:
+        out["source_ip"] = m_net.group(1)
+        out["destination_ip"] = m_net.group(2)
+
+    return out
+
+
 def family_subject_fields(hit: dict[str, Any]) -> dict[str, str]:
     """The row fields a hit's family columns give (see FAMILY_SUBJECT_COLUMNS), placeholders dropped."""
-    columns = FAMILY_SUBJECT_COLUMNS.get(str(hit.get("family") or ""), ())
+    family = str(hit.get("family") or "")
+    columns = FAMILY_SUBJECT_COLUMNS.get(family, ())
     fields = hit.get("fields") if isinstance(hit.get("fields"), dict) else {}
     out: dict[str, str] = {}
     for field, column in columns:
         value = present(fields[column] if column in fields else hit.get(column))
         if value:
             out[FIELD_ROW_KEY[field]] = value
+    if family == "memprocfs":
+        text = str(fields.get("Text") or hit.get("Text") or "").strip()
+        if text:
+            parsed = parse_memprocfs_timeline_text(text)
+            for k, v in parsed.items():
+                if k not in out or not out[k]:
+                    out[k] = v
     return out
 
 

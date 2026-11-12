@@ -1552,6 +1552,7 @@ class CaseManager:
             "registered_at": now,
             "status": "registered",
             "kind": "file" if evidence_path.is_file() else "directory",
+            "origin": "examiner",
             "files": file_count,
             "total_bytes": total_bytes,
         }
@@ -1566,12 +1567,19 @@ class CaseManager:
             "total_bytes": total_bytes,
         }
 
-    def list_evidence(self, case_dir: Path | None = None) -> list[dict]:
+    def list_evidence(self, case_dir: Path | None = None, origin: str | None = None) -> list[dict]:
         try:
             target = Path(case_dir) if case_dir is not None else self.resolve_case_dir()
         except ValueError:
             return []
-        return self._load_evidence_registry(target)
+        items = self._load_evidence_registry(target)
+        for item in items:
+            if "origin" not in item:
+                item["origin"] = "derived" if str(item.get("kind") or "") == "tool_extraction" else "examiner"
+        if origin is not None:
+            wanted = str(origin).strip().lower()
+            return [it for it in items if str(it.get("origin") or "").lower() == wanted]
+        return items
 
     def verify_evidence(self, case_dir: Path | None = None) -> dict:
         try:

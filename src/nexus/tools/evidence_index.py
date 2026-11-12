@@ -452,6 +452,11 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
         result_summary={"families": len(family_rows), "es": es},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
+    from nexus.knowledge.family_registry import case_coverage_statement, family_semantics
+
+    family_sem = {fam: family_semantics(fam) for fam in sorted(family_rows)}
+    cov_stmt = case_coverage_statement(case_dir, family_rows)
+
     payload = {
         "case_id": Path(case_dir).name,
         "es_available": es,
@@ -459,6 +464,8 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None,
         "families": sorted(family_rows),
         "family_rows": dict(sorted(family_rows.items())),
         "evidence_groups": groups,
+        "family_semantics": family_sem,
+        "coverage_statement": cov_stmt,
         "family_fields": family_fields,
         "field_census": field_census,
         "dsl_fields": [

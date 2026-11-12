@@ -497,6 +497,13 @@ def report_section(audit: dict[str, Any], case_dir: Path | str | None = None) ->
     if not audit and not gaps:
         return []
     lines = ["## Coverage audit", ""]
+    if case_dir is not None:
+        with contextlib.suppress(Exception):
+            from nexus.knowledge.family_registry import render_coverage_statement
+
+            cov_str = render_coverage_statement(case_dir)
+            if cov_str:
+                lines.append(f"- **Evidence semantics:** {cov_str}")
     if audit:
         lines.extend(summary_lines(audit, limit=10))
     for event in gaps[:10]:

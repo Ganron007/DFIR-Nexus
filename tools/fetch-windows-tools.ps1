@@ -197,6 +197,23 @@ function Install-WoTaPins {
     # Pin the official upstream fix by immutable commit until it is released.
     Install-PinnedVcsCommit "hindsight" "https://github.com/RyanDFIR/hindsight.git" `
         "065e0958610d3757476c927e5d19f37343998e4d" "Apache-2.0"
+
+    # WO-TA exe rows and SIFT pins (D107): lineage matches a binary's own SHA-256 (col 4).
+    # Moving these into the generator ensures regenerating VERSIONS.txt never drops them.
+    $script:Versions += @(
+        "",
+        "# refresh 2026-10-12: the rows below record the executable the lane runs (lineage matches a binary's own",
+        "# SHA-256, column 4). Each was checked against its upstream release: GitHub digest, or the file hash equal to the",
+        "# release asset. Smoke tests: suzaku.exe help, hayabusa.exe help, Zircolite.exe --help exit 0; uac bash -n 0 and",
+        "# uac -h usage; avml and DFIR-ORC.exe not run here (Linux ELF; DFIR-ORC needs an elevated shell).",
+        "hayabusa.exe`tv4.1.0`thttps://github.com/Yamato-Security/hayabusa/releases/download/v4.1.0/hayabusa-4.1.0-win-x64.zip`tA9603A988B6A8360684DDE95D9A65B1793E9415A6EE7CD8B40C601CF3036E623`tAGPL-3.0",
+        "suzaku.exe`tv2.0.1`thttps://github.com/Yamato-Security/suzaku/releases/download/v2.0.1/suzaku-2.0.1-win-x64.zip`t91114DAE52811E427DC5887F432FA70ED99B6046F26F6D77C7B7E064E7D2A8D2`tAGPL-3.0",
+        "Zircolite.exe`t4.5.0`thttps://github.com/wagga40/Zircolite/releases/download/v4.5.0/Zircolite-4.5.0-windows-x64.zip`tF1DD1360CD5EC53E37DA7D545750680D64BC0F8188FE8F3FDE1053D3F759458D`tLGPL-3.0",
+        "DFIR-ORC.exe`tv10.4.0`thttps://github.com/DFIR-ORC/dfir-orc/releases/download/v10.4.0/DFIR-ORC.exe`tB192317BE8295A590C4CA2412809AEBC4AB2E6368DEC1C5E641622A990F7EA6E`tLGPL-2.1",
+        "DFIR-ORC-ready.exe`tv10.4.0 (ToolEmbed of config/config/Embed.xml; operator configuration with uncommitted edits)`tlocal build: tools/windows/orc/config/Build.cmd`tFE119EF4F02F516DD619CBC24AC28132256979A4CE8F36A664DF640428146EB2`tLGPL-2.1",
+        "avml`tv0.21.0`thttps://github.com/microsoft/avml/releases/download/v0.21.0/avml`tE75597DCDCAAA8475FDC61643EFFB050F72AAA9CFF677C7271386A9781BF4460`tMIT",
+        "uac`tv3.4.0`thttps://github.com/tclahr/uac/releases/download/v3.4.0/uac-3.4.0.tar.gz`tD333B72990C25D48B93200648A58084F8B79FF917D1E609DD92AC6BA9FB387DB`tApache-2.0"
+    )
 }
 
 if ($PinsOnly) {

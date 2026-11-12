@@ -192,7 +192,7 @@ def register_remote_evidence(
         mgr.close()
 
 
-def list_evidence(case_dir: Path) -> list[dict[str, Any]]:
+def list_evidence(case_dir: Path, origin: str | None = None) -> list[dict[str, Any]]:
     """Return registered evidence for a case from the SQLite system of record.
 
     If SQLite has no evidence rows for the case, the flat registries
@@ -206,7 +206,11 @@ def list_evidence(case_dir: Path) -> list[dict[str, Any]]:
         if not records:
             _backfill_flat(case_dir, mgr)
             records = mgr.list_evidence(case_dir.name)
-        return [_serialize(record) for record in records]
+        serialized = [_serialize(record) for record in records]
+        if origin is not None:
+            wanted = str(origin).strip().lower()
+            return [it for it in serialized if str(it.get("origin") or "").lower() == wanted]
+        return serialized
     finally:
         mgr.close()
 
@@ -346,6 +350,8 @@ def verify_evidence(case_dir: Path) -> dict[str, Any]:
 def _serialize(record) -> dict[str, Any]:
     """Mirror the flat ``evidence.json`` shape (portal + legacy consumers)."""
     meta = dict(record.metadata or {})
+    kind = str(meta.get("kind") or ("directory" if meta.get("files") else "file"))
+    origin = "derived" if kind == "tool_extraction" else "examiner"
     return {
         "id": record.id,
         "path": record.file_path or "",
@@ -357,7 +363,8 @@ def _serialize(record) -> dict[str, Any]:
         ),
         "status": "registered",
         "name": record.name,
-        "kind": str(meta.get("kind") or ("directory" if meta.get("files") else "file")),
+        "kind": kind,
+        "origin": origin,
         "files": meta.get("files"),
         "total_bytes": meta.get("total_bytes"),
         "host": meta.get("host") or "",

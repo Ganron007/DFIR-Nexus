@@ -606,6 +606,13 @@ def case_briefing(case_dir: Path) -> dict[str, Any]:
         "findings_summary": findings_summary,
     }
 
+    try:
+        from nexus.knowledge.family_registry import case_coverage_statement
+
+        out["coverage_statement"] = case_coverage_statement(case_dir, {k: v["rows"] for k, v in inventory.items()})
+    except Exception:
+        out["coverage_statement"] = {}
+
     # WO-3 (report-only): the row-reconciliation line rides the briefing so a
     # source-vs-index mismatch is visible without opening the report.
     try:
@@ -683,6 +690,9 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
                  f"{brief.get('total_rows', 0)} rows across {len(inv)} families")
     for fam, e in sorted(inv.items()):
         lines.append(f"- `{fam}`: {e['files']} files, {e['rows']} rows")
+    cov_stmt = (brief.get("coverage_statement") or {}).get("statement")
+    if cov_stmt:
+        lines.append(f"Evidence semantics: {cov_stmt}")
     led = brief.get("ledger") or {}
     lines.append(f"\nParser lane: {led.get('ok', 0)} OK / {led.get('skip', 0)} SKIP / "
                  f"{led.get('fail', 0)} FAIL")
