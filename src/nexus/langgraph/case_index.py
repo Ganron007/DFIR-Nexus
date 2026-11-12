@@ -249,8 +249,32 @@ class _SharedClient:
         return getattr(self._client, name)
 
 
+def _es_auth_and_headers(parsed_url: Any) -> tuple[Any, dict[str, str]]:
+    """Resolve authentication and headers for Elasticsearch HTTP clients (D145).
+
+    Supports:
+    - Basic auth in URL: http://user:pass@host:9200
+    - Basic auth via environment: NEXUS_ES_USER and NEXUS_ES_PASSWORD
+    - API key via environment: NEXUS_ES_API_KEY
+    - Bearer token via environment: NEXUS_ES_BEARER_TOKEN
+    """
+    auth = None
+    if parsed_url.username and parsed_url.password:
+        auth = (parsed_url.username, parsed_url.password)
+    elif os.environ.get("NEXUS_ES_USER") and os.environ.get("NEXUS_ES_PASSWORD"):
+        auth = (os.environ["NEXUS_ES_USER"].strip(), os.environ["NEXUS_ES_PASSWORD"])
+
+    headers: dict[str, str] = {}
+    if os.environ.get("NEXUS_ES_API_KEY"):
+        headers["Authorization"] = f"ApiKey {os.environ['NEXUS_ES_API_KEY'].strip()}"
+    elif os.environ.get("NEXUS_ES_BEARER_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['NEXUS_ES_BEARER_TOKEN'].strip()}"
+
+    return auth, headers
+
+
 def _client():
-    """The pooled client of the configured Elasticsearch, one per URL (D219).
+    """The pooled client of the configured Elasticsearch, one per URL (D219, D145).
 
     Every call used to open its own client: a new TCP connection for each request, two per search.
     A Mode 2 run sends hundreds of searches and the suite thousands; through the Docker port forwarder
@@ -265,12 +289,14 @@ def _client():
     parsed = urlparse(url)
     if parsed.hostname in {"192.168.77.50", "elk"}:
         raise RuntimeError("N3 must not point at the CADRE elk SIEM (.50)")
+    auth, headers = _es_auth_and_headers(parsed)
+    cache_key = f"{url}|{auth}|{tuple(sorted(headers.items()))}"
     with _SHARED_LOCK:
-        client = _SHARED_CLIENTS.get(url)
+        client = _SHARED_CLIENTS.get(cache_key)
         if client is None or client.is_closed:
             transport = _reset_retry_transport(httpx.HTTPTransport(retries=1))
-            client = httpx.Client(base_url=url, timeout=120.0, transport=transport)
-            _SHARED_CLIENTS[url] = client
+            client = httpx.Client(base_url=url, auth=auth, headers=headers, timeout=120.0, transport=transport)
+            _SHARED_CLIENTS[cache_key] = client
     return _SharedClient(client)
 
 
@@ -313,7 +339,10 @@ def es_available() -> bool:
         parsed = urlparse(es_url())
         if parsed.hostname in {"192.168.77.50", "elk"}:
             raise RuntimeError("N3 must not point at the CADRE elk SIEM (.50)")
+        auth, headers = _es_auth_and_headers(parsed)
         with httpx.Client(base_url=es_url(),
+                          auth=auth,
+                          headers=headers,
                           timeout=httpx.Timeout(_ES_PROBE_TIMEOUT, connect=_ES_PROBE_CONNECT)) as client:
             r = client.get("/")
             available = bool(r.status_code == 200 and "version" in r.json())
