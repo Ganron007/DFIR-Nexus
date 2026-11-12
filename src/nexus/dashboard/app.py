@@ -6538,7 +6538,7 @@ def _load_case_bundle(case_dir: Path) -> dict[str, Any]:
 async def api_report_download(request):
     """GET /portal/api/report/download — download official report in chosen format.
 
-    Supported formats: markdown, html, docx, stix, zip.
+    Supported formats: markdown, html, pdf, docx, stix, zip.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -6547,6 +6547,7 @@ async def api_report_download(request):
     profile = (request.query_params.get("profile") or "dfir").strip().lower()
     if profile not in {"dfir", "full", "executive", "narrative"}:
         profile = "dfir"
+    redact = request.query_params.get("redact", "").strip().lower() in ("1", "true", "yes")
 
     report_file = case_dir / "reports" / "REPORT.md"
     if not report_file.is_file():
@@ -6557,11 +6558,29 @@ async def api_report_download(request):
 
     if fmt in ("markdown", "md"):
         content = report_file.read_text(encoding="utf-8") if report_file.is_file() else "# DFIR-Nexus Report"
+        if redact:
+            from nexus.integration.report_hardening import exposure_brief, redact_report_secrets
+            content, redactions = redact_report_secrets(content)
+            content = f"{content}\n\n{exposure_brief(redactions)}"
         return Response(
             content=content,
             media_type="text/markdown; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="{case_id}-report.md"'},
         )
+    elif fmt == "pdf":
+        from nexus.integration.report_hardening import export_report_pdf
+        content = report_file.read_text(encoding="utf-8") if report_file.is_file() else "# DFIR-Nexus Report"
+        pdf_tmp = case_dir / "reports" / f"{case_id}-report.pdf"
+        try:
+            export_report_pdf(content, pdf_tmp, title=f"Case {case_id} Report", redact=redact)
+            pdf_bytes = pdf_tmp.read_bytes()
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{case_id}-report.pdf"'},
+            )
+        except Exception as exc:
+            return JSONResponse({"error": f"PDF export failed: {exc}"}, status_code=500)
     elif fmt == "html":
         from nexus.integration.case_export import export_to_html
         content = export_to_html(bundle)
@@ -6596,7 +6615,7 @@ async def api_report_download(request):
         )
     else:
         return JSONResponse(
-            {"error": f"Unsupported format: {fmt}. Must be markdown, html, docx, stix, or zip."},
+            {"error": f"Unsupported format: {fmt}. Must be markdown, html, pdf, docx, stix, or zip."},
             status_code=400,
         )
 
@@ -6630,6 +6649,112 @@ async def api_case_bundle(request):
         media_type="application/json; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _resolve_recovery_case_dir(request) -> Path | None:
+    case_id = str(
+        request.path_params.get("case_id")
+        or request.query_params.get("case_id")
+        or ""
+    ).strip()
+    from nexus.config import settings
+
+    if case_id:
+        c_dir = settings.cases_root / case_id
+        if c_dir.is_dir():
+            return c_dir
+    active = _get_case_dir(request)
+    if active and (not case_id or active.name == case_id):
+        return active
+    return None
+
+
+async def api_case_recovery_summary(request):
+    """GET /portal/api/case/recovery/summary — census of recovered items."""
+    case_dir = _resolve_recovery_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+    from nexus.recovery.service import RecoveryService
+
+    service = RecoveryService(case_dir)
+    return JSONResponse(service.get_summary().to_dict())
+
+
+async def api_case_recovery_rdp(request):
+    """GET /portal/api/case/recovery/rdp — recovered RDP bitmap tiles."""
+    case_dir = _resolve_recovery_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+    try:
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+    except ValueError:
+        limit, offset = 50, 0
+    from nexus.recovery.service import RecoveryService
+
+    service = RecoveryService(case_dir)
+    return JSONResponse(service.list_rdp_tiles(limit=limit, offset=offset))
+
+
+async def api_case_recovery_thumbcache(request):
+    """GET /portal/api/case/recovery/thumbcache — recovered thumbcache/iconcache entries."""
+    case_dir = _resolve_recovery_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+    try:
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+    except ValueError:
+        limit, offset = 50, 0
+    from nexus.recovery.service import RecoveryService
+
+    service = RecoveryService(case_dir)
+    return JSONResponse(service.list_thumbcache(limit=limit, offset=offset))
+
+
+async def api_case_recovery_recycle_bin(request):
+    """GET /portal/api/case/recovery/recycle-bin — recovered Recycle Bin entries."""
+    case_dir = _resolve_recovery_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+    try:
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+    except ValueError:
+        limit, offset = 50, 0
+    q = request.query_params.get("query")
+    from nexus.recovery.service import RecoveryService
+
+    service = RecoveryService(case_dir)
+    return JSONResponse(service.list_recycle_bin(limit=limit, offset=offset, query=q))
+
+
+async def api_case_recovery_deleted_files(request):
+    """GET /portal/api/case/recovery/deleted-files — recovered deleted/unallocated files."""
+    case_dir = _resolve_recovery_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+    try:
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+    except ValueError:
+        limit, offset = 50, 0
+    q = request.query_params.get("query")
+    from nexus.recovery.service import RecoveryService
+
+    service = RecoveryService(case_dir)
+    return JSONResponse(service.list_deleted_files(limit=limit, offset=offset, query=q))
+
+
+async def api_case_recovery_export(request):
+    """GET /portal/api/case/recovery/export — comprehensive recovery manifest."""
+    case_dir = _resolve_recovery_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+    from nexus.recovery.service import RecoveryService
+
+    service = RecoveryService(case_dir)
+    return JSONResponse(service.export_manifest())
 
 
 async def api_evidence_verify(request):
@@ -7676,6 +7801,19 @@ def create_dashboard():
         Route("/portal/api/report/claims", api_report_claims, methods=["GET"]),
         Route("/portal/api/report/download", api_report_download, methods=["GET"]),
         Route("/portal/api/case/bundle", api_case_bundle, methods=["GET"]),
+        # WP 10.9: Artifact recovery surfaces
+        Route("/portal/api/case/recovery/summary", api_case_recovery_summary, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/recovery/summary", api_case_recovery_summary, methods=["GET"]),
+        Route("/portal/api/case/recovery/rdp", api_case_recovery_rdp, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/recovery/rdp", api_case_recovery_rdp, methods=["GET"]),
+        Route("/portal/api/case/recovery/thumbcache", api_case_recovery_thumbcache, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/recovery/thumbcache", api_case_recovery_thumbcache, methods=["GET"]),
+        Route("/portal/api/case/recovery/recycle-bin", api_case_recovery_recycle_bin, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/recovery/recycle-bin", api_case_recovery_recycle_bin, methods=["GET"]),
+        Route("/portal/api/case/recovery/deleted-files", api_case_recovery_deleted_files, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/recovery/deleted-files", api_case_recovery_deleted_files, methods=["GET"]),
+        Route("/portal/api/case/recovery/export", api_case_recovery_export, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/recovery/export", api_case_recovery_export, methods=["GET"]),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # WO-A4: the reproducibility bundle for an approved finding
         Route("/portal/api/finding/exhibit", api_finding_exhibit, methods=["GET"]),

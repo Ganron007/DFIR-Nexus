@@ -115,6 +115,10 @@ def generate(
     save: str = typer.Option("", "--save", "-s", help="Save to file"),
     from_date: str = typer.Option("", "--from", help="Start date"),
     to_date: str = typer.Option("", "--to", help="End date"),
+    pdf: bool = typer.Option(False, "--pdf", help="Export report as vector PDF"),
+    redact: bool = typer.Option(
+        False, "--redact", help="Redact credentials/secrets and append Exposure Brief"
+    ),
 ):
     """Generate an IR report from approved findings."""
     from nexus.config import settings
@@ -225,15 +229,23 @@ def generate(
                     err=True,
                 )
                 return
+            if redact:
+                from nexus.integration.report_hardening import exposure_brief, redact_report_secrets
+                redacted_text, redactions = redact_report_secrets(report_text)
+                report_text = f"{redacted_text}\n\n{exposure_brief(redactions)}"
+                typer.echo(f"Redacted {len(redactions)} sensitive item(s) from report.")
             if not save:
-                save = str(candidate / "reports" / "REPORT.md")
-            if save:
-                out = Path(save)
-                out.parent.mkdir(parents=True, exist_ok=True)
+                save = str(candidate / "reports" / ("REPORT.pdf" if pdf else "REPORT.md"))
+            out = Path(save)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            if pdf:
+                from nexus.integration.report_hardening import export_report_pdf
+                pdf_out = out if out.suffix.lower() == ".pdf" else out.with_suffix(".pdf")
+                export_report_pdf(report_text, pdf_out, title=f"Case {candidate.name} Report")
+                typer.echo(f"Exported PDF to {pdf_out}")
+            else:
                 out.write_text(report_text, encoding="utf-8")
                 typer.echo(f"Saved to {out}")
-            else:
-                typer.echo(report_text)
             return
         except Exception as exc:
             typer.echo(f"Flat-JSON report failed: {exc}", err=True)
@@ -353,9 +365,21 @@ def generate(
         )
         return
 
+    if redact:
+        from nexus.integration.report_hardening import exposure_brief, redact_report_secrets
+        redacted_text, redactions = redact_report_secrets(report_text)
+        report_text = f"{redacted_text}\n\n{exposure_brief(redactions)}"
+        typer.echo(f"Redacted {len(redactions)} sensitive item(s) from report.")
+
     if not save:
-        save = str(settings.cases_root / case.id / "reports" / "REPORT.md")
+        save = str(settings.cases_root / case.id / "reports" / ("REPORT.pdf" if pdf else "REPORT.md"))
     out = Path(save)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report_text, encoding="utf-8")
-    typer.echo(f"Saved to {out}")
+    if pdf:
+        from nexus.integration.report_hardening import export_report_pdf
+        pdf_out = out if out.suffix.lower() == ".pdf" else out.with_suffix(".pdf")
+        export_report_pdf(report_text, pdf_out, title=f"Case {case.name} Report")
+        typer.echo(f"Exported PDF to {pdf_out}")
+    else:
+        out.write_text(report_text, encoding="utf-8")
+        typer.echo(f"Saved to {out}")

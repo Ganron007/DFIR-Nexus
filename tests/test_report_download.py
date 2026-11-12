@@ -142,9 +142,18 @@ def test_report_download_zip(client: TestClient):
     assert "CASE-TEST001-report.zip" in resp.headers["content-disposition"]
 
 
-def test_report_download_unsupported_format(client: TestClient):
-    """GET /portal/api/report/download?format=pdf returns 400 with helpful error."""
+def test_report_download_pdf(client: TestClient):
+    """GET /portal/api/report/download?format=pdf returns 200 with vector PDF."""
     resp = client.get("/portal/api/report/download?format=pdf")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content[:5] == b"%PDF-"
+    assert "CASE-TEST001-report.pdf" in resp.headers["content-disposition"]
+
+
+def test_report_download_unsupported_format(client: TestClient):
+    """GET /portal/api/report/download?format=unknown returns 400 with helpful error."""
+    resp = client.get("/portal/api/report/download?format=unknown")
     assert resp.status_code == 400
     assert "Unsupported format" in resp.json()["error"]
 
