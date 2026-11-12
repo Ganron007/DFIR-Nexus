@@ -1143,6 +1143,9 @@ def build_dfir_markdown(
         out.append(f"- **Severity:** {f.get('severity') or 'unrated'}")
         if f.get("approved_by"):
             out.append(f"- **Approved by:** {f.get('approved_by')}")
+        pr = f.get("peer_review")
+        if isinstance(pr, dict) and pr.get("reviewed_by"):
+            out.append(f"- **Technically reviewed by:** {pr.get('reviewed_by')} ({pr.get('reviewed_at', '')})")
         tids = f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or []
         if tids:
             out.append(f"- **MITRE:** {', '.join(str(t) for t in tids)}")

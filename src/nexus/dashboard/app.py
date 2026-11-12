@@ -3969,7 +3969,7 @@ async def api_case_seal(request):
 
     # Challenge proved the examiner knows the password. Derive the
     # signing key from the stored hash (same as per-finding approval).
-    from nexus.modes.plan_sliver import seal_case
+    from nexus.case.seal import seal_case
 
     result = seal_case(case_dir, examiner, "", skip_verify=True)
     if result.get("error"):
@@ -5947,6 +5947,75 @@ async def api_findings_reject(request):
     return JSONResponse({"ok": True, "rejected": rejected})
 
 
+async def api_finding_peer_review(request):
+    """POST /portal/api/finding/peer-review — record independent technical peer review.
+
+    Requires password authentication for the peer reviewer and verifies that the
+    reviewer is distinct from the original approver (WP 13.13 / ISO 17025).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    finding_id = str(body.get("finding_id") or "").strip()
+    reviewer = str(body.get("reviewer") or "").strip()
+    password = str(body.get("password") or "")
+
+    if not finding_id:
+        return JSONResponse({"error": "finding_id is required"}, status_code=400)
+    if not reviewer:
+        return JSONResponse({"error": "reviewer is required"}, status_code=400)
+    if not password:
+        return JSONResponse({"error": "password is required"}, status_code=400)
+
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    findings_path = case_dir / "findings.json"
+    if not findings_path.is_file():
+        return JSONResponse({"error": "Case has no findings.json"}, status_code=404)
+
+    try:
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed reading findings: {exc}"}, status_code=500)
+
+    target_finding = next((f for f in findings if f.get("id") == finding_id), None)
+    if not target_finding:
+        return JSONResponse({"error": f"Finding {finding_id} not found"}, status_code=404)
+
+    from nexus.auth import sign_peer_review
+
+    try:
+        review_record = sign_peer_review(
+            case_id=case_dir.name,
+            finding_id=finding_id,
+            reviewer=reviewer,
+            password=password,
+            finding_data=target_finding,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": f"Peer review failed: {exc}"}, status_code=500)
+
+    target_finding["peer_review"] = {
+        "status": "VERIFIED",
+        "reviewed_by": review_record["reviewed_by"],
+        "reviewed_at": review_record["reviewed_at"],
+        "revision_id": review_record["revision_id"],
+    }
+    findings_path.write_text(json.dumps(findings, indent=2), encoding="utf-8")
+
+    return JSONResponse({
+        "status": "ok",
+        "finding_id": finding_id,
+        "peer_review": target_finding["peer_review"],
+    })
+
+
 def _write_case_report(case_dir, *, profile: str = "dfir", llm: bool = True, steer: str = ""):
     """Shared report build — findings/timeline/meta loaded from the case
     dir, markdown written to reports/REPORT.md. Returns the response
@@ -6651,110 +6720,7 @@ async def api_case_bundle(request):
     )
 
 
-def _resolve_recovery_case_dir(request) -> Path | None:
-    case_id = str(
-        request.path_params.get("case_id")
-        or request.query_params.get("case_id")
-        or ""
-    ).strip()
-    from nexus.config import settings
-
-    if case_id:
-        c_dir = settings.cases_root / case_id
-        if c_dir.is_dir():
-            return c_dir
-    active = _get_case_dir(request)
-    if active and (not case_id or active.name == case_id):
-        return active
-    return None
-
-
-async def api_case_recovery_summary(request):
-    """GET /portal/api/case/recovery/summary — census of recovered items."""
-    case_dir = _resolve_recovery_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "Case not found"}, status_code=404)
-    from nexus.recovery.service import RecoveryService
-
-    service = RecoveryService(case_dir)
-    return JSONResponse(service.get_summary().to_dict())
-
-
-async def api_case_recovery_rdp(request):
-    """GET /portal/api/case/recovery/rdp — recovered RDP bitmap tiles."""
-    case_dir = _resolve_recovery_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "Case not found"}, status_code=404)
-    try:
-        limit = int(request.query_params.get("limit", 50))
-        offset = int(request.query_params.get("offset", 0))
-    except ValueError:
-        limit, offset = 50, 0
-    from nexus.recovery.service import RecoveryService
-
-    service = RecoveryService(case_dir)
-    return JSONResponse(service.list_rdp_tiles(limit=limit, offset=offset))
-
-
-async def api_case_recovery_thumbcache(request):
-    """GET /portal/api/case/recovery/thumbcache — recovered thumbcache/iconcache entries."""
-    case_dir = _resolve_recovery_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "Case not found"}, status_code=404)
-    try:
-        limit = int(request.query_params.get("limit", 50))
-        offset = int(request.query_params.get("offset", 0))
-    except ValueError:
-        limit, offset = 50, 0
-    from nexus.recovery.service import RecoveryService
-
-    service = RecoveryService(case_dir)
-    return JSONResponse(service.list_thumbcache(limit=limit, offset=offset))
-
-
-async def api_case_recovery_recycle_bin(request):
-    """GET /portal/api/case/recovery/recycle-bin — recovered Recycle Bin entries."""
-    case_dir = _resolve_recovery_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "Case not found"}, status_code=404)
-    try:
-        limit = int(request.query_params.get("limit", 50))
-        offset = int(request.query_params.get("offset", 0))
-    except ValueError:
-        limit, offset = 50, 0
-    q = request.query_params.get("query")
-    from nexus.recovery.service import RecoveryService
-
-    service = RecoveryService(case_dir)
-    return JSONResponse(service.list_recycle_bin(limit=limit, offset=offset, query=q))
-
-
-async def api_case_recovery_deleted_files(request):
-    """GET /portal/api/case/recovery/deleted-files — recovered deleted/unallocated files."""
-    case_dir = _resolve_recovery_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "Case not found"}, status_code=404)
-    try:
-        limit = int(request.query_params.get("limit", 50))
-        offset = int(request.query_params.get("offset", 0))
-    except ValueError:
-        limit, offset = 50, 0
-    q = request.query_params.get("query")
-    from nexus.recovery.service import RecoveryService
-
-    service = RecoveryService(case_dir)
-    return JSONResponse(service.list_deleted_files(limit=limit, offset=offset, query=q))
-
-
-async def api_case_recovery_export(request):
-    """GET /portal/api/case/recovery/export — comprehensive recovery manifest."""
-    case_dir = _resolve_recovery_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "Case not found"}, status_code=404)
-    from nexus.recovery.service import RecoveryService
-
-    service = RecoveryService(case_dir)
-    return JSONResponse(service.export_manifest())
+from nexus.dashboard.routers.recovery import recovery_routes
 
 
 async def api_evidence_verify(request):
@@ -7793,6 +7759,7 @@ def create_dashboard():
         Route("/portal/api/setup/status", api_setup_status, methods=["GET"]),
         Route("/portal/api/case/seed-demo", api_case_seed_demo, methods=["POST"]),
         Route("/portal/api/findings/reject", api_findings_reject, methods=["POST"]),
+        Route("/portal/api/finding/peer-review", api_finding_peer_review, methods=["POST"]),
         Route("/portal/api/report/generate", api_report_generate, methods=["POST"]),
         Route("/portal/api/report/view", api_report_view, methods=["GET"]),
         Route("/portal/api/report/steer", api_report_steer, methods=["POST"]),
@@ -7802,18 +7769,7 @@ def create_dashboard():
         Route("/portal/api/report/download", api_report_download, methods=["GET"]),
         Route("/portal/api/case/bundle", api_case_bundle, methods=["GET"]),
         # WP 10.9: Artifact recovery surfaces
-        Route("/portal/api/case/recovery/summary", api_case_recovery_summary, methods=["GET"]),
-        Route("/portal/api/case/{case_id}/recovery/summary", api_case_recovery_summary, methods=["GET"]),
-        Route("/portal/api/case/recovery/rdp", api_case_recovery_rdp, methods=["GET"]),
-        Route("/portal/api/case/{case_id}/recovery/rdp", api_case_recovery_rdp, methods=["GET"]),
-        Route("/portal/api/case/recovery/thumbcache", api_case_recovery_thumbcache, methods=["GET"]),
-        Route("/portal/api/case/{case_id}/recovery/thumbcache", api_case_recovery_thumbcache, methods=["GET"]),
-        Route("/portal/api/case/recovery/recycle-bin", api_case_recovery_recycle_bin, methods=["GET"]),
-        Route("/portal/api/case/{case_id}/recovery/recycle-bin", api_case_recovery_recycle_bin, methods=["GET"]),
-        Route("/portal/api/case/recovery/deleted-files", api_case_recovery_deleted_files, methods=["GET"]),
-        Route("/portal/api/case/{case_id}/recovery/deleted-files", api_case_recovery_deleted_files, methods=["GET"]),
-        Route("/portal/api/case/recovery/export", api_case_recovery_export, methods=["GET"]),
-        Route("/portal/api/case/{case_id}/recovery/export", api_case_recovery_export, methods=["GET"]),
+        *recovery_routes(),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # WO-A4: the reproducibility bundle for an approved finding
         Route("/portal/api/finding/exhibit", api_finding_exhibit, methods=["GET"]),

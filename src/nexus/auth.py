@@ -14,6 +14,7 @@ import os
 import secrets
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from nexus.audit import normalize_examiner
@@ -302,6 +303,7 @@ def derive_purpose_key(base_key: bytes, purpose: str) -> bytes:
 
 SIGNING_PURPOSE = "nexus-approval-signing-v1"
 CHALLENGE_PURPOSE = "nexus-challenge-response-v1"
+PEER_REVIEW_PURPOSE = "nexus-peer-review-signing-v1"
 
 
 def compute_hmac(derived_key: bytes, content: str) -> str:
@@ -351,3 +353,94 @@ def verify_hmac_entries(case_id: str, password: str, salt: str, examiner: str) -
             "verified": hmac.compare_digest(expected, actual),
         })
     return results
+
+
+def sign_peer_review(
+    case_id: str,
+    finding_id: str,
+    reviewer: str,
+    password: str,
+    finding_data: dict,
+    revision_id: str = "",
+) -> dict:
+    """Sign an independent technical peer review on a finding (WP 13.13 / TC-4 / ISO 17025).
+
+    Enforces that the peer reviewer is distinct from the primary approver,
+    verifies the reviewer's password, records the exact revision snapshot,
+    computes a purpose-separated HMAC, and appends the entry to the verification ledger.
+    """
+    _validate_case_id(case_id)
+    reviewer = normalize_examiner(reviewer)
+    approver = normalize_examiner(finding_data.get("approved_by") or "")
+    if reviewer and approver and reviewer.lower() == approver.lower():
+        raise ValueError("Independent review required: peer reviewer cannot be the primary approver")
+
+    entry = _load_password_entry(reviewer)
+    if not entry:
+        raise ValueError(f"No password configured for peer reviewer {reviewer}")
+    if not verify_password(reviewer, password):
+        raise ValueError(f"Password verification failed for peer reviewer {reviewer}")
+
+    snapshot = json.dumps(finding_data, sort_keys=True)
+    content_hash = hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+    if not revision_id:
+        revision_id = finding_data.get("revision_id") or content_hash[:16]
+
+    derived_key = derive_purpose_key(
+        derive_hmac_key(password, entry["salt"]), PEER_REVIEW_PURPOSE
+    )
+    payload_to_sign = f"{case_id}:{finding_id}:{revision_id}:{content_hash}"
+    hmac_val = compute_hmac(derived_key, payload_to_sign)
+
+    review_record = {
+        "finding_id": finding_id,
+        "type": "peer_review",
+        "reviewed_by": reviewer,
+        "reviewed_at": datetime.now(UTC).isoformat(),
+        "revision_id": revision_id,
+        "content_hash": content_hash,
+        "hmac": hmac_val,
+        "salt": entry.get("salt", ""),
+    }
+    write_verification_entry(case_id, review_record)
+    return review_record
+
+
+def verify_peer_review_status(
+    case_id: str,
+    finding_id: str,
+    current_finding_data: dict,
+) -> dict:
+    """Check peer review status and detect revision invalidation (WP 13.13 / TC-4)."""
+    _validate_case_id(case_id)
+    entries = read_verification_ledger(case_id)
+    matching = [e for e in entries if e.get("type") == "peer_review" and e.get("finding_id") == finding_id]
+    if not matching:
+        return {
+            "status": "UNREVIEWED",
+            "finding_id": finding_id,
+            "detail": "No peer review found in verification ledger",
+        }
+    latest = matching[-1]
+    snapshot = json.dumps(current_finding_data, sort_keys=True)
+    current_hash = hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+    recorded_hash = latest.get("content_hash")
+    recorded_revision = latest.get("revision_id")
+    current_revision = current_finding_data.get("revision_id")
+
+    if current_hash != recorded_hash or (current_revision and recorded_revision != current_revision):
+        return {
+            "status": "INVALIDATED",
+            "finding_id": finding_id,
+            "reviewed_by": latest.get("reviewed_by"),
+            "reviewed_at": latest.get("reviewed_at"),
+            "detail": "Finding content or revision was modified after technical review",
+        }
+
+    return {
+        "status": "VERIFIED",
+        "finding_id": finding_id,
+        "reviewed_by": latest.get("reviewed_by"),
+        "reviewed_at": latest.get("reviewed_at"),
+        "revision_id": recorded_revision,
+    }

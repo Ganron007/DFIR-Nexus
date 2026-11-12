@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +28,7 @@ def create(
     case: str = typer.Option("", "--case", help="Case id (required)"),
     all_data: bool = typer.Option(False, "--all", help="Include evidence and triage data"),
     verify: bool = typer.Option(True, "--verify", help="Verify backup integrity after creation"),
+    skip_ledger: bool = typer.Option(False, "--skip-ledger", help="Skip archiving verification ledger"),
 ):
     """Backup the named case to a ZIP archive with SHA-256 manifest."""
     case_dir = _resolve_case_dir(case)
@@ -51,6 +51,18 @@ def create(
             "created_at": datetime.now(UTC).isoformat(),
             "source": str(case_dir),
         }, indent=2))
+
+        # Archive verification ledger if available
+        if not skip_ledger:
+            try:
+                from nexus.auth import VERIFICATION_DIR
+                ledger_src = VERIFICATION_DIR / f"{case_dir.name}.jsonl"
+                if ledger_src.is_file():
+                    data = ledger_src.read_bytes()
+                    zf.writestr("_verification_ledger.jsonl", data)
+                    manifest["_verification_ledger.jsonl"] = hashlib.sha256(data).hexdigest()
+            except Exception:
+                pass
 
         for fpath in sorted(case_dir.rglob("*")):
             if fpath.is_file():
@@ -81,9 +93,15 @@ def create(
 @app.command()
 def restore(
     path: str = typer.Argument(..., help="Backup file to restore"),
-    skip_ledger: bool = typer.Option(False, "--skip-ledger"),
+    target_dir: str = typer.Option("", "--target-dir", "-t", help="Custom destination directory"),
+    cases_root: str = typer.Option("", "--cases-root", help="Custom cases root directory"),
+    skip_ledger: bool = typer.Option(False, "--skip-ledger", help="Skip restoring verification ledger"),
+    no_activate: bool = typer.Option(False, "--no-activate", help="Do not set restored case as active"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite without confirmation and bypass checksum errors"),
 ):
-    """Restore a case from backup."""
+    """Restore a case from backup with manifest verification and path validation."""
+    from nexus.config import settings
+
     src = Path(path)
     if not src.exists():
         typer.echo(f"Backup file not found: {path}", err=True)
@@ -91,14 +109,28 @@ def restore(
 
     typer.echo(f"Restoring from {src}...")
 
-    with zipfile.ZipFile(src, "r") as zf:
-        manifest_raw = zf.read("_backup_manifest.json")
-        manifest = json.loads(manifest_raw)
-        case_id = manifest.get("case_id", "restored")
+    # Manifest and file integrity verification prior to extraction (D533)
+    if not force:
+        ok, detail = _verify_backup(src)
+        if not ok:
+            typer.echo(f"Refusing restore: backup integrity verification failed ({detail}). Pass --force to override.", err=True)
+            raise typer.Exit(1)
 
-        cases_dir = Path.home() / ".nexus" / "cases"
-        target = cases_dir / case_id
-        if target.exists():
+    with zipfile.ZipFile(src, "r") as zf:
+        try:
+            manifest_raw = zf.read("_backup_manifest.json")
+            manifest = json.loads(manifest_raw)
+            case_id = manifest.get("case_id", "restored")
+        except (KeyError, json.JSONDecodeError):
+            case_id = "restored"
+
+        if target_dir:
+            target = Path(target_dir).resolve()
+        else:
+            root = Path(cases_root).resolve() if cases_root else settings.cases_root
+            target = (root / case_id).resolve()
+
+        if target.exists() and not force:
             overwrite = typer.confirm(f"Case directory {target} already exists. Overwrite?", default=False)
             if not overwrite:
                 typer.echo("Restore cancelled.")
@@ -109,16 +141,56 @@ def restore(
         for info in zf.infolist():
             if info.filename.startswith("_backup_manifest") or info.filename.startswith("_file_manifest"):
                 continue
+            if info.filename == "_verification_ledger.jsonl":
+                continue
+
+            # Safe extraction path validation: reject path traversal and escape (D533)
+            rel_path = Path(info.filename)
+            if rel_path.is_absolute() or ".." in rel_path.parts:
+                typer.echo(f"Path traversal detected in archive entry: {info.filename}. Aborting restore.", err=True)
+                raise typer.Exit(1)
+
+            dest_file = (target / rel_path).resolve()
+            if not str(dest_file).startswith(str(target)):
+                typer.echo(f"Path escape detected: {dest_file} is outside target root {target}. Aborting restore.", err=True)
+                raise typer.Exit(1)
+
             data = zf.read(info.filename)
-            dest_file = target / info.filename
             dest_file.parent.mkdir(parents=True, exist_ok=True)
             dest_file.write_bytes(data)
             restored += 1
 
+        # Restore verification ledger if present
+        if not skip_ledger and "_verification_ledger.jsonl" in zf.namelist():
+            try:
+                from nexus.auth import VERIFICATION_DIR
+                VERIFICATION_DIR.mkdir(parents=True, exist_ok=True)
+                ledger_target = VERIFICATION_DIR / f"{case_id}.jsonl"
+                ledger_data = zf.read("_verification_ledger.jsonl")
+                ledger_target.write_bytes(ledger_data)
+                typer.echo(f"  Restored verification ledger: {ledger_target}")
+            except Exception as exc:
+                typer.echo(f"  Warning: could not restore verification ledger: {exc}")
+
     typer.echo(f"  Restored {restored} files to {target}")
-    active_file = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
-    active_file.write_text(str(target))
-    typer.echo(f"  Active case set to: {target}")
+
+    # Register in canonical DB
+    try:
+        from nexus.case_manager import get_case_manager
+        mgr = get_case_manager()
+        mgr.register_case(case_id, target, name=f"Restored: {case_id}")
+    except Exception as exc:
+        typer.echo(f"  Note: canonical case DB registration: {exc}")
+
+    if not no_activate:
+        try:
+            from nexus.config import set_active_case
+            set_active_case(case_id)
+        except Exception:
+            active_file = settings.active_case_file
+            active_file.parent.mkdir(parents=True, exist_ok=True)
+            active_file.write_text(str(target), encoding="utf-8")
+        typer.echo(f"  Active case set to: {target}")
 
 
 @app.command()

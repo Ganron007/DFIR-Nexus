@@ -65,6 +65,22 @@ _HOSTNAME_RE = re.compile(
     r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9]))+)\b"
 )
 
+# Common binary and document file extensions to exclude from hostname tokenization (WP 15.10)
+_FILE_EXTENSIONS = frozenset({
+    "exe", "dll", "sys", "drv", "ocx", "cpl", "scr", "ps1", "psm1", "psd1",
+    "bat", "cmd", "vbs", "vbe", "js", "jse", "wsf", "wsh", "py", "pyw",
+    "sh", "bash", "bin", "elf", "so", "dylib", "txt", "log", "csv", "tsv",
+    "json", "yaml", "yml", "xml", "html", "htm", "css", "pdf", "doc", "docx",
+    "xls", "xlsx", "ppt", "pptx", "zip", "tar", "gz", "tgz", "bz2", "7z",
+    "rar", "iso", "img", "vmdk", "vhd", "vhdx", "ioc", "evtx", "reg", "dat",
+    "tmp", "temp", "dmp", "cfg", "conf", "config", "ini", "inf", "chk", "lnk",
+    "pf", "hve", "raw", "dd", "e01", "aff", "pcap", "pcapng", "cap", "misp",
+    "rule", "yar", "yara",
+})
+
+# Windows Security Identifier (SID): S-1-5-...
+_SID_RE = re.compile(r"\b(S-1-5-(?:21-\d+-\d+-\d+(?:-\d+)?|[0-9-]+))\b", re.IGNORECASE)
+
 # SHA-256 / SHA-1 / MD5 hex strings
 _HASH_RE = re.compile(r"\b[a-fA-F0-9]{32,64}\b")
 
@@ -82,9 +98,12 @@ class Anonymizer:
         A set of values (IPs, domains, hashes, etc.) that should NOT be
         anonymized — typically adversary-controlled IOCs that the LLM must
         see verbatim to reason about the threat.
+    users:
+        A set of known standalone usernames or accounts to tokenize.
     """
 
     allowlist: set[str] = field(default_factory=set)
+    users: set[str] = field(default_factory=set)
 
     # Internal state (reset on each anonymize call)
     _token_dict: dict[str, str] = field(default_factory=dict, init=False, repr=False)
@@ -169,7 +188,14 @@ class Anonymizer:
             return self._get_token("IP", val)
         result = _IPV4_RE.sub(_replace_ip, result)
 
-        # --- Pass 6: DOMAIN\user accounts ---
+        # --- Pass 6: DOMAIN\user accounts & SIDs (WP 15.10) ---
+        def _replace_sid(m: re.Match[str]) -> str:
+            val = m.group(1)
+            if self._is_allowed(val):
+                return val
+            return self._get_token("SID", val)
+        result = _SID_RE.sub(_replace_sid, result)
+
         def _replace_account(m: re.Match[str]) -> str:
             full = m.group(0)
             if self._is_allowed(full):
@@ -178,6 +204,18 @@ class Anonymizer:
                 return full
             return self._get_token("ACCT", full)
         result = _DOMAIN_USER_RE.sub(_replace_account, result)
+
+        # Standalone usernames (WP 15.10)
+        if self.users:
+            for username in sorted(self.users, key=len, reverse=True):
+                if len(username) >= 2 and not self._is_allowed(username):
+                    pattern = rf"(?<![\\/:.\w]){re.escape(username)}(?![\\/\w])"
+                    result = re.sub(
+                        pattern,
+                        lambda m: self._get_token("ACCT", m.group(0)),
+                        result,
+                        flags=re.IGNORECASE,
+                    )
 
         # --- Pass 7: Hashes ---
         def _replace_hash(m: re.Match[str]) -> str:
@@ -198,6 +236,10 @@ class Anonymizer:
             if "{{" in preceding:
                 return m.group(0)
             if self._is_allowed(val):
+                return m.group(0)
+            # Stop tagging filenames as hosts (WP 15.10)
+            last_ext = val.rsplit(".", 1)[-1].lower()
+            if last_ext in _FILE_EXTENSIONS:
                 return m.group(0)
             # Skip common non-hostname strings
             common = {"windows.com", "microsoft.com", "google.com",

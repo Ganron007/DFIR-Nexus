@@ -47,6 +47,7 @@ _TOKEN_FILE = "egress_tokens.json"
 #: Serializes the read-modify-write of the per-case token file. Two turns on one
 #: case share it, and a lost update would hand out a token with no mapping.
 _TOKEN_LOCK = threading.Lock()
+_GLOBAL_NO_CASE_TOKENS: dict[str, str] = {}
 
 
 def egress_required(base_url: str) -> bool:
@@ -68,8 +69,30 @@ def _token_path(case_dir: Path | None) -> Path | None:
 
 
 def load_anonymizer(case_dir: Path | None, allowlist: set[str] | None = None) -> Anonymizer:
-    """An anonymizer seeded from the case token file, if one exists."""
-    engine = Anonymizer(allowlist=set(allowlist or set()))
+    """An anonymizer seeded from the case token file and iocs.json, if one exists."""
+    merged_allowlist = set(allowlist or set())
+    if case_dir is not None:
+        ioc_path = Path(case_dir) / "iocs.json"
+        if ioc_path.is_file():
+            try:
+                data = json.loads(ioc_path.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and "value" in item:
+                            merged_allowlist.add(str(item["value"]))
+                elif isinstance(data, dict):
+                    for k in ("ip", "host", "hash", "domain", "url"):
+                        for item in data.get(k) or []:
+                            if isinstance(item, dict) and "value" in item:
+                                merged_allowlist.add(str(item["value"]))
+                            elif isinstance(item, str):
+                                merged_allowlist.add(item)
+                    for item in data.get("iocs") or []:
+                        if isinstance(item, dict) and "value" in item:
+                            merged_allowlist.add(str(item["value"]))
+            except Exception:
+                pass
+    engine = Anonymizer(allowlist=merged_allowlist)
     for original, token in _load_tokens(case_dir).items():
         inner = token.strip("{}")
         kind = inner.rsplit("_", 1)[0] or "VAL"
@@ -85,7 +108,12 @@ def load_anonymizer(case_dir: Path | None, allowlist: set[str] | None = None) ->
 
 def _load_tokens(case_dir: Path | None) -> dict[str, str]:
     if case_dir is None:
-        return dict(_call_tokens.get() or {})
+        call_tokens = _call_tokens.get()
+        if call_tokens is not None:
+            combined = dict(_GLOBAL_NO_CASE_TOKENS)
+            combined.update(call_tokens)
+            return combined
+        return dict(_GLOBAL_NO_CASE_TOKENS)
     path = _token_path(case_dir)
     if path is None or not path.is_file():
         return {}
@@ -144,8 +172,11 @@ def anonymize_texts(texts: list[str], case_dir: Path | None,
             existing = _load_tokens(case_dir)
             existing.update(mapping)
             _write_tokens(path, existing)
-    elif mapping and _call_tokens.get() is not None:
-        _call_tokens.get().update(mapping)
+    elif mapping:
+        with _TOKEN_LOCK:
+            _GLOBAL_NO_CASE_TOKENS.update(mapping)
+            if _call_tokens.get() is not None:
+                _call_tokens.get().update(mapping)
     return rewritten
 
 
