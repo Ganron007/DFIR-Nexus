@@ -239,8 +239,7 @@ nexus pipeline --resume                                       # after nexus appr
 ```
 
 Modes: `tools` | `coverage` | `design` | `interpret` (aliases: `debug`→coverage, `react`/`hunt`→design).
-Also `NEXUS_PIPELINE_MODE`. Contract: [TOOL-EVIDENCE-MAP.md](cases/TOOL-EVIDENCE-MAP.md)
-and [NEXUS-MODE.md](NEXUS-MODE.md).
+Also `NEXUS_PIPELINE_MODE`. Contract: [NEXUS-MODE.md](NEXUS-MODE.md).
 
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.

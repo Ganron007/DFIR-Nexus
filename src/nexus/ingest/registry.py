@@ -5,7 +5,7 @@ All importer classes are registered. Multiple importers may share one
 the first registered class for a source is the primary, and
 ``resolve()`` disambiguates at import time via ``can_handle()``.
 
-Scope split (see Docs/cases/TOOL-EVIDENCE-MAP.md):
+Scope split (see Docs/internal/cases/TOOL-EVIDENCE-MAP.md):
 
 * **Host-based raw artifacts** (registry hives, EVTX, LNK, browser SQLite,
   Amcache hives, WMI repository) are processed in the **N-lane** by the

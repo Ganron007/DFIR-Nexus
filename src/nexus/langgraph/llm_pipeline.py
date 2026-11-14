@@ -1522,7 +1522,7 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
         "",
         "> This is **not** an IR findings report. It proves MCP tools ran "
         "(or failed) against the mapped evidence. See "
-        "`Docs/cases/TOOL-EVIDENCE-MAP.md`.",
+        "`Docs/internal/cases/TOOL-EVIDENCE-MAP.md`.",
         "",
         "| Host | Tool | Status | Purpose | audit_id | output |",
         "|---|---|---|---|---|---|",

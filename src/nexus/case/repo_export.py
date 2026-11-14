@@ -51,12 +51,12 @@ def resolve_repo_case_root() -> Path:
     if raw:
         p = Path(raw)
         return p if p.is_absolute() else (Path.cwd() / p).resolve()
-    # Prefer DFIR-Nexus repo Docs/cases
+    # Prefer DFIR-Nexus repo Docs/internal/cases
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "pyproject.toml").is_file() and (parent / "Docs").is_dir():
-            return (parent / "Docs" / "cases").resolve()
-    return (Path.cwd() / "Docs" / "cases").resolve()
+            return (parent / "Docs" / "internal" / "cases").resolve()
+    return (Path.cwd() / "Docs" / "internal" / "cases").resolve()
 
 
 def _copy_or_sample(src: Path, dest: Path, inventory: list[dict[str, Any]]) -> None:

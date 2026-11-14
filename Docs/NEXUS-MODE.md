@@ -804,7 +804,7 @@ N1–N8 is the investigation brain. Same case, same HMAC, examiner/agent may als
 
 OpenCTI is **parked**. Elasticsearch (`nexus-es`) searches **this case’s parsed rows**. OpenCTI would search an org CTI graph about an IOC taken *from* those rows. Different job.
 
-Parser contract (public): [TOOL-EVIDENCE-MAP.md](cases/TOOL-EVIDENCE-MAP.md).
+Parser contract: see internal specification (`Docs/internal/cases/TOOL-EVIDENCE-MAP.md`).
 What shipped: [CHANGELOG.md](../CHANGELOG.md).
 
 Examiner hosts keep a gitignored `Docs/internal/` tree (ship ledger, old-vs-new, live backlog). Those files are not in the public clone.
