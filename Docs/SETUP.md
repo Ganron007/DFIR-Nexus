@@ -286,6 +286,18 @@ index** (`nexus-case-<case_id>`), not the raw CSVs. Point the config at it:
 
 ```bash
 NEXUS_ES_URL=http://localhost:9200     # .env; empty = CSV-pack fallback (no agent analysis)
+
+# Authenticated Elasticsearch options (TE-2 / D145):
+# Basic Authentication:
+# NEXUS_ES_USER=elastic
+# NEXUS_ES_PASSWORD=your-password
+# API Key Authentication:
+# NEXUS_ES_API_KEY=your-api-key
+# Bearer Token:
+# NEXUS_ES_BEARER_TOKEN=your-token
+# TLS / Certificate configuration:
+# NEXUS_ES_CA_CERT=/path/to/ca.crt
+# NEXUS_ES_VERIFY_CERTS=true
 ```
 
 Run it with Docker (single node, security off for the lab):

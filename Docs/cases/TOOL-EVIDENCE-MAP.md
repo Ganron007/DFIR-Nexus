@@ -14,6 +14,8 @@ because YAML `quick_start` is not structured enough to execute.
 
 ## Modes
 
+The mandatory tool lane runs deterministically against all present artifacts across all three canonical investigation modes (**Mode 1 — LLM**, **Mode 2 — Multi-role**, and **Mode 3 — Multi-agent**). The pipeline CLI invocation modes (`nexus pipeline --mode <name>`) map as follows:
+
 | Mode | RAG | LLM | Mandatory lane | After the lane |
 |------|-----|-----|----------------|----------------|
 | **tools** | no | no | yes — every present artifact | `TOOL-RUN.md` ledger. STOP. No HITL. |

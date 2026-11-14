@@ -5,11 +5,10 @@ are gitignored. This folder publishes **maps and mode contracts** only.
 
 | Path | Purpose |
 |------|---------|
-| [`../NEXUS-MODE.md`](../NEXUS-MODE.md) | Operator loop: collect → register → N1–N8 |
+| [`../NEXUS-MODE.md`](../NEXUS-MODE.md) | Operator loop: collect → register → N1–N8 & Investigation Modes |
 | [`../guide.md`](../guide.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`CLI.md`](../CLI.md), [`SETUP.md`](../SETUP.md), [`FAQ.md`](../FAQ.md) | Product docs |
 | [`TOOL-EVIDENCE-MAP.md`](TOOL-EVIDENCE-MAP.md) | Evidence ↔ parser contract (N2) |
 | [`TOOL-CATALOG-MAP.md`](TOOL-CATALOG-MAP.md) | Catalog vs YAML vs mandatory lane |
-| [`ROCBA-500-MODES.md`](ROCBA-500-MODES.md) | Pipeline modes (`tools` / `coverage` / `design` / `interpret`) |
 
 ## Operator loop
 
@@ -26,14 +25,15 @@ at N2. Register is not an N1–N8 step.
 Investigation UI (Examiner Portal) covers register, query, approve, timeline,
 and report. Live harvest stays on the CLI.
 
-## Pipeline modes
+## Investigation modes
 
-| Mode | LLM? | Output |
-|------|------|--------|
-| `tools` | **No** | `reports/TOOL-RUN.md` (OK/FAIL/SKIP ledger) |
-| `coverage` | Interpret only | `REPORT.md` from APPROVED findings |
-| `design` | Lane first, then optional ReAct extras | `REPORT.md` from APPROVED findings |
-| `interpret` | Interpret existing ledger (`--from-case`) | `REPORT.md` |
+| Mode | Driver | Output & Capabilities |
+|------|--------|----------------------|
+| **Mode 1 — LLM** | Examiner + LLM Scribe | Steer chat, live Elasticsearch query pushdown, `reports/REPORT.md` from APPROVED findings |
+| **Mode 2 — Multi-role** | LangGraph Supervisor | Sequential work-order roles (plan → run → verify → stage), supervised DRAFT candidates |
+| **Mode 3 — Multi-agent** | Concurrent team | Concurrent seats on shared Investigation Board with claim & dispute resolution |
 
-`REPORT.md` is a **template from APPROVED findings**, not an LLM dump of every CSV.
+*Note: `nexus pipeline --mode tools` executes the deterministic N2 parser lane alone (writing `reports/TOOL-RUN.md`).*
+
+`REPORT.md` is a **template compiled from APPROVED findings**, not an unverified LLM dump.
 SKIP = artifact absent. FAIL = artifact present, tool broke.

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-1345%20passed-success.svg" alt="Tests: 1345 passed / 3 skipped">
+  <img src="https://img.shields.io/badge/Tests-2359%20passed-success.svg" alt="Tests: 2359 passed / 8 skipped">
   <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-blue.svg" alt="MCP Tools: 128 Win | 125 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
@@ -249,7 +249,7 @@ Detailed guidelines are grouped in the `Docs/` directory:
 
 ## Verification & Testing
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests. The last full pytest run (2026-09-26, after the three-mode rename and legacy-artifact cleanup, the Mode 2 Elasticsearch refusal, and the mode-segregated N5 surfaces) recorded **1345 passed / 3 skipped**, plus the script suites and the E2E functional audit.
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests across all three investigation modes. The full hermetic suite records **2359 passed / 8 skipped / 0 failed**, along with the individual script suites, the E2E functional audit, and **222 frontend Vitest tests (38 files)**.
 
 ```bash
 # 1. Run the pytest suite (Mode 1/2/3 + audit regression tests)
