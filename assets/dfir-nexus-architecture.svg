@@ -87,21 +87,24 @@
 
     <!-- Header Title with tspan -->
     <text x="54" y="30" font-family="'Segoe UI', Inter, system-ui, sans-serif" font-size="24" letter-spacing="-0.3">
-      <tspan font-weight="800" fill="#ffffff">DFIR-Nexus v2</tspan>
+      <tspan font-weight="800" fill="#ffffff">DFIR-Nexus</tspan>
       <tspan font-weight="600" fill="#60a5fa"> — Architecture &amp; Investigation Lifecycle</tspan>
     </text>
     <text x="54" y="52" font-family="'Segoe UI', Inter, system-ui, sans-serif" font-size="13" font-weight="500" fill="#93c5fd" opacity="0.85">Deterministic N1–N8 Spine • Examiner Cockpit UI • Stage 0 Headless Collect • Cryptographic HITL Gate</text>
 
     <!-- Header Badges -->
-    <g transform="translate(910, 10)">
-      <rect x="0" y="0" width="120" height="26" rx="13" fill="#1e3a8a" stroke="#3b82f6" stroke-width="1"/>
-      <text x="60" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#60a5fa" text-anchor="middle">MODES 1–3</text>
+    <g transform="translate(800, 10)">
+      <rect x="0" y="0" width="110" height="26" rx="13" fill="#1e3a8a" stroke="#3b82f6" stroke-width="1"/>
+      <text x="55" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#60a5fa" text-anchor="middle">MODES 1–3</text>
 
-      <rect x="130" y="0" width="130" height="26" rx="13" fill="#065f46" stroke="#10b981" stroke-width="1"/>
-      <text x="195" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399" text-anchor="middle">HITL GATED</text>
+      <rect x="120" y="0" width="115" height="26" rx="13" fill="#065f46" stroke="#10b981" stroke-width="1"/>
+      <text x="177" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399" text-anchor="middle">HITL GATED</text>
 
-      <rect x="270" y="0" width="140" height="26" rx="13" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-      <text x="340" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#cbd5e1" text-anchor="middle">FD-001..007 RULES</text>
+      <rect x="245" y="0" width="140" height="26" rx="13" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+      <text x="315" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#cbd5e1" text-anchor="middle">FD-001..007 RULES</text>
+
+      <rect x="395" y="0" width="115" height="26" rx="13" fill="#312e81" stroke="#818cf8" stroke-width="1"/>
+      <text x="452" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#c7d2fe" text-anchor="middle">v1.0.0-RC</text>
     </g>
   </g>
 
@@ -150,7 +153,7 @@
 
       <rect x="12" y="78" width="216" height="60" rx="6" fill="#047857" opacity="0.6"/>
       <text x="20" y="98" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ffffff">SHA-256 Proof-of-Source:</text>
-      <text x="20" y="116" font-family="'Segoe UI', sans-serif" font-size="10" fill="#ecfdf5">Hashes recorded in evidence_registry.json</text>
+      <text x="20" y="116" font-family="'Segoe UI', sans-serif" font-size="10" fill="#ecfdf5">Hashes stored in cases.db &amp; audit chain</text>
 
       <rect x="12" y="146" width="216" height="65" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="1"/>
       <text x="20" y="166" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399">Custody Separation:</text>
@@ -214,8 +217,8 @@
       <g transform="translate(15, 104)">
         <rect width="390" height="60" rx="6" fill="#1e3a8a" opacity="0.6"/>
         <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ffffff">N3 Elasticsearch Index &amp; N4 Query Pack</text>
-        <text x="12" y="38" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• nexus-es index. Mode 1 search can read CSV if ES is down</text>
-        <text x="12" y="52" font-family="'Segoe UI', sans-serif" font-size="10" fill="#cbd5e1">Mode 2/3 interpret only on ES, with file:line citations</text>
+        <text x="12" y="38" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• nexus-es index (v5 schema) • Basic / API-Key / TLS Auth</text>
+        <text x="12" y="52" font-family="'Segoe UI', sans-serif" font-size="10" fill="#cbd5e1">Timestamp authority (ts_raw) • Paged search_after • Aggregations</text>
       </g>
 
       <!-- Spine Step 3: N5 Scribe -->
@@ -230,9 +233,9 @@
       <g transform="translate(15, 240)">
         <rect width="390" height="95" rx="6" fill="#1e293b"/>
         <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#f59e0b">Three Driving Modes (Same Spine &amp; HMAC Lock):</text>
-        <text x="12" y="40" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#60a5fa">Mode 1 (Examiner-Led):</tspan> N4 search + scribe; you drive</text>
-        <text x="12" y="58" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#38bdf8">Mode 2 (LLM-Guided):</tspan> ES retrieval, cited DRAFT findings</text>
-        <text x="12" y="76" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#a7f3d0">Mode 3 (Supervised):</tspan> Workers corroborate; you stage DRAFTs</text>
+        <text x="12" y="40" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#60a5fa">Mode 1 (LLM Guided):</tspan> Steer chat &amp; live ES query pushdown</text>
+        <text x="12" y="58" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#38bdf8">Mode 2 (Multi-Role):</tspan> LangGraph supervisor: plan → verify → stage</text>
+        <text x="12" y="76" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#a7f3d0">Mode 3 (Multi-Agent):</tspan> Concurrent swarm &amp; Investigation Board</text>
       </g>
     </g>
   </g>
@@ -360,7 +363,7 @@
       <rect width="400" height="115" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
       <text x="15" y="24" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#60a5fa">💾 SQLite Case Stack (cases.db)</text>
       <text x="15" y="44" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0">• Canonical Persistence: findings, evidence, timeline, TODOs</text>
-      <text x="15" y="62" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0">• Backward Dual-Write Bridge (CaseManager legacy JSON)</text>
+      <text x="15" y="62" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0">• Single Source of Truth (SSoT) surviving index rebuilds</text>
       <text x="15" y="80" font-family="'Segoe UI', sans-serif" font-size="11" fill="#38bdf8">• Hash-Chained Transparency Log (transparency.jsonl)</text>
       <text x="15" y="98" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Tamper verification walks chain to detect unauthorized alterations</text>
     </g>
