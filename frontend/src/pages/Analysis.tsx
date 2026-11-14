@@ -8,7 +8,7 @@
  * The page also shows the cross-mode view inside the case: which modes reached the same
  * conclusions, and where they contradict each other.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, api } from "../api/client";
 import { useCrossMode } from "../api/queries/crossMode";
@@ -97,6 +97,12 @@ export default function Analysis() {
   const [startError, setStartError] = useState("");
   const controller = useRef<AbortController | null>(null);
   const cross = useCrossMode(activeCase);
+
+  useEffect(() => {
+    return () => {
+      controller.current?.abort();
+    };
+  }, []);
 
   const toggle = (mode: AnalysisMode) =>
     setChosen((prev) => (prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode]));

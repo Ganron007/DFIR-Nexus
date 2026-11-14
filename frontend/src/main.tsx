@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
+import { RouteErrorBoundaryInner } from "./shell/RouteErrorBoundary";
 import "./styles/global.css";
 
 // WO-U4 defaults (UI-FOUNDATION-DESIGN §6): no refetch-on-focus (the examiner
@@ -20,8 +21,13 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/portal/app">
-        <App />
+      <BrowserRouter
+        basename="/portal/app"
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <RouteErrorBoundaryInner routeName="DFIR-Nexus Cockpit">
+          <App />
+        </RouteErrorBoundaryInner>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>

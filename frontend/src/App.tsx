@@ -106,8 +106,22 @@ export default function App() {
       <Layout>
         <Routes>
           {/* Dashboard - case management, no active case required */}
-          <Route path="/" element={<Overview />} />
-          <Route path="/case-setup" element={<CaseSetup />} />
+          <Route
+            path="/"
+            element={
+              <RouteErrorBoundary routeName="Overview">
+                <Overview />
+              </RouteErrorBoundary>
+            }
+          />
+          <Route
+            path="/case-setup"
+            element={
+              <RouteErrorBoundary routeName="Case Setup">
+                <CaseSetup />
+              </RouteErrorBoundary>
+            }
+          />
           {KitGallery ? (
             <Route
               path="/_kit"

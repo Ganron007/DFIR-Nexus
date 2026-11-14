@@ -120,6 +120,13 @@ export default function SteerChat() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollTimerRef = useRef<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const scrollToEnd = useCallback(() => {
     if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current);
@@ -196,6 +203,10 @@ export default function SteerChat() {
 
       try {
         if (mode !== "mode1") return;
+        abortControllerRef.current?.abort();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         await chatStream(
           {
             message: text,
@@ -244,11 +255,18 @@ export default function SteerChat() {
               setError(String(data.error || "stream error"));
             }
           },
+          controller.signal,
         );
         load();
       } catch (exc) {
+        if ((exc as Error)?.name === "AbortError") {
+          return;
+        }
         setError((exc as Error).message);
       } finally {
+        if (abortControllerRef.current?.signal.aborted) {
+          return;
+        }
         setLoading(false);
         setLiveStatus("");
       }

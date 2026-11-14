@@ -1,3 +1,15 @@
+// Suppress known React Router v7 transition warnings in test runs
+const originalWarn = console.warn;
+console.warn = (...args: unknown[]) => {
+  if (
+    typeof args[0] === "string" &&
+    args[0].includes("React Router Future Flag Warning")
+  ) {
+    return;
+  }
+  originalWarn(...args);
+};
+
 // jsdom polyfills for component tests
 
 class ResizeObserverStub {
