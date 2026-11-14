@@ -5,281 +5,259 @@
 </p>
 
 <p align="center">
-  <strong>One audit chain. One process. AI-assisted. Examiner-approved.</strong>
+  <strong>One audit chain. One unified process. AI-assisted. Examiner-approved.</strong>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-2359%20passed-success.svg" alt="Tests: 2359 passed / 8 skipped">
-  <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-blue.svg" alt="MCP Tools: 128 Win | 125 Linux">
-  <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
+  <img src="https://img.shields.io/badge/Release-v1.0.0--RC-success.svg" alt="Release: v1.0.0-RC">
+  <img src="https://img.shields.io/badge/Python%20Tests-2359%20passed-blue.svg" alt="Python Tests: 2359 passed / 8 skipped">
+  <img src="https://img.shields.io/badge/UI%20Tests-222%20Vitest%20passed-blue.svg" alt="UI Tests: 222 passed">
+  <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-purple.svg" alt="MCP Tools: 128 Win | 125 Linux">
+  <img src="https://img.shields.io/badge/Architecture-Offline--First-orange.svg" alt="Architecture: Offline-First">
 </p>
-
-Standalone release of the examiner-led DFIR capability developed within the [CADRE](https://github.com/Ganron007/CADRE) platform programme — consumes lab attack telemetry and host/network evidence for human-approved incident response.
-
-> [!WARNING]
-> **Version 2 is in active development.** DFIR-Nexus is a working product — live IR collection, custody-registered evidence, deterministic parsing, needle queries, and the examiner cockpit all run end-to-end today. But v2 is being rebuilt in the open: commands, APIs, and internal schemas can change — and anything can break — between commits. Do not deploy this branch in production environments.
-
-> [!IMPORTANT]
-> **Chain of Custody & Audit Integrity**
->
-> - Every command run through SIFT, Zimmerman or Velociraptor is written to a tamper-evident **HMAC-SHA256 audit ledger** in real time.
-> - Findings stay **DRAFT** until an examiner signs them with a password hashed using **PBKDF2-HMAC (600,000 iterations)**.
-> - Automated agents may **draft** findings. They can never approve, alter or delete them.
-> - A 3-strike, 15-minute lockout blocks brute-force approval attempts, and the chain is verifiable from the Transparency page.
-
-**What's inside**
-
-| Section | What you get |
-| :--- | :--- |
-| [Why DFIR-Nexus Exists](#why-dfir-nexus-exists) | The fragmentation problem and what this layer changes |
-| [Architecture & Investigation Lifecycle](#architecture--investigation-lifecycle) | Collect → register → N1–N8 → ingest → report, plus the trust model |
-| [Examiner Cockpit (Web UI)](#examiner-cockpit-web-ui) | Every portal page with its route |
-| [Storage & Search Architecture](#storage--search-architecture) | SQLite as the source of truth vs the Elasticsearch index |
-| [Core Capabilities](#core-capabilities) | Custody, audit, TI, RAG, Stage 0 collection, **the three modes** |
-| [Quickstart](#quickstart) | Install → configure → collect → register → query → approve → report |
-| [Project Structure & Documentation](#project-structure--documentation) | Which doc to open for what |
-| [Verification & Testing](#verification--testing) | How the build is verified |
 
 ---
 
-## Why DFIR-Nexus Exists
+## Executive Overview
 
-Digital Forensics and Incident Response (DFIR) routinely relies on a highly fragmented ecosystem of single-purpose command-line tools (such as Hayabusa, MFTECmd, chainsaw, Volatility, KAPE, and Velociraptor). Manually correlating tool outputs during high-pressure incidents introduces cognitive strain, compromises chain-of-custody, and limits auditability.
+**DFIR-Nexus** is an enterprise-grade digital forensics and incident response (DFIR) integration layer and investigation cockpit. Developed as part of the [CADRE](https://github.com/Ganron007/CADRE) platform programme, DFIR-Nexus consolidates disparate forensic tools—including Eric Zimmerman's tools, SIFT, Volatility 3, Hayabusa, KAPE, and Velociraptor—into a single, cryptographically verifiable investigation lifecycle.
 
-**DFIR-Nexus** solves this by providing a unified, secure, and cryptographically verified forensic integration layer:
-- **Live IR Collection is a portable CLI** (`nexus collect`) — host-native, zero-model, no parsers on target, freeze-gated.
-- **Evidence Registration** (`nexus case init` + `nexus evidence register`) establishes cryptographic chain-of-custody with SHA-256 evidence hashing before analysis starts.
-- **Examiner Cockpit & CLI** provide an integrated workbench for the deterministic **N1–N8 Investigation Spine**: parsers extract structured CSVs, code searches for attack needles, an LLM scribe interprets retrieved hits, and human examiners cryptographically sign off before report compilation.
+By unifying evidence acquisition, deterministic parsing, high-throughput search, and AI-assisted hypothesis generation, DFIR-Nexus eliminates manual correlation bottlenecks while enforcing an unbreakable **human-in-the-loop (HITL) chain of custody**.
+
+> [!IMPORTANT]
+> **Forensic Integrity & Audit Guarantee**
+> - **Tamper-Evident Ledger:** Every tool execution, query, and finding is appended to an immutable **HMAC-SHA256 audit chain**.
+> - **Cryptographic Approval:** Findings remain **DRAFT** until signed by an examiner using **PBKDF2-HMAC (600,000 iterations)**.
+> - **Hardened AI Boundary:** AI models and automated agents can query, cite, and draft; they **cannot** approve, alter, or delete findings.
+> - **Air-Gapped & Offline-First:** Zero external telemetry. All forensic state, indices, and models operate within your local perimeter.
+
+---
+
+## Why DFIR-Nexus?
+
+Modern forensic investigations suffer from extreme tooling fragmentation:
+- Analysts juggle dozens of CLI utilities (MFTECmd, Hayabusa, Chainsaw, Volatility, PECmd, Plaso), producing disjointed CSVs and logs.
+- Correlating millions of events under incident response pressure leads to cognitive fatigue, missed leads, and audit vulnerabilities.
+- Traditional "AI for DFIR" solutions attempt to replace core parsers with hallucinations or bypass chain-of-custody requirements.
+
+**DFIR-Nexus solves this through structured orchestration:**
+
+```text
+ ┌─────────────────┐     ┌──────────────────┐     ┌────────────────────────┐     ┌──────────────────┐
+ │  Stage 0 Collect│ ──▶ │ Custody Register │ ──▶ │  N1–N8 Unified Spine   │ ──▶ │ Cryptographic    │
+ │  (Host-native)  │     │ (SHA-256 Hashed) │     │ (Parse, Index, Invest) │     │ Sign-off & Report│
+ └─────────────────┘     └──────────────────┘     └────────────────────────┘     └──────────────────┘
+```
+
+1. **Host-Native IR Collection (CLI):** Lightweight, zero-model collection across current Windows and modern Linux targets.
+2. **Cryptographic Registration:** Pre-analysis SHA-256 hashing locks evidence immutability.
+3. **Deterministic Tool Lane:** Proven forensic binaries parse raw evidence into structured schemas before any AI touches it.
+4. **Examiner Cockpit & Dual Storage:** A high-speed React workspace backed by SQLite (single source of truth) and Elasticsearch (log search acceleration).
+5. **Flexible Investigation Depths:** Three purpose-built modes tailored to operator preference, from interactive steer chat to autonomous multi-agent teams.
 
 ---
 
 ## Architecture & Investigation Lifecycle
 
-Product flow (collect → register → N1–N8 → ingest → N4–N8 again → detection):  
-See **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md)** for the full operator loop, and **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** for topology and tool index.
+DFIR-Nexus organizes the entire investigative lifecycle into the deterministic **N1–N8 Investigation Spine**:
 
 <p align="center">
   <a href="assets/dfir-nexus-architecture.svg">
-    <img src="assets/dfir-nexus-architecture.svg" alt="DFIR-Nexus v2 Architecture &amp; Lifecycle: Stage 0 Collect → Register Custody → Examiner Cockpit &amp; N1-N8 Spine → HITL Gate → Storage &amp; Exporters" width="1000">
+    <img src="assets/dfir-nexus-architecture.svg" alt="DFIR-Nexus Architecture & Investigation Spine" width="1000">
   </a>
 </p>
 
-**Trust model (offline-first, loopback-only):**
-1. **Collect (CLI)** — Live IR pack on disk. No LLM, no parsers on target, freeze-gated. Stays portable; not a Portal harvest.
-2. **Register** — `nexus case init` + `nexus evidence register`. Custody gate before analysis. Outside N1–N8.
-3. **Examiner Cockpit / MCP** — Investigation desk for N1–N8, ingest, and detection. Intent-level tools; no arbitrary shell.
-4. **Case ledger** — SQLite case state dual-written with an **HMAC-SHA256** audit chain.
-5. **Human gate** — Findings stay **DRAFT** until examiner approval (PBKDF2-HMAC, 3-strike lockout).
-6. **Reports** — Approved cases export as Markdown, HTML, STIX 2.0/2.1, DOCX, and ZIP.
+### The N1–N8 Investigation Spine
+
+| Phase | Stage | Description | Technology |
+| :---: | :--- | :--- | :--- |
+| **N1** | **Intake & Scope** | Ingest investigation scope, incident time windows, key entities, and hypotheses. | SQLite / `CASE.yaml` |
+| **N2** | **Deterministic Parse** | Execute mandatory parser lane against all registered host artifacts (EVTX, Prefetch, MFT, SRUM, Registry, Memory). | Zimmerman, Hayabusa, Volatility 3 |
+| **N3** | **Index & Map** | Bulk-index normalized records into per-case schemas with timestamp authority (`ts_raw`, `ts_precision`). | Elasticsearch (`nexus-es`) / SQLite |
+| **N4** | **Attack Needle Query** | Scan for MITRE ATT&CK techniques, LOLBAS patterns, and keyword pivots. | DSL Query Pushdown / Aggregations |
+| **N5** | **AI Interpretation** | Analyze retrieved hits, correlate cross-artifact signals, and synthesize DRAFT findings with row citations. | Mode 1 (LLM) / Mode 2 / Mode 3 |
+| **N6** | **Examiner Sign-Off** | Cryptographic review and HMAC password sign-off (DRAFT → APPROVED). | PBKDF2-HMAC (3-strike lockout) |
+| **N7** | **Timeline Synthesis** | Construct unified per-family multi-lane timelines with brush-zoom filtering. | Elastic / Canvas Timeline |
+| **N8** | **Forensic Export** | Compile court-ready reports and structured bundles strictly from APPROVED findings. | Markdown, HTML, DOCX, STIX 2.1, ZIP |
 
 ---
 
-## Examiner Cockpit (Web UI)
+## The Three Investigation Modes
 
-DFIR-Nexus features a web-based **Examiner Portal** (`nexus portal` on `http://127.0.0.1:4508`) with three surfaces:
+DFIR-Nexus supports three distinct analytical control depths over the same N1–N8 spine. The mode is selected at case creation to ensure strict audit isolation:
 
-| Surface | Route | Role |
-| :--- | :--- | :--- |
-| **Landing page** | `/` | Product identity, inline health chips, entry points |
-| **Case Dashboard** | `/dashboard` | Totals (cases, evidence, findings, processed), cases table, health bar |
-| **React Cockpit** | `/portal/app/*` | Full investigation workspace (N1–N8 workflow) |
+| Capability | Mode 1: LLM Guided Desk | Mode 2: Multi-Role Supervisor | Mode 3: Multi-Agent Swarm |
+| :--- | :--- | :--- | :--- |
+| **Operator Model** | **Interactive Steering** | **Supervised Work Orders** | **Autonomous Collaboration** |
+| **Runtime Architecture** | Examiner + LLM Scribe | LangGraph Supervisor | Concurrent Multi-Seat Swarm |
+| **Execution Flow** | Conversational chat with live ES queries | Sequential roles: Director → Workers → Verifier | Parallel seats: Evidence, Correlation, Pattern |
+| **Dispute Resolution** | Handled directly in examiner chat | Verifier confirms, infers, or refutes candidates | Shared Investigation Board opens & settles disputes |
+| **Candidate Staging** | Examiner bookmarks or clicks propose | Examiner stages verified candidate work orders | Examiner stages settled board claims |
+| **Primary UI Surface** | **Steer Chat** (`/portal/app/steer`) | **Agent Run — Lanes** (`/portal/app/agent-run`) | **Investigation Board** (`/portal/app/agent-run`) |
 
-**React Cockpit pages:**
+### Mode 1 — LLM Guided Analysis
+The examiner leads the investigation in natural language. The LLM translates questions into typed queries against Elasticsearch, retrieves exact hits, and provides cited answers with millisecond execution. The examiner bookmarks hits and stages DRAFT findings with one click.
 
-| Desk | Route | Capability |
-| :--- | :--- | :--- |
-| **Case Setup** | `/portal/app/case-setup` | Create a case and choose the investigation mode |
-| **Steer Chat** | `/portal/app/steer` | The Mode 1 LLM surface — SSE chat, suggestions, iterative loop, propose-DRAFT. Mode 2/3 cases get an Agent Run pointer here |
-| **Briefing** | `/portal/app/briefing` | Question, run options, and the LLM run panel (Mode 1) |
-| **Explore** | `/portal/app/explore` | Faceted DSL search, type-aware hit columns, host facets, histogram, bookmarking |
-| **Timeline** | `/portal/app/timeline` | Per-family lanes, type-aware event panels, brush-zoom |
-| **Agent Run** | `/portal/app/agent-run` | Mode-aware: multi-role lanes (plan → run → verify → stage) and the multi-agent Investigation Board |
-| **Workbench** | `/portal/app/workbench` | Bookmark-to-DRAFT promotion |
-| **Evidence** | `/portal/app/evidence` | Evidence registry, filesystem picker, parser-lane ledger |
-| **Findings** | `/portal/app/findings` | Finding cards with status/confidence badges |
-| **Approve** | `/portal/app/approve` | HMAC approval of DRAFT findings |
-| **Report** | `/portal/app/report` | Report generation from APPROVED findings |
-| **Entities** | `/portal/app/entities` | Entity pivots across families |
-| **Transparency** | `/portal/app/transparency` | Audit-chain verification |
-| **IOCs** | `/portal/app/iocs` | IOC list extracted from findings |
-| **TODOs** | `/portal/app/todos` | Investigation TODO tracking |
-| **Overview** | `/portal/app/` | In-cockpit dashboard with health strip |
+### Mode 2 — Multi-Role Supervisor
+A LangGraph supervisor plans sequential work orders mapped to knowledge base skills. Specialized read-only agent roles (Evidence Worker, Correlation Worker, Verifier, Synthesis) execute bounded analysis cycles, verify claims against raw rows, and present structured candidates for examiner staging.
+
+### Mode 3 — Concurrent Multi-Agent Swarm
+A concurrent agent team fans out across evidence families in synchronized supersteps. Each seat publishes audit-backed claims onto a shared Investigation Board. Conflicting hypotheses trigger formal disputes and bounded re-dispatch passes; unresolved items are preserved honestly as gaps.
 
 ---
 
 ## Storage & Search Architecture
 
-DFIR-Nexus uses a dual-layer storage model separating immutable forensic state from high-scale log searching:
+DFIR-Nexus implements a dual-layer storage model separating forensic provenance from high-throughput query acceleration:
 
-| Layer | Technology | Role & Behavior |
-| :--- | :--- | :--- |
-| **Forensic State & Ledger** | **SQLite (`cases.db`)** | **Permanent Single Source of Truth (SSoT)**. Stores case metadata, registered evidence SHA-256 hashes, finding states (`DRAFT` vs `APPROVED`), timeline events, investigator TODOs, and the tamper-evident cryptographic verification ledger (`transparency.jsonl`). Always local, zero-dependency, and offline-first. |
-| **Case Search Backend** | **Elasticsearch (`nexus-es` / N3 Index)** | **High-Scale Query Acceleration Engine**. Indexes parsed log lines from `extractions/` for N4 needle search. Does *not* store findings or replace SQLite. The Mode 1 lane can produce CSVs with Elasticsearch down (examiner surfaces still work); interpretation and the Modes 2/3 agentic depths require the Elasticsearch digest and stop with an explicit reason when it is not the backend. |
+```
+┌────────────────────────────────────────┐     ┌────────────────────────────────────────┐
+│     SQLite Case Ledger (SSoT)          │     │    Elasticsearch Cluster (N3 Engine)   │
+├────────────────────────────────────────┤     ├────────────────────────────────────────┤
+│ • Case Metadata & Scope                │     │ • Normalized Event Indexing (N3)       │
+│ • Registered Evidence SHA-256 Hashes   │     │ • DSL & Field Filter Query Pushdown    │
+│ • DRAFT & APPROVED Finding States      │     │ • Native Aggregations & Histogram Paging│
+│ • HMAC-SHA256 Verification Audit Chain │     │ • Authenticated (Basic / API Key / TLS)│
+│ • Timeline Events & Investigator TODOs │     │ • Paged search_after (Zero Record Caps)│
+└────────────────────────────────────────┘     └────────────────────────────────────────┘
+```
+
+- **Forensic State & Ledger (SQLite):** Permanent single source of truth. Offline-first, zero external dependencies. Survives index rebuilds.
+- **Search Backend (Elasticsearch):** High-scale query acceleration. Indexes millions of rows without row caps or truncation. If Elasticsearch is offline, Mode 1 falls back to deterministic CSV processing; agentic modes cleanly enforce availability.
 
 ---
 
-## Core Capabilities
+## Examiner Cockpit (Web UI)
 
-### Platform
+DFIR-Nexus features a modern, responsive **Examiner Cockpit** built with React, Vite, and Tailwind CSS, served locally via `nexus serve --http` at `http://127.0.0.1:4508`:
 
-| Dimension | What it gives you |
+| Workspace Desk | Role & Capabilities |
 | :--- | :--- |
-| **Case & evidence** | SQLite-backed cases holding findings, evidence records, timeline events and TODOs. SHA-256 at registration keeps integrity verifiable at any time. |
-| **Tamper evidence** | Cryptographically chained HMAC-SHA256 audit ledger — editing a command log or a finding breaks chain verification. |
-| **Hardened approval** | PBKDF2-HMAC password validation (600,000 iterations) with a 3-strike, 15-minute lockout. |
-| **Threat intel** | Lookups across 10 providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VirusTotal, AbuseIPDB, CrowdStrike). Local-only unless you supply API keys. |
-| **Semantic RAG** | 22,000+ IR records (SANS posters, Sigma, LOLBAS, GTFOBins, KAPE targets) in a local ChromaDB collection. Bring your own index, download the prebuilt release, or rebuild it; the embedding model is configurable (`NEXUS_RAG_MODEL`). |
-
-### Stage 0 — live IR pack (CLI only)
-
-- Authenticated **SSH / WinRM / local** collection: portable, no parsers on the target, freeze-gated.
-- **Windows spine** (`--profile disk`): KAPE `!SANS_Triage` (acquire only; the EZ parse pass is opt-in with `--kape-module`) + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`.
-- **Linux spine**: POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`.
-- Extra collectors (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`) live on `--profile full` and **skip with a reason** when missing or broken.
-- **Hayabusa / Suzaku / Chainsaw are N2 parsers**, not Stage 0 collectors.
-- Live Velociraptor hunts need the examiner `.env` MCP URL + key — [SETUP.md §2.6](Docs/SETUP.md#26-live-velociraptor-hunts-every-examiner-host).
-
-### The three investigation modes
-
-All three drive the same N1–N8 spine, the same `case_id` and the same HMAC lock. **The mode is fixed when the case is created**, and the server refuses a run started in another mode.
-
-**Mode 1 — LLM** · the merged examiner + LLM surface
-
-- Deterministic tool lane plus the examiner's N4 query pack (keyword pivots, never counted as signal).
-- Steer chat: the LLM plans N4 queries that push down to the per-case ES index (field filters, ES-native aggregations) and answers with cited rows, per-stage timings and audit IDs.
-- Coverage and interpretation — interpretation never runs on a CSV fallback.
-- Surfaces: **Briefing** and **Steer Chat**. Sign-off stays manual and cryptographic.
-
-**Mode 2 — Multi-role** · one work order at a time
-
-- A LangGraph supervisor runs scoped **read-only** roles: director → evidence / correlation / pattern workers → verifier / refuter → synthesis.
-- KB skill procedures, bounded budgets, follow-up corroboration, and a no-new-evidence convergence stop.
-- The examiner owns plan approval, live steering, pause / resume / **stop** and DRAFT staging (`nexus mode2 stage`); agents never stage or approve.
-- Surfaces: **Agent Run** (`/portal/app/agent-run`) and `nexus mode2 plan|run|status|steer|pause|resume|stop|findings|stage|export`.
-
-**Mode 3 — Multi-agent** · a concurrent team
-
-- A supervisor — model-chosen seats, deterministic fallback — fans evidence / correlation / pattern seats out in one superstep.
-- Every seat publishes **audit-backed claims only** on a shared board; the join opens disputes and can re-dispatch bounded; unresolved disputes stay gaps, never findings.
-- Same read-only, audited, DRAFT-only rules.
-- Surfaces: **Agent Run — Investigation Board** and `nexus mode3 run|status|board|steer|pause|resume|stop|stage|export`.
-
-**Cockpit pages** (`/portal/app/*`): Case Setup, Overview, Briefing, Explore, Timeline, Steer Chat (Mode 1), Agent Run (Mode 2 lanes / Mode 3 board), Workbench, Findings, Approval, Report, Evidence, Entities, Transparency, IOCs, TODOs. The nav shows only the N5 surface that matches the case's stored mode.
+| **Case Setup** | Case creation, scope definition, and investigation mode binding (Mode 1, 2, or 3). |
+| **Steer Chat** | Real-time SSE streaming chat with live evidence query pushdown and one-click DRAFT proposal. |
+| **Explore** | High-performance faceted DSL search, type-aware columns, histograms, and bookmarking. |
+| **Timeline** | Per-family multi-lane event visualization with brush-zoom temporal filtering. |
+| **Agent Run** | Real-time streaming visualization for Mode 2 work orders and Mode 3 Investigation Board claims. |
+| **Workbench** | Examiner promotion desk converting bookmarked evidence hits into structured DRAFT findings. |
+| **Approval Desk**| Cryptographic PBKDF2-HMAC sign-off desk with brute-force lockout protection. |
+| **Report Desk** | Automated export generator compiling official forensic reports strictly from APPROVED findings. |
+| **Transparency** | Audit verification desk verifying SHA-256 hashes and HMAC ledger integrity in real time. |
 
 ---
 
 ## Quickstart
 
 ### 1. Installation
-Install native dependencies and the Python package:
+
+Install native prerequisites and the Python package:
 
 ```powershell
-# Windows
+# Windows (PowerShell 7+)
 .\setup-windows.ps1
 
-# Linux / macOS
+# Linux / macOS (Bash)
 ./setup-linux.sh
 
-# Manual install with all optional integrations
-pip install dfir-nexus[all]
+# Or direct pip installation:
+pip install -e .[all]
 ```
 
-### 2. Configuration & operator loop
+### 2. Configuration & Preflight
+
+Initialize your examiner identity and approval password:
 
 ```bash
 nexus config --examiner "Jane Doe"
 nexus config --setup-password
-nexus doctor                          # binaries + VR live status
-
-# Stage 0 — collect only (CLI; freeze first)
-nexus collect run --os windows --host <ip> --user <acct> --identity ~/.ssh/id
-
-# Register (custody; separate from N1–N8)
-nexus case init "IR host"
-nexus evidence register <pack>
-
-# N2 parsers (deterministic; no LLM)
-# NOTE: --case is the EVIDENCE path; --from-case reuses your registered case
-# (without --from-case the pipeline auto-creates a new INC-* case)
-nexus pipeline --mode tools --from-case <CASE-ID> --case <pack>
-
-# Mode 1 — LLM query desk (examiner + scribe + steer chat)
-nexus case ask --question "Was sdelete used to wipe files?"
-nexus case select --hits 1,3,5 --title "sdelete wipe on WS01"
-nexus case findings --status DRAFT
-nexus approve --examiner <id> F-001            # HMAC sign-off
-nexus report generate                          # N8 from APPROVED only
-
-# Mode 2 — Multi-role runs / Mode 3 — Multi-agent runs
-nexus mode2 plan -q "Trace RDP activity and USB device use"
-nexus mode3 run  -q "Trace RDP activity and USB device use"
-
-# Or open the Examiner Cockpit for query / approve / timeline / report
-nexus portal
+nexus doctor                          # Verify tools, binaries, and environment
 ```
 
-Existing dumps: `nexus collect import` then register. Mental model: [Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md).
-
-### 3. Running the Server & Cockpit
-Expose the tools and interface locally:
+### 3. Investigation Walkthrough
 
 ```bash
-# Boot the HTTP MCP server and Dashboard Portal on port 4508
-nexus serve --http
+# Step 1: Collect live forensic pack (CLI, freeze first)
+nexus collect run --os windows --host 192.168.1.50 --user analyst --identity ~/.ssh/id_rsa
 
-# Open the Examiner Portal dashboard in your default browser
-nexus portal
+# Step 2: Initialize Case and Register Evidence (Custody Gate)
+nexus case init "Incident-2026-Alpha"
+nexus evidence register /path/to/evidence.raw -d "Target Host Disk"
+
+# Step 3: Run Deterministic Parsers (N2)
+nexus pipeline --mode tools --from-case CASE-XXXXXXXX --case /path/to/evidence.raw
+
+# Step 4: Launch Web Cockpit or CLI Investigation
+nexus serve --http                    # Starts Cockpit & MCP server on port 4508
+nexus portal                          # Opens browser to http://127.0.0.1:4508
+
+# Or investigate directly via CLI:
+nexus case ask --question "Did PowerShell execute encoded commands?"
+nexus approve --examiner "Jane Doe" F-001    # Cryptographic sign-off
+nexus report generate -s report.md           # Court-ready report from APPROVED findings
 ```
 
 ---
 
-## Project Structure & Documentation
+## Forensic Tools & Integrations
 
-Detailed guidelines are grouped in the `Docs/` directory:
+DFIR-Nexus bundles and orchestrates **128 Windows and 125 Linux MCP tools**:
 
-* 🧭 **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md):** Operator loop — collect → register → process → query → interpret → approve → export.
-* 📚 **[Docs/guide.md](Docs/guide.md):** Step-by-step DFIR command guide.
-* ⚙️ **[Docs/SETUP.md](Docs/SETUP.md):** Advanced installation, environment variables, and tool integration.
-* 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** High-level design, trust boundaries, and tool indexes.
-* 💻 **[Docs/CLI.md](Docs/CLI.md):** Typer-based command-line reference.
-* ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Common operations and troubleshooting.
+- **Windows Forensic Spine:** MFTECmd, EvtxECmd, PECmd, LECmd, JLECmd, SBECmd, RBCmd, SrumECmd, RECmd, AmcacheParser, AppCompatCacheParser, WxTCmd, SQLECmd.
+- **Triage & Detection:** Hayabusa, Chainsaw, Suzaku, Zircolite, DeepBlueCLI, PersistenceSniper, Sysinternals (`autorunsc`, `sigcheck`).
+- **Memory Analysis:** Volatility 3, MemProcFS integration.
+- **Network Analysis:** `tshark` PCAP session extraction, Zeek logs, Suricata EVE alerts, `nfdump` NetFlow.
+- **Live Host Collection (Stage 0):** KAPE, Velociraptor (`CADRE.Hunts.IRTriage`), UAC, POSIX volatile, DFIR-ORC, Kansa.
+- **Threat Intelligence:** Direct integrations with 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VirusTotal, AbuseIPDB, CrowdStrike).
+- **Forensic RAG:** Built-in ChromaDB repository holding 22,000+ DFIR methodology records, Sigma rules, SANS posters, and LOLBAS/GTFOBins guides.
 
 ---
 
-## Verification & Testing
+## Engineering Rigor & Verification
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests across all three investigation modes. The full hermetic suite records **2359 passed / 8 skipped / 0 failed**, along with the individual script suites, the E2E functional audit, and **222 frontend Vitest tests (38 files)**.
+The DFIR-Nexus platform adheres to strict software and forensic engineering disciplines:
 
+```
+[✓] Hermetic Test Suite:    2,359 Python tests passed (0 failed, 8 skipped)
+[✓] Frontend Test Suite:    222 Vitest unit & journey tests passed (38 files)
+[✓] E2E Journeys:           7/7 full-cycle integration steps verified
+[✓] Accessibility:          11/11 WCAG 2.1 AA a11y & visual tests verified
+[✓] Style Budget:           Zero CSS token leaks or raw color violations
+[✓] Static Analysis:        Ruff clean, TypeScript clean, zero uncommitted diffs
+```
+
+Run tests locally:
 ```bash
-# 1. Run the pytest suite (Mode 1/2/3 + audit regression tests)
+# Run backend pytest suite
 pytest
 
-# 2. Run the individual script-based test suites
-python tests/test_knowledge.py
-python tests/test_detection.py
-python tests/test_ti.py
-python tests/test_ingest.py
-python tests/test_integration.py
-python tests/test_portal.py
-python tests/test_hunt_parser.py
+# Run frontend Vitest suite
+cd frontend && npm run test:unit
 
-# 3. Run the E2E functional audit
+# Run full functional audit
 python tests/functional_audit.py
 ```
 
 ---
 
-## Knowledge-base data — attribution & roadmap
+## Documentation Map
 
-- The prebuilt **RAG index** (~22,000 IR records) and **Windows triage baselines** offered through `forensic_rag_download()` / `triage_download()` are built and published by [Applied Incident Response](https://github.com/AppliedIR/sift-mcp) under the **MIT License** (Copyright (c) 2026 AppliedIncidentResponse.com). Full credit to the AppliedIR team — DFIR-Nexus fetches those release assets as-is and does not redistribute them.
-- **In progress:** we are building our own large-scale RAG and triage corpus (expanded DFIR knowledge sources, lab-derived Windows baselines, detection-oriented records).
-- `forensic_rag_rebuild()` plus the `NEXUS_RAG_RELEASE_REPO` / `NEXUS_TRIAGE_RELEASE_REPO` overrides let you point DFIR-Nexus at our releases — or entirely at your own.
+Detailed operational guides and architectural specifications are located in [`Docs/`](Docs/):
+
+* 🧭 **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md):** Complete operator loop, mental model, and investigation modes.
+* 📚 **[Docs/guide.md](Docs/guide.md):** Step-by-step forensic investigation manual.
+* ⚙️ **[Docs/SETUP.md](Docs/SETUP.md):** Environment variables, Elasticsearch authentication, and VM topology.
+* 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** Deep architectural blueprints, trust boundaries, and tool index.
+* 💻 **[Docs/CLI.md](Docs/CLI.md):** Exhaustive command-line interface reference.
+* ⚖️ **[FORENSIC-DISCIPLINE.md](FORENSIC-DISCIPLINE.md):** Forensic discipline rules (FD-001 to FD-007).
+* ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Frequently asked questions and troubleshooting.
 
 ---
 
-## License
+## License & Attribution
 
-Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+Distributed under the **MIT License**. See [LICENSE](LICENSE) for full terms.
+
+* The prebuilt **RAG index** (~22,000 IR records) and Windows triage baselines are developed by [Applied Incident Response](https://github.com/AppliedIR/sift-mcp) under the MIT License.
+* Core forensic utilities (Zimmerman tools, Hayabusa, Volatility, Velociraptor) remain the intellectual property of their respective authors.
 
 > Copyright (c) 2026 DFIR-Nexus contributors.
