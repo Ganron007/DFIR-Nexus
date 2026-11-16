@@ -23,7 +23,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter
         basename="/portal/app"
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        future={{ v7_relativeSplatPath: true }}
       >
         <RouteErrorBoundaryInner routeName="DFIR-Nexus Cockpit">
           <App />

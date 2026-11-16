@@ -2282,13 +2282,6 @@ async def api_explore_search(request):
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
 
-    from nexus.langgraph.query_pack import (
-        attach_hit_fields,
-        collect_query_terms,
-        load_case_intake,
-        n4_query,
-    )
-
     body = await request.json()
     try:
         limit = max(1, int(body.get('limit') or 80))
@@ -2296,72 +2289,86 @@ async def api_explore_search(request):
     except (TypeError, ValueError):
         return JSONResponse({'error': 'limit/offset must be integers'}, status_code=400)
 
-    query_text, window, family_filter, host_filter = _explore_query_from_body(case_dir, body)
+    def _do_search():
+        from nexus.langgraph.query_pack import (
+            attach_hit_fields,
+            collect_query_terms,
+            load_case_intake,
+            n4_query,
+        )
 
-    defaulted = 0
-    if not query_text and body.get('default_needles'):
-        # Timeline events panel opt-in: no query = "rows the investigation
-        # flagged". Term lists go straight to n4_hits so every case needle
-        # participates in the exhaustive scan.
-        vocab = _case_default_needles(case_dir)
-        if vocab:
-            from nexus.langgraph.query_pack import _incomplete_reasons, n4_hits
+        query_text, window, family_filter, host_filter = _explore_query_from_body(case_dir, body)
 
-            scan_stats: dict[str, Any] = {}
-            all_hits, backend_used = n4_hits(
-                case_dir, vocab, window, priority_terms=vocab, stats=scan_stats)
-            incomplete_reasons = _incomplete_reasons(scan_stats)
-            scan_complete = not incomplete_reasons
-            result = {
-                'count': len(all_hits),
-                'hits': all_hits[offset:offset + limit],
-                'backend': backend_used,
-                'query': f'{len(vocab)} case needles (auto)',
-                'count_exact': scan_complete,
-                'count_lower_bound': not scan_complete,
-                'scan_complete': scan_complete,
-                'incomplete_reasons': incomplete_reasons,
-            }
-            defaulted = len(vocab)
+        defaulted = 0
+        if not query_text and body.get('default_needles'):
+            # Timeline events panel opt-in: no query = "rows the investigation
+            # flagged". Term lists go straight to n4_hits so every case needle
+            # participates in the exhaustive scan.
+            vocab = _case_default_needles(case_dir)
+            if vocab:
+                from nexus.langgraph.query_pack import _incomplete_reasons, n4_hits
+
+                scan_stats: dict[str, Any] = {}
+                all_hits, backend_used = n4_hits(
+                    case_dir, vocab, window, priority_terms=vocab, stats=scan_stats)
+                incomplete_reasons = _incomplete_reasons(scan_stats)
+                scan_complete = not incomplete_reasons
+                result = {
+                    'count': len(all_hits),
+                    'hits': all_hits[offset:offset + limit],
+                    'backend': backend_used,
+                    'query': f'{len(vocab)} case needles (auto)',
+                    'count_exact': scan_complete,
+                    'count_lower_bound': not scan_complete,
+                    'scan_complete': scan_complete,
+                    'incomplete_reasons': incomplete_reasons,
+                }
+                defaulted = len(vocab)
+            else:
+                result = {'count': 0, 'hits': [], 'backend': '', 'query': ''}
         else:
-            result = {'count': 0, 'hits': [], 'backend': '', 'query': ''}
-    else:
-        result = n4_query(case_dir, query_text, window=window, limit=limit, offset=offset)
-    if result.get('error'):
-        return JSONResponse({'error': result['error']}, status_code=400)
-    hits = list(result.get('hits') or [])
-    total = int(result.get('count') or 0)
+            result = n4_query(case_dir, query_text, window=window, limit=limit, offset=offset)
+        if result.get('error'):
+            return {'error': result['error'], '_status': 400}
+        hits = list(result.get('hits') or [])
+        total = int(result.get('count') or 0)
 
-    hits = _post_filter_hits(hits, family_filter, "")
-    if family_filter:
-        # Multi-family lists are page-level post-filtered: the count is a
-        # lower bound, and the UI must say so (review fix).
-        total = len(hits)
-        result["count_lower_bound"] = True
-        result["count_exact"] = False
+        hits = _post_filter_hits(hits, family_filter, "")
+        if family_filter:
+            # Multi-family lists are page-level post-filtered: the count is a
+            # lower bound, and the UI must say so (review fix).
+            total = len(hits)
+            result["count_lower_bound"] = True
+            result["count_exact"] = False
 
-    # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI.
-    # The host re-check runs AFTER attach (raw hits may not carry `host`).
-    hits = attach_hit_fields(case_dir, hits)
-    hits = _post_filter_hits(hits, [], host_filter)
+        # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI.
+        # The host re-check runs AFTER attach (raw hits may not carry `host`).
+        hits = attach_hit_fields(case_dir, hits)
+        hits = _post_filter_hits(hits, [], host_filter)
 
-    return JSONResponse({
-        'hits': hits,
-        'count': total,
-        'count_exact': bool(result.get('count_exact')),
-        'count_lower_bound': bool(result.get('count_lower_bound')),
-        'incomplete_reasons': list(result.get('incomplete_reasons') or []),
-        'total_before_family_filter': total,
-        'backend': result.get('backend', ''),
-        'families': _available_families(case_dir),
-        'needles': collect_query_terms(load_case_intake(case_dir)),
-        'query': result.get('query', ''),
-        'offset': offset,
-        'complete': offset + len(hits) >= total,
-        'next_offset': offset + len(hits) if offset + len(hits) < total else None,
-        'scan_complete': bool(result.get('scan_complete', True)),
-        'default_needles': defaulted,
-    })
+        return {
+            'hits': hits,
+            'count': total,
+            'count_exact': bool(result.get('count_exact')),
+            'count_lower_bound': bool(result.get('count_lower_bound')),
+            'incomplete_reasons': list(result.get('incomplete_reasons') or []),
+            'total_before_family_filter': total,
+            'backend': result.get('backend', ''),
+            'families': _available_families(case_dir),
+            'needles': collect_query_terms(load_case_intake(case_dir)),
+            'query': result.get('query', ''),
+            'offset': offset,
+            'complete': offset + len(hits) >= total,
+            'next_offset': offset + len(hits) if offset + len(hits) < total else None,
+            'scan_complete': bool(result.get('scan_complete', True)),
+            'default_needles': defaulted,
+        }
+
+    payload = await asyncio.to_thread(_do_search)
+    if '_status' in payload:
+        status = payload.pop('_status')
+        return JSONResponse(payload, status_code=status)
+    return JSONResponse(payload)
 
 
 async def api_explore_aggregate(request):
@@ -2375,7 +2382,8 @@ async def api_explore_aggregate(request):
     body = await request.json()
     from nexus.langgraph.query_pack import n4_aggregate
 
-    result = n4_aggregate(
+    result = await asyncio.to_thread(
+        n4_aggregate,
         case_dir,
         str(body.get('query') or ''),
         group_by=str(body.get('group_by') or 'family'),
@@ -2391,36 +2399,41 @@ async def api_explore_histogram(request):
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
     body = await request.json()
-    from nexus.langgraph.query_pack import (
-        _parse_needles,
-        collect_query_terms,
-        load_case_intake,
-        n4_hits,
-        parse_intake_window,
-        persistable_needles,
-    )
-    needles = _parse_needles(str(body.get('needles') or ''))
-    family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
-    start = str(body.get('start') or '').strip()
-    end = str(body.get('end') or '').strip()
-    intake = load_case_intake(case_dir)
-    if needles:
-        merged = persistable_needles(_parse_needles(intake.get('query_extra', '')) + needles)
-        intake['query_extra'] = '\n'.join(merged)
-    if start or end:
-        parts = []
-        if start:
-            parts.append(start)
-        if end:
-            parts.append(end)
-        intake['window'] = '..'.join(parts)
-    window = parse_intake_window(intake)
-    hits, _ = n4_hits(case_dir, collect_query_terms(intake), window)
-    if family_filter:
-        want = {f.lower() for f in family_filter}
-        hits = [h for h in hits if (h.get('family') or '').lower() in want]
-    buckets = _bucket_times(hits, bucket_minutes=int(body.get('bucket') or 60))
-    return JSONResponse({'buckets': buckets, 'count': len(hits)})
+
+    def _do_histogram():
+        from nexus.langgraph.query_pack import (
+            _parse_needles,
+            collect_query_terms,
+            load_case_intake,
+            n4_hits,
+            parse_intake_window,
+            persistable_needles,
+        )
+        needles = _parse_needles(str(body.get('needles') or ''))
+        family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
+        start = str(body.get('start') or '').strip()
+        end = str(body.get('end') or '').strip()
+        intake = load_case_intake(case_dir)
+        if needles:
+            merged = persistable_needles(_parse_needles(intake.get('query_extra', '')) + needles)
+            intake['query_extra'] = '\n'.join(merged)
+        if start or end:
+            parts = []
+            if start:
+                parts.append(start)
+            if end:
+                parts.append(end)
+            intake['window'] = '..'.join(parts)
+        window = parse_intake_window(intake)
+        hits, _ = n4_hits(case_dir, collect_query_terms(intake), window)
+        if family_filter:
+            want = {f.lower() for f in family_filter}
+            hits = [h for h in hits if (h.get('family') or '').lower() in want]
+        buckets = _bucket_times(hits, bucket_minutes=int(body.get('bucket') or 60))
+        return {'buckets': buckets, 'count': len(hits)}
+
+    payload = await asyncio.to_thread(_do_histogram)
+    return JSONResponse(payload)
 
 
 async def api_workbench(request):
@@ -3189,81 +3202,89 @@ async def api_timeline_lanes(request):
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
-    from nexus.langgraph.query_pack import _DATE_RE, n4_query
 
-    query_text = str(body.get("query") or "")
-    hits: list[dict] = []
-    count = 0
-    defaulted = 0
-    if query_text.strip():
-        result = n4_query(case_dir, query_text, limit=None)
-        if result.get("error"):
-            return JSONResponse({"error": result["error"]}, status_code=400)
-        hits = list(result.get("hits") or [])
-        count = int(result.get("count") or 0)
-    else:
-        # Empty query = the examiner's query-pack vocabulary (intake and
-        # playbook terms). Term lists go straight to n4_hits so all of it
-        # participates in the scan.
-        # Without this a portal case with empty
-        # intake renders a blank timeline.
-        from nexus.langgraph.query_pack import _parse_needles
+    def _do_timeline_lanes():
+        from nexus.langgraph.query_pack import _DATE_RE, n4_query
 
-        user_vocab = _parse_needles(str(body.get("needles") or ""))
-        vocab = user_vocab or _case_default_needles(case_dir)
-        if vocab:
-            from nexus.langgraph.query_pack import (
-                load_case_intake,
-                n4_hits,
-                parse_intake_window,
-            )
-
-            window = parse_intake_window(load_case_intake(case_dir))
-            all_hits, _be = n4_hits(case_dir, vocab, window)
-            count = len(all_hits)
-            hits = all_hits
-            defaulted = 0 if user_vocab else len(vocab)
-    from nexus.langgraph.query_pack import attach_hit_fields
-    from nexus.modes.llm_desk import _SEV_ORDER, _severity_from_hits
-
-    hits = attach_hit_fields(case_dir, hits)
-    bucket = "day" if str(body.get("bucket") or "hour") == "day" else "hour"
-
-    families: dict[str, dict[str, int]] = {}
-    sev_lanes: dict[str, dict[str, str]] = {}
-    for h in hits:
-        fam = h.get("family") or "other"
-        m = _DATE_RE.search(h.get("text", ""))
-        if not m:
-            key = "(no timestamp)"
-        elif bucket == "day":
-            key = m.group(1)
+        query_text = str(body.get("query") or "")
+        hits: list[dict] = []
+        count = 0
+        defaulted = 0
+        if query_text.strip():
+            result = n4_query(case_dir, query_text, limit=None)
+            if result.get("error"):
+                return {"error": result["error"], "_status": 400}
+            hits = list(result.get("hits") or [])
+            count = int(result.get("count") or 0)
         else:
-            key = f"{m.group(1)}T{(m.group(2) or '00:00:00')[:2]}:00"
-        lanes = families.setdefault(fam, {})
-        lanes[key] = lanes.get(key, 0) + 1
-        # Bucket severity = highest detection level seen in the bucket —
-        # examiner reads "worst thing in this hour" at a glance.
-        sev = _severity_from_hits([h])
-        sb = sev_lanes.setdefault(fam, {})
-        prev = sb.get(key, "informational")
-        if sev in _SEV_ORDER and _SEV_ORDER.index(sev) < _SEV_ORDER.index(prev):
-            sb[key] = sev
+            # Empty query = the examiner's query-pack vocabulary (intake and
+            # playbook terms). Term lists go straight to n4_hits so all of it
+            # participates in the scan.
+            # Without this a portal case with empty
+            # intake renders a blank timeline.
+            from nexus.langgraph.query_pack import _parse_needles
 
-    ordered = [
-        {
-            "family": fam,
-            "buckets": dict(sorted(lanes.items())),
-            "buckets_sev": sev_lanes.get(fam, {}),
+            user_vocab = _parse_needles(str(body.get("needles") or ""))
+            vocab = user_vocab or _case_default_needles(case_dir)
+            if vocab:
+                from nexus.langgraph.query_pack import (
+                    load_case_intake,
+                    n4_hits,
+                    parse_intake_window,
+                )
+
+                window = parse_intake_window(load_case_intake(case_dir))
+                all_hits, _be = n4_hits(case_dir, vocab, window)
+                count = len(all_hits)
+                hits = all_hits
+                defaulted = 0 if user_vocab else len(vocab)
+        from nexus.langgraph.query_pack import attach_hit_fields
+        from nexus.modes.llm_desk import _SEV_ORDER, _severity_from_hits
+
+        hits = attach_hit_fields(case_dir, hits)
+        bucket = "day" if str(body.get("bucket") or "hour") == "day" else "hour"
+
+        families: dict[str, dict[str, int]] = {}
+        sev_lanes: dict[str, dict[str, str]] = {}
+        for h in hits:
+            fam = h.get("family") or "other"
+            m = _DATE_RE.search(h.get("text", ""))
+            if not m:
+                key = "(no timestamp)"
+            elif bucket == "day":
+                key = m.group(1)
+            else:
+                key = f"{m.group(1)}T{(m.group(2) or '00:00:00')[:2]}:00"
+            lanes = families.setdefault(fam, {})
+            lanes[key] = lanes.get(key, 0) + 1
+            # Bucket severity = highest detection level seen in the bucket —
+            # examiner reads "worst thing in this hour" at a glance.
+            sev = _severity_from_hits([h])
+            sb = sev_lanes.setdefault(fam, {})
+            prev = sb.get(key, "informational")
+            if sev in _SEV_ORDER and _SEV_ORDER.index(sev) < _SEV_ORDER.index(prev):
+                sb[key] = sev
+
+        ordered = [
+            {
+                "family": fam,
+                "buckets": dict(sorted(lanes.items())),
+                "buckets_sev": sev_lanes.get(fam, {}),
+            }
+            for fam, lanes in sorted(families.items(), key=lambda kv: -sum(kv[1].values()))
+        ]
+        return {
+            "families": ordered,
+            "total": count,
+            "bucket": bucket,
+            "default_needles": defaulted,
         }
-        for fam, lanes in sorted(families.items(), key=lambda kv: -sum(kv[1].values()))
-    ]
-    return JSONResponse({
-        "families": ordered,
-        "total": count,
-        "bucket": bucket,
-        "default_needles": defaulted,
-    })
+
+    payload = await asyncio.to_thread(_do_timeline_lanes)
+    if "_status" in payload:
+        status = payload.pop("_status")
+        return JSONResponse(payload, status_code=status)
+    return JSONResponse(payload)
 
 
 async def api_timeline_rebuild(request):
