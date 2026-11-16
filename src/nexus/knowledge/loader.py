@@ -668,13 +668,19 @@ def synced_source_manifest() -> list[dict]:
                 continue
             if not isinstance(d, dict):
                 continue
+            count = d.get("count")
+            if count is None:
+                for collection_key in ("entries", "types", "facts", "rules", "items"):
+                    if collection_key in d and isinstance(d[collection_key], (list, dict)):
+                        count = len(d[collection_key])
+                        break
             out.append({
                 "name": f.stem,
                 "kind": "synced_source",
                 "source": d.get("source"),
                 "url": d.get("url"),
                 "fetched": d.get("fetched"),
-                "count": d.get("count"),
+                "count": count,
             })
     out.extend(registry_manifest())
     return out
