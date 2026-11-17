@@ -27,6 +27,12 @@ def repair_invalid_escapes(text: str) -> str:
 #: A one-letter escape written between two name characters, the backslash itself unescaped.
 _NAME_ESCAPE = re.compile(r"(?<=[\w:$.)\]])\\([bfnrt])(?=\w)")
 _DRIVE = re.compile(r"[A-Za-z]:")
+_QUERY_KEY_BRACE = re.compile(r'(\]\s*\})\s*,\s*("(?:sort|size|aggs|from|highlight|collapse)")')
+
+
+def repair_query_braces(text: str) -> str:
+    """Add a missing closing brace after a query clause before top-level search request keys."""
+    return _QUERY_KEY_BRACE.sub(r"\1},\2", text)
 
 
 def repair_path_escapes(text: str) -> str:
@@ -71,11 +77,23 @@ def json_error_note(text: str) -> str:
 
 def loads_model_json(text: str) -> Any:
     """``json.loads`` of a reply whose path separators are repaired, retried once with invalid
-    escapes repaired when that is the error."""
+    escapes repaired when that is the error, and retried with query clause braces repaired if needed."""
     text = repair_path_escapes(text)
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        if "escape" not in str(exc):
-            raise
-    return json.loads(repair_invalid_escapes(text))
+        if "escape" in str(exc):
+            try:
+                return json.loads(repair_invalid_escapes(text))
+            except json.JSONDecodeError:
+                pass
+        repaired = repair_query_braces(text)
+        if repaired != text:
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                try:
+                    return json.loads(repair_invalid_escapes(repaired))
+                except json.JSONDecodeError:
+                    pass
+        raise

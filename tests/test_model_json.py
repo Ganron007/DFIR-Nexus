@@ -60,6 +60,21 @@ def test_a_reply_broken_another_way_still_fails():
         loads_model_json('{"a": 1,,}')
 
 
+def test_query_clause_missing_brace_before_sort_is_repaired():
+    valid = ('{"tool":"es_search","args":{"query":{"bool":{"must":'
+             '[{"term":{"host":"x"}}]}},"sort":[{"ts":"asc"}],"size":10}}')
+    assert json.loads(valid)["args"]["size"] == 10
+    # Corrupt by removing one closing brace before "sort"
+    broken = ('{"tool":"es_search","args":{"query":{"bool":{"must":'
+              '[{"term":{"host":"x"}}]},"sort":[{"ts":"asc"}],"size":10}}')
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(broken)
+    repaired = loads_model_json(broken)
+    assert repaired["args"]["query"]["bool"]["must"][0]["term"]["host"] == "x"
+    assert repaired["args"]["sort"][0]["ts"] == "asc"
+    assert repaired["args"]["size"] == 10
+
+
 def test_the_interpret_loop_reads_a_plan_with_windows_paths():
     from nexus.langgraph.interpret_loop import _normalize_plan, _parse_json_blob
 

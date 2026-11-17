@@ -519,6 +519,10 @@ async def _call_plan(model: Any, messages: list[dict[str, str]], response_format
     except Exception as exc:
         text = getattr(exc, "model_response_text", None)
         if text is None:
+            err = str(exc)
+            if getattr(exc, "generation_request_failed", False) and ("grammar" in err.lower() or "schema" in err.lower() or "not supported" in err.lower() or "badrequest" in err.lower()):
+                log.warning("Provider rejected generation schema grammar (%s); falling back to free-form plan call", exc)
+                return await _call_model(model, messages)
             raise
         return str(text)
 
