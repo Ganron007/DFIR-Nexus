@@ -71,7 +71,7 @@ const CaseContext = createContext<CaseContextValue | null>(null);
 
 export function CaseProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [activeCase, setActiveCaseState] = useState<string>("");
+  const [activeCaseState, setActiveCaseState] = useState<string>("");
   const [previewCase, setPreviewCaseState] = useState<string>("");
   const [mode, setModeState] = useState<string>("");
   const [stages, setStages] = useState<Record<string, boolean>>({});
@@ -82,6 +82,9 @@ export function CaseProvider({ children }: { children: ReactNode }) {
 
   const cases = casesQuery.data?.cases ?? [];
   const caseSummaries = casesQuery.data?.details ?? {};
+  // Derive activeCase immediately from query data if local state is not yet set,
+  // preventing a 1-render race condition where booting=false but activeCase="".
+  const activeCase = activeCaseState || casesQuery.data?.active || "";
   const booting = casesQuery.isPending;
   const health = healthQuery.data
     ? healthQuery.data.backend
@@ -156,6 +159,10 @@ export function CaseProvider({ children }: { children: ReactNode }) {
     } catch {
       // best-effort; still detach locally
     }
+    queryClient.setQueryData<{ cases: string[]; active: string } | undefined>(
+      ["system", "cases"],
+      (old) => (old ? { ...old, active: "" } : old),
+    );
     setRequestCaseId("");
     setActiveCaseState("");
     setModeState("");
