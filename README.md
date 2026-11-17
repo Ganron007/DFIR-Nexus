@@ -58,7 +58,24 @@ Modern forensic investigations suffer from extreme tooling fragmentation:
 
 ---
 
-## Architecture & Investigation Lifecycle
+## The Three Investigation Modes
+
+DFIR-Nexus supports three distinct analytical control depths over the same underlying evidence. Selected at case initialization, each mode provides strict audit isolation and tailored automation depth:
+
+| Dimension | Mode 1: LLM Guided Desk | Mode 2: Multi-Role Supervisor | Mode 3: Concurrent Multi-Agent Swarm |
+| :--- | :--- | :--- | :--- |
+| **Operator Model** | **Interactive Steering** — Examiner directly directs hypotheses and questions in real time. | **Supervised Work Orders** — Examiner reviews and assigns structured analytical objectives. | **Autonomous Collaboration** — Examiner oversees a concurrent multi-agent team collaborating on a shared board. |
+| **How It Works** | Natural-language conversation where the LLM translates examiner questions into typed queries against Elasticsearch, retrieves exact hits with millisecond execution, and proposes cited answers. | LangGraph supervisor plans sequential work orders mapped to forensic skills; specialized read-only roles execute bounded cycles and verify claims against raw rows before staging. | Concurrent agent team fans out across evidence families in synchronized supersteps; seats publish audit-backed claims onto a shared board, open formal disputes, and run bounded settle cycles. |
+| **Runtime Architecture** | Examiner + LLM Scribe (direct tool-calling agent loop) | LangGraph Supervisor orchestrating sequential role workers | Concurrent Multi-Seat Swarm (Evidence, Correlation, Pattern, Memory, Verifier) |
+| **Execution Flow** | Conversational chat stream with live ES query pushdown and cited rows | Sequential pipeline: Director → Evidence Worker → Correlation Worker → Verifier | Synchronized parallel supersteps with claims, disputes, and settle cycles on the shared board |
+| **Dispute Resolution** | Handled directly in interactive examiner chat dialog | Dedicated Verifier role confirms, infers, or refutes candidate findings against evidence rows | Shared Investigation Board opens formal disputes, conducts targeted verification passes, and preserves unresolvable gaps honestly |
+| **Candidate Staging** | Examiner bookmarks hits or clicks propose to stage DRAFT findings with one click | Examiner reviews and stages verified candidate work orders into DRAFT findings | Examiner inspects settled board claims and stages them into DRAFT findings |
+| **Best Suited For** | Rapid incident triage, targeted hypothesis testing, and active analyst exploration | Structured methodology compliance, deep single-host forensics, and repeatable casework | Complex multi-source campaigns, large host acquisitions, and lateral movement correlation |
+| **Primary UI Surface** | **Steer Chat** (`/portal/app/steer`) | **Agent Run — Lanes** (`/portal/app/agent-run`) | **Investigation Board** (`/portal/app/agent-run`) |
+
+---
+
+## Architecture & The N1–N8 Investigation Spine
 
 DFIR-Nexus organizes the entire investigative lifecycle into the deterministic **N1–N8 Investigation Spine**:
 
@@ -68,7 +85,7 @@ DFIR-Nexus organizes the entire investigative lifecycle into the deterministic *
   </a>
 </p>
 
-### The N1–N8 Investigation Spine
+### The N1–N8 Investigation Stages
 
 | Phase | Stage | Description | Technology |
 | :---: | :--- | :--- | :--- |
@@ -80,30 +97,6 @@ DFIR-Nexus organizes the entire investigative lifecycle into the deterministic *
 | **N6** | **Examiner Sign-Off** | Cryptographic review and HMAC password sign-off (DRAFT → APPROVED). | PBKDF2-HMAC (3-strike lockout) |
 | **N7** | **Timeline Synthesis** | Construct unified per-family multi-lane timelines with brush-zoom filtering. | Elastic / Canvas Timeline |
 | **N8** | **Forensic Export** | Compile court-ready reports and structured bundles strictly from APPROVED findings. | Markdown, HTML, DOCX, STIX 2.1, ZIP |
-
----
-
-## The Three Investigation Modes
-
-DFIR-Nexus supports three distinct analytical control depths over the same N1–N8 spine. The mode is selected at case creation to ensure strict audit isolation:
-
-| Capability | Mode 1: LLM Guided Desk | Mode 2: Multi-Role Supervisor | Mode 3: Multi-Agent Swarm |
-| :--- | :--- | :--- | :--- |
-| **Operator Model** | **Interactive Steering** | **Supervised Work Orders** | **Autonomous Collaboration** |
-| **Runtime Architecture** | Examiner + LLM Scribe | LangGraph Supervisor | Concurrent Multi-Seat Swarm |
-| **Execution Flow** | Conversational chat with live ES queries | Sequential roles: Director → Workers → Verifier | Parallel seats: Evidence, Correlation, Pattern |
-| **Dispute Resolution** | Handled directly in examiner chat | Verifier confirms, infers, or refutes candidates | Shared Investigation Board opens & settles disputes |
-| **Candidate Staging** | Examiner bookmarks or clicks propose | Examiner stages verified candidate work orders | Examiner stages settled board claims |
-| **Primary UI Surface** | **Steer Chat** (`/portal/app/steer`) | **Agent Run — Lanes** (`/portal/app/agent-run`) | **Investigation Board** (`/portal/app/agent-run`) |
-
-### Mode 1 — LLM Guided Analysis
-The examiner leads the investigation in natural language. The LLM translates questions into typed queries against Elasticsearch, retrieves exact hits, and provides cited answers with millisecond execution. The examiner bookmarks hits and stages DRAFT findings with one click.
-
-### Mode 2 — Multi-Role Supervisor
-A LangGraph supervisor plans sequential work orders mapped to knowledge base skills. Specialized read-only agent roles (Evidence Worker, Correlation Worker, Verifier, Synthesis) execute bounded analysis cycles, verify claims against raw rows, and present structured candidates for examiner staging.
-
-### Mode 3 — Concurrent Multi-Agent Swarm
-A concurrent agent team fans out across evidence families in synchronized supersteps. Each seat publishes audit-backed claims onto a shared Investigation Board. Conflicting hypotheses trigger formal disputes and bounded re-dispatch passes; unresolved items are preserved honestly as gaps.
 
 ---
 
