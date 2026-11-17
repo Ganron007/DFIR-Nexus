@@ -245,7 +245,7 @@ Detailed operational guides and architectural specifications are located in [`Do
 * ⚙️ **[Docs/SETUP.md](Docs/SETUP.md):** Environment variables, Elasticsearch authentication, and VM topology.
 * 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** Deep architectural blueprints, trust boundaries, and tool index.
 * 💻 **[Docs/CLI.md](Docs/CLI.md):** Exhaustive command-line interface reference.
-* ⚖️ **[FORENSIC-DISCIPLINE.md](FORENSIC-DISCIPLINE.md):** Forensic discipline rules (FD-001 to FD-007).
+* ⚖️ **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** Forensic discipline rules (FD-001 to FD-007) and provenance scoring.
 * ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Frequently asked questions and troubleshooting.
 
 ---
