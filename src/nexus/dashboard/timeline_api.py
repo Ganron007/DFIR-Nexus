@@ -186,25 +186,34 @@ class TimelineStore:
             rng["gte"] = start
         if end:
             rng["lte"] = end
-        agg: dict[str, Any] = {
-            "date_histogram": {
-                "field": "ts",
-                "calendar_interval": interval or "auto",
-                "min_doc_count": 0,
+        calendar_intervals = {"minute", "hour", "day", "week", "month", "quarter", "year"}
+        if interval and interval != "auto":
+            agg: dict[str, Any] = {
+                "date_histogram": {
+                    "field": "ts",
+                    "min_doc_count": 0,
+                }
             }
-        }
-        if interval:
-            agg["date_histogram"].pop("calendar_interval", None)
-            agg["date_histogram"]["fixed_interval"] = interval
-            # bucket_count is a hint that only exists alongside an explicit
-            # interval; ES rejects "auto" + bucket_count, and the previous
-            # draft sent both on every windowed call.
-            agg["date_histogram"]["bucket_count"] = max(1, min(2000, int(buckets or 500)))
+            if interval in calendar_intervals:
+                agg["date_histogram"]["calendar_interval"] = interval
+            else:
+                agg["date_histogram"]["fixed_interval"] = interval
+                agg["date_histogram"]["bucket_count"] = max(1, min(2000, int(buckets or 500)))
+            if rng:
+                agg["date_histogram"]["extended_bounds"] = rng
+        else:
+            agg = {
+                "auto_date_histogram": {
+                    "field": "ts",
+                    "buckets": max(1, min(2000, int(buckets or 500))),
+                }
+            }
+        filter_list = _filters(filters)
         if rng:
-            agg["date_histogram"]["extended_bounds"] = rng
+            filter_list.append({"range": {"ts": rng}})
         payload = self._search({
             "size": 0,
-            "query": {"bool": {"filter": _filters(filters)}},
+            "query": {"bool": {"filter": filter_list}},
             "aggs": {"timeline": agg},
         })
         result = (payload.get("aggregations") or {}).get("timeline") or {}

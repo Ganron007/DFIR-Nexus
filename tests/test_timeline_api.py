@@ -615,15 +615,15 @@ def test_a_failed_build_stays_rebuildable(tmp_path):
 
 
 def test_the_histogram_never_pairs_auto_with_a_bucket_count(monkeypatch):
-    """ES rejects calendar_interval:'auto' together with bucket_count."""
+    """No interval defaults to auto_date_histogram, avoiding invalid calendar_interval: auto."""
     import nexus.langgraph.case_index as ci
 
     fake = FakeES([])
     monkeypatch.setattr(ci, "_client", lambda: fake)
-    TimelineStore("CASE-A").histogram()  # no interval -> 'auto'
-    agg = fake.requests[-1]["aggs"]["timeline"]["date_histogram"]
-    assert agg["calendar_interval"] == "auto"
-    assert "bucket_count" not in agg, "'auto' + bucket_count is rejected by ES"
+    TimelineStore("CASE-A").histogram()  # no interval -> auto_date_histogram
+    agg = fake.requests[-1]["aggs"]["timeline"]
+    assert "auto_date_histogram" in agg
+    assert "calendar_interval" not in agg.get("date_histogram", {})
 
     # an explicit interval still carries the hint
     TimelineStore("CASE-A").histogram(interval="1h")
