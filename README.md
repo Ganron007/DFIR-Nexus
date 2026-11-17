@@ -132,6 +132,10 @@ DFIR-Nexus implements a dual-layer storage model separating forensic provenance 
 
 DFIR-Nexus features a modern, responsive **Examiner Cockpit** built with React, Vite, and Tailwind CSS, served locally via `nexus serve --http` at `http://127.0.0.1:4508`:
 
+<p align="center">
+  <img src="assets/dfir-nexus-ui.png" alt="DFIR-Nexus Examiner Cockpit & Investigation Spine UI" width="950">
+</p>
+
 | Workspace Desk | Role & Capabilities |
 | :--- | :--- |
 | **Case Setup** | Case creation, scope definition, and investigation mode binding (Mode 1, 2, or 3). |
