@@ -1126,6 +1126,23 @@ def run_context_loop(
                                    "detail": f"refused at {refused_tokens} tokens; re-packed and sent again"})
                     continue
                 if getattr(exc, "generation_request_failed", False):
+                    err = str(exc)
+                    if response_format and (
+                        "grammar" in err.lower()
+                        or "schema" in err.lower()
+                        or "not supported" in err.lower()
+                        or "badrequest" in err.lower()
+                        or "rejected" in err.lower()
+                        or "parameter" in err.lower()
+                        or "invalid_request" in err.lower()
+                        or "400" in err
+                    ):
+                        log.warning(
+                            "context loop: provider rejected generation schema grammar (%s); falling back to free-form call",
+                            exc,
+                        )
+                        response_format = None
+                        continue
                     error = "generation transport: " + str(exc)[:400]
                     audit.log(
                         tool="context_loop_reply", params={"case_id": case_id},

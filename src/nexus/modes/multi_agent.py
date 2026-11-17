@@ -2953,6 +2953,10 @@ def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
     if record is None:
         return {"error": "run not found", "run_id": run_id, "staged": [], "skipped": []}
     rows = list(record.get("candidates") or [])
+    if not rows and (record.get("settled_claims") or record.get("board")):
+        disputes = list(record.get("disputes") or [])
+        cands, _ = settled_candidates(list(record.get("board") or []), disputes, case_dir=case_dir)
+        rows = [c for c in cands if str(c.get("claim_kind") or "") != "absence"]
     provenance = [
         {"skill": u["skill"], "version": u.get("version"), "role": u.get("role")}
         for u in (record.get("skills_used") or [])

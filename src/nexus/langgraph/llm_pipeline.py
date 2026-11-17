@@ -520,6 +520,16 @@ def _construct_model(model_name: str = ""):
     # (the 4j.33 latency budget depends on this).
     kwargs["timeout"] = timeout
     kwargs["max_retries"] = retries
+    max_tokens_env = os.getenv("NEXUS_LLM_MAX_TOKENS")
+    if max_tokens_env:
+        try:
+            kwargs["max_tokens"] = int(max_tokens_env)
+        except ValueError:
+            kwargs["max_tokens"] = 4096
+    else:
+        # Reasoning models on vLLM/OpenAI-compatible proxies default to 1024 if unset,
+        # which exhausts the token budget during chain-of-thought and leaves content empty.
+        kwargs["max_tokens"] = 4096
     # reasoning_effort is an OpenAI-only param. Compatible hosts (e.g.
     # StepFun) reject it as "no active step plan subscription".
     if reasoning:
