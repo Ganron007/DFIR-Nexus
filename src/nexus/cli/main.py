@@ -398,8 +398,13 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
 
     from nexus.dashboard.app import create_dashboard
     from nexus.mcp_security import McpBearerAuthMiddleware, bearer_token, is_remote_bind
-    from nexus.portal import PortalRateLimitMiddleware, SecurityHeadersMiddleware
+    from nexus.portal import (
+        PortalRateLimitMiddleware,
+        PortalSessionMiddleware,
+        SecurityHeadersMiddleware,
+    )
     from nexus.portal.http_audit import HttpAuditMiddleware
+    from nexus.portal.session import portal_password, portal_session_ttl, portal_signing_secret
 
     dashboard_security_headers = {
         "X-Frame-Options": "DENY",
@@ -423,8 +428,8 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
     except AttributeError:
         routes.append(Mount("/mcp", app=server.sse_app()))
         typer.echo(f"  MCP: http://{host}:{port}/mcp (SSE fallback)")
-    # D28: the MCP endpoint executes host binaries, so a bind that reaches
-    # beyond this machine must carry a bearer token. Loopback stays as it was.
+    # D28 + P0-1: remote binds must authenticate both MCP (bearer token) and
+    # the Examiner Portal (signed session cookie backed by NEXUS_PORTAL_PASSWORD).
     middleware_list = [
         # 4k.3: transport audit runs FIRST so even rate-limited/401
         # requests are recorded with their real status.
@@ -432,7 +437,7 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
         Middleware(
             PortalRateLimitMiddleware,
             path_prefix="/portal",
-            auth_path_prefix="/portal/api/commit",
+            auth_path_prefix=("/portal/api/commit", "/portal/api/auth", "/portal/login"),
         ),
         Middleware(
             SecurityHeadersMiddleware,
@@ -443,6 +448,14 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
     if is_remote_bind(host):
         middleware_list.append(
             Middleware(McpBearerAuthMiddleware, token=bearer_token())
+        )
+        middleware_list.append(
+            Middleware(
+                PortalSessionMiddleware,
+                password=portal_password(),
+                secret=portal_signing_secret(),
+                ttl_seconds=portal_session_ttl(),
+            )
         )
     return Starlette(
         routes=routes,
@@ -523,6 +536,11 @@ def serve(
             "  MCP auth: bearer token REQUIRED (non-loopback bind)"
             if is_remote_bind(host)
             else "  MCP auth: none (loopback bind — not reachable off this machine)"
+        )
+        typer.echo(
+            "  Portal auth: signed session REQUIRED (non-loopback bind)"
+            if is_remote_bind(host)
+            else "  Portal auth: none (loopback bind — not reachable off this machine)"
         )
         log_config = None
         try:

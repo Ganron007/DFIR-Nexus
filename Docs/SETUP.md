@@ -331,7 +331,7 @@ docker run -d --name nexus-es -p 9200:9200 \
 
 ### 2c. From source (contributors)
 ```bash
-git clone https://github.com/Unallocated/DFIR-Nexus.git
+git clone https://github.com/Ganron007/DFIR-Nexus.git
 cd DFIR-Nexus
 python -m venv .venv
 source .venv/bin/activate      # Linux / macOS

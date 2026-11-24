@@ -13,6 +13,7 @@ import logging
 import os
 import secrets
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ _LOCKOUT_SECONDS = 900  # 15 minutes
 _MIN_PASSWORD_LENGTH = 8
 _PASSWORDS_DIR = Path.home() / ".nexus" / "passwords"
 _LOCKOUT_FILE = Path.home() / ".nexus" / ".approval_lockout"
+_LOCKOUT_LOCK = threading.RLock()
 
 
 def verify_bearer_token(token: str, expected: str) -> bool:
@@ -159,54 +161,106 @@ def verify_password(analyst: str, password: str) -> bool:
     return hmac.compare_digest(computed, stored_hash)
 
 
-def check_lockout(analyst: str) -> bool:
+def _write_lockout_atomic(target: Path, data: dict) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+    try:
+        os.close(fd)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        atomic.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def failure_count(
+    analyst: str,
+    *,
+    lockout_file: Path | None = None,
+    window_seconds: int = _LOCKOUT_SECONDS,
+) -> int:
+    """Return number of failed attempts within the lockout window."""
+    target = lockout_file or _LOCKOUT_FILE
+    key = _analyst_slug(analyst) or analyst
+    with _LOCKOUT_LOCK:
+        if not target.exists():
+            return 0
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+            failures = data.get(key) or data.get(analyst) or []
+            now = time.time()
+            recent = [t for t in failures if now - t < window_seconds]
+            return len(recent)
+        except (OSError, json.JSONDecodeError, TypeError):
+            return 0
+
+
+def check_lockout(
+    analyst: str,
+    *,
+    lockout_file: Path | None = None,
+    max_attempts: int = _MAX_ATTEMPTS,
+    window_seconds: int = _LOCKOUT_SECONDS,
+) -> bool:
     """Check if analyst is locked out (too many failed attempts)."""
-    if not _LOCKOUT_FILE.exists():
-        return False
-    try:
-        data = json.loads(_LOCKOUT_FILE.read_text())
-        failures = data.get(analyst, [])
-        recent = [t for t in failures if time.time() - t < _LOCKOUT_SECONDS]
-        if len(recent) >= _MAX_ATTEMPTS:
-            return True
-    except (OSError, json.JSONDecodeError):
-        pass
-    return False
+    return failure_count(analyst, lockout_file=lockout_file, window_seconds=window_seconds) >= max_attempts
 
 
-def record_failure(analyst: str) -> None:
-    """Record a failed password attempt."""
-    data = {}
-    if _LOCKOUT_FILE.exists():
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            data = json.loads(_LOCKOUT_FILE.read_text())
-    failures = data.get(analyst, [])
-    failures.append(time.time())
-    data[analyst] = failures
-    _LOCKOUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _LOCKOUT_FILE.write_text(json.dumps(data))
+def record_failure(
+    analyst: str,
+    *,
+    lockout_file: Path | None = None,
+    window_seconds: int = _LOCKOUT_SECONDS,
+) -> int:
+    """Atomically record a failed password attempt and return recent failure count."""
+    target = lockout_file or _LOCKOUT_FILE
+    key = _analyst_slug(analyst) or analyst
+    with _LOCKOUT_LOCK:
+        data: dict = {}
+        if target.exists():
+            with contextlib.suppress(OSError, json.JSONDecodeError, TypeError):
+                loaded = json.loads(target.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    data = loaded
+        now = time.time()
+        existing = data.get(key) or ([] if key == analyst else data.get(analyst, []))
+        recent = [t for t in existing if now - t < window_seconds]
+        recent.append(now)
+        if analyst != key:
+            data.pop(analyst, None)
+        data[key] = recent
+        _write_lockout_atomic(target, data)
+        return len(recent)
 
 
-def clear_failures(analyst: str) -> None:
-    """Clear failure count on successful auth."""
-    if not _LOCKOUT_FILE.exists():
-        return
-    try:
-        data = json.loads(_LOCKOUT_FILE.read_text())
-        data.pop(analyst, None)
-        _LOCKOUT_FILE.write_text(json.dumps(data))
-    except (OSError, json.JSONDecodeError):
-        pass
+def clear_failures(analyst: str, *, lockout_file: Path | None = None) -> None:
+    """Atomically clear failure count on successful auth."""
+    target = lockout_file or _LOCKOUT_FILE
+    key = _analyst_slug(analyst) or analyst
+    with _LOCKOUT_LOCK:
+        if not target.exists():
+            return
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data.pop(key, None)
+                data.pop(analyst, None)
+                _write_lockout_atomic(target, data)
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
 
 
-def clear_lockout(analyst: str | None = None) -> None:
+def clear_lockout(analyst: str | None = None, *, lockout_file: Path | None = None) -> None:
     """Drop lockout for one examiner, or delete the lockout file entirely."""
     if analyst:
-        clear_failures(analyst)
+        clear_failures(analyst, lockout_file=lockout_file)
         return
-    with contextlib.suppress(OSError):
-        if _LOCKOUT_FILE.exists():
-            _LOCKOUT_FILE.unlink()
+    target = lockout_file or _LOCKOUT_FILE
+    with _LOCKOUT_LOCK, contextlib.suppress(OSError):
+        if target.exists():
+            target.unlink()
 
 
 def reset_password(analyst: str, old_password: str, new_password: str) -> dict:

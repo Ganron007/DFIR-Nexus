@@ -148,7 +148,7 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_secrets, "_PERSISTED_SECRET_PATH", tmp_path / "audit_secret")
     import nexus.dashboard.app as _dash
 
-    monkeypatch.setattr(_dash, "_LOCKOUT_FILE", tmp_path / ".commit_lockout")
+    monkeypatch.setattr(_dash, "_LOCKOUT_FILE", tmp_path / "approval_lockout")
     monkeypatch.setenv("NEXUS_NEEDLE_OVERLAY", str(tmp_path / "needle_overlay.yaml"))
     monkeypatch.delenv("NEXUS_HTTP_AUDIT_GLOBAL", raising=False)
     monkeypatch.setenv("NEXUS_HTTP_LOG_DIR", str(tmp_path / "http_logs"))

@@ -131,7 +131,7 @@ def _technique_needles(exp_techs: set[str], packs: list[dict[str, Any]]) -> dict
             info = meta.get(tid)
             derived: list[str] = [tid.lower()]
             if info:
-                derived.extend(re.findall(r"[A-Za-z]{4,}", str(meta.get("name") or "")))
+                derived.extend(re.findall(r"[A-Za-z]{4,}", str(info.get("name") or "")))
             derived = [d for d in dict.fromkeys(derived) if len(d) >= 4][:12]
             if len(derived) > 1:
                 needles_by_tech[tid] = derived
@@ -175,7 +175,9 @@ def gather_found(case_dir: Path, key: dict[str, Any]) -> dict[str, Any]:
     blob_parts: list[str] = []
     found_fams: set[str] = set()
     for h in hits:
-        found_fams.add(str(h.get("family") or "").lower())
+        fam = str(h.get("family") or "").strip().lower()
+        if fam:
+            found_fams.add(fam)
         blob_parts.append(str(h.get("text") or ""))
         fields = h.get("fields") or {}
         if isinstance(fields, dict):

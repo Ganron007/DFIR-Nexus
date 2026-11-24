@@ -1,11 +1,10 @@
 [project]
 name = "dfir-nexus"
-version = "0.9.0b0"
+version = "1.0.0rc1"
 description = "Unified DFIR investigation platform — AI-assisted, MCP-powered, human-in-the-loop"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
-    { name = "Unallocated Inc" },
     { name = "DFIR-Nexus contributors" },
 ]
 
@@ -95,8 +94,8 @@ all = [
 ]
 
 [project.urls]
-homepage = "https://github.com/Unallocated/DFIR-Nexus"
-documentation = "https://github.com/Unallocated/DFIR-Nexus/tree/main/Docs"
+homepage = "https://github.com/Ganron007/DFIR-Nexus"
+documentation = "https://github.com/Ganron007/DFIR-Nexus/tree/main/Docs"
 
 [project.scripts]
 nexus = "nexus.cli.main:app"

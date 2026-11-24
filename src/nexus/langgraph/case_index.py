@@ -442,7 +442,7 @@ def iter_record_rows(fh, delimiter: str = ",", *, on_fallback=None):
     import tempfile
 
     with contextlib.suppress(OverflowError):  # the CSV parser's platform integer limit
-        csv.field_size_limit(sys.maxsize)
+        csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
     line_no = 0
     record_start = 1
     in_quotes = False

@@ -12,19 +12,25 @@ from nexus.recovery.service import RecoveryService
 
 
 def _resolve_recovery_case_dir(request) -> Path | None:
-    case_id = request.path_params.get("case_id")
-    if not case_id:
-        case_id = request.query_params.get("case_id")
-    if case_id:
-        c_dir = settings.cases_root / case_id
-        if c_dir.is_dir():
-            return c_dir
-    # Fallback to active case
     from nexus.dashboard.app import _get_case_dir
-    active = _get_case_dir(request)
-    if active and (not case_id or active.name == case_id):
-        return active
-    return None
+    from nexus.discipline import validate_case_id
+
+    case_id = str(
+        request.path_params.get("case_id") or request.query_params.get("case_id") or ""
+    ).strip()
+    if case_id:
+        if validate_case_id(case_id):
+            return None
+        root = settings.cases_root.resolve()
+        c_dir = (root / case_id).resolve()
+        if c_dir.parent == root and c_dir.is_dir():
+            return c_dir
+        # Support test/caller overrides only when active case matches validated case_id
+        active = _get_case_dir(request)
+        if active and active.name == case_id and active.is_dir():
+            return active
+        return None
+    return _get_case_dir(request)
 
 
 async def api_case_recovery_summary(request):

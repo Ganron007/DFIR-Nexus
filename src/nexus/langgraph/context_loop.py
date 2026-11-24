@@ -145,6 +145,33 @@ def load_loop_budget(rounds: int = 0) -> LoopBudget:
     return budget
 
 
+def is_schema_parameter_rejection(exc: BaseException) -> bool:
+    """True only when a provider HTTP 400 explicitly rejected ``response_format``/grammar.
+
+    Genuine transport failures (timeouts, sockets, ``RuntimeError`` transport errors)
+    must stay on the ``generation_transport`` branch without free-form retry (D435/D464).
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        resp = getattr(exc, "response", None)
+        status = getattr(resp, "status_code", None)
+    if status != 400 and type(exc).__name__ != "BadRequestError":
+        return False
+    msg = str(exc).lower()
+    return any(
+        cue in msg
+        for cue in (
+            "response_format",
+            "json_schema",
+            "grammar",
+            "xgrammar",
+            "structured output",
+            "rejected the request parameters",
+            "not supported",
+        )
+    )
+
+
 def _call_model(model: Any, messages: list[dict[str, str]], *, response_format=None) -> str:
     try:
         client = model.bind(response_format=response_format) if response_format else model
@@ -1126,17 +1153,7 @@ def run_context_loop(
                                    "detail": f"refused at {refused_tokens} tokens; re-packed and sent again"})
                     continue
                 if getattr(exc, "generation_request_failed", False):
-                    err = str(exc)
-                    if response_format and (
-                        "grammar" in err.lower()
-                        or "schema" in err.lower()
-                        or "not supported" in err.lower()
-                        or "badrequest" in err.lower()
-                        or "rejected" in err.lower()
-                        or "parameter" in err.lower()
-                        or "invalid_request" in err.lower()
-                        or "400" in err
-                    ):
+                    if response_format and is_schema_parameter_rejection(exc):
                         log.warning(
                             "context loop: provider rejected generation schema grammar (%s); falling back to free-form call",
                             exc,

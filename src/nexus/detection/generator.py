@@ -90,26 +90,32 @@ def _detection_for_vulnerability(item: CTIItem) -> str:
 
     # Match on CVE ID in log messages
     for cve in item.cve_ids:
-        conditions.append(f'    Keywords|contains: "{cve}"')
+        conditions.append(f'        Keywords|contains: "{cve}"')
 
     # Match on product names
     for product in item.affected_products:
         product_clean = _sanitize_field_value(product)
-        conditions.append(f'    Product|contains: "{product_clean}"')
+        conditions.append(f'        Product|contains: "{product_clean}"')
 
     # IOC-based conditions
     for ioc in item.iocs[:10]:
         if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ioc):
-            conditions.append(f"    SourceIP: '{ioc}'")
-            conditions.append(f"    DestinationIP: '{ioc}'")
+            conditions.append(f"        SourceIP: '{ioc}'")
+            conditions.append(f"        DestinationIP: '{ioc}'")
 
     if not conditions:
-        conditions.append('    Keywords|contains: "exploit"')
+        conditions.append('        Keywords|contains: "exploit"')
 
-    selection_block = "\n".join(conditions)
-    return f"""    selection:
-{selection_block}
+    if len(conditions) == 1:
+        return f"""    selection:
+{conditions[0].removeprefix("    ")}
     condition: selection"""
+
+    blocks = "\n".join(
+        f"    selection_{idx}:\n{cond}" for idx, cond in enumerate(conditions)
+    )
+    return f"""{blocks}
+    condition: 1 of selection_*"""
 
 
 def _detection_for_technique(item: CTIItem) -> str:

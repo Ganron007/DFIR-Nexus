@@ -45,9 +45,11 @@ _CHALLENGE_TTL = 300  # 5 minutes
 _CHALLENGE_MAX = 1000
 _challenges: dict[str, dict] = {}
 _challenge_lock = threading.Lock()
-_MAX_COMMIT_ATTEMPTS = 3
-_COMMIT_LOCKOUT_SECONDS = 900
-_LOCKOUT_FILE = Path.home() / ".nexus" / ".commit_lockout"
+from nexus import auth as _nexus_auth
+
+_MAX_COMMIT_ATTEMPTS = _nexus_auth._MAX_ATTEMPTS
+_COMMIT_LOCKOUT_SECONDS = _nexus_auth._LOCKOUT_SECONDS
+_LOCKOUT_FILE = _nexus_auth._LOCKOUT_FILE
 
 
 def _replace_with_retry(tmp: str, path: Path) -> None:
@@ -348,8 +350,30 @@ def _mode_route(path: str, handler, methods: list[str]):
     return Route(path, handler, methods=methods)
 
 
+_PIPELINE_RUN_ID_RE = None
+
+
+def _validate_pipeline_run_id(run_id: str) -> str | None:
+    """Validate a pipeline run ID for safe filesystem lookups (P0-3)."""
+    import re
+
+    global _PIPELINE_RUN_ID_RE
+    if _PIPELINE_RUN_ID_RE is None:
+        _PIPELINE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
+    rid = (run_id or "").strip()
+    if not rid or rid in (".", "..") or ".." in rid or not _PIPELINE_RUN_ID_RE.match(rid):
+        return "invalid run_id"
+    return None
+
+
 def _pipeline_run_status_path(case_dir: Path, run_id: str) -> Path:
-    return case_dir / "analysis" / "pipeline_runs" / f"{run_id}.json"
+    if _validate_pipeline_run_id(run_id):
+        raise ValueError(f"invalid run_id: {run_id!r}")
+    runs_dir = (case_dir / "analysis" / "pipeline_runs").resolve()
+    target = (runs_dir / f"{run_id}.json").resolve()
+    if target.parent != runs_dir:
+        raise ValueError(f"run_id escapes pipeline_runs directory: {run_id!r}")
+    return target
 
 
 def _persist_pipeline_run(case_dir: Path, record: dict[str, Any]) -> None:
@@ -411,38 +435,34 @@ def _resolve_examiner(request) -> str:
     return resolve_examiner()
 
 
+def _lockout_target() -> Path:
+    return _LOCKOUT_FILE
+
+
 def _commit_failure_count(examiner: str) -> int:
-    if not _LOCKOUT_FILE.exists():
-        return 0
-    try:
-        data = json.loads(_LOCKOUT_FILE.read_text())
-        recent = [t for t in data.get(examiner, []) if time.time() - t < _COMMIT_LOCKOUT_SECONDS]
-        return len(recent)
-    except (OSError, json.JSONDecodeError):
-        return 0
+    from nexus.auth import failure_count
+
+    return failure_count(
+        examiner,
+        lockout_file=_lockout_target(),
+        window_seconds=_COMMIT_LOCKOUT_SECONDS,
+    )
 
 
 def _record_commit_failure(examiner: str) -> None:
-    data = {}
-    if _LOCKOUT_FILE.exists():
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            data = json.loads(_LOCKOUT_FILE.read_text())
-    failures = data.get(examiner, [])
-    failures.append(time.time())
-    data[examiner] = failures
-    _LOCKOUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _LOCKOUT_FILE.write_text(json.dumps(data))
+    from nexus.auth import record_failure
+
+    record_failure(
+        examiner,
+        lockout_file=_lockout_target(),
+        window_seconds=_COMMIT_LOCKOUT_SECONDS,
+    )
 
 
 def _clear_commit_failures(examiner: str) -> None:
-    if not _LOCKOUT_FILE.exists():
-        return
-    try:
-        data = json.loads(_LOCKOUT_FILE.read_text())
-        data.pop(examiner, None)
-        _LOCKOUT_FILE.write_text(json.dumps(data))
-    except (OSError, json.JSONDecodeError):
-        pass
+    from nexus.auth import clear_failures
+
+    clear_failures(examiner, lockout_file=_lockout_target())
 
 
 def _check_commit_lockout(examiner: str) -> str | None:
@@ -3945,6 +3965,9 @@ async def api_case_seal(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    blocked = _lane_gate_error(case_dir)
+    if blocked:
+        return blocked
     try:
         body = await request.json()
     except Exception:
@@ -3958,12 +3981,18 @@ async def api_case_seal(request):
             status_code=400,
         )
 
-    examiner = str(body.get("examiner") or "") or _resolve_examiner(request)
+    from nexus.audit import normalize_examiner
+
+    resolved_examiner = _resolve_examiner(request)
+    raw_examiner = str(body.get("examiner") or "")
+    examiner = normalize_examiner(raw_examiner) if raw_examiner.strip() else resolved_examiner
     if not examiner:
         return JSONResponse({"error": "No examiner identity"}, status_code=401)
-    blocked = _lane_gate_error(case_dir)
-    if blocked:
-        return blocked
+    if resolved_examiner and examiner != resolved_examiner:
+        return JSONResponse({"error": "Challenge/examiner mismatch"}, status_code=401)
+    lockout_msg = _check_commit_lockout(examiner)
+    if lockout_msg:
+        return JSONResponse({"error": lockout_msg}, status_code=429)
 
     # Validate the challenge (same flow as post_commit)
     import hashlib
@@ -3976,17 +4005,29 @@ async def api_case_seal(request):
         return JSONResponse({"error": "Invalid or expired challenge"}, status_code=401)
     if _time.time() - challenge["created_at"] > _CHALLENGE_TTL:
         return JSONResponse({"error": "Challenge expired"}, status_code=401)
-    if challenge["examiner"] != examiner:
+    if normalize_examiner(str(challenge.get("examiner") or "")) != examiner:
         return JSONResponse({"error": "Challenge/examiner mismatch"}, status_code=401)
 
     entry = _load_password_entry(examiner)
     if not entry:
         return JSONResponse({"error": "No password configured"}, status_code=403)
 
-    stored_hash_bytes = bytes.fromhex(entry.get("hash", ""))
+    stored_hash_hex = entry.get("hash", "")
+    try:
+        stored_hash_bytes = bytes.fromhex(stored_hash_hex)
+    except ValueError:
+        return JSONResponse({"error": "Corrupted password entry"}, status_code=500)
     expected = hmac_mod.new(stored_hash_bytes, challenge["nonce"].encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac_mod.compare_digest(expected, response_hmac):
-        return JSONResponse({"error": "Challenge response mismatch"}, status_code=401)
+        _record_commit_failure(examiner)
+        remaining = _MAX_COMMIT_ATTEMPTS - _commit_failure_count(examiner)
+        if remaining <= 0:
+            msg = f"Too many failed attempts. Locked for {_COMMIT_LOCKOUT_SECONDS // 60} minutes."
+        else:
+            msg = f"Incorrect password. {remaining} attempt(s) remaining."
+        return JSONResponse({"error": msg}, status_code=401)
+
+    _clear_commit_failures(examiner)
 
     # Challenge proved the examiner knows the password. Derive the
     # signing key from the stored hash (same as per-finding approval).
@@ -4687,12 +4728,16 @@ async def api_pipeline_status(request):
     (or still-running) record for the case is used — that is how the UI
     re-attaches to an in-flight run after a page reload.
     """
-    run_id = request.query_params.get("run_id") or ""
+    run_id = (request.query_params.get("run_id") or "").strip()
+    if run_id and _validate_pipeline_run_id(run_id):
+        return JSONResponse({"error": "invalid run_id"}, status_code=400)
     case_dir = _get_case_dir(request)
     if not run_id:
         run_id = _latest_pipeline_run_id(case_dir)
     if not run_id:
         return JSONResponse({"error": "run_id not found"}, status_code=404)
+    if _validate_pipeline_run_id(run_id):
+        return JSONResponse({"error": "invalid run_id"}, status_code=400)
 
     record = _pipeline_runs.get(run_id)
 
@@ -4763,8 +4808,11 @@ async def api_pipeline_status(request):
     # WP 4j.13: live pipeline stage feed — every graph node announces
     # running/done/error to analysis/pipeline_runs/<run_id>.progress.jsonl.
     if case_dir is not None:
-        stage_path = case_dir / "analysis" / "pipeline_runs" / f"{run_id}.progress.jsonl"
-        if stage_path.is_file():
+        try:
+            stage_path = _pipeline_run_status_path(case_dir, run_id).with_suffix(".progress.jsonl")
+        except ValueError:
+            stage_path = None
+        if stage_path is not None and stage_path.is_file():
             try:
                 entries: list[dict[str, Any]] = []
                 for line in stage_path.read_text(encoding="utf-8").splitlines():

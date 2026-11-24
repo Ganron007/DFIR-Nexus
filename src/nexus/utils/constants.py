@@ -62,6 +62,9 @@ ENV_PORTAL_SESSION_TTL = "NEXUS_PORTAL_SESSION_TTL"
 
 DEFAULT_PORTAL_SESSION_TTL = 8 * 3600
 
+ENV_TRUSTED_PROXIES = "NEXUS_TRUSTED_PROXIES"
+"""Comma-separated trusted proxy IPs/CIDRs allowed to supply X-Forwarded-For."""
+
 
 # ============================================================================
 # Push ingest

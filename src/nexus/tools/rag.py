@@ -475,26 +475,46 @@ def _download_asset(url: str, dest: Path) -> None:
         print()
 
 
-def _verify_checksums(temp_dir: Path) -> bool:
+def _verify_checksums(
+    temp_dir: Path,
+    required_files: tuple[str, ...] = ("rag-index.tar.zst",),
+) -> bool:
+    """Fail-closed SHA-256 verification of downloaded RAG assets."""
     checksum_file = temp_dir / "rag-checksums.sha256"
     if not checksum_file.is_file():
-        return True
+        print("  FAILED: rag-checksums.sha256 missing")
+        return False
+    root = temp_dir.resolve()
+    verified: set[str] = set()
     ok = True
-    for line in checksum_file.read_text().strip().splitlines():
+    for line in checksum_file.read_text(encoding="utf-8", errors="replace").strip().splitlines():
         parts = line.split()
         if len(parts) < 2:
             continue
-        expected = parts[0]
-        fname = parts[1]
-        fpath = temp_dir / fname
-        if not fpath.is_file():
+        expected = parts[0].strip().lower()
+        fname = parts[1].strip().lstrip("*")
+        if not fname or Path(fname).name != fname or ".." in fname:
+            print(f"  FAILED: invalid checksum filename {fname!r}")
+            return False
+        fpath = (root / fname).resolve()
+        if fpath.parent != root or not fpath.is_file():
+            print(f"  FAILED: missing target {fname}")
+            ok = False
             continue
         actual = hashlib.sha256(fpath.read_bytes()).hexdigest()
         if actual == expected:
             print(f"  OK: {fname}")
+            verified.add(fname)
         else:
             print(f"  FAILED: {fname}")
             ok = False
+    if not verified:
+        print("  FAILED: checksum manifest contained no verified entries")
+        return False
+    for req in required_files:
+        if req not in verified:
+            print(f"  FAILED: required asset {req} missing checksum entry")
+            return False
     return ok
 
 

@@ -245,9 +245,8 @@ def validate_query(body: Any, depth: int = 0) -> None:
         values = value.get("values") if isinstance(value, dict) else None
         if not isinstance(values, list) or len(values) > query_contract.MAX_IDS:
             raise ESQueryError("ids requires values (max 1000)")
-    elif key == "match_all" or key == "match_none":
-        if value not in ({}, None):
-            raise ESQueryError(f"{key} takes an empty object")
+    elif key in ("match_all", "match_none") and value not in ({}, None):
+        raise ESQueryError(f"{key} takes an empty object")
 
 
 # ----- P1 failed-term honesty: refs are validated against the live mapping -----

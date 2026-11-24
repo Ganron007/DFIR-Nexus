@@ -187,6 +187,14 @@ export default function SteerChat() {
   const sendText = useCallback(
     async (text: string) => {
       if (!text.trim() || loading) return;
+      if (!modeKnown || mode !== "mode1") {
+        setError(
+          modeKnown
+            ? "Steer Chat only accepts questions on Mode 1 cases. Open Agent Run for Modes 2 and 3."
+            : "Wait for the case mode to finish loading before sending a question.",
+        );
+        return;
+      }
       setLoading(true);
       setError("");
       setLiveStatus("");
@@ -202,7 +210,6 @@ export default function SteerChat() {
       ]);
 
       try {
-        if (mode !== "mode1") return;
         abortControllerRef.current?.abort();
         const controller = new AbortController();
         abortControllerRef.current = controller;
@@ -271,11 +278,11 @@ export default function SteerChat() {
         setLiveStatus("");
       }
     },
-    [load, loading, messages, mode, mode1Iterations],
+    [load, loading, messages, mode, modeKnown, mode1Iterations],
   );
 
   const send = () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !modeKnown || mode !== "mode1") return;
     const text = input;
     setInput("");
     void sendText(text);
@@ -554,16 +561,21 @@ export default function SteerChat() {
                 id={id}
                 placeholder="e.g. what ran on WS01 between 03:00 and 04:00?"
                 value={input}
-                disabled={loading}
+                disabled={loading || !modeKnown || mode !== "mode1"}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !loading) send();
+                  if (event.key === "Enter" && !loading && modeKnown && mode === "mode1") send();
                 }}
               />
             )}
           </Field>
         </div>
-        <Button variant="primary" onClick={send} disabled={loading} data-testid="send">
+        <Button
+          variant="primary"
+          onClick={send}
+          disabled={loading || !modeKnown || mode !== "mode1"}
+          data-testid="send"
+        >
           {loading ? "Working…" : "Send"}
         </Button>
       </div>

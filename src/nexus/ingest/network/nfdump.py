@@ -163,13 +163,7 @@ class NfdumpImporter(Importer):
 
     def _row_to_artifact(self, row: dict[str, str]) -> Artifact:
         raw_ts = row.get("ts") or row.get("t_first") or row.get("first")
-        ts, _real = self.resolve_timestamp(raw_ts)
-        ts_synthesized = _real is False
-        if ts is None:
-            from datetime import UTC, datetime
-
-            ts = datetime.now(UTC)
-            ts_synthesized = True
+        ts, ts_synthesized = self.resolve_timestamp(raw_ts)
         src_ip = row.get("sa") or row.get("srcaddr") or row.get("src_ip") or ""
         dst_ip = row.get("da") or row.get("dstaddr") or row.get("dst_ip") or ""
         src_port = _safe_int(row.get("sp") or row.get("srcport") or "")

@@ -143,9 +143,9 @@ class DetectionIndexer:
             if m:
                 tid = m.group(1).upper()
                 techniques.append(tid)
-            # Match attack.<tactic_name>
-            tactic_name = re.match(r"attack\.([a-z_]+)$", tag_lower)
-            if tactic_name:
+            # Match attack.<tactic_name> (normalizing hyphens/spaces to underscores)
+            tactic_name = re.match(r"attack\.([a-z0-9_-]+)$", tag_lower)
+            if tactic_name and not m:
                 _TACTIC_NAME_TO_ID = {
                     "initial_access": "TA0001", "execution": "TA0002",
                     "persistence": "TA0003", "privilege_escalation": "TA0004",
@@ -155,7 +155,7 @@ class DetectionIndexer:
                     "exfiltration": "TA0010", "impact": "TA0040",
                     "reconnaissance": "TA0043", "resource_development": "TA0042",
                 }
-                name = tactic_name.group(1)
+                name = re.sub(r"[-\s]+", "_", tactic_name.group(1))
                 tactic_id = _TACTIC_NAME_TO_ID.get(name)
                 if tactic_id:
                     tactics.append(tactic_id)

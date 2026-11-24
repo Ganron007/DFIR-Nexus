@@ -6,6 +6,9 @@ services:
       - "4508:4508"
     environment:
       - NEXUS_EXAMINER=dfir-nexus
+      - NEXUS_AUDIT_SECRET=${NEXUS_AUDIT_SECRET:?Set NEXUS_AUDIT_SECRET in environment or .env}
+      - NEXUS_PORTAL_PASSWORD=${NEXUS_PORTAL_PASSWORD:?Set NEXUS_PORTAL_PASSWORD in environment or .env}
+      - NEXUS_BEARER_TOKEN=${NEXUS_BEARER_TOKEN:?Set NEXUS_BEARER_TOKEN in environment or .env}
     volumes:
       - nexus-data:/root/.nexus
       - ./evidence:/evidence:ro

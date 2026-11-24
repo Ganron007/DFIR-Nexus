@@ -24,7 +24,7 @@ T22 = json.loads((FIXTURES / "memprocfs_t22_rows.json").read_text(encoding="utf-
 
 def _evtxecmd_rows() -> list[dict]:
     """Every verbatim EvtxECmd row the repository holds (public samples and CASE-C5B04D31's index)."""
-    csv.field_size_limit(sys.maxsize)
+    csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
     with (FIXTURES / "cs1b_evtx_real_rows.csv").open(encoding="utf-8", errors="replace", newline="") as fh:
         rows = list(csv.DictReader(fh))
     rows += list(json.loads((FIXTURES / "winrm_taskscheduler_rows.json").read_text(encoding="utf-8")).values())

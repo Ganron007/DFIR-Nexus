@@ -512,15 +512,19 @@ async def _call_plan(model: Any, messages: list[dict[str, str]], response_format
         return await _call_model(model, messages)
     import asyncio
 
-    from nexus.langgraph.context_loop import _call_model as call_bound
+    from nexus.langgraph.context_loop import (
+        _call_model as call_bound,
+    )
+    from nexus.langgraph.context_loop import (
+        is_schema_parameter_rejection,
+    )
 
     try:
         return await asyncio.to_thread(call_bound, model, messages, response_format=response_format)
     except Exception as exc:
         text = getattr(exc, "model_response_text", None)
         if text is None:
-            err = str(exc)
-            if getattr(exc, "generation_request_failed", False) and ("grammar" in err.lower() or "schema" in err.lower() or "not supported" in err.lower() or "badrequest" in err.lower()):
+            if getattr(exc, "generation_request_failed", False) and is_schema_parameter_rejection(exc):
                 log.warning("Provider rejected generation schema grammar (%s); falling back to free-form plan call", exc)
                 return await _call_model(model, messages)
             raise

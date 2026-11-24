@@ -174,23 +174,27 @@ def restore(
 
     typer.echo(f"  Restored {restored} files to {target}")
 
-    # Register in canonical DB
+    # Reconcile canonical SQLite tables before activating (P1-12)
     try:
-        from nexus.case_manager import get_case_manager
-        mgr = get_case_manager()
-        mgr.register_case(case_id, target, name=f"Restored: {case_id}")
+        from nexus.case.compat import LegacyJsonImporter, get_sqlite_manager
+
+        db_override = (target.parent / "cases.db") if cases_root else None
+        sql_mgr = get_sqlite_manager(db_override)
+        try:
+            imported = LegacyJsonImporter(sql_mgr).import_case(target)
+            if imported is None:
+                raise RuntimeError(f"canonical DB reconciliation returned None for {target}")
+        finally:
+            sql_mgr.close()
     except Exception as exc:
-        typer.echo(f"  Note: canonical case DB registration: {exc}")
+        typer.echo(f"Restore failed during canonical case DB reconciliation: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
     if not no_activate:
-        try:
-            from nexus.config import set_active_case
-            set_active_case(case_id)
-        except Exception:
-            active_file = settings.active_case_file
-            active_file.parent.mkdir(parents=True, exist_ok=True)
-            active_file.write_text(str(target), encoding="utf-8")
-        typer.echo(f"  Active case set to: {target}")
+        from nexus.cli.case_cmd import _set_active_case
+
+        _set_active_case(case_id)
+        typer.echo(f"  Active case set to: {case_id}")
 
 
 @app.command()

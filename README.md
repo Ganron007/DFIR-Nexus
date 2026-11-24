@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Release-v1.0.0--RC-success.svg" alt="Release: v1.0.0-RC">
-  <img src="https://img.shields.io/badge/Python%20Tests-2359%20passed-blue.svg" alt="Python Tests: 2359 passed / 8 skipped">
+  <img src="https://img.shields.io/badge/Python%20Tests-4602%20passed-blue.svg" alt="Python Tests: 4602 passed / 46 skipped">
   <img src="https://img.shields.io/badge/UI%20Tests-222%20Vitest%20passed-blue.svg" alt="UI Tests: 222 passed">
   <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-purple.svg" alt="MCP Tools: 128 Win | 125 Linux">
   <img src="https://img.shields.io/badge/Architecture-Offline--First-orange.svg" alt="Architecture: Offline-First">
@@ -123,7 +123,7 @@ DFIR-Nexus implements a dual-layer storage model separating forensic provenance 
 
 ## Examiner Cockpit (Web UI)
 
-DFIR-Nexus features a modern, responsive **Examiner Cockpit** built with React, Vite, and Tailwind CSS, served locally via `nexus serve --http` at `http://127.0.0.1:4508`:
+DFIR-Nexus features a modern, responsive **Examiner Cockpit** built with React, Vite, Radix UI, and modular CSS design tokens, served locally via `nexus serve --http` at `http://127.0.0.1:4508`:
 
 <p align="center">
   <img src="assets/dfir-nexus-ui.png" alt="DFIR-Nexus Examiner Cockpit & Investigation Spine UI" width="950">
@@ -214,8 +214,8 @@ DFIR-Nexus bundles and orchestrates **128 Windows and 125 Linux MCP tools**:
 The DFIR-Nexus platform adheres to strict software and forensic engineering disciplines:
 
 ```
-[✓] Hermetic Test Suite:    2,359 Python tests passed (0 failed, 8 skipped)
-[✓] Frontend Test Suite:    222 Vitest unit & journey tests passed (38 files)
+[✓] Hermetic Test Suite:    4,602 Python tests passed (0 failed, 46 skipped)
+[✓] Frontend Test Suite:    224 Vitest unit & journey tests passed (42 files)
 [✓] E2E Journeys:           7/7 full-cycle integration steps verified
 [✓] Accessibility:          11/11 WCAG 2.1 AA a11y & visual tests verified
 [✓] Style Budget:           Zero CSS token leaks or raw color violations
@@ -228,7 +228,7 @@ Run tests locally:
 pytest
 
 # Run frontend Vitest suite
-cd frontend && npm run test:unit
+cd frontend && npm test -- --run
 
 # Run full functional audit
 python tests/functional_audit.py
@@ -245,7 +245,7 @@ Detailed operational guides and architectural specifications are located in [`Do
 * ⚙️ **[Docs/SETUP.md](Docs/SETUP.md):** Environment variables, Elasticsearch authentication, and VM topology.
 * 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** Deep architectural blueprints, trust boundaries, and tool index.
 * 💻 **[Docs/CLI.md](Docs/CLI.md):** Exhaustive command-line interface reference.
-* ⚖️ **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** Forensic discipline rules (FD-001 to FD-007) and provenance scoring.
+* ⚖️ **[rules.yaml](src/nexus/data/knowledge/discipline/rules.yaml):** Authoritative forensic discipline rules (`FD-001` to `FD-007`) and provenance scoring.
 * ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Frequently asked questions and troubleshooting.
 
 ---

@@ -195,9 +195,18 @@ class SshTransport:
         self._ssh = _which("ssh")
         self._scp = _which("scp")
 
+    def _ssh_host_key_options(self) -> list[str]:
+        accept_new = os.environ.get("NEXUS_SSH_ACCEPT_NEW", "").strip() == "1"
+        mode = "accept-new" if accept_new else "yes"
+        opts = ["-o", "BatchMode=yes", "-o", f"StrictHostKeyChecking={mode}"]
+        known_hosts = os.environ.get("NEXUS_SSH_KNOWN_HOSTS", "").strip()
+        if known_hosts:
+            opts.extend(["-o", f"UserKnownHostsFile={known_hosts}"])
+        return opts
+
     def _base_ssh(self) -> list[str]:
         auth = self.spec.auth
-        argv = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+        argv = ["ssh", *self._ssh_host_key_options()]
         if auth.has_key():
             argv.extend(["-i", str(Path(auth.identity))])
         port = auth.port or 22
@@ -310,7 +319,7 @@ class SshTransport:
 
     def _scp_argv(self) -> list[str]:
         auth = self.spec.auth
-        argv = ["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+        argv = ["scp", *self._ssh_host_key_options()]
         if auth.has_key():
             argv.extend(["-i", str(Path(auth.identity))])
         port = auth.port or 22
@@ -318,9 +327,37 @@ class SshTransport:
             argv.extend(["-P", str(port)])
         return argv
 
+    def _paramiko_connect(self, timeout: int):
+        import paramiko
+
+        password = password_from_env(self.spec.auth)
+        if not password:
+            raise ValueError(f"set {self.spec.auth.password_env} for password SSH")
+        client = paramiko.SSHClient()
+        client.load_system_host_keys()
+        known_hosts = os.environ.get("NEXUS_SSH_KNOWN_HOSTS", "").strip()
+        if known_hosts and Path(known_hosts).is_file():
+            client.load_host_keys(known_hosts)
+        elif (Path.home() / ".ssh" / "known_hosts").is_file():
+            client.load_host_keys(str(Path.home() / ".ssh" / "known_hosts"))
+        if os.environ.get("NEXUS_SSH_ACCEPT_NEW", "").strip() == "1":
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        else:
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        client.connect(
+            self.spec.address,
+            port=self.spec.auth.port or 22,
+            username=self.spec.auth.user,
+            password=password,
+            timeout=min(timeout, 60),
+            allow_agent=False,
+            look_for_keys=False,
+        )
+        return client
+
     def _paramiko_run(self, remote_command: str, timeout: int) -> ExecResult:
         try:
-            import paramiko
+            import paramiko  # noqa: F401
         except ImportError:
             return ExecResult(
                 2,
@@ -328,21 +365,13 @@ class SshTransport:
                 "Password SSH needs the optional 'paramiko' package, or use --identity. "
                 "pip install paramiko",
             )
-        password = password_from_env(self.spec.auth)
-        if not password:
-            return ExecResult(2, "", f"set {self.spec.auth.password_env} for password SSH")
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            client.connect(
-                self.spec.address,
-                port=self.spec.auth.port or 22,
-                username=self.spec.auth.user,
-                password=password,
-                timeout=min(timeout, 60),
-                allow_agent=False,
-                look_for_keys=False,
-            )
+            client = self._paramiko_connect(timeout)
+        except ValueError as exc:
+            return ExecResult(2, "", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ExecResult(1, "", str(exc))
+        try:
             _stdin, stdout, stderr = client.exec_command(remote_command, timeout=timeout)
             out = stdout.read().decode("utf-8", errors="replace")
             err = stderr.read().decode("utf-8", errors="replace")
@@ -355,46 +384,52 @@ class SshTransport:
 
     def _paramiko_put(self, local: Path, remote: str, timeout: int, *, tree: bool) -> ExecResult:
         try:
-            import paramiko
+            import paramiko  # noqa: F401
         except ImportError:
             return ExecResult(2, "", "paramiko required for password SSH file copy")
-        password = password_from_env(self.spec.auth)
-        if not password:
-            return ExecResult(2, "", f"set {self.spec.auth.password_env}")
         try:
-            t = paramiko.Transport((self.spec.address, self.spec.auth.port or 22))
-            t.connect(username=self.spec.auth.user, password=password)
-            sftp = paramiko.SFTPClient.from_transport(t)
-            assert sftp is not None
-            if tree:
-                _sftp_put_tree(sftp, local, remote)
-            else:
-                sftp.put(str(local), remote)
-            sftp.close()
-            t.close()
+            client = self._paramiko_connect(timeout)
+        except ValueError as exc:
+            return ExecResult(2, "", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ExecResult(1, "", str(exc))
+        try:
+            sftp = client.open_sftp()
+            try:
+                if tree:
+                    _sftp_put_tree(sftp, local, remote)
+                else:
+                    sftp.put(str(local), remote)
+            finally:
+                sftp.close()
             return ExecResult(0, remote, "")
         except Exception as exc:  # noqa: BLE001
             return ExecResult(1, "", str(exc))
+        finally:
+            client.close()
 
     def _paramiko_get(self, remote: str, local: Path, timeout: int) -> ExecResult:
         try:
-            import paramiko
+            import paramiko  # noqa: F401
         except ImportError:
             return ExecResult(2, "", "paramiko required for password SSH file copy")
-        password = password_from_env(self.spec.auth)
-        if not password:
-            return ExecResult(2, "", f"set {self.spec.auth.password_env}")
         try:
-            t = paramiko.Transport((self.spec.address, self.spec.auth.port or 22))
-            t.connect(username=self.spec.auth.user, password=password)
-            sftp = paramiko.SFTPClient.from_transport(t)
-            assert sftp is not None
-            _sftp_get_tree(sftp, remote, local)
-            sftp.close()
-            t.close()
+            client = self._paramiko_connect(timeout)
+        except ValueError as exc:
+            return ExecResult(2, "", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ExecResult(1, "", str(exc))
+        try:
+            sftp = client.open_sftp()
+            try:
+                _sftp_get_tree(sftp, remote, local)
+            finally:
+                sftp.close()
             return ExecResult(0, str(local), "")
         except Exception as exc:  # noqa: BLE001
             return ExecResult(1, "", str(exc))
+        finally:
+            client.close()
 
 
 def _sftp_put_tree(sftp, local: Path, remote: str) -> None:
@@ -503,18 +538,36 @@ class WinRmTransport:
         )
 
     def _pywinrm_run(self, remote_command: str, timeout: int) -> ExecResult:
+        import logging
+
         import winrm  # type: ignore
 
         password = password_from_env(self.spec.auth)
         if not password:
             return ExecResult(2, "", f"set {self.spec.auth.password_env} for WinRM")
         user = self.spec.auth.user
-        endpoint = f"http://{self.spec.address}:{self.spec.auth.port or 5985}/wsman"
-        try:
-            s = winrm.Session(endpoint, auth=(user, password), transport="ntlm")
-            r = s.run_cmd(remote_command) if not remote_command.lower().startswith("powershell") else s.run_ps(
-                remote_command
+        use_https = (
+            self.spec.auth.port == 5986
+            or os.environ.get("NEXUS_WINRM_HTTPS", "").strip() == "1"
+        )
+        scheme = "https" if use_https else "http"
+        port = self.spec.auth.port or (5986 if use_https else 5985)
+        endpoint = f"{scheme}://{self.spec.address}:{port}/wsman"
+        session_kwargs: dict[str, object] = {"auth": (user, password), "transport": "ntlm"}
+        if use_https:
+            session_kwargs["server_cert_validation"] = "validate"
+            ca_bundle = os.environ.get("NEXUS_WINRM_CA_BUNDLE", "").strip()
+            if ca_bundle:
+                session_kwargs["ca_trust_path"] = ca_bundle
+        else:
+            logging.getLogger(__name__).warning(
+                "WinRM connecting over plaintext HTTP (%s) — configure port 5986 or NEXUS_WINRM_HTTPS=1 for TLS",
+                endpoint,
             )
+        try:
+            s = winrm.Session(endpoint, **session_kwargs)
+            # Remote collection commands assume a PowerShell shell (matching _ps_invoke).
+            r = s.run_ps(remote_command)
             out = (r.std_out or b"").decode("utf-8", errors="replace")
             err = (r.std_err or b"").decode("utf-8", errors="replace")
             return ExecResult(int(r.status_code), out, err)

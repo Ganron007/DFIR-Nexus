@@ -702,7 +702,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                   result_summary={"status": "downloading"})
 
         db_dir = _get_db_path()
-        success = download_databases(str(db_dir))
+        success = download_databases(str(db_dir), tag=tag)
         if success:
             return {"status": "success", "database_path": str(db_dir)}
         return {"status": "failed", "message": "Download failed. Check network and retry."}

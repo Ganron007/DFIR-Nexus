@@ -83,7 +83,7 @@ def run_sysinternals(
                     (result.stderr or result.stdout)[:4000], encoding="utf-8"
                 )
                 errors.append(name)
-            elif result.stdout and dest.stat().st_size == 0:
+            elif result.stdout and (not dest.exists() or dest.stat().st_size == 0):
                 dest.write_text(result.stdout, encoding="utf-8")
         status = "ok" if len(errors) < len(present) else "failed"
         return CollectorStep(

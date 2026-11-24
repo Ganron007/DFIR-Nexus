@@ -161,6 +161,26 @@ describe("Steer Chat (migrated)", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("transcript unavailable"),
     );
   });
+
+  it("disables the composer while case mode is unresolved instead of accepting blind Mode 1 input", async () => {
+    withCase("CASE-ST0010", "");
+    stubReads([]);
+    renderPage(<SteerChat />);
+    const input = await screen.findByLabelText("Ask about the evidence");
+    const sendButton = await screen.findByTestId("send");
+    expect(input).toBeDisabled();
+    expect(sendButton).toBeDisabled();
+  });
+
+  it("blocks Mode 3 cases cleanly with link to Agent Run", async () => {
+    withCase("CASE-ST0011", "3");
+    stubReads([]);
+    renderPage(<SteerChat />);
+    await waitFor(() =>
+      expect(screen.getByText(/Mode 3 \(multi-agent\)/)).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("send")).not.toBeInTheDocument();
+  });
 });
 
 describe("dslToExplore", () => {

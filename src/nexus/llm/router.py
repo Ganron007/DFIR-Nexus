@@ -202,41 +202,89 @@ class LLMRouter:
         prov = self.get_provider(provider)
         from nexus.llm.egress import (
             _active_case_dir,
+            _call_scope,
             anonymize_text,
             egress_required,
             restore_text,
             restore_tool_calls,
         )
 
-        case_dir = None
-        if egress_required(getattr(prov, "base_url", "") or ""):
-            case_dir = _active_case_dir()
-        if case_dir is not None:
-            scrubbed: list[dict[str, Any]] = []
-            for message in msg_dicts:
-                content = message.get("content")
-                if isinstance(content, str):
-                    message = {**message, "content": anonymize_text(content, case_dir)}
-                scrubbed.append(message)
-            msg_dicts = scrubbed
+        needs_egress = egress_required(getattr(prov, "base_url", "") or "")
+        case_dir = _active_case_dir() if needs_egress else None
+        with _call_scope(case_dir):
+            if needs_egress:
+                scrubbed: list[dict[str, Any]] = []
+                for message in msg_dicts:
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        message = {**message, "content": anonymize_text(content, case_dir)}
+                    scrubbed.append(message)
+                msg_dicts = scrubbed
 
-        from nexus.analysis.llm_journal import record_llm_invocation
+            from nexus.analysis.llm_journal import record_llm_invocation
 
-        start_t = time.perf_counter()
-        correlation_id = str(uuid.uuid4())
-        prompt_full = "\n".join(str(m.get("content", "")) for m in msg_dicts)
-        model_name = model or getattr(prov, "default_model", "") or prov.name
+            start_t = time.perf_counter()
+            correlation_id = str(uuid.uuid4())
+            prompt_full = "\n".join(str(m.get("content", "")) for m in msg_dicts)
+            model_name = model or getattr(prov, "default_model", "") or prov.name
 
-        try:
-            raw = await prov.chat(
-                messages=msg_dicts,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                tools=tools,
-                tool_choice=tool_choice,
-            )
-        except (ProviderAuthError, ProviderRateLimitError) as exc:
+            try:
+                raw = await prov.chat(
+                    messages=msg_dicts,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                )
+            except (ProviderAuthError, ProviderRateLimitError) as exc:
+                record_llm_invocation(
+                    case_dir,
+                    correlation_id=correlation_id,
+                    provider=prov.name,
+                    model=model_name,
+                    latency_ms=(time.perf_counter() - start_t) * 1000,
+                    prompt=prompt_full,
+                    response="",
+                    finish_reason="error",
+                    status="failed",
+                    error=f"{type(exc).__name__}: {exc}"[:300],
+                )
+                # Let auth/rate-limit errors propagate
+                raise
+            except ProviderResponseError as e:
+                record_llm_invocation(
+                    case_dir,
+                    correlation_id=correlation_id,
+                    provider=prov.name,
+                    model=model_name,
+                    latency_ms=(time.perf_counter() - start_t) * 1000,
+                    prompt=prompt_full,
+                    response="",
+                    finish_reason="error",
+                    status="failed",
+                    error=f"Provider '{prov.name}' failed: {e}"[:300],
+                )
+                raise LLMRouterError(
+                    f"Provider '{prov.name}' failed: {e}"
+                ) from e
+            except Exception as exc:
+                record_llm_invocation(
+                    case_dir,
+                    correlation_id=correlation_id,
+                    provider=prov.name,
+                    model=model_name,
+                    latency_ms=(time.perf_counter() - start_t) * 1000,
+                    prompt=prompt_full,
+                    response="",
+                    finish_reason="error",
+                    status="failed",
+                    error=f"{type(exc).__name__}: {exc}"[:300],
+                )
+                raise
+
+            response = ChatResponse.from_provider_response(raw)
+            tool_names = [tc.name for tc in response.tool_calls] if response.tool_calls else []
             record_llm_invocation(
                 case_dir,
                 correlation_id=correlation_id,
@@ -244,62 +292,15 @@ class LLMRouter:
                 model=model_name,
                 latency_ms=(time.perf_counter() - start_t) * 1000,
                 prompt=prompt_full,
-                response="",
-                finish_reason="error",
-                status="failed",
-                error=f"{type(exc).__name__}: {exc}"[:300],
+                response=response.content or "",
+                finish_reason="tool_calls" if tool_names else "stop",
+                status="completed",
+                tool_calls=tool_names,
             )
-            # Let auth/rate-limit errors propagate
-            raise
-        except ProviderResponseError as e:
-            record_llm_invocation(
-                case_dir,
-                correlation_id=correlation_id,
-                provider=prov.name,
-                model=model_name,
-                latency_ms=(time.perf_counter() - start_t) * 1000,
-                prompt=prompt_full,
-                response="",
-                finish_reason="error",
-                status="failed",
-                error=f"Provider '{prov.name}' failed: {e}"[:300],
-            )
-            raise LLMRouterError(
-                f"Provider '{prov.name}' failed: {e}"
-            ) from e
-        except Exception as exc:
-            record_llm_invocation(
-                case_dir,
-                correlation_id=correlation_id,
-                provider=prov.name,
-                model=model_name,
-                latency_ms=(time.perf_counter() - start_t) * 1000,
-                prompt=prompt_full,
-                response="",
-                finish_reason="error",
-                status="failed",
-                error=f"{type(exc).__name__}: {exc}"[:300],
-            )
-            raise
-
-        response = ChatResponse.from_provider_response(raw)
-        tool_names = [tc.name for tc in response.tool_calls] if response.tool_calls else []
-        record_llm_invocation(
-            case_dir,
-            correlation_id=correlation_id,
-            provider=prov.name,
-            model=model_name,
-            latency_ms=(time.perf_counter() - start_t) * 1000,
-            prompt=prompt_full,
-            response=response.content or "",
-            finish_reason="tool_calls" if tool_names else "stop",
-            status="completed",
-            tool_calls=tool_names,
-        )
-        if case_dir is not None:
-            response.content = restore_text(response.content, case_dir)
-            response.tool_calls = restore_tool_calls(response.tool_calls, case_dir)
-        return response
+            if needs_egress:
+                response.content = restore_text(response.content, case_dir)
+                response.tool_calls = restore_tool_calls(response.tool_calls, case_dir)
+            return response
 
     async def close(self) -> None:
         """Close all provider clients."""

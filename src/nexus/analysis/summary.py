@@ -14,6 +14,7 @@ import json
 import logging
 from collections import Counter
 from datetime import UTC, datetime
+from pathlib import Path
 
 from nexus.analysis.schemas import (
     AnalysisResult,
@@ -42,13 +43,14 @@ class SummaryGenerator:
         artifacts: list[Artifact],
         case_id: str = "case",
         force_llm: bool = False,
+        case_dir: Path | str | None = None,
     ) -> ExecutiveSummary:
         """Generate an executive summary for a set of artifacts."""
         # Always start with rule-based for facts
         base = self._rule_based(artifacts, case_id)
         if self.llm_router is not None and (force_llm or len(artifacts) > 0):
             try:
-                return self._llm_enhance(artifacts, base)
+                return self._llm_enhance(artifacts, base, case_dir=case_dir)
             except Exception as e:  # noqa: BLE001
                 log.warning("LLM summary failed: %s — falling back to rule-based", e)
                 return base
@@ -170,8 +172,22 @@ class SummaryGenerator:
             llm_generated=False,
         )
 
+    def _resolve_egress_case_dir(self, case_id: str, case_dir: Path | str | None) -> Path | None:
+        if case_dir is not None:
+            return Path(case_dir)
+        from nexus.config import settings
+        from nexus.discipline import validate_case_id
+
+        if validate_case_id(case_id):
+            return None
+        candidate = settings.cases_root / case_id
+        return candidate if candidate.is_dir() else None
+
     def _llm_enhance(
-        self, artifacts: list[Artifact], base: ExecutiveSummary
+        self,
+        artifacts: list[Artifact],
+        base: ExecutiveSummary,
+        case_dir: Path | str | None = None,
     ) -> ExecutiveSummary:
         """Use the LLM to generate a narrative overview, key_findings, and actions.
 
@@ -199,9 +215,14 @@ class SummaryGenerator:
         ]
         # Use synchronous call (we're in an async context but the LLM router is async)
         import asyncio
+
+        from nexus.llm.egress import egress_case
+
         router = self.llm_router
         assert router is not None  # mypy
-        response = asyncio.run(router.chat(messages=messages, temperature=0.2))
+        bound_case = self._resolve_egress_case_dir(base.case_id, case_dir)
+        with egress_case(bound_case):
+            response = asyncio.run(router.chat(messages=messages, temperature=0.2))
         # Parse JSON from response
         try:
             data = json.loads(response.content)

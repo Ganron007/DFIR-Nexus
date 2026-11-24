@@ -69,26 +69,46 @@ def _download_asset(url: str, dest: Path) -> None:
         print()
 
 
-def _verify_checksums(temp_dir: Path) -> bool:
+def _verify_checksums(
+    temp_dir: Path,
+    required_files: tuple[str, ...] = ("known_good.db.zst", "context.db.zst"),
+) -> bool:
+    """Fail-closed SHA-256 verification of downloaded triage assets."""
     checksum_file = temp_dir / "checksums.sha256"
     if not checksum_file.is_file():
-        return True
+        print("  FAILED: checksums.sha256 missing")
+        return False
+    root = temp_dir.resolve()
+    verified: set[str] = set()
     ok = True
-    for line in checksum_file.read_text().strip().splitlines():
+    for line in checksum_file.read_text(encoding="utf-8", errors="replace").strip().splitlines():
         parts = line.split()
         if len(parts) < 2:
             continue
-        expected = parts[0]
-        fname = parts[1]
-        fpath = temp_dir / fname
-        if not fpath.is_file():
+        expected = parts[0].strip().lower()
+        fname = parts[1].strip().lstrip("*")
+        if not fname or Path(fname).name != fname or ".." in fname:
+            print(f"  FAILED: invalid checksum filename {fname!r}")
+            return False
+        fpath = (root / fname).resolve()
+        if fpath.parent != root or not fpath.is_file():
+            print(f"  FAILED: missing target {fname}")
+            ok = False
             continue
         actual = hashlib.sha256(fpath.read_bytes()).hexdigest()
         if actual == expected:
             print(f"  OK: {fname}")
+            verified.add(fname)
         else:
             print(f"  FAILED: {fname}")
             ok = False
+    if not verified:
+        print("  FAILED: checksum manifest contained no verified entries")
+        return False
+    for req in required_files:
+        if req not in verified:
+            print(f"  FAILED: required asset {req} missing checksum entry")
+            return False
     return ok
 
 
@@ -99,23 +119,30 @@ def _decompress_zst(src: Path, dest: Path) -> None:
         dctx.copy_stream(fin, fout)
 
 
-def download_databases(dest_dir: str | Path) -> bool:
+def download_databases(dest_dir: str | Path, *, tag: str | None = None) -> bool:
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
 
-    print(f"Fetching release info from {_release_repo()}...")
+    pinned_tag = (tag or os.environ.get("NEXUS_TRIAGE_RELEASE_TAG", "") or "latest").strip()
+    print(f"Fetching release info from {_release_repo()} (tag={pinned_tag})...")
     headers = _github_headers()
-    url = f"https://api.github.com/repos/{_release_repo()}/releases?per_page=100"
-    req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            releases = json.loads(resp.read())
-        matching = [r for r in releases if r["tag_name"].startswith("triage-db-")
-                    and any(a["name"].endswith(".db.zst") for a in r.get("assets", []))]
-        if not matching:
-            print("No triage database releases found")
-            return False
-        release = matching[0]
+        if pinned_tag and pinned_tag != "latest":
+            url = f"https://api.github.com/repos/{_release_repo()}/releases/tags/{pinned_tag}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                release = json.loads(resp.read())
+        else:
+            url = f"https://api.github.com/repos/{_release_repo()}/releases?per_page=100"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                releases = json.loads(resp.read())
+            matching = [r for r in releases if r["tag_name"].startswith("triage-db-")
+                        and any(a["name"].endswith(".db.zst") for a in r.get("assets", []))]
+            if not matching:
+                print("No triage database releases found")
+                return False
+            release = matching[0]
     except Exception as e:
         print(f"Failed to fetch release: {e}")
         return False
