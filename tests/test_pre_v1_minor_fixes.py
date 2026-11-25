@@ -118,3 +118,19 @@ def test_ci_scripts_redirect_audit_secret_for_clean_home(tmp_path):
         text = (root / rel).read_text(encoding="utf-8")
         assert 'NEXUS_AUDIT_SECRET' in text
         assert '_PERSISTED_SECRET_PATH' in text
+
+
+def test_case_pipeline_refusal_handles_windows_and_posix_paths(tmp_path):
+    """case_pipeline_refusal handles POSIX /... tokens alongside Windows /Switch:C:\\... paths."""
+    from nexus.tools.windows import case_pipeline_refusal
+
+    bound_dir = tmp_path / "evidence"
+    bound_dir.mkdir()
+    sample = bound_dir / "Security.evtx"
+    sample.write_bytes(b"ElfFile")
+    win_switch_with_path = f"/LogFileFile:{sample}"
+
+    assert case_pipeline_refusal("logfileparser", ["logfileparser", win_switch_with_path], [bound_dir]) is None
+    assert case_pipeline_refusal("evtxecmd", ["evtxecmd", f"--file={sample}"], [bound_dir]) is None
+    assert case_pipeline_refusal("evtxecmd", ["evtxecmd", "-f", "/etc/passwd"], [bound_dir]) is not None
+    assert case_pipeline_refusal("cmd", ["cmd", "/c", "del", "x"], [bound_dir]) is not None

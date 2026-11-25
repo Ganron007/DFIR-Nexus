@@ -178,6 +178,9 @@ def test_every_evtx_event_data_name_is_real():
     for row in json.loads((REPO / "tests/fixtures/defender_rows.json").read_text(encoding="utf-8")).values():
         if row["family"] == "evtxecmd":
             _ingest_row(row["fields"])
+    # Verbatim MSEDGEWIN10 Sysmon Event ID 1 row with OriginalFileName
+    for row in json.loads((REPO / "tests/fixtures/sysmon_original_filename_row.json").read_text(encoding="utf-8")).values():
+        _ingest_row(row)
     # the operator's own EvtxECmd outputs, when present (never committed)
     for extra in (REPO / "Evidence-files/ES-Mapping/outputs/ccs1b-real").glob("*.csv") \
             if (REPO / "Evidence-files/ES-Mapping/outputs/ccs1b-real").is_dir() else []:

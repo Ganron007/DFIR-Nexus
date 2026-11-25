@@ -12,6 +12,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -219,13 +220,16 @@ def find_pdf_engine() -> str | None:
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
     ]
 
     for c in candidates:
         if Path(c).is_file():
             return c
 
-    for name in ("msedge", "msedge.exe", "chrome", "chrome.exe", "chromium", "chromium-browser"):
+    for name in ("msedge", "msedge.exe", "google-chrome", "chrome", "chrome.exe", "chromium", "chromium-browser"):
         found = shutil.which(name)
         if found and Path(found).is_file():
             return found
@@ -409,9 +413,11 @@ def export_report_pdf(
             "--headless",
             "--disable-gpu",
             "--run-all-compositor-stages-before-draw",
-            f"--print-to-pdf={out_p}",
-            str(tmp_path),
         ]
+        if sys.platform.startswith("linux"):
+            # Containerized/CI Linux kernels restrict Chromium userns sandboxing.
+            cmd.extend(["--no-sandbox", "--disable-dev-shm-usage"])
+        cmd.extend([f"--print-to-pdf={out_p}", str(tmp_path)])
         log.info("Generating PDF: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:

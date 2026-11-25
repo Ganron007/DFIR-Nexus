@@ -31,10 +31,14 @@ def test_regripper_reads_every_user_hive_recmd_reads_with_its_profile(monkeypatc
     plugins.mkdir()
     for profile in ("ntuser", "usrclass", "all"):
         (plugins / profile).write_text("x", encoding="utf-8")
+    reb = tmp_path / "DFIRBatch.reb"
+    reb.write_text("Description: test\n", encoding="utf-8")
     monkeypatch.setenv("NEXUS_LANE_OPT_IN", "regripper")
     monkeypatch.setattr(tl, "_windows_tool_available", lambda name: True)
     monkeypatch.setattr(tl, "_windows_tool_path", lambda name: f"{name}.exe")
     monkeypatch.setattr(tl, "_regripper_plugins_dir", lambda: plugins)
+    monkeypatch.setattr(tl, "_find_recmd_user_batch", lambda: reb)
+    monkeypatch.setattr(tl, "_find_recmd_batch", lambda: reb)
 
     jobs = tl.plan_windows_triage(str(root), tmp_path / "ex")
 

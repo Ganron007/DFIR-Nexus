@@ -39,8 +39,9 @@ def triage(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def planned(triage, tmp_path):
+def planned(triage, tmp_path, monkeypatch):
     """Run the planner; tool presence is the caller's add_installed."""
+    monkeypatch.setattr(tool_lane, "_windows_tool_available", lambda _key: True)
     extractions = tmp_path / "extractions"
     jobs: list = []
 

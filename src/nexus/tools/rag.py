@@ -382,11 +382,10 @@ def rebuild_local_index(
 
 def delta_stats(index_dir: Path | str, collection: str = DELTA_COLLECTION) -> dict[str, Any]:
     """Record/source counts for the local delta collection (0 when absent)."""
-    import chromadb
-
     chroma_path = Path(index_dir) / "chroma"
     if not chroma_path.exists():
         return {"count": 0, "sources": {}}
+    import chromadb
     try:
         client = chromadb.PersistentClient(path=str(chroma_path))
         col = client.get_collection(collection)
@@ -1028,10 +1027,6 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             tag: Release tag (default: 'latest', or a specific tag).
             force: Replace an installed index.
         """
-        available, msg = _check_rag_available()
-        if not available:
-            return {"status": "failed", "error": msg}
-
         dest = _get_index_dir()
         installed = (dest / "chroma").is_dir() or (dest / "metadata.json").is_file()
         if installed and not force:
@@ -1053,6 +1048,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                     "delta is rebuilt automatically after a forced swap"
                 ),
             }
+
+        available, msg = _check_rag_available()
+        if not available:
+            return {"status": "failed", "error": msg}
 
         audit.log(
             tool="forensic_rag_download",

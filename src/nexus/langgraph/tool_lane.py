@@ -3368,7 +3368,7 @@ def apply_prior_ok(
         # row names its output on the SIFT host, which this machine cannot check, so the
         # lane's own OK record stands for it.
         saved = str(old.get("output_saved_to") or "")
-        if saved and _is_local_path(saved) and not Path(saved).exists():
+        if saved and (str(old.get("host") or "").lower() != "sift" or _is_local_path(saved)) and not Path(saved).exists():
             continue
         # A reused row must carry what a fresh row carries: the tool's version (WO-TA
         # item 8). Rows written before lineage was recorded have none, so they run again
@@ -5566,7 +5566,7 @@ def _windows_switch_output_paths(argv: list[str]) -> list[Path]:
             out.append(Path(value))
         elif not sep and index + 1 < len(argv):
             nxt = str(argv[index + 1])
-            if nxt and not nxt.startswith("/"):
+            if nxt and (Path(nxt).is_absolute() or not nxt.startswith("/")):
                 out.append(Path(nxt))
     return out
 
@@ -6017,11 +6017,14 @@ def _produced_expected_output(job: ToolJob) -> bool:
                         "automaticdestinations",
                         "customdestinations",
                     }:
-                        candidate = target / (
-                            f"{named_stem}_{destination_type}.csv"
-                        )
+                        expected_lower = f"{named_stem}_{destination_type}.csv"
                         with contextlib.suppress(OSError):
-                            if candidate.is_file() and candidate.stat().st_size > 0:
+                            if any(
+                                f.is_file()
+                                and f.name.lower() == expected_lower
+                                and f.stat().st_size > 0
+                                for f in target.iterdir()
+                            ):
                                 return True
                 if job.tool == "recmd" and any(
                     _flag(a) == "--bn" for a in argv

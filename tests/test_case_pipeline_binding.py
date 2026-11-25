@@ -77,11 +77,13 @@ def test_live_and_sysinternals_tools_are_refused_even_on_registered_evidence(cas
     assert windows.case_pipeline_refusal(tool, argv, roots), tool
 
 
-def _windows_tool(tmp_path):
+def _windows_tool(tmp_path, monkeypatch):
     from mcp.server.fastmcp import FastMCP
 
     from nexus.audit import AuditWriter
 
+    monkeypatch.setattr(windows, "_IS_WINDOWS", True)
+    monkeypatch.setattr(windows, "_find_binary", lambda name: Path(f"C:/Tools/{name}.exe"))
     server = FastMCP("binding-output-test")
     windows.register_tools(server, AuditWriter("t", audit_dir=tmp_path / "audit"))
     return server._tool_manager._tools["run_windows_command"].fn
@@ -126,7 +128,7 @@ def test_a_run_saves_its_output_into_its_own_case_not_the_active_one(cases, tmp_
 
     monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _Result())
     monkeypatch.setattr(outputs, "persist_tool_output", _record)
-    tool = _windows_tool(tmp_path)
+    tool = _windows_tool(tmp_path, monkeypatch)
     argv = ["mftecmd", "-f", str(cases["triage"] / "Security.evtx")]
 
     bound = tool(command=argv, purpose="bound run", case_id="CASE-RUN")
@@ -187,7 +189,7 @@ def test_a_lane_runs_output_goes_into_its_own_run_folder(cases, tmp_path, monkey
 
     monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _Result())
     monkeypatch.setattr(outputs, "persist_tool_output", _record)
-    tool = _windows_tool(tmp_path)
+    tool = _windows_tool(tmp_path, monkeypatch)
     argv = ["mftecmd", "-f", str(cases["triage"] / "Security.evtx")]
 
     result = tool(command=argv, purpose="run output", case_id="CASE-RUN", run_id=run_id)
@@ -211,7 +213,7 @@ def test_a_run_name_that_is_not_on_disk_keeps_the_case_folder_and_creates_no_run
 
     monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _Result())
     monkeypatch.setattr(outputs, "persist_tool_output", lambda **kw: seen.update(kw) or {"output_files": []})
-    tool = _windows_tool(tmp_path)
+    tool = _windows_tool(tmp_path, monkeypatch)
     argv = ["mftecmd", "-f", str(cases["triage"] / "Security.evtx")]
 
     tool(command=argv, purpose="no run", case_id="CASE-RUN", run_id="RUN-20261010T000000Z-tools-none")

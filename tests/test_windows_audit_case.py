@@ -41,6 +41,10 @@ def test_a_lane_command_is_audited_in_the_case_it_names(tmp_path, monkeypatch):
         stdout = "ok"
         stderr = ""
 
+    from pathlib import Path
+
+    monkeypatch.setattr(win, "_IS_WINDOWS", True)
+    monkeypatch.setattr(win, "_find_binary", lambda name: Path(f"C:/Tools/{name}.exe"))
     monkeypatch.setattr(win.subprocess, "run", lambda *_a, **_k: _Result())
     server = FastMCP("audit-case")
     win.register_tools(server, AuditWriter("nexus"))

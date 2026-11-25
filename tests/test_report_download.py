@@ -144,6 +144,10 @@ def test_report_download_zip(client: TestClient):
 
 def test_report_download_pdf(client: TestClient):
     """GET /portal/api/report/download?format=pdf returns 200 with vector PDF."""
+    from nexus.integration.report_hardening import find_pdf_engine
+
+    if find_pdf_engine() is None:
+        pytest.skip("No headless Edge/Chrome/Chromium binary installed on this host")
     resp = client.get("/portal/api/report/download?format=pdf")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"

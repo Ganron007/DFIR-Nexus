@@ -1,0 +1,31 @@
+{
+  "sysmon_1_original_filename": {
+    "RecordNumber": "564589",
+    "EventRecordId": "564589",
+    "TimeCreated": "2021-04-22 22:09:25.3896334",
+    "EventId": "1",
+    "Level": "Info",
+    "Provider": "Microsoft-Windows-Sysmon",
+    "Channel": "Microsoft-Windows-Sysmon/Operational",
+    "ProcessId": "3352",
+    "ThreadId": "4696",
+    "Computer": "MSEDGEWIN10",
+    "ChunkNumber": "0",
+    "UserId": "S-1-5-18",
+    "MapDescription": "Process creation",
+    "UserName": "MSEDGEWIN10\\IEUser",
+    "RemoteHost": "",
+    "PayloadData1": "ProcessID: 6316, ProcessGUID: 747f3d96-f415-6081-0000-001040fe4900",
+    "PayloadData2": "RuleName: ",
+    "PayloadData3": "SHA1=F1C0C54AA13037F46F55B721F7E2A2349A30DBCF,MD5=DBCA6A3860A106333FF6BE6306B2B186,SHA256=68612B1C72B8AA498530ACEB929ED44F1837B8BC52D1269E30A834931434FC41,IMPHASH=C547F2E66061A8DFFB6F5A3FF63C0A74",
+    "PayloadData4": "ParentProcess: C:\\Windows\\System32\\cmd.exe",
+    "PayloadData5": "ParentProcessID: 4864, ParentProcessGUID: 747f3d96-f040-6081-0000-001046ac1b00",
+    "PayloadData6": "ParentCommandLine: \"C:\\Windows\\system32\\cmd.exe\" ",
+    "ExecutableInfo": "PPLdump.exe  -v lsass lsass.dmp",
+    "HiddenRecord": "False",
+    "SourceFile": "EVTX-ATTACK-SAMPLES\\\\ppl_bypass_ppldump_knowdll_hijack_sysmon.evtx",
+    "Keywords": "Classic",
+    "ExtraDataOffset": "0",
+    "Payload": "{\"EventData\":{\"Data\":[{\"@Name\":\"RuleName\"},{\"@Name\":\"UtcTime\",\"#text\":\"2021-04-22 22:09:25.377\"},{\"@Name\":\"ProcessGuid\",\"#text\":\"747f3d96-f415-6081-0000-001040fe4900\"},{\"@Name\":\"ProcessId\",\"#text\":\"6316\"},{\"@Name\":\"Image\",\"#text\":\"C:\\\\Users\\\\IEUser\\\\Desktop\\\\PPLdump.exe\"},{\"@Name\":\"FileVersion\",\"#text\":\"?\"},{\"@Name\":\"Description\",\"#text\":\"?\"},{\"@Name\":\"Product\",\"#text\":\"?\"},{\"@Name\":\"Company\",\"#text\":\"?\"},{\"@Name\":\"OriginalFileName\",\"#text\":\"?\"},{\"@Name\":\"CommandLine\",\"#text\":\"PPLdump.exe  -v lsass lsass.dmp\"},{\"@Name\":\"CurrentDirectory\",\"#text\":\"c:\\\\Users\\\\IEUser\\\\Desktop\\\\\"},{\"@Name\":\"User\",\"#text\":\"MSEDGEWIN10\\\\IEUser\"},{\"@Name\":\"LogonGuid\",\"#text\":\"747f3d96-efc5-6081-0000-00203ace0b00\"},{\"@Name\":\"LogonId\",\"#text\":\"0xBCE3A\"},{\"@Name\":\"TerminalSessionId\",\"#text\":\"1\"},{\"@Name\":\"IntegrityLevel\",\"#text\":\"High\"},{\"@Name\":\"Hashes\",\"#text\":\"SHA1=F1C0C54AA13037F46F55B721F7E2A2349A30DBCF,MD5=DBCA6A3860A106333FF6BE6306B2B186,SHA256=68612B1C72B8AA498530ACEB929ED44F1837B8BC52D1269E30A834931434FC41,IMPHASH=C547F2E66061A8DFFB6F5A3FF63C0A74\"},{\"@Name\":\"ParentProcessGuid\",\"#text\":\"747f3d96-f040-6081-0000-001046ac1b00\"},{\"@Name\":\"ParentProcessId\",\"#text\":\"4864\"},{\"@Name\":\"ParentImage\",\"#text\":\"C:\\\\Windows\\\\System32\\\\cmd.exe\"},{\"@Name\":\"ParentCommandLine\",\"#text\":\"\\\"C:\\\\Windows\\\\system32\\\\cmd.exe\\\" \"}]}}"
+  }
+}

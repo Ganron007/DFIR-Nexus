@@ -123,9 +123,12 @@ def _windows_probes(tools: dict, evidence_file: Path) -> list[dict[str, Any]]:
 
     Every probe must be refused by the binary denylist or the catalog
     allowlist — the refusal happens before binary resolution, so the probes
-    are deterministic and never execute anything.
+    are deterministic and never execute anything. On non-Windows hosts where
+    ``run_windows_command`` is not registered, exercise the exact validators in
+    ``nexus.tools.windows`` directly (mirrors ``_sift_validator_probes``).
     """
-    rwc = tools["run_windows_command"].fn
+    rwc_entry = tools.get("run_windows_command")
+    rwc = rwc_entry.fn if rwc_entry is not None else None
     probes: list[tuple[str, list[str], str]] = [
         ("cmd /c del of registered evidence",
          ["cmd", "/c", "del", "/f", str(evidence_file)], "Binary denied"),
@@ -144,14 +147,29 @@ def _windows_probes(tools: dict, evidence_file: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for label, argv, expected in probes:
         try:
-            result = rwc(argv, purpose=f"spoliation self-test: {label}", save_output=False)
-            err = str(result.get("error") or "")
-            refused = result.get("success") is False and (
-                expected.split()[0].lower() in err.lower()
-                or expected.lower() in err.lower()
-                or "not in allowlist" in err.lower()
-                or "unavailable on this platform" in err.lower()
-            )
+            if rwc is not None:
+                result = rwc(argv, purpose=f"spoliation self-test: {label}", save_output=False)
+                err = str(result.get("error") or "")
+                refused = result.get("success") is False and (
+                    expected.split()[0].lower() in err.lower()
+                    or expected.lower() in err.lower()
+                    or "not in allowlist" in err.lower()
+                    or "unavailable on this platform" in err.lower()
+                )
+            else:
+                from nexus.tools.windows import _catalog_key, _is_denied
+
+                if _is_denied(argv[0]):
+                    err = f"Binary denied by policy: {argv[0]}"
+                elif _catalog_key(argv[0]) is None:
+                    err = f"Binary not in allowlist: {argv[0]}"
+                else:
+                    err = ""
+                refused = bool(err) and (
+                    expected.split()[0].lower() in err.lower()
+                    or expected.lower() in err.lower()
+                    or "not in allowlist" in err.lower()
+                )
             out.append({"probe": label, "expect": "refused", "refused": refused,
                         "detail": err[:160]})
         except Exception as exc:  # noqa: BLE001 - a raising validator is a refusal

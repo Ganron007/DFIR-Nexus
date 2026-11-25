@@ -40,6 +40,7 @@ def _sidr_jobs(root, extractions, monkeypatch, state: str):
 
     monkeypatch.setattr(tool_lane.subprocess, "run", replay)
     monkeypatch.setattr(tool_lane, "_ese_state", lambda database: state)
+    monkeypatch.setattr(tool_lane, "_windows_tool_available", lambda _key: True)
     jobs = tool_lane.plan_windows_triage(str(root), extractions)
     return [j for j in jobs if j.tool == "sidr"], replayed
 

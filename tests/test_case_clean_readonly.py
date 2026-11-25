@@ -54,7 +54,11 @@ def _clean(root: Path, *args: str):
 def test_readonly_evidence_does_not_survive_a_clean(tmp_path):
     """The regression: a read-only staged .evtx used to survive every clean."""
     d = _case(tmp_path, "CASE-READONLY", readonly=True)
-    assert os.stat(d / "runs/RUN-1/extractions/Application.evtx").st_file_attributes & 1
+    st = os.stat(d / "runs/RUN-1/extractions/Application.evtx")
+    if hasattr(st, "st_file_attributes"):
+        assert st.st_file_attributes & 1
+    else:
+        assert (st.st_mode & 0o222) == 0
 
     res = _clean(tmp_path)
 

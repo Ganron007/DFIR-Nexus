@@ -39,7 +39,7 @@ def parse_rbcmd_csv(csv_path: Path, case_dir: Path) -> list[RecoveryItem]:
             except ValueError:
                 file_size = 0
 
-            filename = Path(orig_path).name or source_file
+            filename = Path(orig_path.replace("\\", "/")).name or source_file
             item_id = f"rb_{idx:05d}"
 
             items.append(

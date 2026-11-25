@@ -25,14 +25,16 @@ from nexus.auth import (
 
 def _require_approval_auth(analyst: str) -> str | None:
     """Require password confirmation. Returns None on failure, password on success."""
+    from nexus.auth import _PASSWORDS_DIR
+
     print(f"Examiner identity: {analyst}")
     if not has_password(analyst):
         print(
             f"No password file for {analyst} "
-            f"({Path.home() / '.nexus' / 'passwords' / (analyst + '.json')})."
+            f"({_PASSWORDS_DIR / (analyst + '.json')})."
         )
         # The examiners that can sign here, not a lab name that may not exist (D221).
-        known = sorted(p.stem for p in (Path.home() / ".nexus" / "passwords").glob("*.json"))
+        known = sorted(p.stem for p in _PASSWORDS_DIR.glob("*.json"))
         if known:
             print(f"Examiners with a password on this machine: {', '.join(known)}")
             print("Use: nexus approve --examiner <name> ...")
@@ -50,7 +52,7 @@ def _require_approval_auth(analyst: str) -> str | None:
             clear_failures(analyst)
             return env_pw
         record_failure(analyst)
-        pw_file = Path.home() / ".nexus" / "passwords" / f"{analyst}.json"
+        pw_file = _PASSWORDS_DIR / f"{analyst}.json"
         print("NEXUS_APPROVAL_PASSWORD did not match.")
         print(f"HMAC file: {pw_file}")
         print("That is the examiner HMAC password, not NEXUS_PORTAL_PASSWORD.")

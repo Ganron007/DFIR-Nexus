@@ -13,9 +13,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nexus.langgraph.tool_lane import (
     _DEFAULT_OPTIONAL_TOOL_SKIP_REASONS,
     ToolJob,
+    _find_recmd_dfir_batch,
     _find_recmd_user_batch,
     _promotion_dir,
     lineage_version,
@@ -91,6 +94,10 @@ def test_no_run_root_means_no_promotion_folder(tmp_path):
     assert _promotion_dir(job, None) is None
 
 
+@pytest.mark.skipif(
+    _find_recmd_dfir_batch() is None,
+    reason="Zimmerman RECmd batch files are not installed on this host",
+)
 def test_the_user_hive_batch_is_dfirbatch(monkeypatch):
     batch = _find_recmd_user_batch()
 

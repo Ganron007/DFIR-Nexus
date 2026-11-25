@@ -849,8 +849,17 @@ def test_plan_evtx_folder_is_recognized(tmp_path: Path):
     assert "evtxecmd" in pending
 
 
-def test_plan_single_artifacts_map_to_their_tool(tmp_path: Path):
+def test_plan_single_artifacts_map_to_their_tool(tmp_path: Path, monkeypatch):
     """Phase 4h: a lone prefetch/hive schedules the right parser."""
+    from nexus.langgraph import tool_lane as tl
+
+    reb = tmp_path / "DFIRBatch.reb"
+    reb.write_text("Description: test\n", encoding="utf-8")
+    monkeypatch.setattr(tl, "_windows_tool_available", lambda _k: True)
+    monkeypatch.setattr(tl, "_windows_tool_path", lambda k: f"{k}.exe")
+    monkeypatch.setattr(tl, "_find_recmd_batch", lambda: reb)
+    monkeypatch.setattr(tl, "_find_recmd_user_batch", lambda: reb)
+
     extractions = tmp_path / "extractions"
     extractions.mkdir()
     pf = tmp_path / "CMD.EXE-ABC123.pf"

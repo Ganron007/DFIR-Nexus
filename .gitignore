@@ -144,6 +144,9 @@ Tools/linux/
 # level by level.
 !Tools/windows/
 Tools/windows/*
+!Tools/windows/VERSIONS.txt
+!tools/windows/
+!tools/windows/VERSIONS.txt
 !Tools/windows/extra/
 Tools/windows/extra/*
 !Tools/windows/extra/deepbluecli/

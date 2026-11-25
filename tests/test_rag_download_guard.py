@@ -32,6 +32,7 @@ def test_download_is_a_noop_when_an_index_exists(tmp_path, monkeypatch):
     import nexus.tools.rag as rag_mod
 
     idx = _installed_index(tmp_path)
+    monkeypatch.setattr(rag_mod, "_check_rag_available", lambda: (True, ""))
     monkeypatch.setattr(rag_mod, "_get_index_dir", lambda: idx)
     monkeypatch.setattr(rag_mod, "delta_stats", lambda dest: {"count": 0})
 
@@ -51,6 +52,7 @@ def test_forced_download_rebuilds_the_delta_after_the_swap(tmp_path, monkeypatch
     import nexus.tools.rag as rag_mod
 
     idx = _installed_index(tmp_path)
+    monkeypatch.setattr(rag_mod, "_check_rag_available", lambda: (True, ""))
     monkeypatch.setattr(rag_mod, "_get_index_dir", lambda: idx)
     monkeypatch.setattr(rag_mod, "delta_stats", lambda dest: {"count": 0})
     monkeypatch.setattr(

@@ -1,0 +1,85 @@
+DFIR-Nexus Tools/windows — fetched 2026-10-10T12:44:36.5839531+05:30
+Source: official internet URLs only.
+
+zimmerman	Get-ZimmermanTools.ps1 net9	https://ericzimmerman.github.io/
+sysinternals	live-zip	https://download.sysinternals.com/files/SysinternalsSuite.zip
+hayabusa	v4.1.0	https://github.com/Yamato-Security/hayabusa/releases/download/v4.1.0/hayabusa-4.1.0-win-x64.zip
+suzaku	v2.0.1	https://github.com/Yamato-Security/suzaku/releases/download/v2.0.1/suzaku-2.0.1-win-x64.zip
+chainsaw	v2.16.5	https://github.com/WithSecureOpenSource/chainsaw/releases/download/v2.16.5/chainsaw_x86_64-pc-windows-msvc.zip
+capa	v9.4.0	https://github.com/mandiant/capa/releases/download/v9.4.0/capa-v9.4.0-windows.zip
+bmc-tools	master	https://github.com/ANSSI-FR/bmc-tools
+bitsparser	master+vendored-bits_parser	https://github.com/fireeye/BitsParser
+kstrike	master	https://github.com/brimorlabs/KStrike
+logfileparser	v2.0.0.53	https://github.com/jschicht/LogFileParser/releases/download/v2.0.0.53/LogFileParser_v2.0.0.53.zip
+regripper	master	https://github.com/keydet89/RegRipper3.0
+usbdeview	live	https://www.nirsoft.net/utils/usbdeview-x64.zip
+deepbluecli	master	https://github.com/sans-blue-team/DeepBlueCLI
+kape	NOT-FETCHED	https://www.kroll.com/ (operator download)
+ir-collect	fetch-ir-collect.ps1	tools/fetch-ir-collect.ps1
+pip	libesedb-python	pypi
+memprocfs-win	5.19	https://github.com/ufrisk/MemProcFS/releases/download/v5.19/MemProcFS_files_and_binaries_v5.19.0-win_x64-20261005.zip	718389C254A66587A0555F3758B37709BB2916BD0B7D1C99D162DF25796F063E	AGPL-3.0
+memprocfs	5.19.0	https://files.pythonhosted.org/packages/8b/20/a5c046f6ac1d6b04a682ff56b6e703dadb67de424a03e88bf9cf2b48df3a/memprocfs-5.19.0-cp36-abi3-win_amd64.whl	97d59cfd101751522bca3147a40c47e612a279b1692de116a361c78d34e6cd70	AGPL-3.0
+maldump	0.5.0	https://files.pythonhosted.org/packages/27/22/2d94b48d2ed4948f3324232b5a60dca3fdefaf91dd049e4de82b0e75e8f5/maldump-0.5.0-py3-none-any.whl	5c7ed44d408fe6a454dbca3bc47795d09cdf0601035fd8fa0dc6004e730c5d6e	GPL-3.0
+colorama	0.4.6	https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl	4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6	BSD-3-Clause
+defusedxml	0.7.1	https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl	a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61	PSF-2.0
+kaitaistruct	0.10	https://files.pythonhosted.org/packages/4e/bf/88ad23efc08708bda9a2647169828e3553bb2093a473801db61f75356395/kaitaistruct-0.10-py2.py3-none-any.whl	a97350919adbf37fda881f75e9365e2fb88d04832b7a4e57106ec70119efb235	MIT
+arc4	0.4.0	https://files.pythonhosted.org/packages/63/2d/abd2c4d7ac0b515c63787a32e7ccb47c6a66fb4cd33ac5ad159fb2bf64b2/arc4-0.4.0.tar.gz	d431b53d11b24d62521dbbd06d755bf9d6d11a03cc7bbbdf37a13a12ee0747b6	MIT
+mplog_parser	v1.0	https://github.com/Qazeer/mplog_parser-compiled/releases/download/v1.0/mplog_parser.exe	695555A3F493EDDEB02976D66A37DE932C04150AD3ABB561E1B9480C188CFCB3	MIT
+dhparser	v1.0.1	https://github.com/jklepsercyber/defender-detectionhistory-parser/blob/c5543f2d4807ac75f830c54c3f4f1361e84c5302/dhparser.exe	989038DA175C80BEE12B59427BC01C57347CFE168FE911E2B9669EF291DFAFE6	GPL-3.0
+wmi-parser	v0.0.3	https://github.com/AndrewRathbun/WMI-Parser/releases/download/v0.0.3/WMI-Parser.zip	C698B370C5CCC87401A0EF86BEC85E77C345854DA3EF5B80688E3CE80123CE09	NONE
+sidr	v0.9.2	https://github.com/strozfriedberg/sidr/releases/download/v0.9.2/sidr.exe	634BE2A03263F0C83CC6CA5DFB1A582F3072BBC320490418DCB0DCEBE0474C97	NONE
+thumbcache_viewer	v1.0.4.0	https://github.com/thumbcacheviewer/thumbcacheviewer/releases/download/v1.0.4.0/thumbcache_viewer_64.zip	8D91A3156318ED26DF11202A86DC0B53E2D85FD7E2CB02CAF67F2FB63006E5ED	not asserted (no licence file in the v1.0.4.0 zip; GUI only)
+zircolite	4.5.0	https://github.com/wagga40/Zircolite/releases/download/v4.5.0/Zircolite-4.5.0-windows-x64.zip	BA3577A30789295C75C714B191CD8217C0B13EE5416D7D8D49E89E8E11AD842D	LGPL-3.0
+yara	v4.5.5	https://github.com/VirusTotal/yara/releases/download/v4.5.5/yara-4.5.5-2368-win64.zip	352396C8A3D9B31B157A4820ABD3B9347FC934A2314CDDA8A4F566A5570163E4	BSD-3-Clause
+hindsight	20260600	https://files.pythonhosted.org/packages/79/55/c0f8c96000bf66b60c4c3c444c958dc9e0308d6099aa3ef5eb96a7efa3b2/pyhindsight-20260600-py3-none-any.whl	2c0e83cd59a9e891746547b28de7a53fa1802f5e679a34305f49a131a1833ccf	Apache-2.0
+
+# refresh 2026-10-12: the rows below record the executable the lane runs (lineage matches a binary's own
+# SHA-256, column 4). Each was checked against its upstream release: GitHub digest, or the file hash equal to the
+# release asset. Smoke tests: suzaku.exe help, hayabusa.exe help, Zircolite.exe --help exit 0; uac bash -n 0 and
+# uac -h usage; avml and DFIR-ORC.exe not run here (Linux ELF; DFIR-ORC needs an elevated shell).
+hayabusa.exe	v4.1.0	https://github.com/Yamato-Security/hayabusa/releases/download/v4.1.0/hayabusa-4.1.0-win-x64.zip	A9603A988B6A8360684DDE95D9A65B1793E9415A6EE7CD8B40C601CF3036E623	AGPL-3.0
+suzaku.exe	v2.0.1	https://github.com/Yamato-Security/suzaku/releases/download/v2.0.1/suzaku-2.0.1-win-x64.zip	91114DAE52811E427DC5887F432FA70ED99B6046F26F6D77C7B7E064E7D2A8D2	AGPL-3.0
+Zircolite.exe	4.5.0	https://github.com/wagga40/Zircolite/releases/download/v4.5.0/Zircolite-4.5.0-windows-x64.zip	F1DD1360CD5EC53E37DA7D545750680D64BC0F8188FE8F3FDE1053D3F759458D	LGPL-3.0
+DFIR-ORC.exe	v10.4.0	https://github.com/DFIR-ORC/dfir-orc/releases/download/v10.4.0/DFIR-ORC.exe	B192317BE8295A590C4CA2412809AEBC4AB2E6368DEC1C5E641622A990F7EA6E	LGPL-2.1
+DFIR-ORC-ready.exe	v10.4.0 (ToolEmbed of config/config/Embed.xml; operator configuration with uncommitted edits)	local build: tools/windows/orc/config/Build.cmd	FE119EF4F02F516DD619CBC24AC28132256979A4CE8F36A664DF640428146EB2	LGPL-2.1
+avml	v0.21.0	https://github.com/microsoft/avml/releases/download/v0.21.0/avml	E75597DCDCAAA8475FDC61643EFFB050F72AAA9CFF677C7271386A9781BF4460	MIT
+uac	v3.4.0	https://github.com/tclahr/uac/releases/download/v3.4.0/uac-3.4.0.tar.gz	D333B72990C25D48B93200648A58084F8B79FF917D1E609DD92AC6BA9FB387DB	Apache-2.0
+
+fetch report:
+report	logfileparser	FETCHED	v2.0.0.53; LogFileParser64.exe
+report	regripper	FETCHED	RegRipper3.0 (Perl; rip.pl needs perl on PATH) -> C:\STUDY\Github\CADRE-Platform\DFIR-Nexus\tools\windows\extra\regripper\RegRipper3.0-master\rip.pl
+report	usbdeview	FETCHED	nirsoft usbdeview-x64.zip
+report	deepbluecli	FETCHED	master archive + run-deepblue.ps1 wrapper
+report	ntfslogtracker	REMOVED	no official upstream; LogFileParser + MFTECmd cover the family
+report	memprocfs-win	FETCHED	5.19 AGPL-3.0; Python API is the lane path, not a drive mount
+report	memprocfs	FETCHED	5.19.0 AGPL-3.0
+report	maldump	FETCHED	0.5.0 GPL-3.0
+report	colorama	FETCHED	0.4.6 BSD-3-Clause
+report	defusedxml	FETCHED	0.7.1 PSF-2.0
+report	kaitaistruct	FETCHED	0.10 MIT
+report	arc4	FETCHED	0.4.0 MIT
+report	mplog_parser	FETCHED	v1.0 MIT
+report	dhparser	FETCHED	v1.0.1 GPL-3.0 commit c5543f2
+report	wmi-parser	FETCHED	v0.0.3 no licence asserted; net6.0 binary, help works with DOTNET_ROLL_FORWARD=LatestMajor on this host (runtimes 9 and 10, no net6)
+report	sidr	FETCHED	v0.9.2 no licence asserted
+report	thumbcache_viewer	FETCHED	v1.0.4.0 GUI only (thumbcache_viewer.exe); cmd build is not in this tag
+report	zircolite	FETCHED	4.5.0
+report	yara	FETCHED	v4.5.5 win64 (v4.5.8 tag has no Windows asset)
+report	hindsight	FETCHED	20260600 Apache-2.0
+
+WO-TA item 0 (2026-10-10) — pinned tools added for the lane, with SHA-256 of the binary or wrapper.
+name                     version              source / licence                          sha256
+mplog                    mplog-parser v1.0    Qazeer/mplog_parser-compiled (KapeFiles)  695555a3f493eddeb02976d66a37de932c04150ad3abb561e1b9480c188cfcb3  mplog_parser.exe
+dhparser                 DetectionHistory v1.0.1  jklepsercyber (GPL-3.0 per GitHub)   989038da175c80bee12b59427bc01c57347cfe168fe911e2b9669ef291dfafe6  dhparser.exe
+sidr                     SIDR v0.9.2          strozfriedberg/sidr (licence not asserted)  634be2a03263f0c83cc6ca5dfb1a582f3072bbc320490418dcb0dcebe0474c97  sidr.exe
+wmi-parser               WMI-Parser v0.0.3    AndrewRathbun/WMI-Parser (no licence)     7fcda273e8e572e759d83bd6ac24484895611c17f6ee486adee58a85fc69dd7b  wmi-parser/Wmi-Parser.exe
+wmi-parser wrapper       tracked source       run-wmi-parser.py (DOTNET_ROLL_FORWARD=Major: .NET 6 target, .NET 9/10 installed)  43abb03dbb19e5c8076bc75a52a23d4efa8241a2be7b9e93dd2f4c1c54d52439
+maldump                  0.5.0 (pip)          NUKIB/maldump (GPL-3.0); needs elevation  pip package; wrapper run-maldump.py e0fee5c819f617e0cb886e575ae0f0908709bb953f018e5fee51dcb5c4cffa90
+pff-ost                  libpff-python 20260926 (pip, cp314 win_amd64)  libyal/libpff (LGPL-3.0)   wrapper run-pff-ost.py 7be8e5413d3fb6f7211d8e835492d0fa5392cd54d4c1e1f41cda46fb737c8dde
+memprocfs                5.19 (zip) + pip memprocfs 5.19.0  ufrisk/MemProcFS (AGPL-3.0)   2b9e603ff2846ebbe716f1c5386c5a50c4fc13e499b7ef99552163328551fbe9  MemProcFS.exe; wrapper run-memprocfs.py 986fdf68dc7227fae0e121d4b2f441efc9c1830193988ad47e081fc2eb11e6a7 (WO-TA item 6 / D68: waits for progress 100, copies forensic outputs once)
+SIFT zeek                9.0.0-0 (apt, OBS security:zeek xUbuntu_24.04)  zeek.org (BSD)   /opt/zeek/bin/zeek, symlinked to /usr/local/bin/zeek
+SIFT suricata           8.0.7 (apt, OISF stable PPA)   OISF (GPL-2.0)   ET Open rules via suricata-update, 53123 enabled, pulled 2026-10-10; service disabled
+SIFT plaso              20260720 (Python 3.12 venv at /home/sansforensics/plaso-20260720; log2timeline.py and psort.py linked in /usr/local/bin; the apt 20260119 build is still installed)   plaso (Apache-2.0)   20260720 is not published in the GIFT PPA; installed into the venv
+SIFT volatility3       2.28.2 (venv /opt/volatility3; `vol` linked at /usr/local/bin/vol)   volatility-foundation (VSL)   the framework version the lane records (WO-TA item 0)
+Windows volatility3    2.28.2 (venv Tools/windows/memory/vol3-2.28.2-venv; wheel sha256 in Tools/windows/memory/vol3-2.28.2-requirements.txt)   volatility-foundation (VSL)   the framework the Windows memory run records (WO-TA item 6)
+SIFT pffexport         20180714 (apt, /usr/bin/pffexport)   libyal/libpff (LGPL-3.0)   OST and PST extraction for the email lane (WO-TA item 5)

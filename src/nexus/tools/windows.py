@@ -165,7 +165,7 @@ _CASE_PIPELINE_EXCLUDED = frozenset({
     "arp", "route", "ipconfig", "netstat", "dns", "whoami", "systeminfo",
     "tasklist", "sc", "net", "certutil",
 })
-_PATH_IN_TOKEN = re.compile(r"[A-Za-z]:\\[^\"']+")
+_PATH_IN_TOKEN = re.compile(r"[A-Za-z]:[\\/][^\"']+")
 
 _CACHE_TTL = 86400
 _CACHE_MAX = 256
@@ -473,7 +473,16 @@ def case_pipeline_refusal(
         except OSError:
             continue
     for token in argv[1:]:
-        for match in _PATH_IN_TOKEN.findall(token.strip("\"'")):
+        cleaned = token.strip("\"'")
+        candidates = list(_PATH_IN_TOKEN.findall(cleaned))
+        if cleaned.startswith("/") and not candidates:
+            candidates.append(cleaned)
+        for sep in ("=", ":"):
+            if sep in cleaned:
+                rhs = cleaned.split(sep, 1)[1].strip("\"'")
+                if rhs.startswith("/"):
+                    candidates.append(rhs)
+        for match in candidates:
             try:
                 path = Path(match).resolve()
             except OSError:

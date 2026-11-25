@@ -50,5 +50,5 @@ def test_p1_doc_repo_urls_and_readme_accuracy():
     assert "npm run test:unit" not in readme
     assert readme.count("(Docs/ARCHITECTURE.md)") == 1
     assert "src/nexus/data/knowledge/discipline/rules.yaml" in readme
-    assert "4,602 Python tests passed (0 failed, 46 skipped)" in readme
+    assert "4,613 Python tests passed (0 failed, 43 skipped)" in readme
     assert "224 Vitest unit & journey tests passed (42 files)" in readme

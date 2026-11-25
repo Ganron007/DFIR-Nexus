@@ -220,6 +220,8 @@ def test_d403_every_keyword_sub_field_holds_the_one_limit():
 
 
 def test_windows_tools_run_under_the_invariant_culture(tmp_path, monkeypatch):
+    from pathlib import Path
+
     from mcp.server.fastmcp import FastMCP
 
     import nexus.tools.windows as win
@@ -236,6 +238,8 @@ def test_windows_tools_run_under_the_invariant_culture(tmp_path, monkeypatch):
         captured.update(kwargs)
         return _Result()
 
+    monkeypatch.setattr(win, "_IS_WINDOWS", True)
+    monkeypatch.setattr(win, "_find_binary", lambda name: Path(f"C:/Tools/{name}.exe"))
     monkeypatch.setattr(win.subprocess, "run", _fake_run)
     server = FastMCP("d399")
     win.register_tools(server, AuditWriter("t", audit_dir=tmp_path / "audit"))

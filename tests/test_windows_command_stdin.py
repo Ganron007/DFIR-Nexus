@@ -35,6 +35,10 @@ def test_run_windows_command_does_not_inherit_stdin(tmp_path, monkeypatch):
         captured.update(kwargs)
         return _Result()
 
+    from pathlib import Path
+
+    monkeypatch.setattr(win, "_IS_WINDOWS", True)
+    monkeypatch.setattr(win, "_find_binary", lambda name: Path(f"C:/Tools/{name}.exe"))
     monkeypatch.setattr(win.subprocess, "run", _fake_run)
 
     result = _tool(tmp_path)(

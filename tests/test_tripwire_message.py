@@ -52,5 +52,5 @@ def test_the_ide_agent_file_is_no_longer_protected():
     """
     snapshot = _protected_snapshot()
     assert not [p for p in snapshot if ".claude" in p], snapshot.keys()
-    # The real ones are still covered.
-    assert any(".nexus" in p for p in snapshot) or not Path.home().joinpath(".nexus").is_dir()
+    # The real ones are still covered when any file exists under ~/.nexus.
+    assert any(".nexus" in p for p in snapshot) or not any(Path.home().joinpath(".nexus").rglob("*"))
