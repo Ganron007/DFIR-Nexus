@@ -943,8 +943,25 @@ def update(
 
     if check:
         subprocess.run(["git", "fetch"], cwd=repo_root)
-        head_remote = subprocess.run(["git", "rev-parse", "origin/main"], capture_output=True, text=True, cwd=repo_root).stdout.strip()
-        if head_before == head_remote:
+        head_remote = ""
+        candidates: list[str] = []
+        up = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+        if up.returncode == 0 and up.stdout.strip():
+            candidates.append(up.stdout.strip())
+        candidates.extend(["origin/master", "origin/main"])
+        for ref in candidates:
+            rev = subprocess.run(
+                ["git", "rev-parse", ref], capture_output=True, text=True, cwd=repo_root,
+            )
+            if rev.returncode == 0 and rev.stdout.strip():
+                head_remote = rev.stdout.strip()
+                break
+        if not head_remote:
+            typer.echo("Could not determine remote tracking branch")
+        elif head_before == head_remote:
             typer.echo("Already up to date")
         else:
             typer.echo(f"Update available: {head_before[:8]} -> {head_remote[:8]}")

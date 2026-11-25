@@ -96,4 +96,7 @@ def scan_deleted_files(case_dir: Path) -> list[RecoveryItem]:
                 )
             )
 
+    for idx, item in enumerate(items, start=1):
+        item.id = f"del_{idx:05d}"
+
     return items

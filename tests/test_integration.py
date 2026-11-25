@@ -45,9 +45,16 @@ os.environ["NEXUS_CASES_ROOT"] = os.path.join(_tmp_root, "cases")
 os.environ["NEXUS_ACTIVE_CASE_FILE"] = os.path.join(_tmp_root, "active_case")
 # `data_root` is where the RAG index (and its Chroma SQLite) lives.
 os.environ["NEXUS_DATA_ROOT"] = os.path.join(_tmp_root, "data")
+# Isolate audit secret so clean CI runners never create `~/.nexus/audit_secret`.
+os.environ["NEXUS_AUDIT_SECRET"] = "test-integration-audit-secret"
 
+import nexus.case.secrets as _secrets  # noqa: E402
+import nexus.transparency as _transparency  # noqa: E402
 from nexus.app import create_server, in_process_tools  # noqa: E402
 from nexus.config import settings as _settings  # noqa: E402
+
+_secrets._PERSISTED_SECRET_PATH = Path(_tmp_root) / "audit_secret"
+_transparency.TRANSPARENCY_DIR = Path(_tmp_root) / "transparency"
 
 # The env var is read at settings construction, but `~/.nexus/config.yaml` can
 # also set `data_root`, so pin it explicitly before anything opens the index.

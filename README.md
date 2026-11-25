@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Release-v1.0.0--RC-success.svg" alt="Release: v1.0.0-RC">
+  <img src="https://img.shields.io/badge/Release-v1.0.0-success.svg" alt="Release: v1.0.0">
   <img src="https://img.shields.io/badge/Python%20Tests-4602%20passed-blue.svg" alt="Python Tests: 4602 passed / 46 skipped">
-  <img src="https://img.shields.io/badge/UI%20Tests-222%20Vitest%20passed-blue.svg" alt="UI Tests: 222 passed">
+  <img src="https://img.shields.io/badge/UI%20Tests-224%20Vitest%20passed-blue.svg" alt="UI Tests: 224 passed">
   <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-purple.svg" alt="MCP Tools: 128 Win | 125 Linux">
   <img src="https://img.shields.io/badge/Architecture-Offline--First-orange.svg" alt="Architecture: Offline-First">
 </p>

@@ -23,8 +23,12 @@ def parse_rbcmd_csv(csv_path: Path, case_dir: Path) -> list[RecoveryItem]:
         content = csv_path.read_text(encoding="utf-8-sig", errors="replace")
         reader = csv.DictReader(io.StringIO(content))
         for idx, row in enumerate(reader, start=1):
-            # Normalize headers case-insensitively
-            lower_row = {k.lower().strip(): v.strip() for k, v in row.items() if k}
+            # Normalize headers case-insensitively; guard None values on ragged CSV rows.
+            lower_row = {
+                str(k).lower().strip(): ("" if v is None else str(v)).strip()
+                for k, v in row.items()
+                if k
+            }
 
             orig_path = lower_row.get("originalpath") or lower_row.get("original filename") or lower_row.get("filename") or "Unknown"
             source_file = lower_row.get("sourcefile") or lower_row.get("source name") or csv_path.name
@@ -104,5 +108,8 @@ def scan_recycle_bin(case_dir: Path) -> list[RecoveryItem]:
                     },
                 )
             )
+
+    for idx, item in enumerate(items, start=1):
+        item.id = f"rb_{idx:05d}"
 
     return items

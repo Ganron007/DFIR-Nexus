@@ -22,10 +22,10 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, setRequestCaseId, type CaseSummary } from "../api/client";
+import { api, setRequestCaseId, type CaseSummary, type CasesResponse } from "../api/client";
 import { useCases } from "../api/queries/cases";
 import { useSystemHealth } from "../api/queries/system";
-import { invalidateKeys } from "../api/queries/keys";
+import { invalidateKeys, systemKey } from "../api/queries/keys";
 
 export type StageStatus = Record<string, boolean>;
 
@@ -95,9 +95,9 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const sift = healthQuery.data?.sift ?? { selected: false, reachable: null };
 
   const refreshCases = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: ["system", "cases"] });
-    // Mirror the server pointer — never fabricate an active case.
-    const r = casesQuery.data;
+    await queryClient.refetchQueries({ queryKey: systemKey("cases") });
+    // Mirror the fresh server pointer from query cache (not a stale closure value).
+    const r = queryClient.getQueryData<CasesResponse>(systemKey("cases")) ?? casesQuery.data;
     if (r) {
       setActiveCaseState(r.active || "");
       setRequestCaseId(r.active || "");

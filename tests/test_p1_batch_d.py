@@ -39,7 +39,7 @@ def test_p1_doc_repo_urls_and_readme_accuracy():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "Ganron007/DFIR-Nexus" in pyproject
     assert "Unallocated" not in pyproject
-    assert 'version = "1.0.0rc1"' in pyproject
+    assert 'version = "1.0.0"' in pyproject
 
     setup_doc = (ROOT / "Docs" / "SETUP.md").read_text(encoding="utf-8")
     assert "Unallocated/DFIR-Nexus" not in setup_doc

@@ -13,7 +13,10 @@ over HTTP would be a foot-gun the size of a workstation image.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
+
+from nexus.utils import atomic
 
 # Keys the preflight panel / `nexus config env` are allowed to set.
 SETUP_ENV_KEYS = {
@@ -81,7 +84,17 @@ def apply_env(mapping: dict[str, str], environ: dict | None = None) -> dict[str,
         if value:
             out.append(f"{key}={value}")
 
-    path.write_text("\n".join(out).rstrip("\n") + "\n", encoding="utf-8")
+    content = "\n".join(out).rstrip("\n") + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        atomic.replace(tmp_path, path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
     for key, value in clean.items():
         if value:

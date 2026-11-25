@@ -43,6 +43,12 @@ import nexus.transparency as _transparency  # noqa: E402
 
 _audit_cases_root = Path(tempfile.gettempdir()) / f"nexus_audit_cases_{os.getpid()}"
 _audit_cases_root.mkdir(parents=True, exist_ok=True)
+# Isolate audit secret before importing/instantiating CaseManager so clean CI runners
+# never create `~/.nexus/audit_secret`.
+os.environ["NEXUS_AUDIT_SECRET"] = "functional-audit-secret"
+import nexus.case.secrets as _secrets  # noqa: E402
+
+_secrets._PERSISTED_SECRET_PATH = _audit_cases_root / "audit_secret"
 _settings.cases_root = _audit_cases_root
 os.environ["NEXUS_ACTIVE_CASE_FILE"] = str(_audit_cases_root / "active_case")
 # `data_root` is where the RAG index (and its Chroma SQLite) lives.
