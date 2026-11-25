@@ -792,6 +792,32 @@ def _case_summary(case_id: str, mgr) -> dict[str, Any]:
             approved_count = sum(1 for f in findings if f.approval_state.value == "approved")
         except Exception:  # noqa: BLE001
             pass
+
+    # Prefer canonical case_records / findings.json so portal dashboard counts
+    # cannot lag behind CLI/approval_service approvals or rejections.
+    canon_findings: list[dict[str, Any]] = []
+    try:
+        from nexus.case.records import load_records
+
+        canon_findings = load_records(case_dir, "finding")
+    except Exception:  # noqa: BLE001
+        canon_findings = []
+    if not canon_findings:
+        findings_file = case_dir / "findings.json"
+        if findings_file.is_file():
+            try:
+                loaded = json.loads(findings_file.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    canon_findings = [x for x in loaded if isinstance(x, dict)]
+            except Exception:  # noqa: BLE001
+                canon_findings = []
+    if canon_findings:
+        findings_count = len(canon_findings)
+        approved_count = sum(
+            1
+            for f in canon_findings
+            if str(f.get("status") or f.get("approval_state") or "").strip().upper() == "APPROVED"
+        )
     if evidence_count == 0:
         # Legacy flat-only case: go through the one evidence service so the
         # legacy registry is imported once and SQLite stays authoritative.

@@ -254,6 +254,7 @@ def commit_approval(
         from nexus.case.records import save_findings
 
         save_findings(case_dir, findings)
+        _sync_legacy_finding_state(case_dir, finding)
         cited = cited_event_ids(finding)
         if cited:
             try:
@@ -322,6 +323,7 @@ def commit_rejection(
         from nexus.case.records import save_findings
 
         save_findings(case_dir, findings)
+        _sync_legacy_finding_state(case_dir, finding)
         try:
             from nexus.analysis.negative_space import record
 
@@ -332,3 +334,60 @@ def commit_rejection(
 
     message = f"Finding {finding_id} not found or not DRAFT"
     return {"finding_id": finding_id, "status": "error", "error": message, "message": message}
+
+
+def _sync_legacy_finding_state(case_dir: Path, finding: dict[str, Any]) -> None:
+    """Propagate canonical approval/rejection status to legacy SQLite ``findings`` rows."""
+    import sqlite3
+
+    fid = _finding_id(finding)
+    if not fid:
+        return
+    db_candidates = [case_dir.parent / "cases.db"]
+    try:
+        from nexus.config import settings
+
+        root_db = Path(settings.cases_root) / "cases.db"
+        if root_db not in db_candidates:
+            db_candidates.append(root_db)
+    except Exception:  # noqa: BLE001
+        pass
+
+    state = str(finding.get("status") or "DRAFT").strip().lower()
+    for db_path in db_candidates:
+        if not db_path.is_file():
+            continue
+        try:
+            conn = sqlite3.connect(str(db_path), timeout=5)
+            try:
+                has_table = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='findings'"
+                ).fetchone()
+                if has_table:
+                    conn.execute(
+                        """
+                        UPDATE findings
+                        SET approval_state = ?,
+                            approved_by = COALESCE(?, approved_by),
+                            approved_at = COALESCE(?, approved_at),
+                            rejected_by = COALESCE(?, rejected_by),
+                            rejected_at = COALESCE(?, rejected_at),
+                            rejection_reason = COALESCE(?, rejection_reason)
+                        WHERE id = ? AND case_id = ?
+                        """,
+                        (
+                            state,
+                            finding.get("approved_by"),
+                            finding.get("approved_at"),
+                            finding.get("rejected_by"),
+                            finding.get("rejected_at"),
+                            finding.get("rejection_reason"),
+                            fid,
+                            case_dir.name,
+                        ),
+                    )
+                    conn.commit()
+            finally:
+                conn.close()
+        except Exception:  # noqa: BLE001
+            continue

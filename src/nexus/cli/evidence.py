@@ -154,6 +154,9 @@ def verify(
 
     if all_ok:
         typer.echo("All evidence verified OK")
+    else:
+        typer.echo("Evidence verification failed.", err=True)
+        raise typer.Exit(1)
 
 
 @app.command("status")
