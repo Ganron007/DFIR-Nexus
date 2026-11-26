@@ -13,12 +13,18 @@ from nexus.analysis.behavioural_analytics import (
 from nexus.analysis.llm_journal import LLMJournal
 from nexus.analysis.skill_steps import citation_grade
 from nexus.audit import AuditWriter
-from nexus.knowledge.loader import get_artifact, get_skill, skill_sources
+from nexus.knowledge.loader import (
+    get_artifact,
+    get_artifacts_for_tool,
+    get_skill,
+    list_artifacts,
+    skill_sources,
+)
 from nexus.knowledge.skills import skills_for
 from nexus.langgraph.backbone import _audited_examiner_call
 from nexus.langgraph.context_loop import _result_summary
 from nexus.langgraph.interpret_loop import _EXTRA_TOOL_NAMES, _render_results
-from nexus.langgraph.llm_pipeline import _SqliteCheckpointSaver
+from nexus.langgraph.llm_pipeline import _SqliteCheckpointSaver, make_interpret_executor
 from nexus.llm.egress import egress_required
 from nexus.llm.router import LLMRouter
 from nexus.modes.mode1_verify import apply_verifier
@@ -71,12 +77,20 @@ def test_examiner_check_has_audit_provenance_and_full_context_summary(tmp_path):
     assert "matched mshta.exe" in lolbin_summary["reasons"]
 
 
-def test_interpret_loop_exposes_rag_and_examiner_checks_and_renders_summary():
+def test_interpret_loop_exposes_rag_and_examiner_checks_and_renders_summary(tmp_path, monkeypatch):
     assert "rag_search" in _EXTRA_TOOL_NAMES
     assert "forensic_rag_search" in _EXTRA_TOOL_NAMES
     assert "check_driver" in _EXTRA_TOOL_NAMES
     assert "check_lots_domain" in _EXTRA_TOOL_NAMES
     assert "check_loobin" in _EXTRA_TOOL_NAMES
+
+    monkeypatch.setattr(
+        "nexus.langgraph.backbone.backbone_call",
+        lambda name, **kw: {"results": [{"title": "T1003"}], "tool": name},
+    )
+    execute = make_interpret_executor(tmp_path, tools={})
+    res = asyncio.run(execute("rag_search", {"query": "lsass"}))
+    assert res["tool"] == "rag_search"
 
     rendered = _render_results([
         {
@@ -100,7 +114,7 @@ def test_sqlite_checkpoint_saver_persists_across_restarts(tmp_path):
     saver1 = _SqliteCheckpointSaver(db_path)
     next_cfg = saver1.put(cfg, ckpt, {"step": 2}, {"phase": ckpt["channel_versions"].get("phase", 1)}) if ckpt.get("channel_versions") else saver1.put(cfg, ckpt, {"step": 2}, {})
     saver1.put_writes(next_cfg, [("evidence_paths", ["a.evtx"])], task_id="task-1")
-    saver1._conn.close()
+    saver1.close()
 
     saver2 = _SqliteCheckpointSaver(db_path)
     try:
@@ -110,7 +124,7 @@ def test_sqlite_checkpoint_saver_persists_across_restarts(tmp_path):
         assert tup.metadata["step"] == 2
         assert tup.pending_writes
     finally:
-        saver2._conn.close()
+        saver2.close()
 
 
 def test_mode1_verify_uses_es_native_audit_ids_without_terms(tmp_path):
@@ -315,11 +329,13 @@ def test_knowledge_platform_scoping_artifacts_step_citations_and_non_windows_ana
     assert "registry_artifact_analysis" not in linux_selected
     assert "linux_compromise" in linux_selected
 
-    # 3. azure_signin resolves in cloud identity forensics and loads artifact metadata
+    # 3. azure_signin resolves in cloud identity forensics and loads artifact metadata across platforms
     art = get_artifact("azure_signin", platform="cloud")
     assert art is not None and art["platform"] == "cloud"
-    assert get_artifact("unified_logs", platform="macos")["platform"] == "macos"
-    assert get_artifact("zeek_conn", platform="network")["platform"] == "network"
+    assert get_artifact("unified_logs")["platform"] == "macos"
+    assert get_artifact("zeek_conn")["platform"] == "network"
+    assert len(list_artifacts()) >= 63
+    assert any(a.get("platform") == "network" for a in get_artifacts_for_tool("Zeek"))
 
     # 4. Step-level citations propagate when top-level source: is absent
     sam_skill = get_skill("sam_ntds_credential_theft")

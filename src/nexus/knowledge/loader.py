@@ -93,13 +93,17 @@ def _load_all_in_dir(rel_dir: str) -> list[dict]:
 
 # ── Artifacts ───────────────────────────────────────────────────────────
 
+_ARTIFACT_PLATFORMS = ("windows", "linux", "macos", "cloud", "network")
+
+
 def get_artifact(name: str, platform: str = "windows") -> dict | None:
     """Get artifact definition by name (case-insensitive)."""
     name_lower = name.lower().replace(" ", "_")
-    candidates = [
-        f"artifacts/{platform}/{name_lower}.yaml",
-        f"artifacts/windows/{name_lower}.yaml",
-    ]
+    candidates = [f"artifacts/{platform}/{name_lower}.yaml"]
+    for plat in _ARTIFACT_PLATFORMS:
+        path = f"artifacts/{plat}/{name_lower}.yaml"
+        if path not in candidates:
+            candidates.append(path)
     for path in candidates:
         data = _load_yaml(path)
         if data and isinstance(data, dict):
@@ -110,7 +114,7 @@ def get_artifact(name: str, platform: str = "windows") -> dict | None:
 def list_artifacts(platform: str | None = None) -> list[dict]:
     """List all artifact definitions, optionally filtered by platform."""
     results = []
-    platforms = [platform] if platform else ["windows", "linux"]
+    platforms = [platform] if platform else list(_ARTIFACT_PLATFORMS)
     for p in platforms:
         results.extend(_load_all_in_dir(f"artifacts/{p}"))
     return results

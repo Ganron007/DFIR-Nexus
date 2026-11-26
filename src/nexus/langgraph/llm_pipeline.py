@@ -1952,6 +1952,12 @@ def make_interpret_executor(case_dir: Path | None, tools: dict):
         lookup_name = "forensic_rag_search" if name == "rag_search" else name
         tool = tools.get(lookup_name) or tools.get(name)
         if tool is None:
+            if lookup_name == "forensic_rag_search" and case_dir is not None:
+                from nexus.audit import AuditWriter
+
+                bound_audit = AuditWriter("nexus", audit_dir=Path(case_dir) / "audit")
+                kwargs = {k: v for k, v in payload.items() if k != "case_id"}
+                return backbone_call("rag_search", audit=bound_audit, case_dir=Path(case_dir), **kwargs)
             return {"error": f"tool {name} not available"}
         call_payload = dict(payload)
         if lookup_name == "forensic_rag_search":
@@ -3352,7 +3358,10 @@ class _SqliteCheckpointSaver(MemorySaver):
         ckpt_typed, meta_typed, parent_id = self.storage[tid][ns][cid]
         with self._db_lock:
             for k, v in new_versions.items():
-                vt, vb = self.blobs[(tid, ns, k, v)]
+                blob = self.blobs.get((tid, ns, k, v))
+                if blob is None:
+                    continue
+                vt, vb = blob
                 self._conn.execute(
                     "INSERT OR REPLACE INTO blobs VALUES (?, ?, ?, ?, ?, ?)",
                     (tid, ns, k, json.dumps(v), vt, vb),
@@ -3363,6 +3372,12 @@ class _SqliteCheckpointSaver(MemorySaver):
             )
             self._conn.commit()
         return res
+
+    def close(self) -> None:
+        with self._db_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     def put_writes(self, config, writes, task_id, task_path=""):
         super().put_writes(config, writes, task_id, task_path=task_path)
@@ -3412,7 +3427,6 @@ async def _run_pipeline_with_tools(
     progress_path: str,
 ):
     """The run itself, while ``run_pipeline`` holds the MCP sessions open (D71)."""
-    from langgraph.types import Command
 
     log.info(
         "MCP tools loaded: %d (has run_command=%s run_windows_command=%s sift_mirror=%s)",
@@ -3432,6 +3446,45 @@ async def _run_pipeline_with_tools(
 
     graph = build_graph(tools_by_name, model, mode=pipeline_mode)
     checkpointer = _pipeline_checkpointer(from_case)
+    try:
+        return await _run_compiled_pipeline(
+            graph=graph,
+            checkpointer=checkpointer,
+            interrupt_nodes=interrupt_nodes,
+            thread_id=thread_id,
+            resume=resume,
+            from_case=from_case,
+            evidence_path=evidence_path,
+            evidence_paths=evidence_paths,
+            case_context=case_context,
+            pipeline_mode=pipeline_mode,
+            progress_path=progress_path,
+            policy=policy,
+        )
+    finally:
+        if hasattr(checkpointer, "close"):
+            checkpointer.close()
+
+
+async def _run_compiled_pipeline(
+    *,
+    graph: Any,
+    checkpointer: Any,
+    interrupt_nodes: list[str],
+    thread_id: str,
+    resume: bool,
+    from_case: str,
+    evidence_path: str,
+    evidence_paths: list[str] | None,
+    case_context: dict[str, str] | None,
+    pipeline_mode: str,
+    progress_path: str,
+    policy: str,
+):
+    from langgraph.types import Command
+
+    from nexus.langgraph.tool_lane import inherit_evidence_paths
+
     compiled = graph.compile(checkpointer=checkpointer, interrupt_before=interrupt_nodes)
 
     cfg = {"configurable": {"thread_id": thread_id or "default"}}
