@@ -1,5 +1,6 @@
 skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
+platform: windows
 description: Detect mechanisms that survive reboot — autostart registry keys, new services, scheduled tasks, WMI
   event subscriptions.
 primary_families:

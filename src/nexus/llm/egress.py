@@ -50,13 +50,18 @@ _TOKEN_LOCK = threading.Lock()
 _GLOBAL_NO_CASE_TOKENS: dict[str, str] = {}
 
 
-def egress_required(base_url: str) -> bool:
+_REMOTE_PROVIDERS = frozenset({
+    "openai", "anthropic", "litellm", "azure", "openai-compatible",
+})
+
+
+def egress_required(base_url: str, *, provider: str = "") -> bool:
     """True when the configured endpoint is not on this machine."""
     if os.environ.get("NEXUS_LLM_EGRESS", "").strip().lower() == "raw":
         return False
     host = (urlparse(base_url or "").hostname or "").lower()
     if not host:
-        return False
+        return provider.strip().lower() in _REMOTE_PROVIDERS
     return host not in {"localhost", "127.0.0.1", "::1"}
 
 

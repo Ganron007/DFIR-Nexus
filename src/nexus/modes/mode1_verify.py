@@ -109,6 +109,28 @@ def apply_verifier(
 
             def search(_draft: dict[str, Any], rows: list[Any] = rows) -> list[Any]:
                 return rows
+    elif case_dir is not None and draft.get("audit_ids"):
+        from nexus.langgraph.evidence_rows import cited_calls
+
+        audits = [str(a) for a in (draft.get("audit_ids") or []) if a]
+        calls = cited_calls(Path(case_dir), audits)
+        if calls:
+            rows_found: list[Any] = [
+                row for call in calls.values() for row in (call.get("rows") or [])
+            ]
+            if not rows_found:
+                rows_found = [
+                    {"audit_id": aid, "total": c.get("total"), "verdict": c.get("verdict")}
+                    for aid, c in calls.items()
+                    if (c.get("total") or 0) > 0 or c.get("verdict")
+                ]
+            all_explicit_zero = all(
+                c.get("total") == 0 and not c.get("rows") and not c.get("verdict")
+                for c in calls.values()
+            )
+            if rows_found or all_explicit_zero:
+                def search(_draft: dict[str, Any], rows: list[Any] = rows_found) -> list[Any]:
+                    return rows
 
     verdict = classify_draft(draft, search=search)
     if verdict.get("verdict") == "REFUTED" and case_dir is not None:

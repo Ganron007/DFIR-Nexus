@@ -209,16 +209,44 @@ class LLMRouter:
             restore_tool_calls,
         )
 
-        needs_egress = egress_required(getattr(prov, "base_url", "") or "")
+        needs_egress = egress_required(
+            getattr(prov, "base_url", "") or "",
+            provider=getattr(prov, "name", ""),
+        )
         case_dir = _active_case_dir() if needs_egress else None
         with _call_scope(case_dir):
             if needs_egress:
+                from copy import deepcopy
+
                 scrubbed: list[dict[str, Any]] = []
                 for message in msg_dicts:
-                    content = message.get("content")
+                    msg = dict(message)
+                    content = msg.get("content")
                     if isinstance(content, str):
-                        message = {**message, "content": anonymize_text(content, case_dir)}
-                    scrubbed.append(message)
+                        msg["content"] = anonymize_text(content, case_dir)
+                    elif isinstance(content, list):
+                        new_parts = []
+                        for part in content:
+                            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                                new_parts.append({**part, "text": anonymize_text(part["text"], case_dir)})
+                            elif isinstance(part, str):
+                                new_parts.append(anonymize_text(part, case_dir))
+                            else:
+                                new_parts.append(part)
+                        msg["content"] = new_parts
+                    if isinstance(msg.get("tool_calls"), list):
+                        tcs = deepcopy(msg["tool_calls"])
+                        for tc in tcs:
+                            if isinstance(tc, dict):
+                                fn = tc.get("function")
+                                if isinstance(fn, dict) and isinstance(fn.get("arguments"), str):
+                                    fn["arguments"] = anonymize_text(fn["arguments"], case_dir)
+                                if isinstance(tc.get("args"), dict):
+                                    for k, v in list(tc["args"].items()):
+                                        if isinstance(v, str):
+                                            tc["args"][k] = anonymize_text(v, case_dir)
+                        msg["tool_calls"] = tcs
+                    scrubbed.append(msg)
                 msg_dicts = scrubbed
 
             from nexus.analysis.llm_journal import record_llm_invocation
@@ -284,13 +312,26 @@ class LLMRouter:
                 raise
 
             response = ChatResponse.from_provider_response(raw)
-            tool_names = [tc.name for tc in response.tool_calls] if response.tool_calls else []
+            tool_names: list[str] = []
+            for tc in response.tool_calls or []:
+                if isinstance(tc, dict):
+                    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                    tname = fn.get("name") or tc.get("name") or ""
+                else:
+                    tname = getattr(tc, "name", "") or ""
+                if tname:
+                    tool_names.append(str(tname))
+            usage = raw.get("usage") if isinstance(raw, dict) and isinstance(raw.get("usage"), dict) else {}
+            in_tok = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+            out_tok = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
             record_llm_invocation(
                 case_dir,
                 correlation_id=correlation_id,
                 provider=prov.name,
                 model=model_name,
                 latency_ms=(time.perf_counter() - start_t) * 1000,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
                 prompt=prompt_full,
                 response=response.content or "",
                 finish_reason="tool_calls" if tool_names else "stop",

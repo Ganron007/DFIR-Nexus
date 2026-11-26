@@ -73,11 +73,10 @@ class LLMJournal:
 
         if not is_raw:
             try:
-                from nexus.llm.egress import load_anonymizer
+                from nexus.llm.egress import anonymize_text
 
-                anon = load_anonymizer(self.case_dir)
-                prompt_excerpt, _ = anon.anonymize(prompt_excerpt)
-                response_excerpt, _ = anon.anonymize(response_excerpt)
+                prompt_excerpt = anonymize_text(prompt_excerpt, self.case_dir)
+                response_excerpt = anonymize_text(response_excerpt, self.case_dir)
             except Exception as exc:  # noqa: BLE001 - protect logging from failing invocation
                 log.debug("could not anonymize journal excerpts: %s", exc)
 
@@ -169,8 +168,9 @@ def record_llm_invocation(
 ) -> dict[str, Any] | None:
     """Global entry point to record an LLM invocation."""
     journal = current_journal()
-    if journal is None and case_dir is not None:
-        journal = LLMJournal(case_dir, run_id=run_id)
+    resolved = Path(case_dir).resolve() if case_dir is not None else None
+    if journal is None or (resolved is not None and journal.case_dir != resolved):
+        journal = LLMJournal(case_dir, run_id=run_id) if case_dir is not None else None
     if journal is None:
         return None
     return journal.record_call(

@@ -31,6 +31,10 @@ PACK_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "knowledge" / "needles"
     / "behavioral_analytics.yaml"
 )
+PLATFORM_PACK_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "knowledge" / "needles"
+    / "platform_behavioral_analytics.yaml"
+)
 CAR_PACK_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "knowledge" / "needles"
     / "car_analytics.yaml"
@@ -40,7 +44,7 @@ CAR_PACK_PATH = (
 #: WO-R0F item 4: the translated SigmaHQ pack is REMOVED. Sigma detection is what
 #: Hayabusa and Chainsaw do in the lane (their detections are indexed and become
 #: leads); our own translation re-implemented detection, against the product
-#: principle. The hand pack is the only analytics pack.
+#: principle.
 PACK_PATHS = (PACK_PATH,)
 #: no term in this pack may be derived from a K1 or GATE-H sample (WO-K4).
 PROVENANCE = "external: MITRE CAR + ATT&CK; no sample-derived terms"

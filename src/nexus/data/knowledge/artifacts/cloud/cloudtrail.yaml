@@ -1,0 +1,24 @@
+name: AWS CloudTrail Audit Logs
+description: "AWS API and management-plane control log recording caller identity, source IP, user agent, target resources, and error codes"
+platform: cloud
+
+locations:
+  - path: "S3://<bucket>/AWSLogs/<account>/CloudTrail/"
+    os_versions: ["AWS Cloud"]
+    notes: "JSON eventHistory exports or compressed S3 CloudTrail logs ingested into the case."
+
+proves:
+  - "Who invoked an AWS management/control API (userIdentity ARN/type), from which sourceIPAddress and userAgent, and whether it succeeded or failed"
+  - "IAM user/role/policy modifications, access key creation, and StopLogging/DeleteTrail defense evasion"
+
+does_not_prove:
+  - "Data-plane object reads or VPC packet contents unless S3 Data Events / VPC Flow Logs were also enabled"
+
+corroborate_with:
+  for_network: [zeek_conn]
+  for_cloud: [azure_signin, m365_audit]
+
+related_tools: [cloudtrail]
+
+references:
+  - "MITRE ATT&CK Cloud Matrix (IaaS)"

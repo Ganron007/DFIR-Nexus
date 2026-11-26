@@ -32,7 +32,7 @@ from uuid import uuid4
 
 from nexus.audit import AuditWriter, request_audit_extra
 from nexus.langgraph import backbone as backbone_module
-from nexus.langgraph.backbone import bind_case_args, tool_contracts_block
+from nexus.langgraph.backbone import EXAMINER_CHECK_TOOL_SET, bind_case_args, tool_contracts_block
 from nexus.langgraph.es_native import (
     READ_TOOL_PARAMETERS,
     READ_TOOL_REQUIRED_ARGS,
@@ -523,6 +523,27 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
                 for r in results[:8] if isinstance(r, dict)
             ],
         }
+    if name in EXAMINER_CHECK_TOOL_SET:
+        summary: dict[str, Any] = {}
+        for key in (
+            "verdict", "confidence", "found", "hijackable", "is_suspicious",
+            "suspicious_count", "process_known", "parent_valid",
+            "path_in_baseline", "filename_in_baseline", "in_baseline",
+            "algorithm", "name", "tool", "malware_family",
+            "interpretation_constraint", "message", "error",
+        ):
+            if key in result and result[key] not in (None, ""):
+                summary[key] = result[key]
+        for list_key in ("reasons", "findings", "entries", "layers", "caveats", "baseline_os_versions"):
+            if result.get(list_key):
+                val = result[list_key]
+                summary[list_key] = val[:8] if isinstance(val, list) else val
+        for dict_key in ("lolbin", "driver"):
+            if isinstance(result.get(dict_key), dict) and result[dict_key]:
+                summary[dict_key] = result[dict_key]
+        if result.get("decoded"):
+            summary["decoded"] = str(result["decoded"])[:2000]
+        return summary or {"keys": sorted(result.keys())[:20]}
     return {"keys": sorted(result.keys())[:20]}
 
 
@@ -714,6 +735,7 @@ def _force_answer(
     call_chars: int,
     terminal_keys: tuple[str, ...] = (),
     prompt_chars: int = 0,
+    response_format: dict[str, Any] | None = None,
 ) -> str:
     """One final answer-only model call when the tool rounds are exhausted.
 
@@ -757,10 +779,23 @@ def _force_answer(
             "explicitly rather than inventing evidence."
         )
     try:
-        raw = _call_model(model, [
-            {"role": "system", "content": base_system},
-            {"role": "user", "content": user},
-        ])
+        try:
+            raw = _call_model(
+                model,
+                [
+                    {"role": "system", "content": base_system},
+                    {"role": "user", "content": user},
+                ],
+                response_format=response_format,
+            )
+        except Exception as exc:
+            if response_format and is_schema_parameter_rejection(exc):
+                raw = _call_model(model, [
+                    {"role": "system", "content": base_system},
+                    {"role": "user", "content": user},
+                ])
+            else:
+                raise
     except Exception as exc:  # noqa: BLE001 — final pass is best-effort
         log.debug("force-answer call failed: %s", exc)
         return ""
@@ -852,6 +887,7 @@ def run_context_loop(
     audit: AuditWriter | None = None,
     terminal_keys: tuple[str, ...] = (),
     allowed_tools: tuple[str, ...] | None = None,
+    output_contract: str = "",
 ) -> dict[str, Any]:
     """Run one bounded, tool-driving LLM turn.
 
@@ -1026,6 +1062,7 @@ def run_context_loop(
             obs.setdefault("round", round_no - 1)
         sections = [
             (0, "protocol", protocol.strip()),
+            (0, "output_contract", output_contract.strip()),
             (1, "question", question),
             (2, "observations", _observations_block(observations, fresh_round=round_no - 1)),
             (3, "prior_conversation", history_block),
@@ -1354,14 +1391,16 @@ def run_context_loop(
             and time.monotonic() < deadline):
         from nexus.langgraph.prompt_budget import budget_chars, case_window
 
+        force_rf = {"type": "json_object"} if response_format is not None else None
         forced = _force_answer(
             model=model,
             base_system=base_system,
-            question=question,
+            question=f"{question}\n\n{output_contract}".strip() if output_contract else question,
             observations=observations,
             call_chars=budget.call_chars,
             terminal_keys=terminal_keys,
             prompt_chars=budget_chars(case_window(case_dir)),
+            response_format=force_rf,
         )
         if forced:
             reply = forced

@@ -10,7 +10,7 @@ source: "Maldev Academy/Sektor7/Dark Vortex + Evasive Malware/Windows APT Warfar
 entries:
   - id: direct_syscall_evasion
     name: Direct/indirect syscalls + ntdll unhooking
-    families: [vol, volatility, memory, sysmon, evtx]
+    families: [vol, volatility, memory, evtx]
     keywords: [syscall, syswhispers, hellsgate, ntdll, unhook, stubs]
     techniques: [T1106, T1620, T1027]
     needles: ["syscall stub", "SysWhispers", "Hell's Gate", "ntdll unhook", "direct syscall", "indirect syscall", "fresh ntdll"]
@@ -33,7 +33,7 @@ entries:
     caveats: "Legitimate protected/packed software also resolves dynamically — treat as a lead, corroborate with behaviour."
   - id: amsi_etw_bypass
     name: AMSI/ETW bypass
-    families: [sysmon, evtx, powershell, memory, vol]
+    families: [evtx, powershell, memory, vol]
     keywords: [amsi, etw, amsiscanbuffer, patch, bypass, dotnet]
     techniques: [T1562.001, T1562.006, T1059.001]
     needles: ["AmsiScanBuffer", "amsi.dll", "ETW patch", "EtwEventWrite", "amsiInitFailed", "AMSI bypass"]
@@ -44,7 +44,7 @@ entries:
     caveats: "A detection gap (no script-block logs) is not proof of a bypass — the telemetry may simply be off; state which."
   - id: injection_variants
     name: Injection variants (EarlyBird/APC/hollowing/doppelganging)
-    families: [vol, volatility, memory, sysmon, evtx]
+    families: [vol, volatility, memory, evtx]
     keywords: [injection, earlybird, apc, hollowing, doppelganging, stomping, mapview]
     techniques: [T1055.002, T1055.004, T1055.012, T1055.013]
     needles: ["CreateRemoteThread", "QueueUserAPC", "NtMapViewOfSection", "Section handle", "hollowed image", "module stomping", "Doppelgänging"]

@@ -1,5 +1,6 @@
 skill: log_clearing
 title: Event log clearing and audit tampering
+platform: windows
 description: Detect clearing of Security/System/Application logs, audit-policy changes, and Sysmon service tampering
   — anti-forensics.
 trigger:

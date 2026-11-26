@@ -190,6 +190,37 @@ def _investigative_extras(case_dir: Path) -> str:
             out += block + "\n\n"
     except Exception:  # noqa: BLE001
         pass
+    # Surface relevant DET dictionary caveats/indicators for case leads & techniques when present.
+    try:
+        leads_file = Path(case_dir) / "analysis" / "leads.jsonl"
+        if leads_file.is_file():
+            from nexus.knowledge.attack_needles import extract_techniques
+            from nexus.knowledge.loader import det_for
+
+            fams: set[str] = set()
+            techs: set[str] = set()
+            for raw in leads_file.read_text(encoding="utf-8", errors="replace").splitlines()[:60]:
+                if not raw.strip():
+                    continue
+                row = json.loads(raw)
+                if row.get("family"):
+                    fams.add(str(row["family"]))
+                for t in row.get("techniques") or []:
+                    techs.add(str(t))
+                for t in extract_techniques(str(row.get("subject") or "") + " " + str(row.get("detail") or "")):
+                    techs.add(t)
+            det_entries = det_for(families=sorted(fams), techniques=sorted(techs), limit=4) if (fams or techs) else []
+            if det_entries:
+                lines = ["DOMAIN DETECTION NOTES (DET — methodology/caveats, NOT evidence):"]
+                for entry in det_entries:
+                    lines.append(
+                        f"- {entry.get('name', entry.get('id', ''))}: "
+                        f"{str(entry.get('look_for') or '').strip()[:220]} "
+                        f"[Caveat: {str(entry.get('caveats') or '').strip()[:160]}]"
+                    )
+                out += "\n".join(lines)[:1600] + "\n\n"
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
@@ -612,6 +643,7 @@ ROLES: dict[str, AgentRole] = {
                  "check_file", "check_scheduled_task", "check_process_tree", "check_service",
                  "check_hash", "check_autorun", "check_registry", "analyze_filename_triage",
                  "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
+                 "check_driver", "check_lots_domain", "check_loobin",
                  # IC-12: the method knowledge (how to read a 4648, an SI<FN, a type-9 logon) for the
                  # seats that read the rows; run 4's evidence seats could not ask it.
                  "rag_search"),
@@ -1402,7 +1434,8 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
         '"audit_ids":["..."]}],"entities":["..."],'
         '"candidate_findings":[{"title":"...","observation":"...",'
-        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"interpretation":"...","benign_alternative":"...","refutation":"...",'
+        '"confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
         '"not_checked":["..."]},"next_questions":["..."],'
@@ -1414,7 +1447,8 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"times":["..."],"evidence":["family/file:line ..."],'
         '"audit_ids":["..."]}],"unexplained":["..."],'
         '"candidate_findings":[{"title":"...","observation":"...",'
-        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"interpretation":"...","benign_alternative":"...","refutation":"...",'
+        '"confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"next_questions":["..."],'
         '"question_dispositions":[{"question":"...","status":"answered|unanswerable|duplicate",'
@@ -1425,7 +1459,8 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '{"patterns":[{"name":"...","technique_ids":["..."],'
         '"evidence":["family/file:line ..."],"audit_ids":["..."]}],'
         '"candidate_findings":[{"title":"...","observation":"...",'
-        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"interpretation":"...","benign_alternative":"...","refutation":"...",'
+        '"confidence":"LOW|MEDIUM|HIGH",'
         '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"caveats":["..."],"next_questions":["..."],'
         '"question_dispositions":[{"question":"...","status":"answered|unanswerable|duplicate",'
@@ -1433,7 +1468,8 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"coverage":{"checked":["..."],"not_checked":["..."]}}'
     ),
     "verifier": (
-        '{"verdicts":[{"title":"...","class":"confirmed|inferred|refuted",'
+        '{"verdicts":[{"subject":"<entity_type>=<entity_value>","title":"...",'
+        '"class":"confirmed|inferred|refuted",'
         '"basis":"...","audit_ids":["..."]}],"coverage":{"checked":["..."],'
         '"not_checked":["..."]}}'
     ),
@@ -1758,6 +1794,12 @@ def run_work_order(
         calls=order.max_calls or shared.calls,
         call_chars=shared.call_chars,
     )
+    output_contract = (
+        f"OUTPUT CONTRACT ({role.name}):\n"
+        + _ROLE_SCHEMAS.get(role.name, _ROLE_SCHEMAS["evidence"])
+        + "\nReturn the role JSON object as the final answer. Use the read-only "
+        "tools; never claim evidence you did not retrieve."
+    )
     question = (
         f"WORK ORDER {order.order_id}\n"
         f"Role: {role.name}\n"
@@ -1773,8 +1815,6 @@ def run_work_order(
         + f"Run context: {work_context}\n\n"
         + (str(work_context_digest) + "\n\n" if work_context_digest else "")
         + _investigative_extras(case_dir)
-        + "Return the role JSON object as the final answer. Use the read-only "
-        "tools; never claim evidence you did not retrieve."
     )
     sink.emit(new_event(
         run_id, "work_order.started", actor="director", turn_id=turn_id,
@@ -1845,6 +1885,7 @@ def run_work_order(
                 "patterns", "corroborated_entities", "summary",
             ),
             allowed_tools=role.tools,
+            output_contract=output_contract,
         )
     except Exception as exc:  # noqa: BLE001 — every role has an honest fallback
         log.warning("work order failed (%s): %s", order.order_id, exc)
@@ -2034,12 +2075,34 @@ def plan_work_orders(
 
     all_groups = groups_for(all_families)
     keywords = _question_keywords(question)
+    from nexus.knowledge.attack_needles import extract_techniques as _extract_techs
+
+    all_lead_techs: list[str] = []
+
+    def _collect_techs(items: list[Any]) -> list[str]:
+        seen: list[str] = []
+        for item in items:
+            raw_list = getattr(item, "techniques", None) if not isinstance(item, dict) else item.get("techniques")
+            for t in raw_list or ():
+                s = str(t).strip().upper()
+                if s and s not in seen:
+                    seen.append(s)
+            text = (
+                f"{getattr(item, 'subject', '')} {getattr(item, 'detail', '')}"
+                if not isinstance(item, dict)
+                else f"{item.get('subject', '')} {item.get('task', '')} {item.get('detail', '')}"
+            )
+            for t in _extract_techs(text):
+                if t not in seen:
+                    seen.append(t)
+        return seen
 
     if model is not None:
         try:
             from nexus.analysis.leads import build_leads
 
             leads = build_leads(case_dir, write=False)
+            all_lead_techs = _collect_techs(list(leads))
             families_tuples = [(f, families.get(f, 0)) for f in all_families]
             spawns = _model_supervisor_for_mode2(
                 model,
@@ -2050,19 +2113,73 @@ def plan_work_orders(
                 max_orders=max_orders,
             )
             if spawns:
-                orders = []
+                # Pair model spawns with matching lead metadata + preserve correlation/pattern/feedback guarantees.
+                orders: list[WorkOrder] = []
                 for sp in spawns:
                     fam = sp["family"]
                     sk_fams = [fam] if fam else all_families
+                    matching_leads = [
+                        ld for ld in leads
+                        if (fam and str(getattr(ld, "family", "") or "").lower() == fam.lower())
+                        or (str(getattr(ld, "subject", "") or "").lower() in sp["task"].lower() and getattr(ld, "subject", ""))
+                    ]
+                    sp_techs = _collect_techs(matching_leads) or all_lead_techs
+                    lead_subjs = tuple(str(getattr(ld, "subject", "") or "") for ld in matching_leads if getattr(ld, "subject", ""))[:4]
+                    is_crit = any(str(getattr(ld, "level", "") or "").lower() in ("critical", "high") for ld in matching_leads)
                     orders.append(WorkOrder(
                         order_id=WorkOrder.new_id(),
                         role=sp["role"],
                         task=sp["task"],
                         family=fam,
                         why=sp["why"],
+                        lead_subjects=lead_subjs,
+                        crit_high=is_crit,
+                        techniques=tuple(sp_techs[:8]),
                         priority_tools=("es_mappings", "es_search", "es_aggregate", "run_record"),
                         acceptance="corroborated candidate findings with audit_ids or explicit none",
-                        skill_refs=_retrieve_skill_refs(sk_fams, keywords, limit=8, family_groups=groups_for(sk_fams)),
+                        skill_refs=_retrieve_skill_refs(
+                            sk_fams, keywords, limit=8,
+                            techniques=sp_techs or None,
+                            family_groups=groups_for(sk_fams),
+                        ),
+                        director_source="model",
+                    ))
+                present_roles = {o.role for o in orders}
+                if leads and "correlation" not in present_roles:
+                    orders.append(WorkOrder(
+                        order_id=WorkOrder.new_id(),
+                        role="correlation",
+                        task=f"Correlate entities and times across all evidence families for: {question or '(no examiner question)'}",
+                        why="Cross-family corroboration before pattern matching",
+                        techniques=tuple(all_lead_techs[:8]),
+                        priority_tools=("es_search", "es_aggregate", "run_record"),
+                        acceptance="corroborated entities/chains with audit_ids or explicit none",
+                        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, techniques=all_lead_techs or None, family_groups=all_groups),
+                        director_source="model",
+                    ))
+                if leads and "pattern" not in present_roles:
+                    orders.append(WorkOrder(
+                        order_id=WorkOrder.new_id(),
+                        role="pattern",
+                        task=f"Map the activity earlier orders established to ATT&CK techniques for: {question or '(no examiner question)'}",
+                        why="Framework-grounded pattern check after correlation",
+                        techniques=tuple(all_lead_techs[:8]),
+                        priority_tools=("rag_search", "es_search", "es_aggregate"),
+                        acceptance="patterns with required evidence rows, or explicit no-match",
+                        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, techniques=all_lead_techs or None, family_groups=all_groups),
+                        director_source="model",
+                    ))
+                feedback = known_findings or {}
+                if any(feedback.get(k) for k in ("approved", "draft", "rejected")):
+                    orders.append(WorkOrder(
+                        order_id=WorkOrder.new_id(),
+                        role="correlation",
+                        task=f"Apply examiner feedback constraints (approved/draft/rejected) for: {question or '(none)'}",
+                        why="examiner findings feedback",
+                        techniques=tuple(all_lead_techs[:8]),
+                        priority_tools=("es_search", "es_aggregate", "run_record"),
+                        acceptance="per-finding disposition: deepened, kept, or dropped",
+                        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, techniques=all_lead_techs or None, family_groups=all_groups),
                         director_source="model",
                     ))
                 for order in orders:
@@ -2132,9 +2249,13 @@ def plan_work_orders(
                 "equally well) and refutation (what would refute it, with the audit_ids "
                 "of the rows that test it)"
             ),
-            skill_refs=_retrieve_skill_refs(skill_families, keywords, limit=8,
-                                           family_groups=groups_for(skill_families)),
+            skill_refs=_retrieve_skill_refs(
+                skill_families, keywords, limit=8,
+                techniques=list(item.get("techniques") or ()) or None,
+                family_groups=groups_for(skill_families),
+            ),
         ))
+    rule_lead_techs = _collect_techs(list(lead_orders))
     # IC-3: the crit/high orders are kept whole; the plan's size limit applies to the rest.
     crit_orders = [o for o in orders if o.crit_high]
     lead_rest = [o for o in orders if not o.crit_high]
@@ -2147,7 +2268,7 @@ def plan_work_orders(
         why="Cross-family corroboration before pattern matching",
         priority_tools=("es_search", "es_aggregate", "run_record"),
         acceptance="corroborated entities/chains with audit_ids or explicit none",
-        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, family_groups=all_groups),
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, techniques=rule_lead_techs or None, family_groups=all_groups),
     ))
     from nexus.langgraph.case_intake import insider_intake
     from nexus.langgraph.query_pack import load_case_intake
@@ -2162,7 +2283,7 @@ def plan_work_orders(
         why="Framework-grounded pattern check after correlation",
         priority_tools=("rag_search", "es_search", "es_aggregate"),
         acceptance="patterns with required evidence rows, or explicit no-match",
-        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, family_groups=all_groups),
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, techniques=rule_lead_techs or None, family_groups=all_groups),
     ))
 
     # 4j.16 — examiner accept/reject feeds the next round: approved findings
@@ -2207,7 +2328,7 @@ def plan_work_orders(
             acceptance=(
                 "per-finding disposition: deepened with new evidence, kept "
                 "as-is, or explicitly dropped"),
-            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, family_groups=all_groups),
+            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8, techniques=rule_lead_techs or None, family_groups=all_groups),
         )
         orders = orders + [feedback_order]
 
@@ -2733,6 +2854,12 @@ def _run_mode2(
         if result.status == "ok":
             # Recorded only once the pass ran, so a failed pass is retried, not skipped.
             state["verified_candidates"] = sorted(verified | set(fresh))
+        else:
+            gaps = list(state.get("gaps") or [])
+            msg = f"verifier pass returned {result.status}; {len(fresh)} candidate(s) not adversarially verified"
+            if msg not in gaps:
+                gaps.append(msg)
+            state["gaps"] = gaps
         parsed = result.parsed or {}
         # A verdict is the verdict of the claim it answers (D189): the candidate of this pass whose
         # title it names, else the rows it cites, else its title. A later pass on the same claim,
@@ -2847,7 +2974,12 @@ def _run_mode2(
         # its verdict classes say. Block settlement and say so, rather than
         # reporting a converged run that skipped artifacts.
         blockers = _apply_settle_blockers(case_dir, run_id, state, emit=sink.emit)
-        if (not needs and not next_questions and not pivots) or used >= limit:
+        all_steer = read_steering(case_dir, run_id)
+        seen_steer = int(state.get("steering_seen") or 0)
+        fresh_steer = [str(s.get("text") or "").strip() for s in all_steer[seen_steer:] if str(s.get("text") or "").strip()]
+        if fresh_steer:
+            state["steering_seen"] = len(all_steer)
+        if (not needs and not next_questions and not pivots and not fresh_steer) or used >= limit:
             state["status"] = "assessed"
             state["settle_blocked"] = bool(blockers)
             _persist_state(case_dir, run_id, state)
@@ -2892,11 +3024,14 @@ def _run_mode2(
             task_parts.append(
                 "NEW ENTITIES to pivot on — check their parentage, persistence, "
                 "network and credential activity: " + "; ".join(pivots[:6]) + ".")
+        if fresh_steer:
+            task_parts.append("EXAMINER STEERING (prioritize): " + "; ".join(fresh_steer[-3:]) + ".")
         task_parts.append(
             "Use new queries, not a re-run of the same query. If nothing new "
             "exists, say so explicitly and cite run_record.")
         families = [str(o.get("family") or "") for o in _order_dicts()
                     if o.get("family")]
+        followup_techs = [str(t) for o in _order_dicts() for t in (o.get("techniques") or ()) if t]
         order = WorkOrder(
             order_id=WorkOrder.new_id(),
             role=role,
@@ -2910,6 +3045,7 @@ def _run_mode2(
                 "evidence"),
             skill_refs=_retrieve_skill_refs(
                 families, _question_keywords(question), limit=3,
+                techniques=followup_techs or None,
                 family_groups=_case_family_groups(case_dir, families)),
         )
         state["orders"].append(order.to_dict())
@@ -2947,10 +3083,22 @@ def _run_mode2(
                 for result in state.get("results", [])
                 for candidate in ((result.get("parsed") or {}).get("candidate_findings") or [])
                 if isinstance(candidate, dict)]
-        candidates: list[dict[str, Any]] = [
-            candidate for candidate, claim in zip(pool, _claim_keys(case_dir, pool), strict=True)
-            if claim not in rejected and _title_key(candidate) not in rejected
-        ]
+        candidates: list[dict[str, Any]] = []
+        ungrounded_dropped = 0
+        for candidate, claim in zip(pool, _claim_keys(case_dir, pool), strict=True):
+            if claim in rejected or _title_key(candidate) in rejected:
+                continue
+            if candidate.get("ungrounded"):
+                ungrounded_dropped += 1
+                continue
+            candidates.append(candidate)
+        if ungrounded_dropped:
+            gaps = list(state.get("gaps") or [])
+            gaps.append(
+                f"excluded {ungrounded_dropped} ungrounded candidate(s) before synthesis "
+                "(credited checks or verdicts their cited calls did not return)"
+            )
+            state["gaps"] = gaps
         # Each candidate is named, so synthesis can say which it merges and their calls follow (D225).
         candidates = [{**candidate, "candidate_id": f"C{n}"} for n, candidate in enumerate(candidates, 1)]
         coverage = run_coverage(state.get("results") or [])

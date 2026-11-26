@@ -1,0 +1,34 @@
+name: macOS Unified Logs
+description: "Apple Unified Logging system recording authentication, process launches, TCC consent, Gatekeeper, and persistence events"
+platform: macos
+
+locations:
+  - path: "/var/db/diagnostics/"
+    os_versions: ["macOS 10.12+"]
+    notes: "TraceV3 log database (.tracev3) queried via log show or unifiedlog_iterator."
+  - path: "/var/db/uuidtext/"
+    os_versions: ["macOS 10.12+"]
+    notes: "String format tables paired with diagnostics tracev3 archives."
+
+proves:
+  - "Authentication, sudo, SSH, and local authorization attempts"
+  - "TCC privacy grant evaluations, Gatekeeper/XProtect verdicts, and quarantine events"
+  - "Service management (launchd) and subsystem diagnostic messages"
+
+does_not_prove:
+  - "Full command-line arguments when private data redaction (<private>) is active"
+  - "Historical activity rolled past retention limits in Persist/Special buffers"
+
+timestamps:
+  - field: "Timestamp"
+    meaning: "High-precision event creation timestamp reported in UTC/local offset"
+    common_misinterpretation: "Always preserve timezone offset when converting .tracev3 output."
+
+corroborate_with:
+  for_persistence: [macos_launch_agents]
+  for_timeline: [plaso, macos_launch_agents]
+
+related_tools: [log2timeline, psort]
+
+references:
+  - "SANS FOR518 - Mac and iOS Forensic Analysis and Incident Response"

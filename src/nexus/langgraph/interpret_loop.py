@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.backbone import EXAMINER_CHECK_TOOL_SET
 from nexus.langgraph.model_json import loads_model_json
 from nexus.llm.egress import egress_bound
 
@@ -38,11 +39,13 @@ log = logging.getLogger(__name__)
 
 _MAX_PLAN_ITEMS = 6
 _DEFAULT_ROUNDS = 3
-# WP 10.53: extra read-only tools the interpret loop may call directly —
-# the same audited MCP surface the examiner uses (run record + RAG).
+# WP 10.53 + examiner toolkit: read-only tools the interpret loop may call directly —
+# the same audited MCP/backbone surface the examiner uses (run record + RAG + triage checks).
 _EXTRA_TOOL_NAMES = (
     "run_record",
     "forensic_rag_search",
+    "rag_search",
+    *sorted(EXAMINER_CHECK_TOOL_SET),
 )
 
 
@@ -421,11 +424,17 @@ def _render_results(entries: list[dict[str, Any]]) -> str:
             if entry.get("next_after_key") is not None:
                 lines.append(f"  next_after_key: {entry['next_after_key']}")
             continue
-        if kind == "tool":
-            lines.append(
-                "  tool result keys: "
-                + ", ".join(str(k) for k in (entry.get("result_keys") or []))
-            )
+        if kind in ("tool", "read") and entry.get("tool") not in ("es_search", "es_aggregate", "es_sample", "n4_query", "n4_aggregate"):
+            summary = entry.get("summary")
+            if isinstance(summary, dict) and summary:
+                import json as _json
+
+                lines.append("  " + _json.dumps(summary, ensure_ascii=False, default=str)[:4000])
+            else:
+                lines.append(
+                    "  tool result keys: "
+                    + ", ".join(str(k) for k in (entry.get("result_keys") or []))
+                )
             continue
         if kind == "aggregate":
             lines.append(
@@ -749,8 +758,9 @@ async def run_interpret_loop(
             '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
             '"tool_calls":[{"tool":"es_search|es_aggregate|run_record","args":{"query":{"match_all":{}},"size":20},"why":"..."}]}\n'
             "RULES:\n"
-            "- Max 6 tool_calls: es_search for rows, es_aggregate for counts and distributions; only "
-            "families and fields that actually exist in the digest and the field sheet.\n")
+            "- Max 6 tool_calls: es_search for rows, es_aggregate for counts and distributions, "
+            "run_record for artifact/tool output; "
+            "use only families and fields that actually exist in the digest and the field sheet.\n")
         plan_keys = "hypotheses and tool_calls"
     else:
         plan_shape = (
@@ -758,7 +768,7 @@ async def run_interpret_loop(
             '"queries":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."}],'
             '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
             '"samples":[{"family":"","field":"","value":"","n":8,"why":""}],'
-            '"tools":[{"tool":"run_record|forensic_rag_search",'
+            '"tools":[{"tool":"run_record|forensic_rag_search|rag_search|check_file|check_lolbin|...",'
             '"args":{},"why":"..."}]}\n'
             "RULES:\n"
             "- Max 6 query/aggregate/sample items total; only families and fields "
@@ -957,8 +967,10 @@ async def run_interpret_loop(
                 result = await execute(tool_name, payload)
             except Exception as exc:  # noqa: BLE001 — one item must not kill the loop
                 result = {"error": str(exc)}
+            from nexus.langgraph.context_loop import _result_summary
+
             entry = {
-                "kind": item["kind"], "why": item.get("why", ""),
+                "kind": item["kind"], "tool": tool_name, "why": item.get("why", ""),
                 "params": {k: v for k, v in payload.items() if k != "case_id"},
                 "audit_id": ((result.get("provenance") or {}).get("audit_id")
                              or result.get("audit_id") or ""),
@@ -973,6 +985,10 @@ async def run_interpret_loop(
                 "has_more": result.get("has_more"),
                 "next_search_after": result.get("next_search_after"),
                 "hits": result.get("hits") or [],
+                "summary": _result_summary(
+                    "rag_search" if tool_name == "forensic_rag_search" else tool_name,
+                    result,
+                ) if tool_name not in ("es_search", "es_aggregate", "es_sample", "n4_query", "n4_aggregate") else {},
                 "result_keys": sorted(result.keys())[:24],
             }
             entries.append(entry)
@@ -1002,7 +1018,7 @@ async def run_interpret_loop(
             + ('"tool_calls":[{"tool":"es_search|es_aggregate|run_record","args":{"query":{"match_all":{}},"size":20},"why":"..."}]}\n'
                if verify_format else
                '"next":[{"es":{"query":{"bool":{"must":[{"match":{"text":"<term>"}}]}}},"why":"..."},'
-               '{"tool":"run_record|forensic_rag_search","args":{},"why":"..."}]}\n')
+               '{"tool":"run_record|forensic_rag_search|rag_search|check_file|check_lolbin|...","args":{},"why":"..."}]}\n')
             + f"RULES: one note per hypothesis. Plan `{next_key}` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
             "If a search result says `has_more: true`, preserve its query and "

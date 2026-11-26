@@ -1,5 +1,6 @@
 skill: powershell_abuse
 title: PowerShell abuse — encoded commands, download cradles, script blocks
+platform: windows
 description: Detect malicious PowerShell — encoded commands, download cradles, AMSI bypass, suspicious script blocks,
   and shell profiles.
 trigger:

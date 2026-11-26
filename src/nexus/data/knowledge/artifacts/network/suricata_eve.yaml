@@ -1,0 +1,23 @@
+name: Suricata EVE JSON Alerts
+description: "Suricata IDS/IPS EVE JSON detection alerts and protocol anomaly events"
+platform: network
+
+locations:
+  - path: "extractions/network/eve.json"
+    os_versions: ["Cross-platform"]
+    notes: "Produced from PCAP processing in the network lane or imported directly."
+
+proves:
+  - "Signature ID, category, severity, 5-tuple flow, and matched network rule metadata"
+
+does_not_prove:
+  - "Whether an exploitation attempt succeeded on the target host (requires host-side confirmation)"
+
+corroborate_with:
+  for_network: [zeek_conn]
+  for_host: [event_logs_security, auth_log]
+
+related_tools: [suricata, tshark]
+
+references:
+  - "SANS FOR572 - Advanced Network Forensics"

@@ -1,0 +1,23 @@
+name: Azure / Entra ID Sign-In & Audit Logs
+description: "Microsoft Entra ID authentication, conditional access evaluation, risk detection, and directory audit logs"
+platform: cloud
+
+locations:
+  - path: "Entra ID -> Monitoring -> Sign-in logs / Audit logs (JSON/CSV export)"
+    os_versions: ["Azure / Entra ID"]
+    notes: "Exported sign-in and directory activity records ingested via the cloud importers."
+
+proves:
+  - "Interactive and non-interactive token acquisitions, authentication method/MFA claim, conditional access result, source IP, and client app"
+  - "OAuth application/service-principal consent grants and privileged directory role assignments"
+
+does_not_prove:
+  - "Specific mailbox item reads or endpoint process execution (correlate with M365 Unified Audit Log and endpoint telemetry)"
+
+corroborate_with:
+  for_cloud: [m365_audit, cloudtrail]
+
+related_tools: [azure]
+
+references:
+  - "MITRE ATT&CK Cloud Matrix (Azure AD / Entra ID)"

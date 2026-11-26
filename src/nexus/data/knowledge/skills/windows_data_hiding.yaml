@@ -1,5 +1,6 @@
 skill: windows_data_hiding
 title: Hidden/deleted data on NTFS — shadow copies, ADS, recycle bin, timestomp
+platform: windows
 description: 'Find data an attacker tried to hide or destroy on an NTFS volume: enumerate and mount Volume Shadow
   Copies to recover pre-deletion state, detect Alternate Data Streams, parse the Recycle Bin ($I/$R), and catch
   timestomping by comparing $STANDARD_INFORMATION against $FILE_NAME timestamps.'

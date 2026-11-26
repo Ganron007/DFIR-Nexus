@@ -1,9 +1,9 @@
 category: system
+name: dns
 description: Parse DNS cache (ipconfig /displaydns)
 exit_code_hints:
   '0': success
   '1': error
-name: ipconfig
 output_notes:
   format: text
   key_fields: []

@@ -1,5 +1,6 @@
 skill: lnk_jumplist_analysis
 title: LNK & JumpList analysis — file access trails and ghost targets
+platform: windows
 description: LNK files are created the moment a user first opens a file and modified on each later access — and
   they persist after the target is deleted. JumpLists extend this into per-application recently-used files. Together
   they prove user-level file interaction and expose files that no longer exist on disk.

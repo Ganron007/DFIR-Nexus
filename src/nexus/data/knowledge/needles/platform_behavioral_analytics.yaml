@@ -1,0 +1,366 @@
+version: 1
+description: >-
+  Non-Windows, cloud, network, and memory behavioural analytics extending DFIR-Nexus
+  beyond host EVTX/MFT/Prefetch telemetry. Each entry cites its MITRE ATT&CK
+  technique and targets validated normalized ECS/registry fields.
+source: MITRE ATT&CK Enterprise
+packs:
+- id: ba-linux-sudo-privesc
+  name: Linux sudo or su privilege escalation command execution
+  families:
+  - authlog
+  - auditd
+  - syslog
+  citation:
+    type: authored
+    id: authored:ba-linux-sudo-privesc
+    ref: ''
+    rationale: 'Authored for this product: expresses T1548.003 (Sudo and Sudo Caching) over normalized Linux authlog/auditd/syslog fields.'
+  techniques:
+  - T1548.003
+  rationale: Tracks privileged command invocation via sudo/su or interactive shell spawning as root in Linux authentication and audit streams.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - authlog
+          - auditd
+          - syslog
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*sudo*COMMAND=*'
+                case_insensitive: true
+          - wildcard:
+              fields.command_line.kw:
+                value: '*sudo*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*FAILED su for root*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*session opened for user root*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - authlog
+          - auditd
+          - syslog
+- id: ba-linux-ssh-root-or-burst
+  name: Linux SSH root authentication or invalid user probing
+  families:
+  - authlog
+  - syslog
+  citation:
+    type: authored
+    id: authored:ba-linux-ssh-root-or-burst
+    ref: ''
+    rationale: 'Authored for this product: expresses T1110 / T1021.004 (Brute Force and SSH lateral access) over normalized Linux SSH auth logs.'
+  techniques:
+  - T1110
+  - T1021.004
+  rationale: Highlights direct SSH root logins, accepted publickey/password sessions for privileged accounts, and brute-force invalid user probes.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - authlog
+          - syslog
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*Accepted * for root*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*Failed password for invalid user*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*sshd*Accepted publickey*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - authlog
+          - syslog
+- id: ba-linux-persistence-cron-systemd
+  name: Linux cron, systemd unit, or SSH authorized_keys modification
+  families:
+  - auditd
+  - authlog
+  - syslog
+  citation:
+    type: authored
+    id: authored:ba-linux-persistence-cron-systemd
+    ref: ''
+    rationale: 'Authored for this product: expresses T1053.003, T1543.002, and T1098.004 over Linux auditd/syslog telemetry.'
+  techniques:
+  - T1053.003
+  - T1543.002
+  - T1098.004
+  rationale: Adversaries establish Linux persistence by writing crontabs, dropping systemd unit files, or appending authorized SSH keys.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - auditd
+          - authlog
+          - syslog
+      - bool:
+          should:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*/etc/cron*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*/etc/systemd/system/*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*authorized_keys*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*crontab*EDIT*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - auditd
+          - authlog
+          - syslog
+- id: ba-cloud-iam-priv-change
+  name: Cloud IAM role, policy, or privilege assignment change
+  families:
+  - cloudtrail
+  - azure
+  citation:
+    type: authored
+    id: authored:ba-cloud-iam-priv-change
+    ref: ''
+    rationale: 'Authored for this product: expresses T1098 / T1136.003 (Account Manipulation and Create Cloud Account) over CloudTrail and Azure telemetry.'
+  techniques:
+  - T1098
+  - T1136.003
+  rationale: Detects creation or modification of IAM users, access keys, role bindings, OAuth consent grants, and admin policies in cloud audit trails.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+      - bool:
+          should:
+          - wildcard:
+              fields.action.kw:
+                value: '*Attach*Policy*'
+                case_insensitive: true
+          - wildcard:
+              fields.action.kw:
+                value: '*CreateAccessKey*'
+                case_insensitive: true
+          - wildcard:
+              fields.action.kw:
+                value: '*Add member to role*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*PutUserPolicy*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*Consent to application*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+- id: ba-cloud-logging-disabled
+  name: Cloud audit logging or guardrails disabled or deleted
+  families:
+  - cloudtrail
+  - azure
+  citation:
+    type: authored
+    id: authored:ba-cloud-logging-disabled
+    ref: ''
+    rationale: 'Authored for this product: expresses T1685.002 (Disable or Modify Cloud Logs) over CloudTrail and Azure activity events.'
+  techniques:
+  - T1685.002
+  rationale: Stopping CloudTrail trails, deleting log sinks, or modifying diagnostic settings removes cloud visibility during intrusion activity.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+      - bool:
+          should:
+          - wildcard:
+              fields.action.kw:
+                value: '*StopLogging*'
+                case_insensitive: true
+          - wildcard:
+              fields.action.kw:
+                value: '*DeleteTrail*'
+                case_insensitive: true
+          - wildcard:
+              fields.action.kw:
+                value: '*UpdateTrail*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*DeleteDiagnosticSetting*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - cloudtrail
+          - azure
+- id: ba-net-suricata-high-sev
+  name: High-severity Suricata IDS alert or exploit signature match
+  families:
+  - suricata
+  citation:
+    type: authored
+    id: authored:ba-net-suricata-high-sev
+    ref: ''
+    rationale: 'Authored for this product: expresses T1190 / T1071 (Exploit Public-Facing Application and Application Layer Protocol) from Suricata alert telemetry.'
+  techniques:
+  - T1190
+  - T1071
+  rationale: Surfaces Suricata IDS alerts carrying high-confidence exploit, trojan, malware, or C2 classifications across network captures.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - suricata
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*Trojan*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*Exploit*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*severity*1*'
+                case_insensitive: true
+          - wildcard:
+              fields.action.kw:
+                value: '*alert*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - suricata
+- id: ba-net-c2-suspicious-port-proto
+  name: Network connections on high-risk administrative or unencrypted transfer ports
+  families:
+  - zeek
+  - suricata
+  citation:
+    type: authored
+    id: authored:ba-net-c2-suspicious-port-proto
+    ref: ''
+    rationale: 'Authored for this product: expresses T1571 / T1048 (Non-Standard Port and Exfiltration Over Alternative Protocol) in Zeek and Suricata logs.'
+  techniques:
+  - T1571
+  - T1048
+  rationale: Flags outbound or lateral flows targeting suspicious C2/tunnel ports (4444, 1337, 9001, 3389, 5985) in Zeek/Suricata connection records.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+      - terms:
+          fields.dest_port.kw:
+          - '4444'
+          - '1337'
+          - '9001'
+          - '3389'
+          - '5985'
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - zeek
+          - suricata
+- id: ba-mem-hidden-or-injected-proc
+  name: Memory forensics indicator of hidden process, hollowing, or suspicious parent-child
+  families:
+  - vol
+  citation:
+    type: authored
+    id: authored:ba-mem-hidden-or-injected-proc
+    ref: ''
+    rationale: 'Authored for this product: expresses T1055 / T1036 (Process Injection and Masquerading) in Volatility 3 memory tables.'
+  techniques:
+  - T1055
+  - T1036
+  rationale: Highlights Volatility 3 malfind PAGE_EXECUTE_READWRITE regions or script-host executions captured in RAM.
+  es:
+    bool:
+      filter:
+      - terms:
+          family:
+          - vol
+      - bool:
+          should:
+          - wildcard:
+              text.wc:
+                value: '*PAGE_EXECUTE_READWRITE*'
+                case_insensitive: true
+          - wildcard:
+              fields.COMM.kw:
+                value: '*powershell*'
+                case_insensitive: true
+          - wildcard:
+              fields.Cmd.kw:
+                value: '*-enc*'
+                case_insensitive: true
+          minimum_should_match: 1
+  es_source:
+    bool:
+      filter:
+      - terms:
+          family:
+          - vol

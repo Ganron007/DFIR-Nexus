@@ -1,5 +1,6 @@
 skill: ir_scoping_and_leads
 title: IR scoping & lead management — Mandiant investigative method
+platform: windows
 description: 'How a real examiner sequences an intrusion case: start from live-response data and initial leads,
   analyze into a working timeline, develop IOCs from findings, collect to scope similarly-compromised systems, and
   iterate. Leads are tiered — compromised hosts, accessed hosts, lateral-movement hosts — never assume a single

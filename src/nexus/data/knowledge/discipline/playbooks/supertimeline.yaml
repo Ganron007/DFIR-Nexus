@@ -1,6 +1,6 @@
 name: "Super-Timeline Investigation"
 description: "Build and analyze a consolidated Plaso super-timeline across host artifacts"
-mitre: []
+mitre: ["T1070", "T1070.006"]
 query_terms:
   - plaso
   - log2timeline

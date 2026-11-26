@@ -1,0 +1,23 @@
+name: Microsoft 365 Unified Audit Log
+description: "M365 tenant activity log covering Exchange inbox rule changes, SharePoint/OneDrive file access, Teams, and admin operations"
+platform: cloud
+
+locations:
+  - path: "Microsoft Purview -> Audit search CSV/JSON export"
+    os_versions: ["Microsoft 365"]
+    notes: "Ingested by M365Importer preserving AuditData JSON fields."
+
+proves:
+  - "New-InboxRule / Set-InboxRule persistence and hidden forwarding rules"
+  - "MailItemsAccessed, FileDownloaded, and SharePoint/OneDrive anonymous sharing events"
+
+does_not_prove:
+  - "Token theft upstream in Entra ID Conditional Access without correlating Entra ID sign-in logs"
+
+corroborate_with:
+  for_cloud: [azure_signin, cloudtrail]
+
+related_tools: [m365]
+
+references:
+  - "CISA Microsoft 365 Forensic Investigation Guidance"

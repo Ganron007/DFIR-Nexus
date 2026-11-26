@@ -1,5 +1,6 @@
 skill: mft_file_activity
 title: NTFS file-system activity — $MFT, $UsnJrnl, $I30 slack, ADS, timestomp
+platform: windows
 primary_families:
 - kind:mft
 - kind:usn

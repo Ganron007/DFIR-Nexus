@@ -1,5 +1,6 @@
 skill: execution_anomaly
 title: Execution anomalies — suspicious parentage, unsigned binaries, LOLBins
+platform: windows
 description: Detect anomalous execution — unsigned binaries, suspicious parent-child chains, LOLBin abuse, and process
   lineage analysis.
 trigger:

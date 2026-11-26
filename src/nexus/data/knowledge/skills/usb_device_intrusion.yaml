@@ -1,5 +1,6 @@
 skill: usb_device_intrusion
 title: USB device intrusion — serial → GUID → drive letter → user → files
+platform: windows
 description: 'The FOR500 eight-step device chain: identify the device in USBSTOR by serial, resolve VID/PID for
   make/model, map the volume GUID and drive letter in MountedDevices, find the label via WPDBUSENUM, get first-connect
   from setupapi.dev.log and System.evtx 20001, then attribute the user via MountPoints2 and correlate file copies

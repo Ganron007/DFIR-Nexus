@@ -413,16 +413,18 @@ def _audited_examiner_call(
 
     started = _time.monotonic()
     result = _examiner_call(name, **kwargs)
-    if audit is not None:
+    if audit is not None and isinstance(result, dict):
         with contextlib.suppress(Exception):
-            verdict = str((result or {}).get("verdict") or "")
-            audit.log(
+            verdict = str(result.get("verdict") or "")
+            audit_id = audit.log(
                 tool=name,
                 params={k: str(v)[:120] for k, v in kwargs.items()
                         if k in _EXAMINER_ARG_KEYS},
                 result_summary={"verdict": verdict} if verdict else {"status": "checked"},
                 elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
             )
+            if audit_id:
+                result = {**result, "provenance": {"audit_id": audit_id}}
     return result
 
 

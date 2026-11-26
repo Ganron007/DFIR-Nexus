@@ -1,0 +1,30 @@
+name: macOS LaunchAgents & LaunchDaemons
+description: "Property list (plist) definitions controlling user-level LaunchAgents and system-wide LaunchDaemons execution"
+platform: macos
+
+locations:
+  - path: "~/Library/LaunchAgents/*.plist"
+    os_versions: ["macOS"]
+    notes: "User-context persistence running on interactive login."
+  - path: "/Library/LaunchAgents/*.plist"
+    os_versions: ["macOS"]
+    notes: "Global user agents applying to all interactive logins."
+  - path: "/Library/LaunchDaemons/*.plist"
+    os_versions: ["macOS"]
+    notes: "Root/daemon-context persistence running at boot."
+
+proves:
+  - "Configured persistence label, executable Program/ProgramArguments, RunAtLoad, and KeepAlive triggers"
+  - "Whether the referenced binary lies in /tmp, /Users/Shared, or an unsigned application bundle"
+
+does_not_prove:
+  - "Whether the launched executable succeeded or what child activity occurred inside it"
+
+corroborate_with:
+  for_execution: [macos_unified_logs, plaso]
+  for_timeline: [plaso]
+
+related_tools: [log2timeline, psort]
+
+references:
+  - "SANS FOR518 - Mac and iOS Forensic Analysis and Incident Response"

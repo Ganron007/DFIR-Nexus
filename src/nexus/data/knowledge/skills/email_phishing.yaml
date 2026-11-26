@@ -9,10 +9,7 @@ trigger:
   families:
   - email
   - eml
-  - evtx
-  - prefetch
-  - lnk
-  - mft
+  - m365
   keywords:
   - phish
   - email

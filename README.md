@@ -214,7 +214,7 @@ DFIR-Nexus bundles and orchestrates **128 Windows and 125 Linux MCP tools**:
 The DFIR-Nexus platform adheres to strict software and forensic engineering disciplines:
 
 ```
-[✓] Hermetic Test Suite:    4,622 Python tests passed (0 failed, 43 skipped)
+[✓] Hermetic Test Suite:    4,631 Python tests passed (0 failed, 43 skipped)
 [✓] Frontend Test Suite:    226 Vitest unit & journey tests passed (43 files)
 [✓] E2E Journeys:           7/7 full-cycle integration steps verified
 [✓] Accessibility:          11/11 WCAG 2.1 AA a11y & visual tests verified

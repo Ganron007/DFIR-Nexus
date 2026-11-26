@@ -57,7 +57,7 @@ entries:
     caveats: "Engineering maintenance legitimately downloads programs — check the maintenance window and the engineering workstation identity."
   - id: plc_firmware_or_logic_change
     name: PLC firmware/logic integrity change
-    families: [csv, jsonl]
+    families: [wireshark, zeek, syslog]
     keywords: [firmware, plc_program, hash, baseline, logic]
     techniques: [T0839, T0843]
     needles: ["firmware version", "program hash", "logic change", "configuration backup"]
@@ -68,7 +68,7 @@ entries:
     caveats: "Baseline must be a known-good capture; firmware updates are also routine — verify with the operations team."
   - id: historian_setpoint_manipulation
     name: Historian setpoint / process anomaly
-    families: [csv, jsonl, syslog]
+    families: [wireshark, zeek, suricata, syslog]
     keywords: [historian, setpoint, trend, alarm, tag]
     techniques: [T0836, T0855]
     needles: ["setpoint change", "process trend", "alarm history", "tag value"]

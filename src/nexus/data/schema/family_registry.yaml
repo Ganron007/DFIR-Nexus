@@ -77,6 +77,12 @@ families:
     kind_sources:
       ingest/cloud/azure.py:AzureImporter:
       - cloud
+  azure_signin:
+    aliases: []
+    kinds:
+    - cloud
+    platform: cloud
+    platform_source: knowledge/artifacts/cloud/azure_signin.yaml
   bash_history:
     aliases:
     - ingest-bash_history

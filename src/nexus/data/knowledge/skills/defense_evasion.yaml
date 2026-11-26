@@ -1,5 +1,6 @@
 skill: defense_evasion
 title: Defense evasion — AV disable, timestomp, masquerading, process injection
+platform: windows
 description: Detect defense-evasion techniques — disabling security tools, timestomping, masquerading binaries,
   process injection, AMSI/ETW tampering.
 trigger:

@@ -1,5 +1,6 @@
 skill: impact_ransomware
 title: Impact — ransomware, backup destruction, disk encryption
+platform: windows
 description: Detect ransomware and destructive impact — shadow deletion, backup removal, mass file encryption, ransom
   notes.
 trigger:

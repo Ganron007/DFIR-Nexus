@@ -38,7 +38,7 @@ entries:
       flagging hiding.
   - id: driver_loading
     name: Malicious/vulnerable driver load
-    families: [vol, volatility, memory, evtx, sysmon, registry]
+    families: [vol, volatility, memory, evtx, registry]
     keywords: [driver, service, byovd, kernel, .sys, load]
     techniques: [T1543.003, T1014, T1068]
     needles: ["sc create type= kernel", ".sys service", "ImagePath\\System32\\drivers", "BYOVD", "unsigned driver", "driver load"]

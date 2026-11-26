@@ -506,21 +506,35 @@ def authority_conflicts(skills: Iterable[dict[str, Any]]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def citation_grade(skill: dict[str, Any]) -> str:
-    """``chunk`` | ``document`` | ``none`` for a skill's sources.
+    """``chunk`` | ``document`` | ``none`` for a skill's sources (top-level or step-level).
 
     `chunk` requires at least one machine-readable ``{chunk_id}``. A bare string
     naming a document is `document`: it points at a book, not at the passage
     that supports the step, so it cannot be checked.
     """
-    source = (skill or {}).get("source")
-    if isinstance(source, str):
-        source = [source]
-    if not isinstance(source, list) or not source:
+    from nexus.knowledge.loader import skill_sources
+
+    raw = (skill or {}).get("source")
+    if isinstance(raw, str):
+        raw = [raw]
+    raw_items: list[Any] = list(raw) if isinstance(raw, list) else []
+    if not raw_items:
+        for st in (skill or {}).get("steps") or []:
+            if not isinstance(st, dict):
+                continue
+            step_src = st.get("source")
+            if isinstance(step_src, str):
+                raw_items.append(step_src)
+            elif isinstance(step_src, list):
+                raw_items.extend(step_src)
+    if not raw_items:
         return "none"
-    for item in source:
+    for item in raw_items:
         if isinstance(item, dict) and str(item.get("chunk_id") or "").strip():
             return "chunk"
-    return "document"
+    if skill_sources(skill):
+        return "document"
+    return "none"
 
 
 def verify_citations(skills: Iterable[dict[str, Any]]) -> dict[str, Any]:

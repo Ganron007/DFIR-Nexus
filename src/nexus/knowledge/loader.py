@@ -806,16 +806,27 @@ def skill_sources(skill: dict) -> list[dict]:
     source = skill.get("source")
     if isinstance(source, str):
         source = [source]
-    if not isinstance(source, list):
-        return out
-    for s in source:
+    items: list[Any] = list(source) if isinstance(source, list) else []
+    if not items:
+        for st in skill.get("steps") or []:
+            if not isinstance(st, dict):
+                continue
+            step_src = st.get("source")
+            if isinstance(step_src, str):
+                items.append(step_src)
+            elif isinstance(step_src, list):
+                items.extend(step_src)
+    seen: set[str] = set()
+    for s in items:
         if isinstance(s, str):
             text = s.strip()
-            if text:
+            if text and text not in seen:
+                seen.add(text)
                 out.append({"citation": text, "chunk_id": text.split(" ")[0].strip()})
         elif isinstance(s, dict):
             cid = str(s.get("chunk_id") or "").strip()
-            if cid:
+            if cid and cid not in seen:
+                seen.add(cid)
                 out.append({
                     "chunk_id": cid,
                     "rel_path": str(s.get("rel_path") or ""),

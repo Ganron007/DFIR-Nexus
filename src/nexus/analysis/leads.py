@@ -619,7 +619,11 @@ def behavioural_analytics_leads(
     except Exception as exc:  # noqa: BLE001 — the lead builder records failed layers
         raise RuntimeError(f"could not measure analytic evidence families: {exc}") from exc
     try:
-        pack = analytics_for(families)
+        from nexus.analysis.behavioural_analytics import PLATFORM_PACK_PATH
+
+        pack = list(analytics_for(families))
+        if PLATFORM_PACK_PATH.is_file():
+            pack.extend(analytics_for(families, path=PLATFORM_PACK_PATH))
     except Exception as exc:  # noqa: BLE001
         log.warning("behavioural analytics pack unreadable: %s", exc)
         return []

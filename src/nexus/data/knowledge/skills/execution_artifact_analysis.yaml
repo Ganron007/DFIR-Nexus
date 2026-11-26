@@ -1,5 +1,6 @@
 skill: execution_artifact_analysis
 title: Evidence-of-execution stack — Prefetch → ShimCache → AmCache → BAM → UserAssist → SRUM → PCA
+platform: windows
 description: 'Establish whether a binary actually ran using the layered execution artifacts. The examiner reads
   them in order of evidentiary strength: Prefetch proves execution, ShimCache proves existence only, AmCache records
   installed-program lineage, BAM/UserAssist/PCA/SRUM corroborate per-user execution and network volume.'

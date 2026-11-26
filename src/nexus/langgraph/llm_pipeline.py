@@ -54,10 +54,13 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import UTC, datetime
 from operator import add
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
+
+from langgraph.checkpoint.memory import MemorySaver
 
 from nexus.langgraph.tool_call import call_timeout, call_tool
 
@@ -377,6 +380,7 @@ _DESIGN_MODE_RULES = (
 # called instead of re-deriving it from the environment (D48). The second
 # parser disagreed with the first: 36c's three modes ran on two models and the
 # records did not show it.
+_BUILT_MODEL_LOCK = threading.Lock()
 _BUILT_MODEL: dict[str, str] = {"provider": "none", "model": "none"}
 
 
@@ -388,12 +392,14 @@ def built_model_record() -> dict[str, str]:
     "a model ran" — a deterministic (no-LLM) run records it, and a run that
     never built one is not read as having used a model.
     """
-    return dict(_BUILT_MODEL)
+    with _BUILT_MODEL_LOCK:
+        return dict(_BUILT_MODEL)
 
 
 def _record_built_model(provider: str, model: str) -> None:
-    _BUILT_MODEL["provider"] = provider or "none"
-    _BUILT_MODEL["model"] = model or "none"
+    with _BUILT_MODEL_LOCK:
+        _BUILT_MODEL["provider"] = provider or "none"
+        _BUILT_MODEL["model"] = model or "none"
 
 
 def _llm_extra_body() -> dict[str, Any]:
@@ -462,6 +468,13 @@ def _construct_model(model_name: str = ""):
     # One retry policy for every hosted client: a transient provider error is retried, not a failed run (D385).
     retries = llm_max_retries()
 
+    from nexus.llm.egress import attach_egress, egress_required
+
+    def _wrap_egress(built_model: Any, url: str, *, prov_name: str):
+        if egress_required(url, provider=prov_name):
+            return attach_egress(built_model)
+        return built_model
+
     if not model:
         # Legacy prefix form: "openai/gpt-4o", "ollama/qwen...", anthropic name
         legacy = os.environ.get("NEXUS_MODEL", "")
@@ -469,7 +482,11 @@ def _construct_model(model_name: str = ""):
             from langchain_openai import ChatOpenAI
             built = legacy[len("openai/"):] or "gpt-4o"
             _record_built_model("openai", built)
-            return ChatOpenAI(model=built, timeout=timeout, max_retries=retries)
+            return _wrap_egress(
+                ChatOpenAI(model=built, timeout=timeout, max_retries=retries),
+                os.getenv("OPENAI_BASE_URL", ""),
+                prov_name="openai",
+            )
         if legacy.startswith("ollama/"):
             try:
                 from langchain_ollama import ChatOllama
@@ -479,11 +496,19 @@ def _construct_model(model_name: str = ""):
                 ) from None
             built = legacy[len("ollama/"):]
             _record_built_model("ollama", built)
-            return ChatOllama(model=built, client_kwargs={"timeout": timeout})
+            return _wrap_egress(
+                ChatOllama(model=built, client_kwargs={"timeout": timeout}),
+                os.getenv("OLLAMA_BASE_URL", ""),
+                prov_name="ollama",
+            )
         if legacy:
             from langchain_anthropic import ChatAnthropic
             _record_built_model("anthropic", legacy)
-            return ChatAnthropic(model=legacy, timeout=timeout, max_retries=retries)
+            return _wrap_egress(
+                ChatAnthropic(model=legacy, timeout=timeout, max_retries=retries),
+                os.getenv("ANTHROPIC_BASE_URL", ""),
+                prov_name="anthropic",
+            )
         # No model configured. The run record must not claim one ran (D48).
         _record_built_model("none", "none")
         raise RuntimeError(
@@ -498,7 +523,7 @@ def _construct_model(model_name: str = ""):
         if api_key:
             kwargs["api_key"] = api_key
         _record_built_model("anthropic", model)
-        return ChatAnthropic(model=model, **kwargs)
+        return _wrap_egress(ChatAnthropic(model=model, **kwargs), "", prov_name="anthropic")
 
     if provider == "ollama" and not base_url:
         try:
@@ -508,7 +533,11 @@ def _construct_model(model_name: str = ""):
                 "langchain-ollama not installed — run: pip install langchain-ollama"
             ) from None
         _record_built_model("ollama", model)
-        return ChatOllama(model=model, client_kwargs={"timeout": timeout})
+        return _wrap_egress(
+            ChatOllama(model=model, client_kwargs={"timeout": timeout}),
+            os.getenv("OLLAMA_BASE_URL", ""),
+            prov_name="ollama",
+        )
 
     # Default: any OpenAI-compatible endpoint (StepFun, OpenAI, LiteLLM,
     # vLLM, Ollama /v1, ...)
@@ -561,11 +590,7 @@ def _construct_model(model_name: str = ""):
         kwargs["extra_body"] = {**kwargs.get("extra_body", {}), **extra}
     built = ChatOpenAI(**kwargs)
     _record_built_model(provider or "openai-compatible", model)
-    from nexus.llm.egress import attach_egress, egress_required
-
-    if egress_required(base_url):
-        return attach_egress(built)
-    return built
+    return _wrap_egress(built, base_url, prov_name=provider or "openai")
 
 
 # ---------------------------------------------------------------------------
@@ -1830,29 +1855,36 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
         ),
     )
 
+    from nexus.config import settings
+    from nexus.llm.egress import egress_case
+
+    case_id = str(state.get("case_id") or "").strip()
+    hunt_case_dir = (settings.cases_root / case_id) if case_id else None
+
     try:
-        result = await agent.ainvoke(
-            {
-                "messages": [{
-                    "role": "human",
-                    "content": (
-                        f"Analyze extras for case {state['case_id']}.\n"
-                        f"Evidence path: {state.get('evidence_path')}\n"
-                        f"Hosts: {state.get('hosts', [])}\n"
-                        "The mandatory tool lane already ran. Do not re-run those parsers.\n"
-                        "1) forensic_rag_status — abort extras if RAG is not ready.\n"
-                        "2) forensic_rag_search for playbook corroboration "
-                        "(data staging, USB, cloud sync) using examiner intake.\n"
-                        "3) You MAY run additional run_windows_command / run_command "
-                        "only for artifacts the ledger SKIP'd as PRESENT_NO_PARSER "
-                        "or playbook extras not already OK.\n"
-                        "4) Do not emit the findings JSON here — interpret runs next. "
-                        "Never call generate_report. Never finish with zero lane audit_ids."
-                    ),
-                }],
-            },
-            config={"recursion_limit": 50},
-        )
+        with egress_case(hunt_case_dir):
+            result = await agent.ainvoke(
+                {
+                    "messages": [{
+                        "role": "human",
+                        "content": (
+                            f"Analyze extras for case {state['case_id']}.\n"
+                            f"Evidence path: {state.get('evidence_path')}\n"
+                            f"Hosts: {state.get('hosts', [])}\n"
+                            "The mandatory tool lane already ran. Do not re-run those parsers.\n"
+                            "1) forensic_rag_status — abort extras if RAG is not ready.\n"
+                            "2) forensic_rag_search for playbook corroboration "
+                            "(data staging, USB, cloud sync) using examiner intake.\n"
+                            "3) You MAY run additional run_windows_command / run_command "
+                            "only for artifacts the ledger SKIP'd as PRESENT_NO_PARSER "
+                            "or playbook extras not already OK.\n"
+                            "4) Do not emit the findings JSON here — interpret runs next. "
+                            "Never call generate_report. Never finish with zero lane audit_ids."
+                        ),
+                    }],
+                },
+                config={"recursion_limit": 50},
+            )
         msg_count = len(result.get("messages", []))
         log.info("Hunt agent completed: %d messages", msg_count)
     except Exception as e:
@@ -1909,17 +1941,22 @@ def make_interpret_executor(case_dir: Path | None, tools: dict):
     case"). Other tools keep the MCP path.
     """
     async def _execute_tool(name: str, payload: dict) -> dict:
-        if name in ("es_search", "es_aggregate", "es_sample") and case_dir is not None:
+        from nexus.langgraph.backbone import EXAMINER_CHECK_TOOL_SET, backbone_call
+
+        if (name in ("es_search", "es_aggregate", "es_sample") or name in EXAMINER_CHECK_TOOL_SET) and case_dir is not None:
             from nexus.audit import AuditWriter
-            from nexus.langgraph.backbone import backbone_call
 
             bound_audit = AuditWriter("nexus", audit_dir=Path(case_dir) / "audit")
             kwargs = {k: v for k, v in payload.items() if k != "case_id"}
             return backbone_call(name, audit=bound_audit, case_dir=Path(case_dir), **kwargs)
-        tool = tools.get(name)
+        lookup_name = "forensic_rag_search" if name == "rag_search" else name
+        tool = tools.get(lookup_name) or tools.get(name)
         if tool is None:
             return {"error": f"tool {name} not available"}
-        return _parse_tool_result(await call_tool(tool, payload, label=name))
+        call_payload = dict(payload)
+        if lookup_name == "forensic_rag_search":
+            call_payload.pop("case_id", None)
+        return _parse_tool_result(await call_tool(tool, call_payload, label=lookup_name))
 
     return _execute_tool
 
@@ -3256,6 +3293,110 @@ async def run_pipeline(
         )
 
 
+class _SqliteCheckpointSaver(MemorySaver):
+    """Durable SQLite-backed LangGraph checkpointer using stdlib sqlite3.
+
+    Mirrors ``MemorySaver`` maps into a local SQLite database so
+    ``run_pipeline(resume=True)`` survives process exits and restarts without
+    requiring optional external checkpoint packages.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        super().__init__()
+        import sqlite3
+
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._db_lock = threading.Lock()
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS checkpoints ("
+            "thread_id TEXT, checkpoint_ns TEXT, checkpoint_id TEXT,"
+            "ckpt_type TEXT, ckpt_blob BLOB,"
+            "meta_type TEXT, meta_blob BLOB,"
+            "parent_id TEXT,"
+            "PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id))"
+        )
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS writes ("
+            "thread_id TEXT, checkpoint_ns TEXT, checkpoint_id TEXT,"
+            "task_id TEXT, write_idx INTEGER, channel TEXT,"
+            "val_type TEXT, val_blob BLOB, task_path TEXT,"
+            "PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx))"
+        )
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS blobs ("
+            "thread_id TEXT, checkpoint_ns TEXT, channel TEXT, version_json TEXT,"
+            "val_type TEXT, val_blob BLOB,"
+            "PRIMARY KEY (thread_id, checkpoint_ns, channel, version_json))"
+        )
+        self._conn.commit()
+        for tid, ns, cid, ct, cb, mt, mb, pid in self._conn.execute(
+            "SELECT thread_id, checkpoint_ns, checkpoint_id, ckpt_type, ckpt_blob, meta_type, meta_blob, parent_id FROM checkpoints"
+        ):
+            self.storage[tid][ns][cid] = ((ct, bytes(cb)), (mt, bytes(mb)), pid)
+        for tid, ns, cid, task_id, widx, ch, vt, vb, tpath in self._conn.execute(
+            "SELECT thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, val_type, val_blob, task_path FROM writes"
+        ):
+            self.writes[(tid, ns, cid)][(task_id, widx)] = (task_id, ch, (vt, bytes(vb)), tpath)
+        for tid, ns, ch, vjson, vt, vb in self._conn.execute(
+            "SELECT thread_id, checkpoint_ns, channel, version_json, val_type, val_blob FROM blobs"
+        ):
+            self.blobs[(tid, ns, ch, json.loads(vjson))] = (vt, bytes(vb))
+
+    def put(self, config, checkpoint, metadata, new_versions):
+        res = super().put(config, checkpoint, metadata, new_versions)
+        tid = config["configurable"]["thread_id"]
+        ns = config["configurable"].get("checkpoint_ns", "")
+        cid = checkpoint["id"]
+        ckpt_typed, meta_typed, parent_id = self.storage[tid][ns][cid]
+        with self._db_lock:
+            for k, v in new_versions.items():
+                vt, vb = self.blobs[(tid, ns, k, v)]
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO blobs VALUES (?, ?, ?, ?, ?, ?)",
+                    (tid, ns, k, json.dumps(v), vt, vb),
+                )
+            self._conn.execute(
+                "INSERT OR REPLACE INTO checkpoints VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (tid, ns, cid, ckpt_typed[0], ckpt_typed[1], meta_typed[0], meta_typed[1], parent_id),
+            )
+            self._conn.commit()
+        return res
+
+    def put_writes(self, config, writes, task_id, task_path=""):
+        super().put_writes(config, writes, task_id, task_path=task_path)
+        tid = config["configurable"]["thread_id"]
+        ns = config["configurable"].get("checkpoint_ns", "")
+        cid = config["configurable"]["checkpoint_id"]
+        outer = self.writes.get((tid, ns, cid), {})
+        with self._db_lock:
+            for (t_id, widx), (_, ch, (vt, vb), tpath) in outer.items():
+                if t_id == task_id:
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO writes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (tid, ns, cid, t_id, widx, ch, vt, vb, tpath),
+                    )
+            self._conn.commit()
+
+
+def _pipeline_checkpointer(from_case: str):
+    from nexus.config import settings
+
+    if not from_case and not settings.cases_root:
+        return MemorySaver()
+    db_path = (
+        settings.cases_root / from_case / "analysis" / "pipeline_checkpoints.sqlite"
+        if from_case
+        else settings.cases_root / ".pipeline_checkpoints.sqlite"
+    )
+    try:
+        return _SqliteCheckpointSaver(db_path)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("SQLite checkpoint store unavailable (%s); falling back to MemorySaver", exc)
+        return MemorySaver()
+
+
 async def _run_pipeline_with_tools(
     tools_by_name: dict[str, Any],
     *,
@@ -3271,7 +3412,6 @@ async def _run_pipeline_with_tools(
     progress_path: str,
 ):
     """The run itself, while ``run_pipeline`` holds the MCP sessions open (D71)."""
-    from langgraph.checkpoint.memory import MemorySaver
     from langgraph.types import Command
 
     log.info(
@@ -3291,7 +3431,7 @@ async def _run_pipeline_with_tools(
         interrupt_nodes = ["await_approval"]
 
     graph = build_graph(tools_by_name, model, mode=pipeline_mode)
-    checkpointer = MemorySaver()
+    checkpointer = _pipeline_checkpointer(from_case)
     compiled = graph.compile(checkpointer=checkpointer, interrupt_before=interrupt_nodes)
 
     cfg = {"configurable": {"thread_id": thread_id or "default"}}

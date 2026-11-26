@@ -1,5 +1,6 @@
 skill: lateral_movement
 title: Lateral movement (SMB / WinRM / RDP / psexec)
+platform: windows
 description: Detect movement between hosts — remote logons, admin share access, remote service creation, remote
   execution tooling.
 trigger:

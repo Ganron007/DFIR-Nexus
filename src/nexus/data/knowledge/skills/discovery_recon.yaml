@@ -1,5 +1,6 @@
 skill: discovery_recon
 title: Discovery — recon commands and internal enumeration
+platform: windows
 description: Detect internal reconnaissance — whoami, net commands, system info, domain enumeration, network scanning.
 trigger:
   families:

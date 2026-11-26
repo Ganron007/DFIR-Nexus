@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import threading
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -377,6 +378,15 @@ def _verdict_ref(verdict: Mapping[str, Any]) -> str:
     return _norm_key(raw.split("=", 1)[-1])
 
 
+def _verdict_subject(verdict: Mapping[str, Any]) -> tuple[str, str]:
+    """(entity_type, entity_value) for a verifier verdict; empty type when unnamed."""
+    raw = str(verdict.get("subject") or verdict.get("title") or "")
+    if "=" in raw:
+        etype, evalue = raw.split("=", 1)
+        return (_norm_key(etype), _norm_key(evalue))
+    return ("", _norm_key(raw))
+
+
 def _context_subject(claim: dict[str, Any]) -> tuple[str, str]:
     """Row-derived subject, else the agent's label for context/verification only (D154)."""
     key = _claim_key(claim)
@@ -598,19 +608,29 @@ def settled_candidates(
     # never becomes a candidate. The verifier's subject is
     # "<entity_type>=<entity_value>", so the claim's entity_value is what
     # matters; refuted subjects are normalised the same way.
-    refuted: set[str] = set()
-    confirmed: dict[str, str] = {}
+    refuted_typed: set[tuple[str, str]] = set()
+    refuted_bare: set[str] = set()
+    confirmed_typed: dict[tuple[str, str], str] = {}
+    confirmed_bare: dict[str, str] = {}
     for entry in board:
         if not _seat_settles(entry):
             continue
         for verdict in entry.get("verdicts") or []:
-            evalue = _verdict_ref(verdict)
+            etype, evalue = _verdict_subject(verdict)
             cls = str(verdict.get("class") or "").lower()
-            if evalue:
-                if cls == "refuted":
-                    refuted.add(evalue)
-                elif cls == "confirmed":
-                    confirmed.setdefault(evalue, str(verdict.get("basis") or ""))
+            if not evalue:
+                continue
+            if cls == "refuted":
+                if etype:
+                    refuted_typed.add((etype, evalue))
+                else:
+                    refuted_bare.add(evalue)
+            elif cls == "confirmed":
+                basis = str(verdict.get("basis") or "")
+                if etype:
+                    confirmed_typed.setdefault((etype, evalue), basis)
+                else:
+                    confirmed_bare.setdefault(evalue, basis)
     candidates: list[dict[str, Any]] = []
     gaps = [f"unresolved {d['entity_value']} {d['claim_kind']}" for d in disputes]
     for entry in board:
@@ -623,10 +643,11 @@ def settled_candidates(
                 continue
             key = _claim_key(claim)
             ref = _verification_ref(claim)
+            ctype, cval = _context_subject(claim)
             # WO-R1F-M3 item 2: a verifier-refuted claim is excluded and
             # recorded as negative space (the refutation is the result, not
             # an open finding).
-            if ref and ref in refuted:
+            if (ref and (ctype, cval) in refuted_typed) or (ref and ref in refuted_bare):
                 if case_dir is not None:
                     with contextlib.suppress(Exception):
                         from nexus.analysis.negative_space import record
@@ -661,7 +682,10 @@ def settled_candidates(
             entity = str(claim.get("entity_value") or "")
             # WO-R1F-M3 item 2: carry the verifier's confirmed basis onto the
             # candidate so the examiner can see the corroboration.
-            verifier_basis = confirmed.get(ref) if ref else None
+            verifier_basis = (
+                confirmed_typed.get((ctype, cval))
+                or (confirmed_bare.get(ref) if ref else None)
+            )
             if verifier_basis:
                 justification = f"{justification}\nVerifier: {verifier_basis}"
             from nexus.analysis.titles import claim_title
@@ -1155,7 +1179,10 @@ def _seat_with_model(
             f"Board so far:\n{board_digest}\n\n"
             + (f"{prior_context}\n\n" if prior_context else "")
             + _investigative_extras(case_dir)
-            + 'Return JSON {"verdicts":[{"subject":"<entity_type>=<entity_value>",'
+        )
+        output_contract = (
+            'OUTPUT CONTRACT (verifier):\n'
+            'Return JSON {"verdicts":[{"subject":"<entity_type>=<entity_value>",'
             '"class":"confirmed|inferred|refuted","basis":"one clause",'
             '"audit_ids":["..."]}]}. '
             "A refuted verdict must name the counter-evidence (audit_ids required). "
@@ -1222,8 +1249,8 @@ def _seat_with_model(
             # supervisor only, which the agenda path bypasses whenever a lead is open.
             f"{prior_context}\n\n" if prior_context else "",
             _investigative_extras(case_dir),
-            *contract,
         ])
+        output_contract = "".join(contract)
     rounds = _env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80)
     calls = _env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200)
     seconds = float(_env_int("NEXUS_MODE3_SECONDS", 1800, low=30, high=7200))
@@ -1238,6 +1265,7 @@ def _seat_with_model(
         audit=audit,
         allowed_tools=role.tools,
         terminal_keys=terminal_keys,
+        output_contract=output_contract,
     )
     entry = _fallback_entry(spawn, superstep)
     reply_text = str(loop.get("reply") or "")
@@ -1263,23 +1291,27 @@ def _seat_with_model(
         and str(loop.get("finish_reason") or "") not in ("model_error", "empty_model")
     ):
         try:
+            from nexus.langgraph.tool_generation import supports_generation_schema
+
+            retry_rf = {"type": "json_object"} if supports_generation_schema(model) else None
+            retry_user = (
+                question
+                + "\n\n"
+                + output_contract
+                + "\n\nYour previous reply was not the JSON object asked for above. "
+                "Return ONLY that object, with every key that applies to your work "
+                '("claims", "open_questions", "question_dispositions", "coverage_gaps"'
+                + (', "lead_disposition"' if spawn.get("lead") else "")
+                + '). If nothing is supportable, return {"claims": []} with the '
+                "other keys that apply."
+            )
             corrected = _call_model(
                 model,
                 [
                     {"role": "system", "content": role.brief or role.system_prompt},
-                    {
-                        "role": "user",
-                        "content": (
-                            question
-                            + "\n\nYour previous reply was not the JSON object asked for above. "
-                            "Return ONLY that object, with every key that applies to your work "
-                            '("claims", "open_questions", "question_dispositions", "coverage_gaps"'
-                            + (', "lead_disposition"' if spawn.get("lead") else "")
-                            + '). If nothing is supportable, return {"claims": []} with the '
-                            "other keys that apply."
-                        ),
-                    },
+                    {"role": "user", "content": retry_user},
                 ],
+                response_format=retry_rf,
             )
             if corrected.strip():
                 entry["claims"] = _parse_claims(corrected)
@@ -1498,16 +1530,43 @@ def _convergence_reason(
 
 
 def _ground_confirmed_verdicts(entry: dict[str, Any], case_dir: Path | None, *, run_id: str, sink: Any) -> None:
-    """A verifier seat's confirmation whose basis names an event its cited calls did not return is
-    downgraded to unverifiable, so it adds no "Verifier:" basis to a candidate (D238)."""
+    """Validate verifier verdicts against cited audit calls.
+
+    - Confirmations citing events their calls did not return downgrade to unverifiable (D238).
+    - Refutations whose cited calls all returned 0 hits downgrade to unverifiable (WO-R2F parity):
+      a lookup that matched nothing is a failed lookup, never negative proof.
+    """
     from nexus.langgraph.named_events import downgrade_ungrounded_confirmations
 
-    for verdict in downgrade_ungrounded_confirmations(entry.get("verdicts") or [], case_dir):
+    verdicts = entry.get("verdicts") or []
+    for verdict in downgrade_ungrounded_confirmations(verdicts, case_dir):
         sink.emit(new_event(
             run_id, "verify.downgraded", actor="verifier", agent_id=str(entry.get("agent_id") or ""),
             detail=str(verdict.get("subject") or verdict.get("title") or "")[:160],
             data={"audit_ids": verdict.get("audit_ids") or [], "from": "confirmed"},
         ))
+    if case_dir is not None and verdicts:
+        from nexus.modes.multi_role import _zero_hit_citation
+
+        for verdict in verdicts:
+            if not isinstance(verdict, dict):
+                continue
+            if str(verdict.get("class") or "").strip().lower() != "refuted":
+                continue
+            ids = _audit_ids(verdict)
+            if not ids or not _zero_hit_citation(case_dir, ids):
+                continue
+            verdict["class"] = "unverifiable"
+            verdict["downgraded_from"] = "refuted"
+            verdict["basis"] = (
+                str(verdict.get("basis") or "").strip()
+                + " [downgraded: the cited call(s) returned 0 rows, which is a failed lookup, not negative evidence]"
+            ).strip()
+            sink.emit(new_event(
+                run_id, "verify.downgraded", actor="verifier", agent_id=str(entry.get("agent_id") or ""),
+                detail=str(verdict.get("subject") or verdict.get("title") or "")[:160],
+                data={"audit_ids": ids, "from": "refuted"},
+            ))
 
 
 def _seat_settles(entry: Mapping[str, Any]) -> bool:
@@ -2009,18 +2068,25 @@ def _unverified_claims(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     (the format the verifier prompt asks for); a claim whose entity value is
     already judged has been cross-examined and is not re-queued.
     """
-    judged: set[str] = set()
+    judged_typed: set[tuple[str, str]] = set()
+    judged_bare: set[str] = set()
     for entry in board:
         if not _seat_settles(entry):
             continue
         for verdict in entry.get("verdicts") or []:
-            if ref := _verdict_ref(verdict):
-                judged.add(ref)
+            etype, evalue = _verdict_subject(verdict)
+            if not evalue:
+                continue
+            if etype:
+                judged_typed.add((etype, evalue))
+            else:
+                judged_bare.add(evalue)
     out: list[dict[str, Any]] = []
     for entry in board:
         for claim in entry.get("claims") or []:
             ref = _verification_ref(claim)
-            if not ref or ref in judged:
+            ctype, cval = _context_subject(claim)
+            if not ref or (ctype, cval) in judged_typed or ref in judged_bare:
                 continue
             out.append(claim)
     return out
@@ -2040,7 +2106,7 @@ def _verifier_spawn(
         return None
     subjects = []
     targets = []
-    for claim in claims[:12]:
+    for claim in claims:
         etype, ref = _context_subject(claim)
         if not ref:
             continue
@@ -2181,8 +2247,10 @@ def _run_mode3(
     if resume_state is not None:
         existing = read_run_record(case_dir, run_id)
         if existing is not None and str(existing.get("status") or "") in {
-            "completed", "failed", "stopped", "interrupted",
+            "completed", "failed", "stopped",
         }:
+            return existing
+        if existing is not None and str(existing.get("status") or "") == "interrupted" and not existing.get("resume_state"):
             return existing
         if existing is not None:
             record.update(existing)
@@ -2302,6 +2370,8 @@ def _run_mode3(
     # it actually used.
     seats_used = {"n": 0}
     tool_calls_used = {"n": 0}
+    seat_budget_lock = threading.Lock()
+    wall_deadline = time.monotonic() + float(wall_seconds)
 
     def _halted() -> str:
         flags = read_controls(case_dir, run_id)
@@ -2316,7 +2386,11 @@ def _run_mode3(
         step = int(state.get("superstep") or 0) + 1
         if halt:
             return {"status": halt, "superstep": step, "spawns": []}
-        if step > max_steps or seats_used["n"] >= max_calls:
+        if time.monotonic() >= wall_deadline:
+            return {"status": "capped", "superstep": step, "spawns": []}
+        with seat_budget_lock:
+            over_seat_cap = seats_used["n"] >= max_calls
+        if step > max_steps or over_seat_cap:
             return {"status": "capped", "superstep": step, "spawns": []}
         steering = read_mode3_steering(case_dir, run_id)
         seen = int(state.get("steering_seen") or 0)
@@ -2343,17 +2417,27 @@ def _run_mode3(
         # when something is actually open.
         has_agenda = _open_work_count(agenda) > 0
         if has_agenda and step <= max_steps:
-            # The verifier has to run on claims already on the board. Lead and
-            # domain seats fill `max_agents` exactly, so appending afterwards
-            # never happened and refuted claims stayed candidates (probe:
-            # verifier seats=0). Hold one seat back when there is something
-            # to cross-examine.
             unverified = agenda["verification"]
-            seat_budget = max_agents - (1 if unverified else 0)
+            steer_slots = 1 if fresh_steer else 0
+            seat_budget = max_agents - (1 if unverified else 0) - steer_slots
             spawns = _spawns_for_agenda(
                 agenda, board, max_agents=max(1, seat_budget), question=question,
                 superstep=step, indexed=indexed,
             ) if any(agenda.get(kind) for kind in ("questions", "leads", "pivots")) else []
+            if fresh_steer:
+                steer_spawns = (
+                    _supervisor_with_model(
+                        model, case_dir=case_dir, question=f"{question}\nExaminer steer: {fresh_steer}",
+                        families=indexed, board_digest=board_view(board, whole_from=step - 1),
+                        steering=fresh_steer, max_agents=1, prior_context=prior_context, case_facts=case_facts,
+                    ) if model is not None else []
+                ) or [{
+                    "role": "correlation",
+                    "family": "",
+                    "why": f"examiner steering: {fresh_steer[:120]}",
+                    "question": f"{question}\nExaminer steer: {fresh_steer}",
+                }]
+                spawns = (steer_spawns[:1] + spawns)[:max_agents]
             # Verification is work of its own, including when all investigation orders finished.
             verifier = _verifier_spawn(unverified, question=question, superstep=step)
             if verifier and len(spawns) < max_agents:
@@ -2459,9 +2543,10 @@ def _run_mode3(
     def seat(payload: dict[str, Any]) -> dict[str, Any]:
         spawn = payload.get("spawn") or {}
         step = int(payload.get("superstep") or 1)
-        if seats_used["n"] >= max_calls:
-            return {"board": []}
-        seats_used["n"] += 1
+        with seat_budget_lock:
+            if seats_used["n"] >= max_calls or time.monotonic() >= wall_deadline:
+                return {"board": []}
+            seats_used["n"] += 1
         if seat_fn is not None:
             entry = seat_fn(spawn, [], step)
         elif model is not None:
@@ -2513,7 +2598,7 @@ def _run_mode3(
             entry["question_ids"] = _spawned_question_ids(spawn)
         if isinstance(spawn.get("pivot_entity"), dict):
             entry["pivot_entity"] = dict(spawn["pivot_entity"])
-        with contextlib.suppress(TypeError, ValueError):
+        with seat_budget_lock, contextlib.suppress(TypeError, ValueError):
             tool_calls_used["n"] += int(entry.get("tool_calls_used") or 0)
         return {"board": [entry]}
 
@@ -2549,7 +2634,9 @@ def _run_mode3(
                             + (f": {cause}" if cause else "") + "; resume when it answers again")
             status, stop_rule = "paused", pause_reason
         if status not in {"capped", "stopped", "paused"}:
-            if step_no >= max_steps:
+            if time.monotonic() >= wall_deadline:
+                status, stop_rule = "capped", "budget: wall clock"
+            elif step_no >= max_steps:
                 status, stop_rule = "capped", "budget: max supersteps"
             else:
                 stop_rule = _convergence_reason(
@@ -2636,6 +2723,21 @@ def _run_mode3(
                 run_id, "dispute.opened", actor="join",
                 detail=f"{dispute['entity_value']} {dispute['claim_kind']}",
             ))
+        # Persist superstep progress so crash/interrupt preserves board checkpoints just like Mode 2.
+        with seat_budget_lock:
+            record["budgets"]["seats_used"] = int(seats_used["n"])
+            record["budgets"]["tool_calls_used"] = int(tool_calls_used["n"])
+        record["board"] = board
+        record["disputes"] = disputes
+        record["superstep"] = step_no
+        record["resume_state"] = {
+            "board": board,
+            "superstep": step_no,
+            "quiet": quiet,
+            "redispatch_used": int(state.get("redispatch_used") or 0),
+            "steering_seen": int(state.get("steering_seen") or 0),
+        }
+        _persist(case_dir, run_id, record)
         # The pivots and questions the seats settled are read from the board (D208); join used to
         # keep them in state from the spawns, whatever the seat returned, and a resume lost them.
         return {
@@ -2921,9 +3023,11 @@ def resume_mode3(
     if record is None:
         return {"error": "run not found", "run_id": run_id}
     status = str(record.get("status") or "")
-    if status in {"stopped", "completed", "failed", "interrupted"}:
+    if status in {"stopped", "completed", "failed"} or (
+        status == "interrupted" and not record.get("resume_state")
+    ):
         return {**record, "error": f"run is {status}; start a new run"}
-    if status != "paused":
+    if status not in {"paused", "interrupted"}:
         return {**record, "error": f"run is {status}; nothing to resume"}
     mark_paused(case_dir, run_id, False)
     return run_mode3(
@@ -2953,7 +3057,11 @@ def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
     if record is None:
         return {"error": "run not found", "run_id": run_id, "staged": [], "skipped": []}
     rows = list(record.get("candidates") or [])
-    if not rows and (record.get("settled_claims") or record.get("board")):
+    synthesis_failed = any(
+        str(g).startswith("the case was not composed:")
+        for g in (record.get("gaps") or [])
+    )
+    if not rows and not synthesis_failed and (record.get("settled_claims") or record.get("board")):
         disputes = list(record.get("disputes") or [])
         cands, _ = settled_candidates(list(record.get("board") or []), disputes, case_dir=case_dir)
         rows = [c for c in cands if str(c.get("claim_kind") or "") != "absence"]
