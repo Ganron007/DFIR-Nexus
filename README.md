@@ -11,8 +11,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Release-v1.0.0-success.svg" alt="Release: v1.0.0">
-  <img src="https://img.shields.io/badge/Python%20Tests-4613%20passed-blue.svg" alt="Python Tests: 4613 passed / 43 skipped">
-  <img src="https://img.shields.io/badge/UI%20Tests-224%20Vitest%20passed-blue.svg" alt="UI Tests: 224 passed">
+  <img src="https://img.shields.io/badge/Python%20Tests-4622%20passed-blue.svg" alt="Python Tests: 4622 passed / 43 skipped">
+  <img src="https://img.shields.io/badge/UI%20Tests-226%20Vitest%20passed-blue.svg" alt="UI Tests: 226 passed">
   <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-purple.svg" alt="MCP Tools: 128 Win | 125 Linux">
   <img src="https://img.shields.io/badge/Architecture-Offline--First-orange.svg" alt="Architecture: Offline-First">
 </p>
@@ -214,8 +214,8 @@ DFIR-Nexus bundles and orchestrates **128 Windows and 125 Linux MCP tools**:
 The DFIR-Nexus platform adheres to strict software and forensic engineering disciplines:
 
 ```
-[✓] Hermetic Test Suite:    4,613 Python tests passed (0 failed, 43 skipped)
-[✓] Frontend Test Suite:    224 Vitest unit & journey tests passed (42 files)
+[✓] Hermetic Test Suite:    4,622 Python tests passed (0 failed, 43 skipped)
+[✓] Frontend Test Suite:    226 Vitest unit & journey tests passed (43 files)
 [✓] E2E Journeys:           7/7 full-cycle integration steps verified
 [✓] Accessibility:          11/11 WCAG 2.1 AA a11y & visual tests verified
 [✓] Style Budget:           Zero CSS token leaks or raw color violations

@@ -183,8 +183,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"process_name": process_name, "verdict": "UNKNOWN",
                     "message": "Context database not available"}
 
-        audit.log(tool="check_process_tree", params={"process_name": process_name, "parent_name": parent_name},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_process_tree", params={"process_name": process_name, "parent_name": parent_name},
+                             result_summary={"status": "checked"})
 
         findings = []
         exp = context.get_expected_process(process_name)
@@ -256,6 +256,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "confidence": verdict.confidence,
             "process_known": process_known,
             "parent_valid": parent_valid,
+            "audit_id": audit_id,
         }
 
     @server.tool()
@@ -272,8 +273,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"service_name": service_name, "verdict": "UNKNOWN",
                     "message": "Baseline database not available"}
 
-        audit.log(tool="check_service", params={"service_name": service_name},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_service", params={"service_name": service_name},
+                             result_summary={"status": "checked"})
 
         services = known_good.lookup_service(service_name)
         service_in_baseline = len(services) > 0
@@ -312,6 +313,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "reasons": verdict.reasons,
             "confidence": verdict.confidence,
             "baseline_os_versions": [s.get("os_versions", "[]") for s in services] if services else [],
+            "audit_id": audit_id,
         }
 
     @server.tool()
@@ -329,10 +331,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"task_path": task_path, "verdict": "UNKNOWN",
                     "message": "Baseline database not available"}
 
-        audit.log(tool="check_scheduled_task", params={"task_path": task_path},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_scheduled_task", params={"task_path": task_path},
+                             result_summary={"status": "checked"})
         # The one implementation, shared with the agents' loop (WO-K2, IC-8).
-        return _check_task(known_good, task_path=task_path)
+        return {**_check_task(known_good, task_path=task_path), "audit_id": audit_id}
 
     @server.tool()
     def check_autorun(key_path: str, value_name: str = "", os_version: str = "") -> dict:
@@ -348,8 +350,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"key_path": key_path, "verdict": "UNKNOWN",
                     "message": "Baseline database not available"}
 
-        audit.log(tool="check_autorun", params={"key_path": key_path},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_autorun", params={"key_path": key_path},
+                             result_summary={"status": "checked"})
 
         autoruns = known_good.lookup_autorun(key_path, value_name or None)
         if autoruns:
@@ -360,6 +362,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "reasons": ["Autorun matches Windows baseline"],
                 "confidence": "high",
                 "baseline_entries": len(autoruns),
+                "audit_id": audit_id,
             }
 
         filename_findings = []
@@ -385,6 +388,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "verdict": "UNKNOWN",
             "reasons": ["Autorun not in baseline (neutral)"],
             "confidence": "low",
+            "audit_id": audit_id,
         }
         if filename_findings:
             result["findings"] = filename_findings
@@ -409,8 +413,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"key_path": key_path, "verdict": "UNKNOWN",
                     "message": "Registry baseline not available (optional, ~12GB). Install separately."}
 
-        audit.log(tool="check_registry", params={"key_path": key_path},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_registry", params={"key_path": key_path},
+                             result_summary={"status": "checked"})
 
         registry_db = _open_registry_db()
         if not registry_db:
@@ -422,6 +426,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "reasons": ["Registry baseline exists but is not initialized with baseline_registry"],
                 "confidence": "low",
                 "lookup_performed": False,
+                "audit_id": audit_id,
             }
 
         matches = (
@@ -452,6 +457,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "match_count": len(matches),
                 "os_versions": sorted(all_os_versions)[:10],
                 "os_version_count": len(all_os_versions),
+                "audit_id": audit_id,
             }
             if values_found:
                 result["values"] = values_found[:10]
@@ -467,6 +473,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "confidence": "low",
             "in_baseline": False,
             "lookup_performed": True,
+            "audit_id": audit_id,
         }
 
     @server.tool()
@@ -484,12 +491,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"hash": hash_value, "verdict": "UNKNOWN",
                     "message": "Context database not available"}
 
-        audit.log(tool="check_hash", params={"hash": hash_value[:16]},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_hash", params={"hash": hash_value[:16]},
+                             result_summary={"status": "checked"})
 
         algo = detect_hash_algorithm(hash_value)
         if not algo:
-            return {"hash": hash_value, "error": "Could not detect hash algorithm"}
+            return {"hash": hash_value, "error": "Could not detect hash algorithm", "audit_id": audit_id}
 
         norm = normalize_hash(hash_value)
         driver = context.check_vulnerable_driver(norm, algo)
@@ -502,6 +509,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "verdict": str(verdict.verdict),
             "reasons": verdict.reasons,
             "confidence": verdict.confidence,
+            "audit_id": audit_id,
         }
         if driver:
             result["driver"] = {
@@ -522,8 +530,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             filename: Filename to analyze
         """
         _, context = _open_dbs()
-        audit.log(tool="analyze_filename_triage", params={"filename": filename},
-                  result_summary={"status": "analyzed"})
+        audit_id = audit.log(tool="analyze_filename_triage", params={"filename": filename},
+                             result_summary={"status": "analyzed"})
 
         result = analyze_filename(filename)
         all_findings = list(result["findings"])
@@ -548,6 +556,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "findings": all_findings,
             "is_suspicious": len(all_findings) > 0,
             "suspicious_count": len(all_findings),
+            "audit_id": audit_id,
         }
 
     @server.tool()
@@ -562,8 +571,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"filename": filename, "verdict": "UNKNOWN",
                     "message": "Context database not available"}
 
-        audit.log(tool="check_lolbin", params={"filename": filename},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_lolbin", params={"filename": filename},
+                             result_summary={"status": "checked"})
 
         lolbin = context.check_lolbin(filename)
         if lolbin:
@@ -576,8 +585,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "expected_paths": lolbin.get("expected_paths", []),
                 "mitre_techniques": lolbin.get("mitre_techniques", []),
                 "detection": lolbin.get("detection", ""),
+                "audit_id": audit_id,
             }
-        return {"filename": filename, "found": False}
+        return {"filename": filename, "found": False, "audit_id": audit_id}
 
     @server.tool()
     def check_hijackable_dll(dll_name: str) -> dict:
@@ -591,11 +601,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"dll_name": dll_name, "entries": [],
                     "message": "Context database not available"}
 
-        audit.log(tool="check_hijackable_dll", params={"dll_name": dll_name},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_hijackable_dll", params={"dll_name": dll_name},
+                             result_summary={"status": "checked"})
 
         entries = context.check_hijackable_dll(dll_name)
-        return {"dll_name": dll_name, "entries": entries, "hijackable": len(entries) > 0}
+        return {"dll_name": dll_name, "entries": entries, "hijackable": len(entries) > 0, "audit_id": audit_id}
 
     @server.tool()
     def check_pipe(pipe_name: str) -> dict:
@@ -609,8 +619,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"pipe_name": pipe_name, "verdict": "UNKNOWN",
                     "message": "Context database not available"}
 
-        audit.log(tool="check_pipe", params={"pipe_name": pipe_name},
-                  result_summary={"status": "checked"})
+        audit_id = audit.log(tool="check_pipe", params={"pipe_name": pipe_name},
+                             result_summary={"status": "checked"})
 
         windows = context.check_windows_pipe(pipe_name)
         if windows:
@@ -620,6 +630,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "reasons": [f"Known Windows pipe: {windows.get('protocol', '')}"],
                 "confidence": "high",
                 "description": windows.get("description", ""),
+                "audit_id": audit_id,
             }
 
         suspicious = context.check_suspicious_pipe(pipe_name)
@@ -631,6 +642,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "confidence": "high",
                 "tool": suspicious.get("tool_name", ""),
                 "malware_family": suspicious.get("malware_family", ""),
+                "audit_id": audit_id,
             }
 
         return {
@@ -638,6 +650,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "verdict": "UNKNOWN",
             "reasons": ["Pipe not in known Windows or C2 databases (neutral)"],
             "confidence": "low",
+            "audit_id": audit_id,
         }
 
     @server.tool()
@@ -698,11 +711,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         Args:
             tag: Release tag (default: 'latest')
         """
-        audit.log(tool="triage_download", params={"tag": tag},
-                  result_summary={"status": "downloading"})
+        audit_id = audit.log(tool="triage_download", params={"tag": tag},
+                             result_summary={"status": "downloading"})
 
         db_dir = _get_db_path()
         success = download_databases(str(db_dir), tag=tag)
         if success:
-            return {"status": "success", "database_path": str(db_dir)}
-        return {"status": "failed", "message": "Download failed. Check network and retry."}
+            return {"status": "success", "database_path": str(db_dir), "audit_id": audit_id}
+        return {"status": "failed", "message": "Download failed. Check network and retry.", "audit_id": audit_id}

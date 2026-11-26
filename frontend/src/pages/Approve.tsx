@@ -318,10 +318,11 @@ export default function Approve() {
             )}
 
             <div>
-              <label className={styles.s15}>
+              <label htmlFor="approve-examiner" className={styles.s15}>
                 Examiner Identity (optional override)
               </label>
               <input
+                id="approve-examiner"
                 placeholder="Default from active config"
                 value={examiner}
                 onChange={(e) => setExaminer(e.target.value)}
@@ -330,10 +331,11 @@ export default function Approve() {
             </div>
 
             <div>
-              <label className={styles.s15}>
+              <label htmlFor="approve-password" className={styles.s15}>
                 Approval Password
               </label>
               <input
+                id="approve-password"
                 type="password"
                 placeholder={
                   passwordConfigured === false
@@ -349,10 +351,11 @@ export default function Approve() {
 
             {needsOverride.length > 0 && (
               <div>
-                <label className={styles.s16}>
+                <label htmlFor="approve-override-reason" className={styles.s16}>
                   Override Reason (required — L1 not PROVEN for {needsOverride.length} selected)
                 </label>
                 <input
+                  id="approve-override-reason"
                   placeholder="e.g. Verifier could not replay the count; examiner confirmed against the raw rows"
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
@@ -390,10 +393,11 @@ export default function Approve() {
 
             {rejectMode && (
               <div className={styles.s21}>
-                <label className={styles.s16}>
+                <label htmlFor="approve-reject-reason" className={styles.s16}>
                   Reason for Rejection (required by FD-001)
                 </label>
                 <input
+                  id="approve-reject-reason"
                   placeholder="e.g. Legitimate administrative activity, baseline software"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}

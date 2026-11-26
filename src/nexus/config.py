@@ -4,11 +4,37 @@ Reads from environment variables with NEXUS_ prefix, and from
 ~/.nexus/config.yaml. Falls back to sensible defaults.
 """
 
+import logging
 import os
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_int_setting(
+    name: str,
+    raw: object,
+    default: int,
+    *,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int:
+    """Parse an integer config setting safely, falling back to ``default`` on invalid input."""
+    if isinstance(raw, bool):
+        logger.warning("Ignoring boolean %s=%r; keeping %d", name, raw, default)
+        return default
+    try:
+        value = int(str(raw).strip()) if isinstance(raw, str) else int(raw)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        logger.warning("Ignoring malformed integer %s=%r; keeping %d", name, raw, default)
+        return default
+    if value < minimum or (maximum is not None and value > maximum):
+        logger.warning("Ignoring out-of-range %s=%r; keeping %d", name, raw, default)
+        return default
+    return value
 
 
 class Settings(BaseModel):
@@ -42,7 +68,9 @@ class Settings(BaseModel):
         if v := os.environ.get("NEXUS_AUDIT_DIR"):
             self.audit_dir = Path(v)
         if v := os.environ.get("NEXUS_COMMAND_TIMEOUT") or os.environ.get("SIFT_TIMEOUT"):
-            self.command_timeout = int(v)
+            self.command_timeout = _parse_int_setting(
+                "NEXUS_COMMAND_TIMEOUT", v, self.command_timeout, minimum=1
+            )
         if v := os.environ.get("NEXUS_TOOL_PATHS") or os.environ.get("SIFT_TOOL_PATHS"):
             sep = os.pathsep
             # Accept both ; and : so a Windows path like C:\Tools is not split on ':'
@@ -55,7 +83,9 @@ class Settings(BaseModel):
         if v := os.environ.get("NEXUS_GATEWAY_HOST"):
             self.gateway_host = v
         if v := os.environ.get("NEXUS_GATEWAY_PORT"):
-            self.gateway_port = int(v)
+            self.gateway_port = _parse_int_setting(
+                "NEXUS_GATEWAY_PORT", v, self.gateway_port, minimum=0, maximum=65535
+            )
         if v := os.environ.get("NEXUS_BEARER_TOKEN"):
             self.bearer_token = v
 
@@ -76,14 +106,18 @@ class Settings(BaseModel):
             self.cases_root = Path(v)
         if v := cfg.get("data_root"):
             self.data_root = Path(v)
-        if v := cfg.get("command_timeout"):
-            self.command_timeout = v
-        if v := cfg.get("tool_paths"):
-            self.tool_paths = v
+        if (v := cfg.get("command_timeout")) is not None:
+            self.command_timeout = _parse_int_setting(
+                "config.command_timeout", v, self.command_timeout, minimum=1
+            )
+        if (v := cfg.get("tool_paths")) and isinstance(v, list):
+            self.tool_paths = [str(p) for p in v]
         if v := cfg.get("gateway_host"):
-            self.gateway_host = v
-        if v := cfg.get("gateway_port"):
-            self.gateway_port = v
+            self.gateway_host = str(v)
+        if (v := cfg.get("gateway_port")) is not None:
+            self.gateway_port = _parse_int_setting(
+                "config.gateway_port", v, self.gateway_port, minimum=0, maximum=65535
+            )
 
 
 settings = Settings()

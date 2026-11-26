@@ -23,6 +23,9 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+from nexus.audit import exclusive_file_lock
+from nexus.discipline import validate_case_id
+
 logger = logging.getLogger(__name__)
 
 TRANSPARENCY_DIR = Path.home() / ".nexus" / "transparency"
@@ -41,27 +44,32 @@ def transparency_append(case_id: str, entry: dict) -> dict | None:
     Returns:
         The envelope dict with hash fields added, or None.
     """
+    if err := validate_case_id(case_id):
+        logger.error("Transparency append rejected: %s", err)
+        return None
     try:
         TRANSPARENCY_DIR.mkdir(parents=True, exist_ok=True)
         path = TRANSPARENCY_DIR / f"{case_id}.jsonl"
 
-        # Read previous hash from last line
-        previous_hash = _get_last_hash(path)
-        now = datetime.now(UTC).isoformat()
+        with exclusive_file_lock(path):
+            # Read previous hash and append under the same exclusive lock to
+            # prevent fork/overwrite races between concurrent writers.
+            previous_hash = _get_last_hash(path)
+            now = datetime.now(UTC).isoformat()
 
-        envelope = {
-            "entry": entry,
-            "previous_hash": previous_hash,
-            "timestamp": now,
-        }
-        envelope["hash"] = hashlib.sha256(
-            json.dumps(envelope, sort_keys=True, default=str).encode()
-        ).hexdigest()
+            envelope = {
+                "entry": entry,
+                "previous_hash": previous_hash,
+                "timestamp": now,
+            }
+            envelope["hash"] = hashlib.sha256(
+                json.dumps(envelope, sort_keys=True, default=str).encode()
+            ).hexdigest()
 
-        with open(path, "a") as f:
-            f.write(json.dumps(envelope) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(envelope) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
 
         return envelope
     except Exception as e:
@@ -79,12 +87,14 @@ def transparency_verify(case_id: str) -> dict:
         {"valid": True, "entries": N}
         {"valid": False, "entries": N, "tampered": index, "expected": str, "actual": str}
     """
+    if err := validate_case_id(case_id):
+        return {"valid": False, "entries": 0, "error": err}
     path = TRANSPARENCY_DIR / f"{case_id}.jsonl"
     if not path.exists():
         return {"valid": False, "entries": 0, "error": "No transparency log found"}
 
     entries = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -130,7 +140,7 @@ def _get_last_hash(path: Path) -> str:
     if not path.exists():
         return ""
     try:
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding="utf-8").splitlines()
         for line in reversed(lines):
             line = line.strip()
             if not line:

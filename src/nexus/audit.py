@@ -90,8 +90,8 @@ def _path_lock(path: Path) -> threading.Lock:
 
 
 @contextmanager
-def _exclusive(log_path: Path) -> Iterator[None]:
-    """Hold the log's lock, across processes, while an id is minted and its row appended."""
+def exclusive_file_lock(log_path: Path) -> Iterator[None]:
+    """Hold a path's lock across threads and processes during read-modify-append."""
     lock_path = log_path.with_name(log_path.name + ".lock")
     with _path_lock(log_path), open(lock_path, "a+b") as handle:
         if os.name == "nt":
@@ -120,6 +120,9 @@ def _exclusive(log_path: Path) -> Iterator[None]:
                 yield
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+_exclusive = exclusive_file_lock
 
 
 def _highest_sequence(log_path: Path, date_str: str) -> int:

@@ -52,4 +52,32 @@ describe("RequireCase", () => {
     expect(screen.getByText(/Loading case/i)).toBeTruthy();
     expect(screen.queryByText("dashboard-page")).toBeNull();
   });
+
+  it("renders an alert instead of swallowing errors when route case activation fails", async () => {
+    const setActiveCase = vi.fn().mockRejectedValue(new Error("403 forbidden"));
+    mockUseCase.mockReturnValue({
+      booting: false,
+      activeCase: "CASE-1",
+      cases: ["CASE-1", "CASE-2"],
+      setActiveCase,
+    });
+    render(
+      <MemoryRouter initialEntries={["/cases/CASE-2/explore"]}>
+        <Routes>
+          <Route path="/" element={<div>dashboard-page</div>} />
+          <Route
+            path="/cases/:caseId/explore"
+            element={
+              <RequireCase>
+                <div>cockpit-page</div>
+              </RequireCase>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("403 forbidden");
+    expect(screen.queryByText("cockpit-page")).toBeNull();
+  });
 });
