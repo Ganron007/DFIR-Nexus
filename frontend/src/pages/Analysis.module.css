@@ -91,6 +91,17 @@
   font-size: var(--font-size-xs);
 }
 
+.liveLink {
+  color: var(--color-accent-fg);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.liveLink:hover {
+  text-decoration: underline;
+}
+
 .cross {
   display: flex;
   flex-direction: column;

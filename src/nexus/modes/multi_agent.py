@@ -257,6 +257,7 @@ def active_seats(
         if not agent:
             continue
         if kind == "seat.started":
+            reported.discard(agent)
             started[agent] = {
                 "agent_id": agent,
                 "role": (ev.get("data") or {}).get("role") or agent.split(":")[0],
@@ -264,7 +265,20 @@ def active_seats(
                 "superstep": (ev.get("data") or {}).get("superstep"),
                 "why": (ev.get("data") or {}).get("why") or "",
                 "started_at": ev.get("ts") or "",
+                "calls": 0,
+                "rounds": 0,
+                "last_tool": "",
+                "last_why": "",
             }
+        elif kind == "tool.call" and agent in started and agent not in reported:
+            started[agent]["calls"] = int(started[agent].get("calls") or 0) + 1
+            started[agent]["last_tool"] = str(ev.get("tool") or "")
+            started[agent]["last_why"] = str(ev.get("why") or "")[:140]
+        elif kind == "agent.round" and agent in started and agent not in reported:
+            detail = str(ev.get("detail") or "")
+            m = re.search(r"round\s+(\d+)", detail, re.IGNORECASE)
+            if m:
+                started[agent]["rounds"] = max(int(started[agent].get("rounds") or 0), int(m.group(1)))
         elif kind == "board.entry":
             reported.add(agent)
     # Later starts win, so a re-dispatched seat shows its current superstep.
@@ -1254,6 +1268,35 @@ def _seat_with_model(
     rounds = _env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80)
     calls = _env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200)
     seconds = float(_env_int("NEXUS_MODE3_SECONDS", 1800, low=30, high=7200))
+    def _on_seat_event(event: dict[str, Any]) -> None:
+        kind = str(event.get("event") or "event")
+        if kind == "tool_call":
+            sink.emit(new_event(
+                run_id, "tool.call", actor="agent", agent_id=seat_agent_id,
+                tool=str(event.get("tool") or ""),
+                why=str(event.get("why") or ""),
+                data={"args": event.get("args") or {}, "superstep": superstep},
+            ))
+        elif kind == "tool_result":
+            summary = event.get("summary") or {}
+            error = str(event.get("error") or (
+                summary.get("error") if isinstance(summary, dict) else ""
+            ) or "")
+            sink.emit(new_event(
+                run_id, "tool.result", actor="agent", agent_id=seat_agent_id,
+                tool=str(event.get("tool") or ""),
+                audit_id=str(event.get("audit_id") or ""),
+                status="error" if error else "ok",
+                detail=error,
+                data={"summary": summary, "replayed": bool(event.get("replayed")), "superstep": superstep},
+            ))
+        elif kind == "round":
+            sink.emit(new_event(
+                run_id, "agent.round", actor="agent", agent_id=seat_agent_id,
+                detail=f"round {event.get('round')}/{event.get('max_rounds')}",
+                data={"superstep": superstep},
+            ))
+
     loop = run_context_loop(
         case_dir=case_dir,
         case_id=case_dir.name,
@@ -1263,6 +1306,7 @@ def _seat_with_model(
         task=f"mode3-{role_name}",
         budget=LoopBudget(rounds=rounds, seconds=seconds, calls=calls, call_chars=budget_chars(case_window(case_dir))),
         audit=audit,
+        on_event=_on_seat_event,
         allowed_tools=role.tools,
         terminal_keys=terminal_keys,
         output_contract=output_contract,

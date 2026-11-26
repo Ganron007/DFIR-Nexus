@@ -3483,8 +3483,6 @@ async def _run_compiled_pipeline(
 ):
     from langgraph.types import Command
 
-    from nexus.langgraph.tool_lane import inherit_evidence_paths
-
     compiled = graph.compile(checkpointer=checkpointer, interrupt_before=interrupt_nodes)
 
     cfg = {"configurable": {"thread_id": thread_id or "default"}}

@@ -231,3 +231,98 @@
   margin-top: 4px;
   overflow-wrap: anywhere;
 }
+
+.modeBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.modeTabs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.topoCard {
+  margin-bottom: 12px;
+}
+
+.topoFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topoNode {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+}
+
+.topoNodeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.topoConnector {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.topoSeatsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.topoSeatCard {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.topoSeatActive {
+  border-color: var(--accent);
+}
+
+.topoSeatHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.topoToolLine {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.topoMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.modeSwitchLinks {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}

@@ -10,6 +10,8 @@
  * Agents never stage or approve.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import styles from "../pages/AgentRun.module.css";
 import {
   ApiError,
   api,
@@ -24,7 +26,7 @@ import {
 } from "../api/client";
 import { Field, Select, Textarea } from "../ui/Field";
 
-const TERMINAL = new Set(["completed", "failed", "paused", "stopped"]);
+const TERMINAL = new Set(["completed", "failed", "paused", "stopped", "capped", "interrupted"]);
 const MAX_EVENTS = 500;
 
 function fmtTs(ts?: string): string {
@@ -54,13 +56,33 @@ function claimLine(claim: {
   return `${head} ${polarity} ${claim.value || ""}`.trim();
 }
 
+interface SeatTelemetry {
+  agentId: string;
+  role: string;
+  family: string;
+  superstep: number;
+  why: string;
+  calls: number;
+  rounds: number;
+  inFlightTool: string;
+  lastTool: string;
+  lastWhy: string;
+  lastAuditId: string;
+  state: "running" | "settled";
+}
+
 export default function MultiAgentBoard() {
+  const [searchParams] = useSearchParams();
+  const initialParamRun = (() => {
+    const r = searchParams.get("run") || "";
+    return r.startsWith("M3-") ? r : "";
+  })();
   const [question, setQuestion] = useState("");
   const [contextPolicy, setContextPolicy] = useState<"independent" | "informed">(
     "independent",
   );
-  const [runId, setRunId] = useState("");
-  const [attachId, setAttachId] = useState("");
+  const [runId, setRunId] = useState(initialParamRun);
+  const [attachId, setAttachId] = useState(initialParamRun);
   const [status, setStatus] = useState<Mode3RunStatus | null>(null);
   const [boardData, setBoardData] = useState<Mode3BoardResponse | null>(null);
   const [events, setEvents] = useState<AgentRunEvent[]>([]);
@@ -107,6 +129,17 @@ export default function MultiAgentBoard() {
     let cancelled = false;
     (async () => {
       try {
+        if (initialParamRun) {
+          const [s, b] = await Promise.all([
+            api.mode3RunStatus(initialParamRun),
+            api.mode3RunBoard(initialParamRun),
+          ]);
+          if (!cancelled) {
+            setStatus(s);
+            setBoardData(b);
+          }
+          return;
+        }
         const s = await api.mode3RunStatus();
         if (!cancelled) {
           setStatus(s);
@@ -173,6 +206,84 @@ export default function MultiAgentBoard() {
   const disputes = useMemo(() => boardData?.disputes || [], [boardData]);
   const candidates = useMemo(() => boardData?.candidates || [], [boardData]);
 
+  const { seatTelemetry, lastSupervisorDetail, lastJoinDetail } = useMemo(() => {
+    const map = new Map<string, SeatTelemetry>();
+    let supDetail = "";
+    let joinDetail = "";
+    for (const ev of events) {
+      const kind = ev.event_type || "";
+      if (kind.startsWith("supervisor.") && ev.detail) {
+        supDetail = ev.detail;
+      } else if ((kind === "join.decision" || kind === "dispute.opened" || kind === "synthesis.composed") && ev.detail) {
+        joinDetail = `${kind}: ${ev.detail}`;
+      }
+      const id = ev.agent_id || "";
+      if (!id) continue;
+      const data = (ev.data || {}) as Record<string, unknown>;
+      const cur: SeatTelemetry = map.get(id) || {
+        agentId: id,
+        role: String(data.role || id.split(":")[0] || "seat"),
+        family: String(data.family || ""),
+        superstep: Number(data.superstep || status?.superstep || 1),
+        why: String(data.why || ""),
+        calls: 0,
+        rounds: 0,
+        inFlightTool: "",
+        lastTool: "",
+        lastWhy: "",
+        lastAuditId: "",
+        state: "running",
+      };
+      if (kind === "seat.started") {
+        cur.state = "running";
+        cur.role = String(data.role || cur.role);
+        cur.family = String(data.family || cur.family);
+        cur.superstep = Number(data.superstep || cur.superstep);
+        cur.why = String(data.why || cur.why);
+      } else if (kind === "agent.round") {
+        const m = /round\s+(\d+)/i.exec(ev.detail || "");
+        if (m) cur.rounds = Math.max(cur.rounds, Number(m[1]) || 0);
+      } else if (kind === "tool.call") {
+        cur.calls += 1;
+        cur.inFlightTool = ev.tool || cur.inFlightTool;
+        cur.lastTool = ev.tool || cur.lastTool;
+        cur.lastWhy = ev.why || cur.lastWhy;
+      } else if (kind === "tool.result") {
+        cur.inFlightTool = "";
+        if (ev.tool) cur.lastTool = ev.tool;
+        if (ev.audit_id) cur.lastAuditId = ev.audit_id;
+      } else if (kind === "board.entry") {
+        cur.inFlightTool = "";
+        cur.state = "settled";
+      }
+      map.set(id, cur);
+    }
+    for (const activeSeat of status?.agents_active ?? []) {
+      const existing = map.get(activeSeat.agent_id);
+      if (!existing) {
+        map.set(activeSeat.agent_id, {
+          agentId: activeSeat.agent_id,
+          role: activeSeat.role || "seat",
+          family: activeSeat.family || "",
+          superstep: Number(activeSeat.superstep ?? status?.superstep ?? 1),
+          why: activeSeat.why || "",
+          calls: Number(activeSeat.calls || 0),
+          rounds: Number(activeSeat.rounds || 0),
+          inFlightTool: activeSeat.last_tool || "",
+          lastTool: activeSeat.last_tool || "",
+          lastWhy: activeSeat.last_why || "",
+          lastAuditId: "",
+          state: "running",
+        });
+      }
+    }
+    return {
+      seatTelemetry: Array.from(map.values()),
+      lastSupervisorDetail: supDetail,
+      lastJoinDetail: joinDetail,
+    };
+  }, [events, status?.agents_active, status?.superstep]);
+
   const handleStart = async () => {
     setBusy("run");
     setError("");
@@ -197,7 +308,7 @@ export default function MultiAgentBoard() {
     if (!runId) return;
     setBusy("pause");
     try {
-      if (status?.status === "paused") {
+      if (status?.status === "paused" || status?.status === "interrupted") {
         await api.mode3RunResume({ run_id: runId });
       } else {
         await api.mode3RunPause({ run_id: runId, paused: true });
@@ -341,8 +452,12 @@ export default function MultiAgentBoard() {
             <span>events <strong>{events.length}</strong></span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-            <button className="btn btn-sm" onClick={handlePauseToggle} disabled={!!busy || (!running && status?.status !== "paused")}>
-              {status?.status === "paused" ? "Resume" : "Pause"}
+            <button
+              className="btn btn-sm"
+              onClick={handlePauseToggle}
+              disabled={!!busy || (!running && status?.status !== "paused" && status?.status !== "interrupted")}
+            >
+              {status?.status === "paused" || status?.status === "interrupted" ? "Resume" : "Pause"}
             </button>
             <button className="btn btn-sm btn-danger" onClick={handleStop} disabled={!!busy || !running}>
               {busy === "stop" ? "Stopping…" : "Stop"}
@@ -392,6 +507,69 @@ export default function MultiAgentBoard() {
         </div>
       )}
 
+      {runId && (
+        <div className={`card ${styles.topoCard}`} data-testid="orchestrator-topology">
+          <div className="card-header">
+            <span className="card-title">Orchestrator topology</span>
+            <span className={styles.s3}>
+              supervisor → concurrent seats → join &amp; verifier
+            </span>
+          </div>
+          <div className={styles.topoFlow}>
+            <div className={styles.topoNode}>
+              <div className={styles.topoNodeHeader}>
+                <span>
+                  <strong>Supervisor</strong> · superstep {status?.superstep ?? 0}
+                </span>
+                <span className={styles.s3}>
+                  {lastSupervisorDetail || status?.question || "coordinating seat dispatch"}
+                </span>
+              </div>
+            </div>
+            <div className={styles.topoConnector}>↓ parallel dispatch ({seatTelemetry.length} seat(s))</div>
+            {seatTelemetry.length > 0 && (
+              <div className={styles.topoSeatsGrid}>
+                {seatTelemetry.map((s) => (
+                  <div
+                    key={s.agentId}
+                    className={`${styles.topoSeatCard} ${s.state === "running" ? styles.topoSeatActive : ""}`}
+                  >
+                    <div className={styles.topoSeatHeader}>
+                      <span className="badge">{`seat:${s.role}`}</span>
+                      {s.family && <span className={styles.s11}>{s.family}</span>}
+                      <span className={s.state === "running" ? styles.typeTool : styles.statusOk}>
+                        {s.state === "running" ? "in-flight" : "settled"}
+                      </span>
+                    </div>
+                    <div className={styles.topoMeta}>
+                      step {s.superstep} · rounds {s.rounds} · calls {s.calls}
+                    </div>
+                    {(s.inFlightTool || s.lastTool) && (
+                      <div className={styles.topoToolLine}>
+                        {s.inFlightTool ? `running ${s.inFlightTool}` : `last ${s.lastTool}`}
+                        {s.lastWhy ? ` · ${s.lastWhy}` : ""}
+                        {s.lastAuditId ? ` [${s.lastAuditId}]` : ""}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className={styles.topoConnector}>↓ board claim join &amp; adversarial verifier</div>
+            <div className={styles.topoNode}>
+              <div className={styles.topoNodeHeader}>
+                <span>
+                  <strong>Join &amp; Verifier</strong> · disputes {status?.disputes ?? disputes.length} · candidates {status?.candidates ?? candidates.length}
+                </span>
+                <span className={styles.s3}>
+                  {lastJoinDetail || (status?.status ? `run status: ${status.status}` : "awaiting seat reports")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="agent-run-grid">
         <div className="card">
           <div className="card-header">
@@ -420,28 +598,42 @@ export default function MultiAgentBoard() {
             </div>
           ) : (
             <div className="agent-lanes">
-              {(status?.agents_active ?? []).map((seat) => (
-                <div key={seat.agent_id} className="agent-lane">
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <span className="badge draft">{(seat.role || "seat").toUpperCase()}</span>
-                    {seat.family && <span className="badge">{seat.family}</span>}
-                    <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>
-                      {seat.agent_id}
-                    </span>
-                    {seat.superstep != null && (
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                        superstep {seat.superstep}
+              {(status?.agents_active ?? []).map((seat) => {
+                const live = seatTelemetry.find((s) => s.agentId === seat.agent_id);
+                const calls = live?.calls || seat.calls || 0;
+                const rounds = live?.rounds || seat.rounds || 0;
+                const activeTool = live?.inFlightTool || live?.lastTool || seat.last_tool || "";
+                return (
+                  <div key={seat.agent_id} className="agent-lane">
+                    <div className={styles.s6}>
+                      <span className="badge draft">{(seat.role || "seat").toUpperCase()}</span>
+                      {seat.family && <span className="badge">{seat.family}</span>}
+                      <span className={styles.s11}>
+                        {seat.agent_id}
                       </span>
-                    )}
-                    <span style={{ fontSize: 11, color: "var(--accent)" }}>working…</span>
-                  </div>
-                  {seat.why && (
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                      spawned because: {seat.why}
+                      {seat.superstep != null && (
+                        <span className={styles.s3}>
+                          superstep {seat.superstep}
+                        </span>
+                      )}
+                      {rounds > 0 && <span className={styles.s3}>round {rounds}</span>}
+                      {calls > 0 && <span className={styles.s3}>calls {calls}</span>}
+                      <span className={styles.s31}>working…</span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    {activeTool && (
+                      <div className={styles.topoToolLine}>
+                        tool: {activeTool}
+                        {(live?.lastWhy || seat.last_why) ? ` · ${live?.lastWhy || seat.last_why}` : ""}
+                      </div>
+                    )}
+                    {seat.why && (
+                      <div className={styles.s14}>
+                        spawned because: {seat.why}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
           {Boolean(timeline.length) && (
@@ -530,16 +722,20 @@ export default function MultiAgentBoard() {
             )}
             {events.map((e) => (
               <div key={e.event_id} className="agent-stream-line">
-                <span style={{ color: "var(--text-muted)" }}>{fmtTs(e.ts)}</span>{" "}
+                <span className={styles.s21}>{fmtTs(e.ts)}</span>{" "}
                 <strong>{e.event_type}</strong>{" "}
-                {e.agent_id && <span style={{ color: "var(--text-muted)" }}>{e.agent_id}</span>}{" "}
+                {e.agent_id && <span className={styles.s21}>{e.agent_id}</span>}{" "}
                 {e.tool && <span>{e.tool}</span>}{" "}
+                {e.why && <span className={styles.s21}>· {e.why}</span>}{" "}
                 {e.audit_id && (
-                  <span style={{ color: "var(--accent)", fontFamily: "monospace" }}>
+                  <span className={styles.s31}>
                     audit={e.audit_id}
                   </span>
                 )}{" "}
                 {e.detail && <span>— {e.detail}</span>}
+                {e.status && e.status !== "ok" && (
+                  <span className={styles.s22}> [{e.status}]</span>
+                )}
               </div>
             ))}
           </div>

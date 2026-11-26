@@ -357,3 +357,36 @@ def test_knowledge_platform_scoping_artifacts_step_citations_and_non_windows_ana
         "ba-net-c2-suspicious-port-proto",
         "ba-mem-hidden-or-injected-proc",
     }.issubset(ba_ids)
+
+
+def test_mode3_active_seats_tracks_live_tool_calls_until_board_entry(tmp_path):
+    from nexus.modes.multi_agent import active_seats
+
+    events = [
+        {
+            "event_type": "seat.started",
+            "agent_id": "evidence:evtxecmd:1",
+            "ts": "2026-11-26T10:00:00Z",
+            "data": {"role": "evidence", "family": "evtxecmd", "superstep": 1, "why": "triage"},
+        },
+        {
+            "event_type": "agent.round",
+            "agent_id": "evidence:evtxecmd:1",
+            "detail": "round 2/24",
+        },
+        {
+            "event_type": "tool.call",
+            "agent_id": "evidence:evtxecmd:1",
+            "tool": "es_search",
+            "why": "inspect 4624",
+        },
+    ]
+    live = active_seats(tmp_path, "M3-LIVE", events=events)
+    assert len(live) == 1
+    assert live[0]["calls"] == 1
+    assert live[0]["rounds"] == 2
+    assert live[0]["last_tool"] == "es_search"
+    assert live[0]["last_why"] == "inspect 4624"
+
+    settled = [*events, {"event_type": "board.entry", "agent_id": "evidence:evtxecmd:1"}]
+    assert active_seats(tmp_path, "M3-LIVE", events=settled) == []

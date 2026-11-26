@@ -301,4 +301,15 @@ describe("AgentRun (Mode 3)", () => {
       );
     });
   });
+
+  it("allows watching a Mode 3 run on a Mode 1 case when ?mode=3 is requested", async () => {
+    caseModeState.value = "1";
+    render(
+      <MemoryRouter initialEntries={["/case/CASE-TEST/agent-run?mode=3&run=M3-test"]}>
+        <AgentRun />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/Investigation Board — Mode 3/)).toBeTruthy();
+    expect(await screen.findByTestId("orchestrator-topology")).toBeTruthy();
+  });
 });

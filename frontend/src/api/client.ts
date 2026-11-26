@@ -690,6 +690,10 @@ export interface Mode3ActiveSeat {
   superstep?: number;
   why?: string;
   started_at?: string;
+  calls?: number;
+  rounds?: number;
+  last_tool?: string;
+  last_why?: string;
 }
 
 export interface Mode3TimelineRow {

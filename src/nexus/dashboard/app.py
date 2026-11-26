@@ -7166,7 +7166,7 @@ async def api_mode3_run_events(request):
             emitted = len(events)
             record = await asyncio.to_thread(read_run_record, case_dir, run_id)
             status = str((record or {}).get("status") or "")
-            if status in ("completed", "failed", "paused", "stopped"):
+            if status in ("completed", "failed", "paused", "stopped", "capped", "interrupted"):
                 terminal_seen += 1
                 if terminal_seen >= 2:
                     yield f"event: run\ndata: {json.dumps({'status': status}, default=str)}\n\n"
@@ -7193,7 +7193,7 @@ async def api_mode3_run_status(request):
 
     events = await asyncio.to_thread(read_run_events, case_dir, run_id)
     active = active_seats(case_dir, run_id, events=events)
-    live = str(record.get("status") or "") in {"running", "planned", "settled", "capped"}
+    live = str(record.get("status") or "") in {"running", "planned", "settled"}
     return JSONResponse({
         "run_id": run_id,
         "status": record.get("status"),
@@ -7522,7 +7522,7 @@ async def api_mode2_run_events(request):
             emitted = len(events)
             record = await asyncio.to_thread(read_run_record, case_dir, run_id)
             status = str((record or {}).get("status") or "")
-            if status in ("completed", "failed", "paused", "stopped"):
+            if status in ("completed", "failed", "paused", "stopped", "capped", "interrupted"):
                 terminal_seen += 1
                 if terminal_seen >= 2:
                     yield f"event: run\ndata: {json.dumps({'status': status}, default=str)}\n\n"

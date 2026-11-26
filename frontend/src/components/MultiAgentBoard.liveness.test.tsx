@@ -192,4 +192,30 @@ describe("Mode 3 board liveness", () => {
     const count = await screen.findByTestId("agents-running");
     expect(count.textContent).toBe("0");
   });
+
+  it("renders orchestrator topology and live per-seat tool activity", async () => {
+    (api.mode3RunStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...statusRunning,
+      agents_active: [
+        {
+          agent_id: "evidence:evtx:2",
+          role: "evidence",
+          family: "evtx",
+          superstep: 2,
+          why: "logons",
+          calls: 2,
+          rounds: 3,
+          last_tool: "es_search",
+          last_why: "check 4624 rows",
+        },
+      ],
+    });
+    await renderBoard();
+    const topo = await screen.findByTestId("orchestrator-topology");
+    expect(topo.textContent).toContain("Supervisor");
+    expect(topo.textContent).toContain("seat:evidence");
+    expect(topo.textContent).toContain("calls 2");
+    expect(topo.textContent).toContain("es_search");
+    expect(topo.textContent).toContain("Join & Verifier");
+  });
 });

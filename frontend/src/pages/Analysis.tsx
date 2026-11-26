@@ -9,6 +9,7 @@
  * conclusions, and where they contradict each other.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import { useCrossMode } from "../api/queries/crossMode";
@@ -223,6 +224,14 @@ export default function Analysis() {
                   <span className={styles.rowStatus} data-testid={`analysis-progress-${row.mode}`}>
                     {row.progress}
                   </span>
+                ) : null}
+                {(row.mode === "2" || row.mode === "3") && activeCase ? (
+                  <Link
+                    to={`/case/${encodeURIComponent(activeCase)}/agent-run?mode=${row.mode}${row.runId ? `&run=${encodeURIComponent(row.runId)}` : ""}`}
+                    className={styles.liveLink}
+                  >
+                    Watch live →
+                  </Link>
                 ) : null}
                 {row.message ? <span className={styles.rowMessage}>{row.message}</span> : null}
               </li>

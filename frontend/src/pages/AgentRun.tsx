@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./AgentRun.module.css";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ApiError,
   api,
@@ -29,7 +29,7 @@ import {
 import { useCase } from "../context/CaseContext";
 import MultiAgentBoard from "../components/MultiAgentBoard";
 
-const TERMINAL = new Set(["completed", "failed", "paused", "stopped"]);
+const TERMINAL = new Set(["completed", "failed", "paused", "stopped", "capped", "interrupted"]);
 const MAX_EVENTS = 800;
 
 function fmtTs(ts?: string): string {
@@ -175,14 +175,56 @@ function TypeBadge({ kind }: { kind: string }) {
 }
 
 export default function AgentRun() {
-  // Mode 2 = this multi-role surface. Mode 3 = the Investigation Board.
-  // A Mode 1 case does not get either control.
+  // Mode 2 = multi-role lanes. Mode 3 = concurrent Investigation Board.
+  // D5=C runs may also open a specific mode via ?mode=2|3 or ?run=M2-|M3-.
   const { mode: caseMode } = useCase();
-  if (caseMode === "3") {
-    return <MultiAgentBoard />;
-  }
-  if (caseMode === "2") {
-    return <MultiRoleAgentRun />;
+  const [params, setParams] = useSearchParams();
+  const paramMode = params.get("mode");
+  const paramRun = params.get("run") || "";
+  const inferredMode =
+    paramMode === "2" || paramMode === "3"
+      ? paramMode
+      : paramRun.startsWith("M3-")
+        ? "3"
+        : paramRun.startsWith("M2-")
+          ? "2"
+          : caseMode;
+
+  if (inferredMode === "3" || inferredMode === "2") {
+    const switchTo = (nextMode: "2" | "3") => {
+      const next = new URLSearchParams(params);
+      next.set("mode", nextMode);
+      next.delete("run");
+      setParams(next, { replace: true });
+    };
+    return (
+      <div>
+        <div className={styles.modeBar}>
+          <div className={styles.modeTabs}>
+            <button
+              type="button"
+              className={`btn btn-sm ${inferredMode === "2" ? "btn-primary" : ""}`}
+              onClick={() => switchTo("2")}
+            >
+              Mode 2 (Multi-role)
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${inferredMode === "3" ? "btn-primary" : ""}`}
+              onClick={() => switchTo("3")}
+            >
+              Mode 3 (Multi-agent)
+            </button>
+          </div>
+          {caseMode === "1" && (
+            <span className={styles.s3}>
+              Viewing cross-mode run telemetry on a Mode 1 case
+            </span>
+          )}
+        </div>
+        {inferredMode === "3" ? <MultiAgentBoard /> : <MultiRoleAgentRun />}
+      </div>
+    );
   }
   return (
     <div className="card">
@@ -194,6 +236,14 @@ export default function AgentRun() {
         Agent Run is only on a Mode 2 (multi-role) or Mode 3 (multi-agent) case,
         and that choice is fixed when the case is created.
       </p>
+      <div className={styles.modeSwitchLinks}>
+        <Link className="btn btn-sm" to="?mode=2">
+          Inspect Mode 2 runs
+        </Link>
+        <Link className="btn btn-sm" to="?mode=3">
+          Inspect Mode 3 runs
+        </Link>
+      </div>
     </div>
   );
 }
